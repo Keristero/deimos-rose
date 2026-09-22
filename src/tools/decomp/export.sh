@@ -11,11 +11,15 @@ VERSION="${GHIDRA_VERSION:-12.1.4}"
 GHIDRA_HOME="${DR_GHIDRA:?}/ghidra_${VERSION}_PUBLIC"
 HEADLESS="$GHIDRA_HOME/support/analyzeHeadless"
 SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="${DR_DECOMP:?}/project"
-OUT_DIR="${DR_DECOMP}/export"
-EXE="${DR_EXE:?}"
-SYMS="${DR_SYMS:?}"
 PROJECT_NAME="DeimosRising"
+
+# The headless analyser rejects any path element starting with '.', which
+# includes the ".." that mise leaves in {{config_root}}/../ paths. Normalise
+# everything it will see.
+PROJECT_DIR="$(realpath -m "${DR_DECOMP:?}/project")"
+OUT_DIR="$(realpath -m "${DR_DECOMP}/export")"
+EXE="$(realpath -m "${DR_EXE:?}")"
+SYMS="$(realpath -m "${DR_SYMS:?}")"
 
 [ -x "$HEADLESS" ] || { echo "ghidra missing; run 'mise run decomp:setup'" >&2; exit 1; }
 [ -f "$EXE" ]  || { echo "binary not found: $EXE" >&2; exit 1; }

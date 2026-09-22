@@ -13,10 +13,13 @@ DR_ORIG   = "{{config_root}}/../game"
 DR_ASSETS = "{{config_root}}/assets"
 DR_BUILD  = "{{config_root}}/build"
 DR_DEPS   = "{{config_root}}/.deps"
-# Ghidra and its project live outside the repo: ~1.5 GB of tooling and a
-# derived corpus, neither of which belongs near tracked files.
+# Ghidra itself is ~900 MB of tooling, so it lives in the user cache.
 DR_GHIDRA = "{{env.HOME}}/.cache/deimos-rising/ghidra"
-DR_DECOMP = "{{env.HOME}}/.cache/deimos-rising/decomp"
+# The Ghidra project and corpus cannot live under a dotted path -- the headless
+# analyser rejects any path element starting with '.' -- so they go in a
+# gitignored work/ directory beside the repo's tracked files. Kept out of
+# src/build/ so that `mise run clean` does not discard minutes of analysis.
+DR_DECOMP = "{{config_root}}/../work/decomp"
 DR_EXE    = "{{config_root}}/../game/DeimosRising.exe"
 DR_SYMS   = "{{config_root}}/../symbols/functions.csv"
 # Odin collection so packages import as "dr:sim", "dr:data", ...
@@ -71,6 +74,11 @@ run = "bash tools/decomp/setup.sh"
 description = "Headless Ghidra: import our symbols, decompile, export C per function"
 depends = ["decomp:setup"]
 run = "bash tools/decomp/export.sh"
+
+[tasks."decomp:reanalyse"]
+description = "Discard the Ghidra project and re-import from scratch (several minutes)"
+depends = ["decomp:setup"]
+run = "bash tools/decomp/export.sh --reanalyse"
 
 [tasks."decomp:find"]
 description = "Find decompiled functions by name substring; -c prints the source"

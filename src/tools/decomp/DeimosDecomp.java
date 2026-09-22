@@ -50,7 +50,7 @@ public class DeimosDecomp extends GhidraScript {
 		List<Sym> syms = readCsv(csv);
 		println("DeimosDecomp: " + syms.size() + " .text symbols from " + csv);
 
-		int renamed = 0, created = 0;
+		int renamed = 0, created = 0, kept = 0;
 		for (Sym s : syms) {
 			Address addr = toAddr(s.va);
 			Function f = getFunctionAt(addr);
@@ -63,12 +63,19 @@ public class DeimosDecomp extends GhidraScript {
 				} catch (Exception e) {
 					// Address may sit inside another function's body; skip.
 				}
-			} else {
-				f.setName(s.base, SourceType.IMPORTED);
+			} else if (isDefaultName(f.getName())) {
+				// Only override Ghidra's own naming where it has nothing: its
+				// MSVC demangler is authoritative for the mangled symbols, and
+				// it already owns the class namespace. Passing the qualified
+				// name here yields "G_Film::G_Film__GetRandomSeed".
+				f.setName(unqualified(s.base), SourceType.IMPORTED);
 				renamed++;
+			} else {
+				kept++;
 			}
 		}
-		println("DeimosDecomp: renamed " + renamed + ", created " + created);
+		println("DeimosDecomp: renamed " + renamed + ", kept Ghidra's name for "
+				+ kept + ", created " + created);
 
 		DecompInterface di = new DecompInterface();
 		di.setOptions(new DecompileOptions());
@@ -88,7 +95,7 @@ public class DeimosDecomp extends GhidraScript {
 			}
 			Address addr = toAddr(s.va);
 			Function f = getFunctionAt(addr);
-			String module = moduleOf(s.base);
+			String module = moduleOf(s.base, s.mangled);
 			String stem = sanitize(s.base) + "_" + String.format("%06x", s.va - 0x400000);
 			String rel = module + "/" + stem + ".c";
 
@@ -134,6 +141,16 @@ public class DeimosDecomp extends GhidraScript {
 		println("DeimosDecomp: exported " + ok + ", failed " + failed);
 	}
 
+	private static boolean isDefaultName(String n) {
+		return n.startsWith("FUN_") || n.startsWith("SUB_")
+				|| n.startsWith("thunk_FUN_") || n.startsWith("UndefinedFunction_");
+	}
+
+	private static String unqualified(String base) {
+		int cc = base.lastIndexOf("::");
+		return cc > 0 ? base.substring(cc + 2) : base;
+	}
+
 	private static String hex(long v) {
 		return String.format("0x%08x", v);
 	}
@@ -143,7 +160,12 @@ public class DeimosDecomp extends GhidraScript {
 	//   G_Player_Process    -> G_Player
 	//   G_EG_BuildDrawList  -> G_EG
 	//   png_read_info       -> _thirdparty
-	private static String moduleOf(String base) {
+	private static String moduleOf(String base, String mangled) {
+		// Metrowerks Standard Library template instantiations.
+		if (mangled.contains("std@@") || mangled.contains("Metrowerks@@")
+				|| base.startsWith("msl_")) {
+			return "_msl";
+		}
 		int cc = base.indexOf("::");
 		if (cc > 0) {
 			return sanitize(base.substring(0, cc));
@@ -165,6 +187,15 @@ public class DeimosDecomp extends GhidraScript {
 		for (String p : new String[] { "DT_", "FT_", "IT_", "ST_", "PT_", "SSP_", "RT_" }) {
 			if (base.startsWith(p)) {
 				return "_ambrosia_" + p.substring(0, p.length() - 1);
+			}
+		}
+		// Burgerlib (BurgerW95.Lib): manager classes and the handle allocator.
+		for (String p : new String[] { "Gr", "Pl", "Sn", "Fm", "In", "OC", "Db", "Cl",
+				"W9", "Alloc", "Dealloc", "NewHand", "DisposeHand", "CompactHandles",
+				"MMMemory", "Atomic", "Critical", "Draw", "ADPCM", "BMP_", "Digital",
+				"Burger" }) {
+			if (base.startsWith(p)) {
+				return "_burgerlib";
 			}
 		}
 		return "_other";

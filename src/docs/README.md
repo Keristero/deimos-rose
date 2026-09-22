@@ -8,7 +8,7 @@ do, and which decisions are still open.
 |---|---|---|
 | 0 — Scaffold | **complete** | [phase-0-scaffold.md](phase-0-scaffold.md) |
 | 1 — Asset pipeline | **complete** | [phase-1-assets.md](phase-1-assets.md) |
-| 2 — Decomp corpus | not started | |
+| 2 — Decomp corpus | **complete** | [phase-2-decomp.md](phase-2-decomp.md) |
 | 3 — Definition & data layer | not started | |
 | 4 — Deterministic simulation | not started | |
 | 5 — Presentation | not started | |

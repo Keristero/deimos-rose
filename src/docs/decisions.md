@@ -50,3 +50,16 @@ data layer. Phase 1 catalogues them in the manifest instead.
 `assets/`, `build/` and `.deps/` are gitignored, as are `orig/` and `game/` in
 the parent repository. Everything is regenerated from a local copy of the
 installer.
+
+### D9 — The decompilation corpus is reference material, never a source
+
+Files under `work/decomp/export/` are read to understand behaviour. Nothing is
+transliterated from them into `src/`. Every exported file carries that note in
+its header.
+
+### D10 — Ghidra and its corpus live outside the tracked tree
+
+Ghidra goes in `~/.cache/deimos-rising/`; the project and corpus in a
+gitignored `work/`. Not `src/build/`, because `mise run clean` would discard
+minutes of analysis. Not a dotted path, because the headless analyser rejects
+any path element beginning with `.`.

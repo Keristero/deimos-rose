@@ -7,5 +7,9 @@
 # Raw CodeView blob is carved straight out of the copyrighted executable.
 /symbols/*.cv
 
+# Ghidra project and the decompilation corpus: derived from the copyrighted
+# executable, and regenerable with `mise run decomp:export`.
+/work/
+
 __pycache__/
 *.pyc
