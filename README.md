@@ -102,14 +102,15 @@ absolute address at the default image base of `0x400000`.
 1. Import `symbols/functions.csv` into a disassembler. `validate_symbols.py`
    already confirms the addresses are real function boundaries, so this is
    about naming quality rather than correctness.
-2. Parse the CodeView `sstGlobalTypes` subsection to recover field layouts.
-   `tools/cv_parse.py` locates it but does not decode it; this is the single
-   highest-value piece still on the table.
+2. Reverse struct layouts from the disassembly. **There is no shortcut**: the
+   `sstGlobalTypes` subsection is present but empty (8 bytes), so the debug
+   data supplies type *names* only, never field offsets. This is the dominant
+   cost of the whole project.
 3. Source a CodeWarrior for Windows x86 release contemporary with the 2003
    build if a byte-matching decomp is the goal.
-4. Decide the scope boundary. Around 106 KB of `.text` is vendored libpng,
-   libjpeg, zlib and unzip; that code should be identified against upstream
-   releases, not reconstructed.
+4. Decide the scope boundary. ~22% of `.text` is vendored libpng, libjpeg,
+   zlib, Burgerlib and MSL; identify it against upstream rather than
+   reconstruct it. See [notes/porting-to-linux.md](notes/porting-to-linux.md).
 
 ## Related work
 

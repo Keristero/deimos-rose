@@ -192,3 +192,88 @@ Prologue shapes are a weaker signal and are informational only: 38% open with
 `push ebx` and 35% with `push ebp`, but 24% start straight into argument loads
 (`mov ecx,[esp+n]`). CodeWarrior's optimiser drops the frame pointer freely, so
 an absent standard prologue does not indicate a bad symbol.
+
+## Correction: there are no type layouts
+
+An earlier draft of this note suggested decoding `sstGlobalTypes` to recover
+struct field layouts. That was wrong. The subsection exists but is **8 bytes
+long and empty**:
+
+```
+sstGlobalTypes: lfo=0x3f64c size=8
+```
+
+Subsection sizes overall:
+
+| Subsection | Bytes |
+|---|---:|
+| `sstGlobalPub` | 162,080 |
+| `sstModule` | 94,557 |
+| `sstFileIndex` | 2,744 |
+| `sstAlignSym` | 1,300 |
+| `sstLibraries` | 340 |
+| `sstGlobalTypes` | **8 (empty)** |
+
+The 75 type names in `symbols/types.txt` come from mangled parameter
+signatures, not from type records. Every struct field offset must be recovered
+from the disassembly.
+
+## Linked libraries
+
+`sstLibraries` lists all 25 libraries fed to the linker:
+
+```
+winmm  COMctl32  COMdlg32  d3dim  d3dx  ddraw  dinput  gdi32  kernel32
+shell32  user32  advapi32  qtmlClient  glut32  opengl32  version  uuid
+File_Tool.x86  Interface_Tool.x86  Draw_Tool.x86  sound_tool.x86
+Reg_Tool_3.x86  Platform.x86  MSL_All_x86  BurgerW95
+```
+
+This names the Ambrosia toolkits directly — `Draw_Tool` (`DT_`),
+`File_Tool` (`FT_`), `Interface_Tool` (`IT_`), `sound_tool` (`ST_`),
+`Reg_Tool_3` (`RT_`/`rt3`).
+
+**`BurgerW95.Lib` is Burgerlib**, Rebecca Heineman's cross-platform game
+library. It accounts for the `Gr*`/`Pl*`/`Sn*`/`Fm*`/`In*`/`OC*`/`Db*`/`Cl*`
+manager symbols (`GrGraphicsManager`, `PlPaletteManager`, `SnSoundManager`,
+`FmFileManager`, `InKeyboardWin95`, `OCOSCursorManager`, `DbDebugManager`)
+and the handle-based allocator (`AllocAHandle2`, `DeallocAHandle`,
+`CompactHandles`). An earlier pass in this document misattributed those to
+QTML. Burgerlib is now open source, so this code can be matched against
+upstream rather than reconstructed.
+
+`d3dim`, `d3dx`, `ddraw`, `dinput`, `glut32` and `opengl32` are linked but
+**import zero functions** — Burgerlib's Win95 backend references them and
+loads them dynamically. The shipped render path does not use Direct3D or
+OpenGL.
+
+## Runtime surface actually used
+
+The Win32 import table is small and maps cleanly onto portable equivalents:
+
+| Area | Win32 used | Portable equivalent |
+|---|---|---|
+| Video | `CreateDIBSection`, `BitBlt`, `CreateCompatibleDC` (GDI32, 67 fns) | SDL streaming texture / framebuffer |
+| Audio | `waveOutOpen/Write/PrepareHeader` (WINMM) | SDL audio, ALSA, PulseAudio |
+| Input | `joyGetPosEx`, `joyGetDevCapsA`, USER32 key messages | SDL joystick + keyboard |
+| Timing | `timeSetEvent`, `timeGetTime` | `clock_gettime` / SDL timers |
+
+The game renders in software — `U_SpriteBlit`, `W_Pixel16`, `W_PixelBuffer` —
+into a 16-bit DIB that is blitted to the window. There is no GPU dependency to
+reproduce.
+
+## The manager architecture
+
+`game/DeimosRisingWin32.log` is a developer log shipped in the 2003 build. Its
+shutdown sequence enumerates the engine's managers in teardown order:
+
+```
+Background, Preferences, Input, Resource, Math, Sound, Music, Pak, Sprite,
+Blitter, Level, Unit Definition, Weapon Definition, Player Definition,
+Score Bar, Debris, Particle, Motion Blur, Message, Text, Display, Memory,
+Manager God
+```
+
+These correspond one-to-one with the `G_*`/`U_*` translation units and with
+`U_Manager` ("Manager God" being the registry itself). It is a free
+architectural map of the engine, straight from the original developers.
