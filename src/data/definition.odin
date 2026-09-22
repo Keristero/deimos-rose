@@ -326,10 +326,14 @@ definition_parse :: proc(
 			}
 		}
 
+		// Scope is decided by key, not position. FUN_004431f0 reads a
+		// state's spawn sets partway through and then the rest of the state's
+		// own keys, so in the file the last spawn set is followed by ordinary
+		// state keys. Every spawn-set key starts with "stateSpawnSet".
 		switch {
 		case !in_states:
 			append(&header, t)
-		case spawn_fields != nil:
+		case spawn_fields != nil && strings.has_prefix(t.key, "stateSpawnSet"):
 			append(&spawn_fields, t)
 		case cur_fields != nil:
 			append(&cur_fields, t)

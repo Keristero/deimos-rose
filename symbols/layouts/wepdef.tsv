@@ -1,56 +1,57 @@
-offset	type	key
-0x0008	ID	#type_ID
-0x000c	ID	#default_ID
-0x0010	String	#name_STR
-0x0020	ID	#spawn_Unit_ID
-0x0024	Int	#spawn_XLoc_INT
-0x0028	Int	#spawn_YLoc_INT
-0x002c	Boolean	#spawn_SetHeading_BOOL
-0x002e	Int	#spawn_Angle_INT
-0x0030	String	#description1_STR
-0x00b0	String	#description2_STR
-0x0130	ID	#scoreBarPreviewFace_ID
-0x0134	Int	#scoreBarPreviewFrame_INT
-0x0138	Int	#maxAllowed_INT
-0x013c	Int	#minimumLevelAvailable_INT
-0x0140	Int	#maximumLevelAvailable_INT
-0x0144	ID	#player1AppearanceFace_ID
-0x0148	ID	#player2AppearanceFace_ID
-0x014c	Color	#playerGlow_COLOR
-0x014e	ID	#selectionSound_ID
-0x0152	Int	#selectionSound_MinVolume_INT
-0x0156	Int	#selectionSound_MaxVolume_INT
-0x015a	Int	#selectionSound_Priority_INT
-0x015e	Float	#selectionSound_MinPitch_FLOAT
-0x0162	Float	#selectionSound_MaxPitch_FLOAT
-0x0166	ID	#crosshairFace_ID
-0x016a	Int	#crosshairFrame_INT
-0x016e	ID	#crosshairLockedFace_ID
-0x0172	Int	#crosshairLockedFrame_INT
-0x0176	Int	#crosshairXOffset_INT
-0x017a	Int	#crosshairYOffset_INT
-0x017e	ID	#crosshairSpawnOnActivation_ID
-0x0182	Int	#numAmmoInPack_INT
-0x018a	Int	#ammoWarnAtCount_INT
-0x01aa	Boolean	#autoRepeat_BOOL
-0x01ac	Int	#delayBetweenLaunches_INT
-0x01b0	Int	#delayBetweenLoadLaunches_INT
-0x01b4	Int	#shieldIncrease_INT
-0x01b8	Int	#livesIncrease_INT
-0x01bc	Int	#invulnerableForTime_INT
-0x01c4	Int	#powerup_Air_TimeUntilActivation_INT
-0x01c8	ID	#powerup_Air_ActivationSpawn_ID
-0x01cc	Int	#powerup_Air_TimeBetweenPowerLevelChanges_INT
-0x01d0	Int	#powerup_Air_MaxPowerLevel_INT
-0x01d4	Int	#powerup_Air_OverloadTime_INT
-0x01d8	ID	#powerup_Air_ReleaseSpawn_ID
-0x01dc	Int	#powerup_Air_TimeBetweenReleaseSpawns_INT
-0x01e0	Boolean	#powerup_Air_DoReleaseOnMaxPowerLevel_BOOL
-0x01e2	Int	#powerup_Ground_TimeUntilActivation_INT
-0x01e6	ID	#powerup_Ground_ActivationSpawn_ID
-0x01ea	Int	#powerup_Ground_TimeBetweenPowerLevelChanges_INT
-0x01ee	Int	#powerup_Ground_MaxPowerLevel_INT
-0x01f2	Int	#powerup_Ground_OverloadTime_INT
-0x01f6	ID	#powerup_Ground_ReleaseSpawn_ID
-0x01fa	Int	#powerup_Ground_TimeBetweenReleaseSpawns_INT
-0x01fe	Boolean	#powerup_Ground_DoReleaseOnMaxPowerLevel_BOOL
+offset	type	key	base
+0x0008	ID	#type_ID	param_3
+0x000c	ID	#default_ID	param_3
+0x0010	String	#name_STR	param_3
+0x0020	ID	#spawn_Unit_ID	pcVar2
+0x0024	Int	#spawn_XLoc_INT	pcVar2
+0x0028	Int	#spawn_YLoc_INT	pcVar2
+0x002c	Boolean	#spawn_SetHeading_BOOL	pcVar2
+0x002e	Int	#spawn_Angle_INT	pcVar2
+0x0030	String	#description1_STR	param_3
+0x00b0	String	#description2_STR	param_3
+0x0130	ID	#scoreBarPreviewFace_ID	param_3
+0x0134	Int	#scoreBarPreviewFrame_INT	param_3
+0x0138	Int	#maxAllowed_INT	param_3
+0x013c	Int	#minimumLevelAvailable_INT	param_3
+0x0140	Int	#maximumLevelAvailable_INT	param_3
+0x0144	ID	#player1AppearanceFace_ID	param_3
+0x0148	ID	#player2AppearanceFace_ID	param_3
+0x014c	Color	#playerGlow_COLOR	param_3
+0x014e	ID	#selectionSound_ID	param_3
+0x0152	Int	#selectionSound_MinVolume_INT	param_3
+0x0156	Int	#selectionSound_MaxVolume_INT	param_3
+0x015a	Int	#selectionSound_Priority_INT	param_3
+0x015e	Float	#selectionSound_MinPitch_FLOAT	param_3
+0x0162	Float	#selectionSound_MaxPitch_FLOAT	param_3
+0x0166	ID	#crosshairFace_ID	param_3
+0x016a	Int	#crosshairFrame_INT	param_3
+0x016e	ID	#crosshairLockedFace_ID	param_3
+0x0172	Int	#crosshairLockedFrame_INT	param_3
+0x0176	Int	#crosshairXOffset_INT	param_3
+0x017a	Int	#crosshairYOffset_INT	param_3
+0x017e	ID	#crosshairSpawnOnActivation_ID	param_3
+0x0182	Int	#numAmmoInPack_INT	param_3
+0x0186	Int	#ammoWarnAtCount_INT	param_3
+0x018a	String	#ammoWarning_STR	param_3
+0x01aa	Boolean	#autoRepeat_BOOL	param_3
+0x01ac	Int	#delayBetweenLaunches_INT	param_3
+0x01b0	Int	#delayBetweenLoadLaunches_INT	param_3
+0x01b4	Int	#shieldIncrease_INT	param_3
+0x01b8	Int	#livesIncrease_INT	param_3
+0x01bc	Int	#invulnerableForTime_INT	param_3
+0x01c4	Int	#powerup_Air_TimeUntilActivation_INT	param_3
+0x01c8	ID	#powerup_Air_ActivationSpawn_ID	param_3
+0x01cc	Int	#powerup_Air_TimeBetweenPowerLevelChanges_INT	param_3
+0x01d0	Int	#powerup_Air_MaxPowerLevel_INT	param_3
+0x01d4	Int	#powerup_Air_OverloadTime_INT	param_3
+0x01d8	ID	#powerup_Air_ReleaseSpawn_ID	param_3
+0x01dc	Int	#powerup_Air_TimeBetweenReleaseSpawns_INT	param_3
+0x01e0	Boolean	#powerup_Air_DoReleaseOnMaxPowerLevel_BOOL	param_3
+0x01e2	Int	#powerup_Ground_TimeUntilActivation_INT	param_3
+0x01e6	ID	#powerup_Ground_ActivationSpawn_ID	param_3
+0x01ea	Int	#powerup_Ground_TimeBetweenPowerLevelChanges_INT	param_3
+0x01ee	Int	#powerup_Ground_MaxPowerLevel_INT	param_3
+0x01f2	Int	#powerup_Ground_OverloadTime_INT	param_3
+0x01f6	ID	#powerup_Ground_ReleaseSpawn_ID	param_3
+0x01fa	Int	#powerup_Ground_TimeBetweenReleaseSpawns_INT	param_3
+0x01fe	Boolean	#powerup_Ground_DoReleaseOnMaxPowerLevel_BOOL	param_3

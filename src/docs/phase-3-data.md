@@ -140,6 +140,17 @@ against their declared counts:
 | rules | 5,835 |
 | spawn sets | 532 |
 
+> **Correction (Phase 4).** The counts reconciled, but field *attribution*
+> was wrong. The last spawn set in a state is followed by more of the
+> state's own keys, because `FUN_004431f0` reads the spawn sets partway
+> through. The parser filed those keys into the spawn set, so 379 of the
+> 1,167 states lost about 30 fields each: particles, motion blur, collision,
+> hunting and more. Spawn-set scope is now decided by key prefix
+> (`stateSpawnSet*`). A check against the definition layouts recovered from
+> the original's loaders (`symbols/layouts/`) confirms every record now
+> supplies every key the loaders read. Found when the Phase 4 typed loader
+> reported 12,916 missing keys.
+
 ### The 17-condition vocabulary
 
 Rule conditions are a closed set, read from a 17-entry table of 64-byte strings

@@ -89,7 +89,7 @@ run = "bash tools/decomp/find.sh"
 
 [tasks."decomp:layout"]
 description = "Recover definition struct layouts (key -> offset) from the loaders into symbols/layouts/"
-run = "python3 tools/decomp/layout.py $DR_EXE $DR_DECOMP/export ../symbols/layouts"
+run = "python3 tools/decomp/layout.py $DR_EXE $DR_DECOMP/export ../symbols/layouts --odin sim/defs_gen.odin"
 
 [tasks."decomp:index"]
 description = "Summarise the exported decomp corpus"

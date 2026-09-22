@@ -1,104 +1,112 @@
-offset	type	key
-0x0020	ID	#stateSpawnSetSpawn_ID
-0x0024	Int	#stateSpawnSetXOffset_INT
-0x0028	Int	#stateSpawnSetYOffset_INT
-0x002c	Int	#stateSpawnSetRateMin_INT
-0x0030	Int	#stateSpawnSetRateMax_INT
-0x0034	Int	#stateSpawnSetNumInVolleyMin_INT
-0x0038	Int	#stateSpawnSetNumInVolleyMax_INT
-0x003c	Int	#stateSpawnSetDelayBetweenEntitiesMin_INT
-0x0040	Int	#stateSpawnSetDelayBetweenEntitiesMax_INT
-0x0044	Boolean	#stateSpawnSetAdjustOffsetForUnitRotation_BOOL
-0x0045	Boolean	#stateSpawnSet_AbsoluteCoordinates_BOOL
-0x0046	Boolean	#stateSpawnSetRepeatSpawns_BOOL
-0x0047	Boolean	#stateSpawnSetDon'tSpawnOffscreen_BOOL
-0x0048	Boolean	#stateSpawnSetPauseAnyRotationWhileSpawning_BOOL
-0x004a	Int	#stateSpawnSetTimeToPauseRotationAfterSpawning_INT
-0x004e	Boolean	#stateSpawnSetSpawnIfFleeing_BOOL
-0x004f	Boolean	#stateSpawnSetSetHeading_BOOL
-0x0050	Int	#stateSpawnSetHeadingDegrees_INT
-0x0054	Boolean	#stateSpawnSet_StationaryOption_BOOL
-0x0055	Boolean	#stateSpawnSet_TerrainEffectsOption_BOOL
-0x04dc	Int	#stateEntrySound_MinVolume_INT
-0x04e0	Int	#stateEntrySound_MaxVolume_INT
-0x04e4	Int	#stateEntrySound_Priority_INT
-0x04e8	Float	#stateEntrySound_MinPitch_FLOAT
-0x04ec	Float	#stateEntrySound_MaxPitch_FLOAT
-0x04f0	Boolean	#stateSoundLoop_BOOL
-0x04f1	Boolean	#stateSoundAllowOnlyOneInstance_BOOL
-0x04f2	Boolean	#stateSoundRepeatOnStateChange_BOOL
-0x04f4	Int	#stateSoundLoopDelay_INT
-0x04f8	Int	#stateSoundMaxNumToPlay_INT
-0x07a8	ID	#stateParticles_ID
-0x07ac	Color	#stateParticlesColor_COLOR
-0x07ae	Boolean	#stateParticlesRepeat_BOOL
-0x07b0	Int	#stateParticles_RepeatDelay_INT
-0x07b8	ID	#collision_Spawn_ID
-0x07bc	Boolean	#collision_RepeatSpawns_BOOL
-0x07be	Int	#collision_SpawnDelay_INT
-0x07c2	Boolean	#state_MotionBlur_Required_BOOL
-0x07c3	Boolean	#state_MotionBlur_AllowGlowDrawing_BOOL
-0x07cc	Int	#state_MotionBlur_MinTimeBetweenBlurs_INT
-0x07d0	Float	#state_MotionBlur_VisibilityDeltaPercent_FLOAT
-0x07d4	Boolean	#stateDoAnimateBackwards_BOOL
-0x07d5	Boolean	#stateDoLoopAnimation_BOOL
-0x07d6	Boolean	#stateContinuousFrameRandomisation_BOOL
-0x07d8	ID	#stateSpriteFace_ID
-0x07dc	Int	#stateNumDirections_INT
-0x07e0	Int	#stateSpriteFrameMin_INT
-0x07e4	Int	#stateSpriteFrameMax_INT
-0x07e8	Int	#stateFramesPerDirection_INT
-0x07ec	Int	#stateFrameDelay_INT
-0x07f0	Int	#stateFrameDelta_INT
-0x07f4	ID	#stateFlee_ID
-0x07f8	Boolean	#stateUseParentDirection_BOOL
-0x07f9	Boolean	#invulnerableUntilAllChildrenDestroyed_BOOL
-0x07fa	Boolean	#invulnerableUntilOwnerDestroyed_BOOL
-0x07fb	Boolean	#useOwnersVisibility_BOOL
-0x07fc	Boolean	#useOwnersScale_BOOL
-0x07fd	Boolean	#canBeDestroyedOnOwnerDestruction_BOOL
-0x07fe	Boolean	#canBeDeletedOnOwnerDeletion_BOOL
-0x07ff	Boolean	#passHitsToOwner_BOOL
-0x0800	Boolean	#visuallyReflectOwnerHits_BOOL
-0x0801	Boolean	#destroyOwnerOnDestruction_BOOL
-0x0802	Boolean	#stateLockToOwnerLoc_BOOL
-0x0803	Boolean	#stateLinkToOwnerLoc_BOOL
-0x0804	Boolean	#stateOrbitOwner_BOOL
-0x0806	Color	#stateTintColor_COLOR
-0x081a	Int	#stateParticles_MaxNumBursts_INT
-0x081b	Boolean	#stateCollides_BOOL
-0x081c	Boolean	#stateInvulnerable_ShieldsDoNotDepleteOnCollision_BOOL
-0x081d	Boolean	#stateHunts_BOOL
-0x081e	Boolean	#stateCyclicMotion_BOOL
-0x081f	Boolean	#stateReverseDirectionOnReaction_BOOL
-0x0820	Boolean	#stateHoldPositionToTarget_BOOL
-0x0821	Boolean	#stateDoColorise_BOOL
-0x0822	Boolean	#stateIsTargetable_BOOL
-0x0823	Boolean	#stateCollidesWithPlayers_BOOL
-0x0824	Boolean	#stateDeleteOnNoActivePlayers_BOOL
-0x0825	Boolean	#stateDestructOnNoActivePlayers_BOOL
-0x0826	Boolean	#stateDestructIfVerticalScrollingNotPaused_BOOL
-0x0827	Boolean	#stateDrawToTerrain_BOOL
-0x0828	Boolean	#stateDoNotGlowOnCollision_BOOL
-0x0829	Boolean	#stateUseThisStateOnWeaponPowerupRelease_BOOL
-0x082a	Boolean	#stateUseThisStateOnShieldDepletion_BOOL
-0x082b	Boolean	#statePickup_DoNotChangeAppearanceOnStateChange_BOOL
-0x087e	Int	#stateOnTimerMin_INT
-0x0882	Int	#stateOnTimerMax_INT
-0x0886	Int	#stateOnCounter_INT
-0x088e	Int	#stateRequiredVisibilityPercent_INT
-0x0892	Int	#stateScaleDeltaPercent_INT
-0x089e	Int	#stateTintPercent_INT
-0x08a2	Int	#stateTintDeltaPercent_INT
-0x091e	Float	#stateOnRange_FLOAT
-0x0922	Float	#stateHoldMaxSpeed_FLOAT
-0x0926	Float	#stateHoldDelta_FLOAT
-0x092a	Boolean	#stateDoRotateToTarget_BOOL
-0x092e	Float	#stateDelta_FLOAT
-0x0932	Float	#stateFleeSpeed_FLOAT
-0x0936	Float	#stateFleeDelta_FLOAT
-0x096e	String	#stateName_STR
-0x09ae	String	#stateOnTimerChangeTo_STR
-0x09ee	String	#stateOnCounterChangeTo_STR
-0x0a2e	String	#stateOnRangeChangeTo_STR
-0x0a6e	String	#stateOnHitChangeTo_STR
+offset	type	key	base
+0x0020	ID	#stateSpawnSetSpawn_ID	pGVar8
+0x0024	Int	#stateSpawnSetXOffset_INT	pGVar8
+0x0028	Int	#stateSpawnSetYOffset_INT	pGVar8
+0x002c	Int	#stateSpawnSetRateMin_INT	pGVar8
+0x0030	Int	#stateSpawnSetRateMax_INT	pGVar8
+0x0034	Int	#stateSpawnSetNumInVolleyMin_INT	pGVar8
+0x0038	Int	#stateSpawnSetNumInVolleyMax_INT	pGVar8
+0x003c	Int	#stateSpawnSetDelayBetweenEntitiesMin_INT	pGVar8
+0x0040	Int	#stateSpawnSetDelayBetweenEntitiesMax_INT	pGVar8
+0x0044	Boolean	#stateSpawnSetAdjustOffsetForUnitRotation_BOOL	pGVar8
+0x0045	Boolean	#stateSpawnSet_AbsoluteCoordinates_BOOL	pGVar8
+0x0046	Boolean	#stateSpawnSetRepeatSpawns_BOOL	pGVar8
+0x0047	Boolean	#stateSpawnSetDon'tSpawnOffscreen_BOOL	pGVar8
+0x0048	Boolean	#stateSpawnSetPauseAnyRotationWhileSpawning_BOOL	pGVar8
+0x004a	Int	#stateSpawnSetTimeToPauseRotationAfterSpawning_INT	pGVar8
+0x004e	Boolean	#stateSpawnSetSpawnIfFleeing_BOOL	pGVar8
+0x004f	Boolean	#stateSpawnSetSetHeading_BOOL	pGVar8
+0x0050	Int	#stateSpawnSetHeadingDegrees_INT	pGVar8
+0x0054	Boolean	#stateSpawnSet_StationaryOption_BOOL	pGVar8
+0x0055	Boolean	#stateSpawnSet_TerrainEffectsOption_BOOL	pGVar8
+0x04d8	ID	#stateEntrySound_ID	iVar1
+0x04dc	Int	#stateEntrySound_MinVolume_INT	iVar1
+0x04e0	Int	#stateEntrySound_MaxVolume_INT	iVar1
+0x04e4	Int	#stateEntrySound_Priority_INT	iVar1
+0x04e8	Float	#stateEntrySound_MinPitch_FLOAT	iVar1
+0x04ec	Float	#stateEntrySound_MaxPitch_FLOAT	iVar1
+0x04f0	Boolean	#stateSoundLoop_BOOL	iVar1
+0x04f1	Boolean	#stateSoundAllowOnlyOneInstance_BOOL	iVar1
+0x04f2	Boolean	#stateSoundRepeatOnStateChange_BOOL	iVar1
+0x04f4	Int	#stateSoundLoopDelay_INT	iVar1
+0x04f8	Int	#stateSoundMaxNumToPlay_INT	iVar1
+0x07a8	ID	#stateParticles_ID	iVar1
+0x07ac	Color	#stateParticlesColor_COLOR	iVar1
+0x07ae	Boolean	#stateParticlesRepeat_BOOL	iVar1
+0x07b0	Int	#stateParticles_RepeatDelay_INT	iVar1
+0x07b4	Int	#stateParticles_MaxNumBursts_INT	iVar1
+0x07b8	ID	#collision_Spawn_ID	iVar1
+0x07bc	Boolean	#collision_RepeatSpawns_BOOL	iVar1
+0x07be	Int	#collision_SpawnDelay_INT	iVar1
+0x07c2	Boolean	#state_MotionBlur_Required_BOOL	iVar1
+0x07c3	Boolean	#state_MotionBlur_AllowGlowDrawing_BOOL	iVar1
+0x07c4	Int	#state_MotionBlur_MinTimeBetweenBlurs_INT	iVar1
+0x07c8	Int	#state_MotionBlur_MaxTimeBetweenBlurs_INT	iVar1
+0x07cc	Float	#state_MotionBlur_InitialVisibilityPercent_FLOAT	iVar1
+0x07d0	Float	#state_MotionBlur_VisibilityDeltaPercent_FLOAT	iVar1
+0x07d4	Boolean	#stateDoAnimateBackwards_BOOL	iVar1
+0x07d5	Boolean	#stateDoLoopAnimation_BOOL	iVar1
+0x07d6	Boolean	#stateContinuousFrameRandomisation_BOOL	iVar1
+0x07d7	Boolean	#stateDoRotateToTarget_BOOL	iVar1
+0x07d8	ID	#stateSpriteFace_ID	iVar1
+0x07dc	Int	#stateNumDirections_INT	iVar1
+0x07e0	Int	#stateSpriteFrameMin_INT	iVar1
+0x07e4	Int	#stateSpriteFrameMax_INT	iVar1
+0x07e8	Int	#stateFramesPerDirection_INT	iVar1
+0x07ec	Int	#stateFrameDelay_INT	iVar1
+0x07f0	Int	#stateFrameDelta_INT	iVar1
+0x07f4	ID	#stateFlee_ID	iVar1
+0x07f8	Boolean	#stateUseParentDirection_BOOL	iVar1
+0x07f9	Boolean	#invulnerableUntilAllChildrenDestroyed_BOOL	iVar1
+0x07fa	Boolean	#invulnerableUntilOwnerDestroyed_BOOL	iVar1
+0x07fb	Boolean	#useOwnersVisibility_BOOL	iVar1
+0x07fc	Boolean	#useOwnersScale_BOOL	iVar1
+0x07fd	Boolean	#canBeDestroyedOnOwnerDestruction_BOOL	iVar1
+0x07fe	Boolean	#canBeDeletedOnOwnerDeletion_BOOL	iVar1
+0x07ff	Boolean	#passHitsToOwner_BOOL	iVar1
+0x0800	Boolean	#visuallyReflectOwnerHits_BOOL	iVar1
+0x0801	Boolean	#destroyOwnerOnDestruction_BOOL	iVar1
+0x0802	Boolean	#stateLockToOwnerLoc_BOOL	iVar1
+0x0803	Boolean	#stateLinkToOwnerLoc_BOOL	iVar1
+0x0804	Boolean	#stateOrbitOwner_BOOL	iVar1
+0x0806	Color	#stateTintColor_COLOR	iVar1
+0x081a	Boolean	#statePauseVerticalScrolling_BOOL	iVar1
+0x081b	Boolean	#stateCollides_BOOL	iVar1
+0x081c	Boolean	#stateInvulnerable_ShieldsDoNotDepleteOnCollision_BOOL	iVar1
+0x081d	Boolean	#stateHunts_BOOL	iVar1
+0x081e	Boolean	#stateCyclicMotion_BOOL	iVar1
+0x081f	Boolean	#stateReverseDirectionOnReaction_BOOL	iVar1
+0x0820	Boolean	#stateHoldPositionToTarget_BOOL	iVar1
+0x0821	Boolean	#stateDoColorise_BOOL	iVar1
+0x0822	Boolean	#stateIsTargetable_BOOL	iVar1
+0x0823	Boolean	#stateCollidesWithPlayers_BOOL	iVar1
+0x0824	Boolean	#stateDeleteOnNoActivePlayers_BOOL	iVar1
+0x0825	Boolean	#stateDestructOnNoActivePlayers_BOOL	iVar1
+0x0826	Boolean	#stateDestructIfVerticalScrollingNotPaused_BOOL	iVar1
+0x0827	Boolean	#stateDrawToTerrain_BOOL	iVar1
+0x0828	Boolean	#stateDoNotGlowOnCollision_BOOL	iVar1
+0x0829	Boolean	#stateUseThisStateOnWeaponPowerupRelease_BOOL	iVar1
+0x082a	Boolean	#stateUseThisStateOnShieldDepletion_BOOL	iVar1
+0x082b	Boolean	#statePickup_DoNotChangeAppearanceOnStateChange_BOOL	iVar1
+0x087e	Int	#stateOnTimerMin_INT	iVar1
+0x0882	Int	#stateOnTimerMax_INT	iVar1
+0x0886	Int	#stateOnCounter_INT	iVar1
+0x088a	Int	#stateOnHitChangeStateDelay_INT	iVar1
+0x088e	Int	#stateRequiredScalePercent_INT	iVar1
+0x0892	Int	#stateScaleDeltaPercent_INT	iVar1
+0x0896	Int	#stateRequiredVisibilityPercent_INT	iVar1
+0x089a	Int	#stateVisibilityDeltaPercent_INT	iVar1
+0x089e	Int	#stateTintPercent_INT	iVar1
+0x08a2	Int	#stateTintDeltaPercent_INT	iVar1
+0x091e	Float	#stateOnRange_FLOAT	iVar1
+0x0922	Float	#stateHoldMaxSpeed_FLOAT	iVar1
+0x0926	Float	#stateHoldDelta_FLOAT	iVar1
+0x092a	Float	#stateMaxSpeed_FLOAT	iVar1
+0x092e	Float	#stateDelta_FLOAT	iVar1
+0x0932	Float	#stateFleeSpeed_FLOAT	iVar1
+0x0936	Float	#stateFleeDelta_FLOAT	iVar1
+0x096e	String	#stateName_STR	iVar1
+0x09ae	String	#stateOnTimerChangeTo_STR	iVar1
+0x09ee	String	#stateOnCounterChangeTo_STR	iVar1
+0x0a2e	String	#stateOnRangeChangeTo_STR	iVar1
+0x0a6e	String	#stateOnHitChangeTo_STR	iVar1

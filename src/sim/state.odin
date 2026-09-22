@@ -14,7 +14,7 @@ Game_Type :: enum u8 {
 
 // Levels are addressed by four-byte resource id ("le01" ... "le12"), not by
 // index. "none" is the canonical empty id.
-Level_ID :: distinct [4]u8
+Level_ID :: Res_ID
 
 level_id :: proc "contextless" (s: string) -> (id: Level_ID) {
 	for i in 0 ..< 4 {

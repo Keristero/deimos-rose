@@ -1,9 +1,9 @@
-offset	type	key
-0x0005	Boolean	#isStationary_BOOL
-0x0060	Rect	#background_RECT
-0x0070	ID	#backgroundImage_ID
-0x0074	ID	#previewImage_ID
-0x0278	Int	#numObjects_INT
-0x027c	ID	#music_ID
-0x0280	ID	#mediaMask_ID
-0x0284	ID	#briefing_ID
+offset	type	key	base
+0x0005	Boolean	#isStationary_BOOL	plVar3
+0x0060	Rect	#background_RECT	param_2
+0x0070	ID	#backgroundImage_ID	param_2
+0x0074	ID	#previewImage_ID	param_2
+0x0278	Int	#numObjects_INT	param_2
+0x027c	ID	#music_ID	param_2
+0x0280	ID	#mediaMask_ID	param_2
+0x0284	ID	#briefing_ID	param_2
