@@ -82,3 +82,26 @@ same recorded inputs, and checks every resulting `checksum()` against an
 uninterrupted reference run all the way past where the first pass had
 reached — plus the two failure paths (an aged-out frame, an untouched ring).
 `mise run ci` is green (70 tests).
+
+**Stage 2 is done.** `net/` (package `netplay` -- `core:net` already declares
+`package net`, and two packages in one program can't share a name, so callers
+alias the import: `import net "dr:net"`) has the wire format and the socket
+wrapper. `net/packet.odin` encodes every `Packet_Kind` (Hello, Ready, Goodbye,
+Ping, Pong, Input) by hand into fixed little-endian bytes rather than
+transmuting a struct, so the layout doesn't depend on either end's compiler;
+an Input packet carries up to `MAX_INPUT_FRAMES` (32) consecutive frames of
+one player's `sim.Buttons`, the redundancy that lets the gameplay channel
+tolerate lost packets without a generic ack/retransmit layer underneath it.
+`net/socket.odin` wraps `core:net`'s UDP socket as non-blocking, with
+`local_endpoint` (`core:net.bound_endpoint`, confirmed implemented on Linux,
+Windows, FreeBSD and the generic POSIX/other backends) for reading back which
+port the OS handed an ephemeral (`port = 0`) bind — what a joining client
+uses, a host binds its well-known port instead. `tests/net_test.odin` proves
+the packet encode/decode round-trips (including that Ping and Pong, which
+share a layout, never cross-decode into each other, and that a truncated
+buffer is rejected rather than read out of bounds) and, in
+`socket_sends_and_receives_on_loopback`, opens two real UDP sockets on
+loopback and exchanges an actual Input packet between them -- the first test
+in the project that touches a socket at all. `mise run ci` is green (76
+tests). Still to build: the reliable channel for Hello/Ready/Goodbye (sent
+so far, never yet resent or acked), and everything in stages 3-6.

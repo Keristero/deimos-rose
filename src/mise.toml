@@ -55,6 +55,7 @@ run = [
   "odin check game $DR_COLL -vet -strict-style",
   "odin check sim  $DR_COLL -vet -strict-style -no-entry-point",
   "odin check data $DR_COLL -vet -strict-style -no-entry-point",
+  "odin check net  $DR_COLL -vet -strict-style -no-entry-point",
   "odin check oracle $DR_COLL -vet -strict-style -no-entry-point",
   "odin check tools/extract $DR_COLL -vet -strict-style",
   "odin check tools/verify  $DR_COLL -vet -strict-style",
