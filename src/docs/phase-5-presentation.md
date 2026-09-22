@@ -135,4 +135,45 @@ draw *count* still matches, via the same `particle_count` the RNG burst in
 above. `oracle:diff` is still exact on all four demos and the test suite is
 green.
 
-Still open: Interface (score bar, notices), Audio, Flow.
+**Interface is done.** The original presents a 640x480 screen, not the
+416x480 play field alone: a real screenshot of the running original
+(`work/wine/cmp/orig-00900.png`) shows the 416-wide play field inset at
+`VIEW_X = 32`, and a 160-wide score bar panel immediately to its right
+(x=448..608, exactly `assets/images/im16/scor.png`'s own width), with a
+symmetric 32px margin on both far edges. `game/render.odin`,`main.odin` and
+`particles.odin` widen the window to that true size and apply `VIEW_X` only
+at the final blit stage, so every upstream draw call keeps working in its
+existing 0-416 local space. `game/scorebar.odin` draws the panel backdrop
+plus each player's score, extra-lives count, and shields/power bars, using
+rects from `assets/data/reli/inre.json` matched positionally against
+`G_ScoreBar_Init`'s `G_Res_GetPermRect(0..15)` call order rather than
+transliterating `G_ScoreBar_Draw`'s raw offset arithmetic; colours and layout
+were checked pixel-for-pixel against the real screenshot. Both panel halves
+draw unconditionally, matching `G_ScoreBar_Init` — a single-player game still
+shows "player 2, 0/0", not a blank lower half, which a screenshot comparison
+caught after an initial `Player.active`-gated version left it empty. Not yet
+drawn: the life icon and the three weapon icons, whose sprite selection is
+data-driven per player/weapon definition and wasn't traced.
+
+`sim/notice.odin` now ports `G_Notice_Request`/`G_Notice_Process` for real,
+replacing the stale `unported` markers in both `notice.odin` and
+`destroy.odin`. This turned out to be dead code in the shipped game —
+`entryNotice_STR` and `destructNotice_STR` are empty on all 386 unit
+definitions, checked directly — so it's ported for completeness (a unit
+*could* set either field, and the sound draw has to be RNG-correct if one
+ever does) rather than because any level needs it. Since no demo film
+exercises the path, `sim_test.odin` drives `notice_request`/`notice_process`
+directly with a synthetic unit instead, and caught a real bug in the
+process: `Sound_Settings{}`'s zero value is `Res_ID{0,0,0,0}`, not `NONE`
+(the fourcc `"none"`), so the destruct-notice path was comparing against the
+wrong sentinel and would have played a spurious sound. `game/notice.odin`
+shows the notice text as a banner across the top of the play field; since
+the path is unreachable with real data, its exact position
+(`G_Text_GetPermTextSetting`) and typewriter reveal/fade timing
+(`G_Res_GetPermFloat 0x47-0x49`) weren't traced — neither affects the RNG
+stream, and neither can be screenshot-verified against a path the real game
+never takes.
+
+`oracle:diff` is still exact on all four demos and the test suite is green.
+
+Still open: Audio, Flow.
