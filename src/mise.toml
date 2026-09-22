@@ -91,6 +91,14 @@ run = "bash tools/decomp/find.sh"
 description = "Recover definition struct layouts (key -> offset) from the loaders into symbols/layouts/"
 run = "python3 tools/decomp/layout.py $DR_EXE $DR_DECOMP/export ../symbols/layouts --odin sim/defs_gen.odin"
 
+[tasks."decomp:tables"]
+description = "Regenerate sim/math_tables.odin (U_Math sin/cos/atan tables, bit-exact)"
+run = "python3 tools/decomp/math_tables.py sim/math_tables.odin"
+
+[tasks."decomp:peek"]
+description = "Read initialised globals from the executable: 0x4e34b8:f 0x4e0666:u ..."
+run = "python3 tools/decomp/peek.py $DR_EXE"
+
 [tasks."decomp:index"]
 description = "Summarise the exported decomp corpus"
 run = "bash tools/decomp/index.sh"
@@ -110,6 +118,10 @@ run = "bash tools/oracle/run.sh"
 [tasks."oracle:trace"]
 description = "Play the original's demos under gdb, logging RNG draws per step; arg is seconds"
 run = "bash tools/oracle/trace.sh"
+
+[tasks."oracle:tables"]
+description = "Dump the original's U_Math lookup tables (sin/cos/atan/sqrt) from memory"
+run = "bash tools/oracle/tables.sh"
 
 [tasks."oracle:diff"]
 description = "Compare the simulation's random calls with the original's trace, per demo film"
