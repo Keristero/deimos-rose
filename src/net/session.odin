@@ -52,10 +52,10 @@ input_log_get :: proc(log: ^Input_Log, frame: u32) -> Input_Slot {
 Rollback_Session :: struct {
 	state:         ^sim.State,
 	ring:          sim.Snapshot_Ring,
-	local_player:  int, // 0 or 1: which Frame_Input slot this machine drives
-	remote_player: int,
-	local_log:     Input_Log,
-	remote_log:    Input_Log,
+	local_player:   int, // 0 or 1: which Frame_Input slot this machine drives
+	remote_player:  int,
+	local_log:      Input_Log,
+	remote_log:     Input_Log,
 	rollback_count: int, // how many times a misprediction has forced a resimulation
 }
 
@@ -149,6 +149,18 @@ rollback_to :: proc(rs: ^Rollback_Session, frame: u32) {
 		sim.step(rs.state, input)
 		sim.snapshot_save(&rs.ring, rs.state)
 	}
+}
+
+// The checksum this session computed for `frame`, straight from the
+// snapshot ring -- for a Desync_Monitor (net/desync.odin) to record and
+// compare against the peer's report of the same frame. Only meaningful once
+// that frame's remote input is confirmed, since a still-predicted frame can
+// still be rolled back and its checksum change; a caller reporting checksums
+// with enough lag behind the current frame (comfortably less than
+// ROLLBACK_DEPTH) avoids ever reporting one that later turns out to have
+// been provisional.
+rollback_session_checksum_at :: proc(rs: ^Rollback_Session, frame: u32) -> (sum: u64, ok: bool) {
+	return sim.snapshot_checksum(&rs.ring, frame)
 }
 
 // Copies up to `window` of the most recently simulated local frames, oldest

@@ -40,6 +40,8 @@ rollback_session_converges_under_latency_and_loss :: proc(t: ^testing.T) {
 	defer net.rollback_session_destroy(&rs_a, context.temp_allocator)
 	defer net.rollback_session_destroy(&rs_b, context.temp_allocator)
 
+	dm_a, dm_b: net.Desync_Monitor
+
 	Delivery :: struct {
 		deliver_at: int,
 		buf:        [128]byte,
@@ -47,16 +49,26 @@ rollback_session_converges_under_latency_and_loss :: proc(t: ^testing.T) {
 	}
 	LATENCY :: 4
 	WINDOW :: 8
+	CHECKSUM_LAG :: 20 // well under ROLLBACK_DEPTH (64); see rollback_session_checksum_at
 
 	to_a := make([dynamic]Delivery, context.temp_allocator)
 	to_b := make([dynamic]Delivery, context.temp_allocator)
 
-	deliver_due :: proc(queue: ^[dynamic]Delivery, tick: int, rs: ^net.Rollback_Session) {
+	// A delivered buffer can be an Input or a Checksum packet; dispatch on
+	// its kind exactly as a real poll loop would.
+	deliver_due :: proc(queue: ^[dynamic]Delivery, tick: int, rs: ^net.Rollback_Session, dm: ^net.Desync_Monitor) {
 		w := 0
 		for &d in queue {
 			if d.deliver_at <= tick {
-				if pkt, ok := net.decode_input(d.buf[:d.n]); ok {
-					net.rollback_session_receive(rs, pkt)
+				switch kind, kok := net.peek_kind(d.buf[:d.n]); {
+				case kok && kind == .Input:
+					if pkt, ok := net.decode_input(d.buf[:d.n]); ok {
+						net.rollback_session_receive(rs, pkt)
+					}
+				case kok && kind == .Checksum:
+					if frame, sum, ok := net.decode_checksum(d.buf[:d.n]); ok {
+						net.desync_monitor_receive(dm, frame, sum)
+					}
 				}
 			} else {
 				queue[w] = d
@@ -71,8 +83,8 @@ rollback_session_converges_under_latency_and_loss :: proc(t: ^testing.T) {
 		// Whatever the peer sent earlier that is due by this tick arrives
 		// before this tick's local advance, exactly as a real poll loop
 		// would process it ahead of stepping the simulation.
-		deliver_due(&to_a, i, &rs_a)
-		deliver_due(&to_b, i, &rs_b)
+		deliver_due(&to_a, i, &rs_a, &dm_a)
+		deliver_due(&to_b, i, &rs_b, &dm_b)
 
 		net.rollback_session_advance(&rs_a, inputs0[i])
 		net.rollback_session_advance(&rs_b, inputs1[i])
@@ -99,13 +111,34 @@ rollback_session_converges_under_latency_and_loss :: proc(t: ^testing.T) {
 			d.deliver_at = i + LATENCY
 			append(&to_a, d)
 		}
+
+		// Each side reports (and records, for comparison against the peer's
+		// own report) the checksum for a frame CHECKSUM_LAG behind -- old
+		// enough that no in-flight packet could still roll it back.
+		if u32(i) >= CHECKSUM_LAG {
+			cf := u32(i) - CHECKSUM_LAG
+			if sum, ok := net.rollback_session_checksum_at(&rs_a, cf); ok {
+				net.desync_monitor_record(&dm_a, cf, sum)
+				d: Delivery
+				d.n = net.encode_checksum(d.buf[:], cf, sum)
+				d.deliver_at = i + LATENCY
+				append(&to_b, d)
+			}
+			if sum, ok := net.rollback_session_checksum_at(&rs_b, cf); ok {
+				net.desync_monitor_record(&dm_b, cf, sum)
+				d: Delivery
+				d.n = net.encode_checksum(d.buf[:], cf, sum)
+				d.deliver_at = i + LATENCY
+				append(&to_a, d)
+			}
+		}
 	}
 
 	// Drain whatever is still in flight so both sessions see every frame's
 	// real input before the final comparison.
 	for i in FRAMES ..< FRAMES + LATENCY + 1 {
-		deliver_due(&to_a, i, &rs_a)
-		deliver_due(&to_b, i, &rs_b)
+		deliver_due(&to_a, i, &rs_a, &dm_a)
+		deliver_due(&to_b, i, &rs_b, &dm_b)
 	}
 
 	testing.expect_value(t, state_a.frame, u32(FRAMES))
@@ -115,6 +148,10 @@ rollback_session_converges_under_latency_and_loss :: proc(t: ^testing.T) {
 	// and triggered a rollback along the way.
 	testing.expect(t, rs_a.rollback_count > 0, "test never exercised a rollback")
 	testing.expect(t, rs_b.rollback_count > 0, "test never exercised a rollback")
+	// And the desync monitor, fed real checksums exchanged the whole way
+	// through, must never have flagged the two peers as diverged.
+	testing.expect(t, !dm_a.desynced, "desync monitor false-positived on a")
+	testing.expect(t, !dm_b.desynced, "desync monitor false-positived on b")
 }
 
 @(test)

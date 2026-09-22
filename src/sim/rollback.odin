@@ -48,3 +48,15 @@ snapshot_restore :: proc(r: ^Snapshot_Ring, s: ^State, frame: u32) -> bool {
 	s^ = r.slots[i]
 	return true
 }
+
+// The checksum of whatever snapshot is recorded for `frame`, without copying
+// the whole state out first -- desync detection (net/desync.odin) only ever
+// needs the digest, and it already reflects the latest resimulation, since
+// snapshot_save overwrites the slot every time a rollback replays past it.
+snapshot_checksum :: proc(r: ^Snapshot_Ring, frame: u32) -> (sum: u64, ok: bool) {
+	i := frame % u32(len(r.slots))
+	if !r.written[i] || r.slots[i].frame != frame {
+		return 0, false
+	}
+	return checksum(&r.slots[i]), true
+}

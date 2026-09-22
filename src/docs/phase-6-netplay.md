@@ -152,9 +152,40 @@ mispredictions actually happened (asserted via a new `rollback_count` field,
 so the test can't pass vacuously by never exercising a rollback at all).
 `mise run ci` is green (81 tests).
 
-Stages 4-6 (desync detection, lobby, two-machine playtest) are unstarted.
 Also still open: what happens when a rollback needs a frame that has aged
 out of the snapshot ring (`rollback_to` just gives up silently right now --
 fine for stage 3's own test, since ROLLBACK_DEPTH (64) comfortably exceeds
 any latency used there, but a real desync-recovery story, or at least
 detecting and surfacing it, belongs with stage 4).
+
+**Stage 4 is done.** `net/desync.odin` adds `Desync_Monitor`. A frame's
+`sim.checksum()` is only ever safe to compare once nothing can roll it back
+again, so rather than track exactly when that becomes true (the "confirmed
+for both players" point), the caller just reports checksums with a deliberate
+lag comfortably inside `ROLLBACK_DEPTH` -- old enough in practice that no
+in-flight packet could still correct it. `sim/rollback.odin` grew
+`snapshot_checksum(ring, frame)` to make that cheap: it reads the checksum of
+whatever the ring already holds for that frame (which any resimulation has
+already corrected in place) without copying the whole 670KB state out first,
+and `net/session.odin`'s `rollback_session_checksum_at` is a thin wrapper for
+callers that only have a `Rollback_Session`. `desync_monitor_record` logs a
+local checksum by frame (`Checksum_Log`, the same `frame % depth`-indexed
+pattern as the snapshot ring and the input log, sized 256 -- longer than
+`ROLLBACK_DEPTH` since a checksum only has to survive until its report is
+compared, not until something might resimulate from it);
+`desync_monitor_receive` compares an incoming `Checksum` packet's value
+against that log and latches `desynced`/`desync_frame` permanently on the
+first mismatch, `known: false` (not a mismatch) if the frame hasn't been
+recorded yet.
+
+`tests/desync_test.odin` covers the packet round-trip and the monitor in
+isolation (inconclusive-before-recorded, matching checksums never flag
+anything, a mismatch latches and a later match doesn't clear it).
+`tests/rollback_session_test.odin`'s convergence test now also runs a real
+`Desync_Monitor` on each side, reporting genuine checksums (20 frames behind
+current, comfortably inside the 64-frame ring) through the same delayed/lossy
+fake network already proven to converge, and asserts neither monitor ever
+false-positives -- the two peers really do agree the whole way through, not
+just at the final checksum. `mise run ci` is green (85 tests).
+
+Stages 5-6 (lobby, two-machine playtest) are unstarted.

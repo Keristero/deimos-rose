@@ -14,13 +14,14 @@ package netplay
 import "dr:sim"
 
 Packet_Kind :: enum u8 {
-	Hello   = 1, // "I'm here, this is my player slot" -- the reliable channel
-	Ready   = 2, // "start when you like" -- the reliable channel
-	Goodbye = 3, // clean disconnect -- the reliable channel
-	Ping    = 4, // RTT probe, unreliable, sent on a timer
-	Pong    = 5, // Ping's reply, echoes the same nonce
-	Input   = 6, // a player's recent input history, unreliable and redundant
-	Ack     = 7, // acknowledges one Hello/Ready/Goodbye by its seq
+	Hello    = 1, // "I'm here, this is my player slot" -- the reliable channel
+	Ready    = 2, // "start when you like" -- the reliable channel
+	Goodbye  = 3, // clean disconnect -- the reliable channel
+	Ping     = 4, // RTT probe, unreliable, sent on a timer
+	Pong     = 5, // Ping's reply, echoes the same nonce
+	Input    = 6, // a player's recent input history, unreliable and redundant
+	Ack      = 7, // acknowledges one Hello/Ready/Goodbye by its seq
+	Checksum = 8, // one frame's sim.checksum(), for desync detection
 }
 
 // How many consecutive frames of input one packet can carry. Sized so a
@@ -36,7 +37,7 @@ peek_kind :: proc(buf: []byte) -> (kind: Packet_Kind, ok: bool) {
 	}
 	k := Packet_Kind(buf[0])
 	switch k {
-	case .Hello, .Ready, .Goodbye, .Ping, .Pong, .Input, .Ack:
+	case .Hello, .Ready, .Goodbye, .Ping, .Pong, .Input, .Ack, .Checksum:
 		return k, true
 	}
 	return {}, false
