@@ -1,0 +1,73 @@
+#:schema https://mise.jdx.dev/schema/mise.json
+# Every script, tool and build task for the Odin rewrite lives here.
+
+[tools]
+odin = "dev-2026-09"
+
+[env]
+# Repository-relative anchors. DR_ORIG points at the extracted 1.0.2 install.
+DR_SRC    = "{{config_root}}"
+DR_ORIG   = "{{config_root}}/../game"
+DR_ASSETS = "{{config_root}}/assets"
+DR_BUILD  = "{{config_root}}/build"
+DR_DEPS   = "{{config_root}}/.deps"
+# Odin collection so packages import as "dr:sim", "dr:data", ...
+# Kept separate because `odin check` rejects linker flags.
+DR_COLL   = "-collection:dr={{config_root}}"
+DR_LINK   = "-extra-linker-flags:-L{{config_root}}/.deps/lib"
+
+[tasks.setup]
+description = "Create local dev symlinks for X11/GL so raylib links on immutable hosts"
+run = "bash tools/setupdeps/setup.sh"
+
+[tasks.build]
+description = "Build the game binary"
+depends = ["setup"]
+run = "odin build game -out:$DR_BUILD/deimos $DR_COLL $DR_LINK -o:speed"
+
+[tasks.dev]
+description = "Build unoptimised with debug info"
+depends = ["setup"]
+run = "odin build game -out:$DR_BUILD/deimos-dev $DR_COLL $DR_LINK -debug"
+
+[tasks.run]
+description = "Build and run the game"
+depends = ["build"]
+run = "$DR_BUILD/deimos"
+
+[tasks.check]
+description = "Type-check and vet every package"
+depends = ["setup"]
+run = [
+  "odin check game $DR_COLL -vet -strict-style",
+  "odin check sim  $DR_COLL -vet -strict-style -no-entry-point",
+  "odin check data $DR_COLL -vet -strict-style -no-entry-point",
+  "odin check tools/extract $DR_COLL -vet -strict-style",
+  "odin check tools/verify  $DR_COLL -vet -strict-style",
+]
+
+[tasks.test]
+description = "Run the Odin test suite"
+depends = ["setup"]
+run = "odin test tests $DR_COLL $DR_LINK -out:$DR_BUILD/tests"
+
+[tasks.purity]
+description = "Enforce: sim/ imports no raylib and performs no I/O"
+run = "bash tools/purity/check.sh"
+
+[tasks."assets:extract"]
+description = "Extract original PAKs into modern formats (PNG/WAV/JSON)"
+depends = ["setup"]
+run = "odin run tools/extract $DR_COLL $DR_LINK -out:$DR_BUILD/extract -- $DR_ORIG $DR_ASSETS"
+
+[tasks."assets:verify"]
+description = "Verify extracted assets against the manifest and the original PAKs"
+depends = ["setup"]
+run = "odin run tools/verify $DR_COLL $DR_LINK -out:$DR_BUILD/verify -- $DR_ORIG $DR_ASSETS"
+
+[tasks.ci]
+description = "Everything CI runs"
+depends = ["check", "purity", "test"]
+
+[tasks.clean]
+run = "rm -rf $DR_BUILD"
