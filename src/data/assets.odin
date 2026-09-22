@@ -143,6 +143,11 @@ Assets :: struct {
 	sprites:  []Sprite_Plate,
 	levels:   []Level_Media,
 	scorebar: Score_Bar_Layout,
+	// Every `audio/*.wav` id except the ones levels reference as `music`
+	// (assets/audio/mu03.wav is a 196s stereo track, not a one-shot effect --
+	// see Level_Media.music). The game loads each of these once as a short
+	// sound effect; music streams from disk instead, via Level_Media.music.
+	sounds: []string,
 }
 
 // --- loading ---------------------------------------------------------------
@@ -218,6 +223,25 @@ assets_open :: proc(root: string, allocator := context.allocator) -> (a: Assets)
 		})
 	}
 	a.levels = media[:]
+
+	exclude := make(map[string]bool, len(a.levels), context.temp_allocator)
+	for lv in a.levels {
+		if lv.music != "" && lv.music != "none" {
+			exclude[lv.music] = true
+		}
+	}
+	sounds := make([dynamic]string, 0, 99, allocator)
+	if paths, err := filepath.glob(strings.concatenate({root, "/audio/*.wav"}, context.temp_allocator),
+		context.temp_allocator); err == nil {
+		for path in paths {
+			base := filepath.base(path)
+			id := base[:len(base) - len(".wav")]
+			if !exclude[id] {
+				append(&sounds, strings.clone(id, allocator))
+			}
+		}
+	}
+	a.sounds = sounds[:]
 
 	// inre "reli": 16 score bar rects (8 per player, in G_Res_GetPermRect
 	// order -- verified against G_ScoreBar_Init/Draw), then 6 more for the

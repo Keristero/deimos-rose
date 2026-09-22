@@ -46,6 +46,9 @@ main :: proc() {
 	rl.InitWindow(SCREEN_W * WINDOW_SCALE, SCREEN_H * WINDOW_SCALE, "Deimos Rising")
 	defer rl.CloseWindow()
 
+	rl.InitAudioDevice()
+	defer rl.CloseAudioDevice()
+
 	// FPS_MaxRate (perm float 0x20) is 30.0 in the shipped data:
 	// G_GameInterface::Draw steps once, draws, then busy-waits on FPS_Delay
 	// (0x21, in ~16.66ms ticks) before the next step. The original runs at
@@ -95,6 +98,10 @@ main :: proc() {
 		sim.init(state, sim.Session{seed = 0x1234_5678, level_id = level, game_type = .Single}, &defs)
 	}
 
+	if music, ok := music_track(&renderer.textures, state.level.id); ok {
+		rl.PlayMusicStream(music)
+	}
+
 	// DR_SHOT=<path> renders DR_SHOT_AT steps (comma-separated) and writes a
 	// PNG of each, then exits. Running the real thing is the only way to see
 	// whether the compositing is right, and this makes that reviewable
@@ -125,7 +132,11 @@ main :: proc() {
 			particles_step(&particles, state)
 			blurs_step(&blurs, state)
 			notices_step(&notices, state)
+			sounds_step(&renderer.textures, state)
 			accumulator -= step_dt
+		}
+		if music, ok := music_track(&renderer.textures, state.level.id); ok {
+			rl.UpdateMusicStream(music)
 		}
 		build_frame(&renderer, state, &blurs, &notices)
 
@@ -177,6 +188,7 @@ run_shots :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, blurs: ^Bl
 		particles_step(particles, s)
 		blurs_step(blurs, s)
 		notices_step(notices, s)
+		sounds_step(&r.textures, s)
 	}
 }
 

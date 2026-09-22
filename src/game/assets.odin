@@ -19,11 +19,27 @@ Plate :: struct {
 	frames:  []data.Json_Frame,
 }
 
+// A handful of independent playback handles sharing one clip's sample data
+// (rl.LoadSoundAlias), so a retrigger while the clip is already sounding
+// layers instead of cutting the earlier instance off. The original instead
+// caches one handle per playing sound and steals the lowest-priority one
+// when its channel budget is full (FUN_0044fab0); raylib/miniaudio mixes far
+// more simultaneous voices than that budget, so channel stealing by
+// priority is not reproduced -- see sounds_step.
+SOUND_VOICES :: 3
+
+Sound_Clip :: struct {
+	voices: [SOUND_VOICES]rl.Sound,
+	next:   int,
+}
+
 Textures :: struct {
 	root:    string,
 	assets:  data.Assets,
 	plates:  map[sim.Res_ID]Plate,
 	terrain: map[string]rl.Texture2D, // by im16 image id
+	sounds:  map[sim.Res_ID]Sound_Clip,
+	music:   map[string]rl.Music, // by the level's own music id, e.g. "mu03"
 }
 
 textures_load :: proc(t: ^Textures, root: string) {
@@ -39,6 +55,22 @@ textures_load :: proc(t: ^Textures, root: string) {
 		}
 		t.plates[p.id] = Plate{texture = tex, frames = p.frames}
 	}
+
+	t.sounds = make(map[sim.Res_ID]Sound_Clip, len(t.assets.sounds))
+	for id in t.assets.sounds {
+		path := fmt.ctprintf("%s/audio/%s.wav", root, id)
+		snd := rl.LoadSound(path)
+		if snd.frameCount == 0 {
+			continue
+		}
+		clip: Sound_Clip
+		clip.voices[0] = snd
+		for i in 1 ..< SOUND_VOICES {
+			clip.voices[i] = rl.LoadSoundAlias(snd)
+		}
+		t.sounds[sim.res_id(id)] = clip
+	}
+	t.music = make(map[string]rl.Music)
 }
 
 textures_unload :: proc(t: ^Textures) {
@@ -48,8 +80,39 @@ textures_unload :: proc(t: ^Textures) {
 	for _, tex in t.terrain {
 		rl.UnloadTexture(tex)
 	}
+	for _, clip in t.sounds {
+		for i in 1 ..< SOUND_VOICES {
+			rl.UnloadSoundAlias(clip.voices[i])
+		}
+		rl.UnloadSound(clip.voices[0])
+	}
+	for _, m in t.music {
+		rl.UnloadMusicStream(m)
+	}
 	delete(t.plates)
 	delete(t.terrain)
+	delete(t.sounds)
+	delete(t.music)
+}
+
+// The level's music track (Level_Media.music), loaded on first use and
+// looped -- raylib's LoadMusicStream defaults Music.looping to true, which
+// matches a level's track outlasting the level (mu03 alone runs ~196s).
+music_track :: proc(t: ^Textures, level: sim.Res_ID) -> (rl.Music, bool) {
+	media := data.assets_level_media(&t.assets, level)
+	if media == nil || media.music == "" || media.music == "none" {
+		return {}, false
+	}
+	if m, ok := t.music[media.music]; ok {
+		return m, true
+	}
+	path := fmt.ctprintf("%s/audio/%s.wav", t.root, media.music)
+	m := rl.LoadMusicStream(path)
+	if m.frameCount == 0 {
+		return {}, false
+	}
+	t.music[media.music] = m
+	return m, true
 }
 
 // The terrain map for a level, loaded on first use: one 480-wide image as tall
