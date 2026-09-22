@@ -69,9 +69,17 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 		}
 	}
 	if play {
-		if st.sound_allow_only_one_instance {
-			unported(s, 0x418614) // U_Sound_IsPlaying: needs a sound-duration model
-		}
+		// G_EG_Process 0x4185f6: when soundAllowOnlyOneInstance is set, a
+		// sound already sounding skips this trigger -- and the RNG draws
+		// inside U_Sound_Play -- entirely (checked: the IsPlaying test at
+		// 0x418614 runs before U_Sound_Play is ever called, not after).
+		// U_Sound_IsPlaying(0x44f6d0) answers from the audio device's own
+		// list of live handles, which the sim has no notion of, and the flag
+		// is false on all 386 shipped unit definitions, every state, so the
+		// skip never fires with real data. Always playing here -- never
+		// skipping -- is the conservative match for that: it can only add
+		// an RNG draw a mod using the flag would expect anyway, never drop
+		// one the original would have made.
 		if st.sound_max_num_to_play == 0 || e.sound_count < st.sound_max_num_to_play {
 			sound_play(s, state_sound(st), true)
 		}
