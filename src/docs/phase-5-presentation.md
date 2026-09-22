@@ -176,4 +176,45 @@ never takes.
 
 `oracle:diff` is still exact on all four demos and the test suite is green.
 
-Still open: Audio, Flow.
+**Audio plays.** `U_Sound_Play` (`FUN_0044fab0`) is a maze of raw offsets,
+skipped per its own header, but its behaviour is simple: play a clip at a
+volume (0-100, clamped) and pitch (roughly a 0.4-2.0 multiplier, checked
+across every unit definition's Min/MaxPitch fields) the simulation already
+draws from the gameplay RNG (`sim/sound.odin`, pre-existing), either always
+retriggering or skipping when the same id is already playing. Checking the
+decompiled `G_EG_Process` caller settled a real question: that skip check
+runs *before* `U_Sound_Play`, so it would skip the RNG draw too, not just the
+audio -- and since `soundAllowOnlyOneInstance` is false on all 386 unit
+definitions, every state, the skip branch never fires with real data. The
+stale `unported(0x418614)` marker for it is replaced with that finding
+(always retriggering, matching the never-taken branch) rather than left
+as a placeholder, the same call made for notices.
+
+Genuine looping sounds (`stateSoundLoop_BOOL`) are a different mechanism
+entirely, already modelled in `sim/eg_process.odin` as periodic one-shot
+retriggers on a timer -- so `game/` needs no real audio-loop support, only a
+one-shot player. `game/sound.odin` drains the simulation's `Sound_Queue`
+each step; `game/assets.odin` loads each clip as a few alias voices
+(`rl.LoadSoundAlias`) so a retrigger layers instead of always cutting the
+previous instance off, since the original's own channel-stealing-by-priority
+has no equivalent worth building when raylib/miniaudio mixes far more voices
+than its channel budget ever allowed.
+
+Music is a separate, simpler case than the decompiled `U_Music`/`_ambrosia_SSP`
+streaming layer suggests: every one of the 12 levels' `music` field extracts
+to the same track, `mu03` -- a 196s stereo file, next to 98 sub-second mono
+sound effects in the same `audio/` folder, told apart by duration rather than
+guessed. `data/assets.odin` now lists every `audio/*.wav` id except the ones
+a level names as music; `game/assets.odin` streams the excluded one lazily
+per level (`LoadMusicStream`/`UpdateMusicStream`), reusing the terrain
+texture loader's existing lazy-per-level-asset pattern. Fading between
+tracks (`SSP_FadeMusicDown`) is a level-transition concern for Stage 6, not
+built yet.
+
+Verified by actually running the game, not just `DR_SHOT`: raylib's own log
+confirms the audio device initialized against PulseAudio, all 98 effect
+clips loaded, and `mu03.wav` loaded exactly once as a music stream rather
+than a duplicate sound effect. `oracle:diff` is still exact on all four
+demos and the test suite is green.
+
+Still open: Flow.
