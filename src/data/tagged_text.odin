@@ -130,8 +130,46 @@ fourcc_string :: proc(f: ^FourCC) -> string {
 	return string(f[:])
 }
 
+// Integers as the original reads them: U_Token_GetInt and U_Token_GetRect
+// use sscanf "%i". That takes the longest valid prefix after optional white
+// space and sign -- so "100.000000" is 100 -- and honours C prefixes: "0x" is
+// hexadecimal and a leading "0" octal. Fails only when no digit is read.
 tag_int :: proc(value: string) -> (int, bool) {
-	return strconv.parse_int(strings.trim_space(value))
+	s := strings.trim_left_space(value)
+	neg := false
+	if len(s) > 0 && (s[0] == '+' || s[0] == '-') {
+		neg = s[0] == '-'
+		s = s[1:]
+	}
+	base := 10
+	if len(s) >= 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X') {
+		base = 16
+		s = s[2:]
+	} else if len(s) >= 1 && s[0] == '0' {
+		base = 8
+	}
+	v, n := 0, 0
+	for n < len(s) {
+		c := s[n]
+		d := 99
+		switch c {
+		case '0' ..= '9':
+			d = int(c - '0')
+		case 'a' ..= 'f':
+			d = int(c - 'a') + 10
+		case 'A' ..= 'F':
+			d = int(c - 'A') + 10
+		}
+		if d >= base {
+			break
+		}
+		v = v * base + d
+		n += 1
+	}
+	if n == 0 {
+		return 0, false
+	}
+	return neg ? -v : v, true
 }
 
 tag_float :: proc(value: string) -> (f64, bool) {

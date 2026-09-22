@@ -95,6 +95,10 @@ run = "python3 tools/decomp/layout.py $DR_EXE $DR_DECOMP/export ../symbols/layou
 description = "Regenerate sim/math_tables.odin (U_Math sin/cos/atan tables, bit-exact)"
 run = "python3 tools/decomp/math_tables.py sim/math_tables.odin"
 
+[tasks."decomp:sites"]
+description = "List RandomInt/RandomFloat call sites (return addresses) by function; optional name filter"
+run = "python3 tools/decomp/sites.py $DR_EXE $DR_DECOMP/export/index.tsv"
+
 [tasks."decomp:peek"]
 description = "Read initialised globals from the executable: 0x4e34b8:f 0x4e0666:u ..."
 run = "python3 tools/decomp/peek.py $DR_EXE"

@@ -21,9 +21,10 @@ res_id :: proc "contextless" (s: string) -> (id: Res_ID) {
 	return
 }
 
-// Ordered as the original's U_Rect: left, top, right, bottom.
+// The original's U_Rect, in its field order: top, left, bottom, right
+// (G_GameObject::GetBounds writes +0 top, +4 left, +8 bottom, +c right).
 Rect :: struct {
-	left, top, right, bottom: i32,
+	top, left, bottom, right: i32,
 }
 
 Color :: [3]u8
@@ -50,6 +51,39 @@ Unit :: struct {
 	states:    []Unit_State,
 }
 
+// A level placement (G_Level object record).
+Placement_Def :: struct {
+	unit:            Res_ID,
+	x, y:            i32,
+	heading:         i32,
+	stationary:      bool,
+	terrain_effects: bool,
+}
+
+Level_Def :: struct {
+	id:         Res_ID,
+	identifier: string,
+	// 1-based play order. G_Level_BuildInfoList numbers levels by matching
+	// each level's identifier against twelve encrypted names built into the
+	// executable (0x4e7ba9): Lucena (le07) is 1, Yippe (le06) 2, Vista (le02)
+	// 3, Swoop (le08) 4, ... The four demos play levels 1-4 in order.
+	number:     i32,
+	background: Rect,
+	placements: []Placement_Def,
+}
+
+Player_Entry :: struct {
+	id:  Res_ID,
+	def: Player_Def,
+}
+
+// Perm float indices used by the simulation (flli "gafl").
+PF_VISIBLE_GAME_WIDTH :: 0x36
+PF_VISIBLE_GAME_HEIGHT :: 0x37
+PF_PLAYER_APPEARS_INITIAL :: 0xa3
+PF_PLAYER_APPEARS_REQUIRED :: 0xa4
+PF_PLAYER_APPEARS_DELTA :: 0xa5
+
 // Sizes of the original's permanent tables (G_Res_LoadPermData).
 PERM_FLOATS :: 220 // flli "gafl"
 PERM_OBJECTS :: 40 // idli "gaob"
@@ -69,6 +103,8 @@ Sprite :: struct {
 
 Defs :: struct {
 	units:        []Unit,
+	levels:       []Level_Def, // ordered by number
+	players:      []Player_Entry,
 	sprites:      []Sprite,
 	perm_floats:  [PERM_FLOATS]f32,
 	perm_objects: [PERM_OBJECTS]Res_ID,
@@ -81,6 +117,24 @@ unit_find :: proc "contextless" (d: ^Defs, id: Res_ID) -> ^Unit {
 		}
 	}
 	return nil
+}
+
+level_by_id :: proc "contextless" (d: ^Defs, id: Res_ID) -> ^Level_Def {
+	for &l in d.levels {
+		if l.id == id {
+			return &l
+		}
+	}
+	return nil
+}
+
+player_def_index :: proc "contextless" (d: ^Defs, id: Res_ID) -> i32 {
+	for &p, i in d.players {
+		if p.id == id {
+			return i32(i)
+		}
+	}
+	return -1
 }
 
 sprite_find :: proc "contextless" (d: ^Defs, id: Res_ID) -> ^Sprite {

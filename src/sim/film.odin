@@ -11,17 +11,17 @@ Film :: struct {
 	frames:  []Frame_Input,
 }
 
-// Replay a film from frame zero, invoking `observe` after each step. Returns
-// the final state. Used by the regression harness to diff against recorded
-// traces.
-replay :: proc(film: Film, observe: proc(s: ^State) = nil, log: ^Draw_Log = nil) -> State {
-	s: State
-	init(&s, film.session, log)
-	for input in film.frames {
-		step(&s, input)
-		if observe != nil {
-			observe(&s)
-		}
+// A film is finished once every player in it has read past its last frame
+// (G_Film::IsFinished), i.e. made frames + 1 reads.
+film_finished :: proc "contextless" (s: ^State, film: ^Film) -> bool {
+	return int(s.film_cursor[0]) > len(film.frames)
+}
+
+// Replay a film into `s` (State is large: callers own it, usually on the heap).
+// `max_steps` bounds a replay that never finishes, e.g. one that has diverged.
+replay :: proc(s: ^State, film: ^Film, defs: ^Defs, log: ^Draw_Log = nil, max_steps := 1_000_000) {
+	init(s, film.session, defs, log)
+	for i := 0; i < max_steps && !film_finished(s, film); i += 1 {
+		step(s, {}, film)
 	}
-	return s
 }

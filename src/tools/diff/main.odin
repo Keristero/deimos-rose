@@ -126,6 +126,10 @@ main :: proc() {
 		}
 	}
 
+	provider := data.provider_open(os.get_env("DR_ORIG", context.temp_allocator))
+	defs, _ := data.defs_load(&provider)
+	state := new(sim.State)
+
 	failures := 0
 	seen: map[u32]bool
 	for t in traces {
@@ -144,18 +148,22 @@ main :: proc() {
 
 		buf := make([]sim.Draw, 2 * len(t.calls) + 1024)
 		log := sim.Draw_Log{draws = buf}
-		sim.replay(film, log = &log)
+		sim.replay(state, &film, &defs, &log, max_steps = 4 * len(film.frames) + 10_000)
 		got := sim.draw_log_entries(&log)
 		d := oracle.diff(t.calls[:], got)
 
 		pct := d.want == 0 ? 100.0 : 100.0 * f64(d.matched) / f64(d.want)
-		fmt.printfln("%s  seed %d  %d frames  %d steps traced", name, t.seed, len(film.frames), t.steps)
+		fmt.printfln("%s  seed %d  %d frames  %d steps traced; replay: %d steps, %d film reads",
+			name, t.seed, len(film.frames), t.steps, state.frame, state.film_cursor[0])
 		fmt.printfln("    calls matched %d / %d (%.1f%%), simulation made %d", d.matched, d.want, pct, d.got)
 		if t.unpaired > 0 {
 			fmt.printfln("    WARNING: %d rand() calls not attributed to RandomInt/RandomFloat", t.unpaired)
 		}
 		if log.dropped > 0 {
 			fmt.printfln("    WARNING: draw log overflowed by %d", log.dropped)
+		}
+		if state.unported != 0 {
+			fmt.printfln("    reached unported code at %s [%#x]", site_name(syms, state.unported), u32(state.unported))
 		}
 		if div, bad := d.first.?; bad {
 			failures += 1

@@ -102,11 +102,17 @@ film_converts_to_a_sim_replay :: proc(t: ^testing.T) {
 	testing.expect_value(t, replay.session.level_id, sim.level_id("le07"))
 	testing.expect_value(t, len(replay.frames), 2)
 
-	// Replaying is deterministic and drives the simulation without I/O.
-	a := sim.replay(replay)
-	b := sim.replay(replay)
-	testing.expect_value(t, sim.checksum(&a), sim.checksum(&b))
-	testing.expect_value(t, a.frame, u32(2))
+	// Replaying is deterministic and drives the simulation without I/O. The
+	// synthetic defs have no le07, so use le01.
+	replay.session.level_id = sim.level_id("le01")
+	defs := synthetic_defs()
+	a, b := new(sim.State), new(sim.State)
+	defer free(a)
+	defer free(b)
+	sim.replay(a, &replay, defs)
+	sim.replay(b, &replay, defs)
+	testing.expect_value(t, sim.checksum(a), sim.checksum(b))
+	testing.expect_value(t, a.film_cursor[0], i32(3))
 }
 
 // --- integration: the shipped films ---------------------------------------

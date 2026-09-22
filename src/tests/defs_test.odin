@@ -37,7 +37,7 @@ def_fill_reads_fields_by_tag :: proc(t: ^testing.T) {
 	testing.expect_value(t, p.speed, f32(1.5))
 	testing.expect(t, p.flag)
 	testing.expect_value(t, p.unit, sim.res_id("air "))
-	testing.expect_value(t, p.area, sim.Rect{0, 0, 480, 3600})
+	testing.expect_value(t, p.area, sim.Rect{top = 0, left = 0, bottom = 3600, right = 480})
 	testing.expect_value(t, p.label, "Tank")
 	// Absent keys keep their preset value; untagged fields are left alone.
 	testing.expect_value(t, p.absent, i32(7))
@@ -74,7 +74,7 @@ defs_load_from_the_original :: proc(t: ^testing.T) {
 	defs, r := data.defs_load(&p, alloc)
 
 	testing.expect_value(t, r.units, 386)
-	testing.expect_value(t, r.malformed, 0)
+	testing.expectf(t, r.malformed == 0, "%d malformed, first %s", r.malformed, r.first_malformed)
 	// Every shipped record supplies every key the original's loaders read,
 	// so G_UnitDef_SetToDefaults never shows through.
 	testing.expect_value(t, r.missing, 0)

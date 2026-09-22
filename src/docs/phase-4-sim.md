@@ -256,3 +256,57 @@ Port in trace order: make the next divergence go away, rerun, repeat. Roughly:
 
 The typed definitions the sim uses are generated from our JSON records, with
 `symbols/layouts` as the schema.
+
+## Progress: the world port
+
+Ported against the trace, in `sim/`:
+
+- **World and lists.** Entity pool of 1,000, groups, and U_LinkedList
+  semantics (tail append, cursor steps back on delete). `State` is about
+  0.5 MB: only the current state's spawn records are kept, because the
+  original only ever reads those.
+- **Level start.** Player reset (the nag-timer draw), background scroll
+  state, required groups from placements (ground units shifted 32 left),
+  initial map rows, and the level-notice unit.
+- **Spawning.** `G_EG_RequestSpawn`, group size, spawn location and velocity,
+  entity init, and `FUN_0041cbc0` cyclic drift.
+- **Entities.** `G_Entity::ChangeState` (timer, frame and scale draws, speed
+  approach, counter-driven recursion), animation, rules (all 17
+  conditions, with two range checks still stubbed), spawn control, the
+  deletion sweep.
+- **Player.** Set-up, the entry sequence and film input. Only a player in
+  state 4 reads input, so film frames are consumed per step in play, and the
+  trace's step numbers count film reads.
+- **Sounds** as RNG-consuming events. The original passes `min_volume` as
+  both RandomInt bounds.
+
+Findings along the way:
+
+- **Level order.** Levels are numbered by matching their identifier against
+  12 encrypted names in the executable (0x4e7ba9): Lucena (le07) is 1, and
+  the four demos play levels 1–4.
+- **Rect order.** `background_RECT` text is left, top, right, bottom;
+  `U_Rect` in memory is top, left, bottom, right.
+- **Integer parsing.** `_INT` values are read with `sscanf("%i")`:
+  `"100.000000"` is 100, and leading `0` means octal. No shipped value has a
+  leading zero.
+- **Rules.** A rule's action is a state name passed to ChangeState. Those
+  naming no state do nothing, which explains Phase 3's "inert actions".
+- **Dimensions bug.** CalculateDimensions does nothing unless the dirty flag
+  is already set, so a state's new sprite keeps the old size until animation
+  or scaling marks it. Reproduced.
+- **First-state reads.** An entity's first ChangeState reads "previous
+  state" fields at a negative offset. Those bytes are verifiably zero.
+- **Call sites.** There are 58 RandomInt/RandomFloat call sites in the whole
+  executable (`mise run decomp:sites`). Porting them all is the measurable
+  scope of this phase.
+
+Code not yet ported calls `unported(site)`; `oracle:diff` reports the first
+site reached. Status now:
+
+```
+de01  calls matched 55 / 42447   next: player movement and weapons (plbo at step 89)
+de02  calls matched 55 / 81185
+de03  calls matched 48 / 112287  next: canBeSpawnedOnlyWhenPlayersActive
+de04  calls matched 55 / 95085
+```

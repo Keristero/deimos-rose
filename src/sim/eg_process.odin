@@ -1,0 +1,749 @@
+package sim
+
+// G_EG_Process: one step for every entity, in group order.
+//
+// Returns true when some entity's state asks for vertical scrolling to pause.
+// Branches not ported yet mark themselves with `unported`.
+eg_process :: proc(s: ^State, time: i32) -> (pause_scrolling: bool) {
+	w := &s.world
+	if w.active.count <= 0 {
+		return
+	}
+
+	gc := Cursor{NO_LINK}
+	for gi_n: i32 = 0; gi_n < w.active.count; gi_n += 1 {
+		gi := list_next(&w.active, w.group_links[:], &gc)
+		ec := Cursor{NO_LINK}
+		for n: i32 = 0; n < w.groups[gi].entities.count; n += 1 {
+			ei := list_next(&w.groups[gi].entities, w.entity_links[:], &ec)
+			if process_entity(s, ei, time) {
+				pause_scrolling = true
+			}
+		}
+	}
+	sweep_deleted(s)
+	return
+}
+
+// The body of G_EG_Process's inner loop for one entity.
+@(private = "file")
+process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
+	e := entity_at(s, ei)
+	st := state_of(s, e)
+	u := unit_of(s, e)
+
+	e.appear_delay -= 1
+	if e.appear_delay >= 1 {
+		e.state_time = time
+		return
+	}
+
+	// State particles.
+	if st.particles != NONE {
+		due := false
+		if !st.particles_repeat {
+			due = e.particle_count == 0
+		} else {
+			due = e.particle_time == 0 || e.particle_time + st.particles_repeat_delay <= time
+		}
+		if due {
+			if st.particles_max_num_bursts == 0 || e.particle_count < st.particles_max_num_bursts {
+				unported(s, 0x418528) // G_Particle_NewGroup
+			}
+			e.particle_count += 1
+			e.particle_time = time
+		}
+	}
+
+	// State entry sound.
+	play := false
+	if st.entry_sound != NONE {
+		if !st.sound_loop {
+			if e.entry_counts[e.state] == 1 {
+				play = e.sound_count == 0
+			} else if st.sound_repeat_on_state_change {
+				play = e.sound_count == 0
+			}
+		} else if e.sound_time == 0 || e.sound_time + st.sound_loop_delay <= time {
+			play = true
+		}
+	}
+	if play {
+		if st.sound_allow_only_one_instance {
+			unported(s, 0x418614) // U_Sound_IsPlaying: needs a sound-duration model
+		}
+		if st.sound_max_num_to_play == 0 || e.sound_count < st.sound_max_num_to_play {
+			sound_play(s, state_sound(st), true)
+		}
+		e.sound_count += 1
+		e.sound_time = time
+	}
+
+	// The state timer.
+	if time == e.state_time + e.timer {
+		to := st.on_timer_change_to
+		switch {
+		case to == "Delete":
+			e.deleted = true
+			e.target_player = -1
+			return
+		case to == "Destroy":
+			unported(s, 0x41874f) // G_Entity::Destroy
+			return
+		case to != "" && to != "none":
+			del, des := change_state(s, e, false, to, time)
+			if del {
+				e.deleted = true
+				e.target_player = -1
+				return
+			}
+			if des {
+				unported(s, 0x418a3d) // G_Entity::Destroy
+				return
+			}
+			st = state_of(s, e)
+		}
+	}
+
+	if st.pause_vertical_scrolling {
+		pause = true
+	}
+	entity_animate(s, e, time)
+
+	if len(st.rules) > 0 {
+		del, des := process_rules(s, e, time)
+		if del {
+			e.deleted = true
+			e.target_player = -1
+			return
+		}
+		if des {
+			unported(s, 0x418a60) // G_Entity::Destroy
+			return
+		}
+		st = state_of(s, e)
+	}
+
+	e.visibility_target = f32(st.required_visibility_percent)
+	e.visibility_delta = f32(st.visibility_delta_percent)
+	e.colorise = st.do_colorise
+	e.tint_target = f32(st.tint_percent)
+	e.tint_delta = f32(st.tint_delta_percent)
+	adjust_visibility_and_tinting(&e.obj)
+	e.hittable = true
+	if e.visibility < 100 && !u.hittable_when_invisible {
+		e.hittable = false
+	}
+	e.scale_target = f32(st.required_scale_percent) / 100
+	e.scale_delta = f32(st.scale_delta_percent) / 100
+	do_scaling(&e.obj)
+	calculate_dimensions(s, &e.obj)
+	if e.glowing {
+		unported(s, 0x4244d0) // G_GameObject::Glow_Process
+	}
+	if (st.use_owners_visibility || st.use_owners_scale || st.visually_reflect_owner_hits) &&
+	   ref_valid(s, e.owner) {
+		unported(s, 0x4188a4) // FUN_0041b5d0: follow the owner's look
+	}
+
+	if st.destruct_if_vertical_scrolling_not_paused && s.bgnd.speed != 0 {
+		unported(s, 0x418aa8) // G_Entity::Destroy
+		return
+	}
+	del, des := movement_ai(s, e, time)
+	if del {
+		e.deleted = true
+		e.target_player = -1
+		return
+	}
+	if des {
+		unported(s, 0x418a70) // G_Entity::Destroy
+		return
+	}
+	if !move_and_check_position(s, &e.obj, 0x80, true) {
+		e.deleted = true
+		e.target_player = -1
+		return
+	}
+	if st.lock_to_owner_loc || st.link_to_owner_loc || st.orbit_owner {
+		unported(s, 0x41890c) // FUN_0041bd90 / be80 / bf70: owner-relative motion
+	}
+	spawn_control(s, e, time)
+	if e.deleted {
+		return
+	}
+	b := object_bounds(&e.obj)
+	w, h := view_width(s.defs), view_height(s.defs)
+	if players_in_play(s) > 0 && st.collides && !u.harmless_to_players && st.collides_with_players &&
+	   b.right > -33 && b.left <= w + 32 && b.bottom >= 0 && b.top <= h {
+		for &p in s.players {
+			if p.state != .Playing {
+				continue
+			}
+			pb := object_bounds(&p.obj)
+			if pb.top <= b.bottom && b.top <= pb.bottom && pb.left <= b.right && b.left <= pb.right {
+				unported(s, 0x4189c0) // player collisions: circle test, Hit, pickups
+			}
+		}
+	}
+	if e.deleted {
+		return
+	}
+	if st.motion_blur_required && e.sprite != NONE {
+		gap := random_int(&s.rng, st.motion_blur_min_time_between_blurs, st.motion_blur_max_time_between_blurs, 0x418d92)
+		if e.blur_time + gap < time {
+			e.blur_time = time
+			// G_MotionBlur_New: presentation, no draws.
+		}
+	}
+	if !u.harmless_to_players && u.is_ground_based && u.can_be_hit_by_player_projectile && st.is_targetable {
+		// Crosshair highlighting: presentation only.
+	}
+	// G_Debris_CheckCollision: debris are only created by destruction, which
+	// is not ported yet, so there is nothing to collide with.
+	if !e.deleted && st.collides {
+		entity_collisions(s, e)
+	}
+	return
+}
+
+players_in_play :: proc "contextless" (s: ^State) -> (n: i32) {
+	for &p in s.players {
+		if p.state == .Playing {
+			n += 1
+		}
+	}
+	return
+}
+
+// U_Math_DoCircleCollisionDetection.
+circles_collide :: proc "contextless" (a: Vec, ra: f32, b: Vec, rb: f32) -> bool {
+	d := a - b
+	return m_sqrt(trunc_i32(d.x * d.x + d.y * d.y)) < ra + rb
+}
+
+// FUN_0041b920: collisions between a "harmless to players" entity (player
+// shots and their kin) and the entities it can hit. Candidate filtering and
+// the overlap test are ported; what a hit does is not yet.
+entity_collisions :: proc(s: ^State, e: ^Entity) {
+	w := &s.world
+	u := unit_of(s, e)
+	me := object_bounds(&e.obj)
+	if u.player_projectile && me.bottom < 0 {
+		return
+	}
+	n := w.active.count
+	gc := Cursor{NO_LINK}
+	for _ in 0 ..< n {
+		gi := list_next(&w.active, w.group_links[:], &gc)
+		m := w.groups[gi].entities.count
+		ec := Cursor{NO_LINK}
+		for _ in 0 ..< m {
+			oi := list_next(&w.groups[gi].entities, w.entity_links[:], &ec)
+			o := entity_at(s, oi)
+			ou := unit_of(s, o)
+			ost := state_of(s, o)
+			if !ost.collides || o.deleted || !o.hittable || o.number == e.number {
+				continue
+			}
+			if ou.is_ground_based != u.is_ground_based || !u.harmless_to_players || ou.harmless_to_players {
+				continue
+			}
+			if o.appear_delay >= 1 {
+				continue
+			}
+			if u.player_projectile {
+				if !ou.can_be_hit_by_player_projectile {
+					continue
+				}
+			} else if !(ou.can_be_hit_by_player_projectile && ou.player_projectile) {
+				continue
+			}
+			ob := object_bounds(&o.obj)
+			if ou.player_projectile && ob.bottom < 0 {
+				continue
+			}
+			if !(ob.top <= me.bottom && me.top <= ob.bottom && ob.left <= me.right && me.left <= ob.right) {
+				continue
+			}
+			if circles_collide(e.loc, f32(halve(me.bottom - me.top)), o.loc, f32(halve(ob.bottom - ob.top))) {
+				unported(s, 0x41bb00) // entity hit
+			}
+		}
+	}
+}
+
+// G_Entity::SpawnControl: run the current state's spawn sets.
+spawn_control :: proc(s: ^State, e: ^Entity, time: i32) {
+	rotate_as_required(s, e, time)
+	if !e.spawning {
+		return
+	}
+	st := state_of(s, e)
+	for &set, i in st.spawn_sets {
+		info := &e.spawn_info[i]
+		if set.spawn == NONE || !info.active || info.delay < 0 || (e.fleeing && !set.spawn_if_fleeing) {
+			continue
+		}
+		if set.dont_spawn_offscreen && info.left >= 1 && info.left >= info.volley && !within_game_area(s, e) {
+			info.left = 0
+			continue
+		}
+		fire := false
+		if info.left < 1 {
+			if !set.repeat_spawns {
+				info.active = false
+			} else if info.last + info.delay <= time {
+				// A new volley: timings re-drawn, nothing spawned this step.
+				info.last = time
+				info.gap = random_int(&s.rng, set.delay_between_entities_min, set.delay_between_entities_max, 0x414c7c)
+				info.volley = random_int(&s.rng, set.num_in_volley_min, set.num_in_volley_max, 0x414c91)
+				info.left = info.volley
+				info.delay = random_int(&s.rng, set.rate_min, set.rate_max, 0x414cac)
+				if set.pause_any_rotation_while_spawning && e.spawn_pause < set.time_to_pause_rotation_after_spawning {
+					e.spawn_pause = set.time_to_pause_rotation_after_spawning
+				}
+			}
+		} else {
+			if info.gap > 0 {
+				info.gap -= 1
+			}
+			if info.gap < 1 {
+				fire = true
+				info.left -= 1
+				info.gap = random_int(&s.rng, set.delay_between_entities_min, set.delay_between_entities_max, 0x414c39)
+			}
+		}
+		if fire {
+			spawn_child(s, e, &set)
+		}
+	}
+}
+
+// The spawn at the end of SpawnControl: place the child relative to its
+// parent, optionally rotated with the parent's facing.
+@(private = "file")
+spawn_child :: proc(s: ^State, e: ^Entity, set: ^Spawn_Set_Def) {
+	ci := unit_index(s.defs, set.spawn)
+	child: ^Unit = ci >= 0 ? &s.defs.units[ci] : nil
+	// Terrain effects only come from mobile parents that allow them.
+	if child != nil && child.terrain_effect && !(!e.stationary && e.terrain_effects) {
+		return
+	}
+	req := spawn_request(set.spawn)
+	scaled_offset := child != nil && e.scale != 1 && child.adjust_initial_loc_for_owner_scale
+	explicit := false
+	if !set.adjust_offset_for_unit_rotation {
+		if !set.absolute_coordinates {
+			req.loc = e.loc
+		}
+		done := false
+		if scaled_offset {
+			req.loc.x = f32(set.x_offset) * e.scale + req.loc.x
+			req.loc.y = req.loc.y + f32(set.y_offset) * e.scale
+			done = true
+		}
+		if !set.absolute_coordinates {
+			if !done {
+				req.loc += {f32(set.x_offset), f32(set.y_offset)}
+			}
+		} else {
+			req.loc = {f32(set.x_offset), f32(set.y_offset)}
+		}
+	} else {
+		a := angle_from_sprite(s, e)
+		if set.set_heading {
+			a += set.heading_degrees
+			if a > 359 {
+				a -= 360
+			}
+			explicit = true
+			req.heading = a
+		}
+		c, sn := m_cos(a), m_sin(a)
+		ox, oy: i32
+		if scaled_offset {
+			x, y := f32(set.x_offset) * e.scale, f32(set.y_offset) * e.scale
+			ox, oy = trunc_i32(x * c - y * sn), trunc_i32(x * sn + y * c)
+		} else {
+			x, y := f32(set.x_offset), f32(set.y_offset)
+			ox, oy = trunc_i32(x * c - y * sn), trunc_i32(x * sn + y * c)
+		}
+		req.loc = {f32(ox) + e.loc.x, f32(oy) + e.loc.y}
+	}
+	req.explicit_heading = set.set_heading
+	if !explicit {
+		req.heading = set.heading_degrees
+	}
+	req.owner = {e.pool_index, e.number}
+	req.owner_player = e.owner_player
+	req.stationary = set.stationary_option
+	req.terrain_effects = set.terrain_effects_option
+	eg_request_spawn(s, req)
+}
+
+// G_Entity::GetAngleFromSpriteInfo: the heading the current frame depicts.
+angle_from_sprite :: proc "contextless" (s: ^State, e: ^Entity) -> i32 {
+	if e.state < 0 {
+		return 0
+	}
+	st := state_of(s, e)
+	if st.num_directions == 1 {
+		return (360 / st.frames_per_direction) * e.frame
+	}
+	d := max(e.frame / st.frames_per_direction, 0)
+	return (360 / st.num_directions) * d
+}
+
+// G_Entity::IsWithinGameArea: the entity's centre is on screen.
+within_game_area :: proc "contextless" (s: ^State, e: ^Entity) -> bool {
+	w := s.defs.perm_floats[PF_VISIBLE_GAME_WIDTH]
+	h := s.defs.perm_floats[PF_VISIBLE_GAME_HEIGHT]
+	return !(e.loc.x < 0) && !(w < e.loc.x) && !(e.loc.y < 0) && !(h < e.loc.y)
+}
+
+// G_Entity::Priv_DoRotationAsRequired.
+rotate_as_required :: proc(s: ^State, e: ^Entity, time: i32) -> bool {
+	st := state_of(s, e)
+	if !st.do_rotate_to_target {
+		e.rotating = false
+		return true
+	}
+	unported(s, 0x416150) // rotation towards the target
+	return false
+}
+
+// G_Entity::DoMovementAI.
+movement_ai :: proc(s: ^State, e: ^Entity, time: i32) -> (delete, destroy: bool) {
+	if e.fleeing {
+		unported(s, 0x4141a0) // flee movement
+		return
+	}
+	st := state_of(s, e)
+	u := unit_of(s, e)
+	target, dist, player, found := closest_active_player(s, e.loc)
+	if !found {
+		e.hunt_player = -1
+		if st.delete_on_no_active_players {
+			return true, false
+		}
+		if st.destruct_on_no_active_players {
+			return false, true
+		}
+		if u.flees_north_on_no_active_players || u.flees_south_on_no_active_players {
+			unported(s, 0x414244) // Priv_Flee
+			return
+		}
+	}
+	if st.cyclic_motion {
+		unported(s, 0x415fc0) // Priv_DoCyclicMotion
+	}
+	if u.constrain_in_game_area {
+		unported(s, 0x4167b0) // Priv_ConstrainInGameArea
+	}
+	hunt := false
+	e.hunt_target = target
+	e.hunt_player = player
+	if found {
+		if st.on_range == 0 || !(dist < st.on_range) {
+			hunt = st.hunts
+		} else {
+			unported(s, 0x414318) // within range: state change / hold / reverse
+			return
+		}
+	}
+	if !e.fleeing && hunt {
+		move_to_target(s, e)
+	} else {
+		adjust_to_required_velocity(s, e)
+	}
+	return
+}
+
+// G_Game_Player_GetClosestActive: nearest player in play, by the original's
+// integer-truncated distance. Ties keep the lower-numbered player.
+closest_active_player :: proc "contextless" (s: ^State, from: Vec) -> (loc: Vec, dist: f32, player: i32, found: bool) {
+	player = -1
+	for &p, i in s.players {
+		if p.state != .Playing {
+			continue
+		}
+		d := p.loc - from
+		r := m_sqrt(trunc_i32(d.x * d.x + d.y * d.y))
+		if !found || r < dist {
+			loc, dist, player, found = p.loc, r, p.number, true
+		}
+		_ = i
+	}
+	return
+}
+
+// G_Entity::Priv_MoveToTargetLoc: accelerate toward the target, capped.
+move_to_target :: proc "contextless" (s: ^State, e: ^Entity) {
+	st := state_of(s, e)
+	top, delta := st.max_speed, st.delta
+	if e.fleeing {
+		top, delta = st.flee_speed, st.flee_delta
+	}
+	e.vel_delta.x = e.loc.x < e.hunt_target.x ? delta : -delta
+	e.vel_delta.y = e.loc.y < e.hunt_target.y ? delta : -delta
+	e.vel.x += e.vel_delta.x
+	if e.vel.x > top {
+		e.vel.x = top
+	} else if e.vel.x < -top {
+		e.vel.x = -top
+	}
+	e.vel.y += e.vel_delta.y
+	if e.vel.y > top {
+		e.vel.y = top
+	} else if e.vel.y < -top {
+		e.vel.y = -top
+	}
+}
+
+// G_Entity::Priv_AdjustToRequiredVelocity.
+adjust_to_required_velocity :: proc "contextless" (s: ^State, e: ^Entity) {
+	if e.stationary {
+		e.vel, e.vel_target, e.vel_delta = {}, {}, {}
+		return
+	}
+	st := state_of(s, e)
+	if st.orbit_owner {
+		top := st.max_speed
+		if e.vel.x < top {
+			e.vel.x += st.delta
+			if top < e.vel.x {
+				e.vel.x = top
+			}
+		} else if e.vel.x > top {
+			e.vel.x -= st.delta
+			if e.vel.x < top {
+				e.vel.x = top
+			}
+		}
+		return
+	}
+	if e.vel.x < e.vel_target.x {
+		e.vel.x += e.vel_delta.x
+		if e.vel_target.x < e.vel.x {
+			e.vel.x = e.vel_target.x
+		}
+	} else if e.vel.x > e.vel_target.x {
+		e.vel.x += e.vel_delta.x
+		if e.vel.x < e.vel_target.x {
+			e.vel.x = e.vel_target.x
+		}
+	}
+	if e.vel.y < e.vel_target.y {
+		e.vel.y += e.vel_delta.y
+		if e.vel_target.y < e.vel.y {
+			e.vel.y = e.vel_target.y
+		}
+	} else if e.vel_target.y < e.vel.y {
+		e.vel.y += e.vel_delta.y
+		if e.vel.y < e.vel_target.y {
+			e.vel.y = e.vel_target.y
+		}
+	}
+}
+
+// G_GameObject::MoveAndCheckPosition: move, then report whether the object
+// is still within `margin` of the play area. Ground objects ride the scroll.
+move_and_check_position :: proc "contextless" (s: ^State, o: ^Game_Object, margin: i32, generous: bool) -> bool {
+	if !o.is_air {
+		o.loc.y = f32(s.bgnd.scrolled) + o.loc.y
+	}
+	o.loc += o.vel
+	w, h := view_width(s.defs), view_height(s.defs)
+	if generous {
+		m := f32(margin)
+		return -m <= f32(o.half.x) + o.loc.x &&
+			o.loc.x - f32(o.half.x) <= f32(w + margin) &&
+			-m <= o.loc.y &&
+			o.loc.y - f32(o.half.y) <= f32(h + margin)
+	}
+	return !(f32(o.half.x) + o.loc.x < -32) &&
+		o.loc.x - f32(o.half.x) <= f32(w + 32) &&
+		!(f32(o.half.y) + o.loc.y < 0) &&
+		!(f32(h) < o.loc.y - f32(o.half.y))
+}
+
+// FUN_0041b2d0: remove deleted entities, and groups that have emptied.
+sweep_deleted :: proc(s: ^State) {
+	w := &s.world
+	n := w.active.count
+	gc := Cursor{NO_LINK}
+	groups: for _ in 0 ..< n {
+		gi := list_next(&w.active, w.group_links[:], &gc)
+		count := w.groups[gi].entities.count
+		ec := Cursor{NO_LINK}
+		for k: i32 = 0; k < count; k += 1 {
+			ei := list_next(&w.groups[gi].entities, w.entity_links[:], &ec)
+			e := entity_at(s, ei)
+			if !e.deleted {
+				continue
+			}
+			u := unit_of(s, e)
+			if u.include_in_ground_accuracy_count {
+				w.ground_targets -= 1
+			}
+			if e.destroyed {
+				unported(s, 0x41b3b0) // destroy-owner-on-destruction
+			}
+			if u.deletion_spawn != NONE && !e.destroyed {
+				unported(s, 0x41b420) // CanSpawnOnMedia + deletion spawn
+			}
+			group_emptied := remove_from_group(s, gi, e, e.destroyed, e.target_player != -1)
+			list_remove(&w.groups[gi].entities, w.entity_links[:], ei, &ec)
+			entity_free(w, ei)
+			if group_emptied && w.groups[gi].unit != PERM_GROUP_UNIT {
+				list_remove(&w.active, w.group_links[:], gi, &gc)
+				group_free(w, gi)
+				continue groups
+			}
+		}
+	}
+}
+
+// FUN_0041ae10: account for an entity leaving its group. Returns true when
+// the group has no entities left (and is not PERM).
+remove_from_group :: proc(s: ^State, gi: i32, e: ^Entity, destroyed, by_player: bool) -> bool {
+	g := &s.world.groups[gi]
+	u := unit_of(s, e)
+	if e.has_spawn_info {
+		if destroyed && u.destruct_destroy_children {
+			unported(s, 0x41ae4a) // FUN_0041b090
+		}
+		if u.destruct_delete_children {
+			unported(s, 0x41ae5c) // FUN_0041b1b0
+		}
+	}
+	if destroyed {
+		unported(s, 0x41ae70) // kill accounting, coin release, G_Entity::Destroy
+	}
+	e.deleted = true
+	g.total -= 1
+	return g.total < 1 && g.unit != PERM_GROUP_UNIT
+}
+
+// G_Entity::ProcessRules: the first rule whose condition holds changes state.
+//
+// A rule's "action" is a state name handed to ChangeState; one that names no
+// state of this unit silently does nothing, which is why most shipped actions
+// look inert. Rules whose unit id is unknown are skipped (the original logs
+// "FILE: Unknown Rule Unit ID" and blanks the id, with the same effect).
+process_rules :: proc(s: ^State, e: ^Entity, time: i32) -> (delete, destroy: bool) {
+	st := state_of(s, e)
+	for &r in st.rules {
+		if r.unit == NONE || unit_index(s.defs, r.unit) < 0 || r.condition == 0 {
+			continue
+		}
+		hit := false
+		switch r.condition - 1 {
+		case 0:
+			hit = any_entity_of(s, r.unit, e.loc, r.range, true)
+		case 1:
+			hit = !any_entity_of(s, r.unit, e.loc, r.range, true)
+		case 2:
+			hit = any_entity_of(s, r.unit, e.loc, r.range, false)
+		case 3:
+			hit = !any_entity_of(s, r.unit, e.loc, r.range, false)
+		case 4:
+			hit = !any_destroyable(s, air = true)
+		case 5:
+			hit = !any_destroyable(s, air = false)
+		case 6:
+			hit = !any_destroyable(s, air = true) && !any_destroyable(s, air = false)
+		case 7:
+			hit = players_in_play(s) == 0
+		case 8, 9:
+			if r.range != 0 {
+				unported(s, 0x4172f0) // Priv_CheckWithinRangeOfPlayers
+			}
+		case 10:
+			hit = e.anim_done
+		case 11:
+			hit = e.visibility == e.visibility_target
+		case 12:
+			hit = e.tint == e.tint_target
+		case 13:
+			hit = e.scale == e.scale_target
+		case 14:
+			hit = r.range == count_appeared(s, r.unit)
+		case 15:
+			hit = count_appeared(s, r.unit) < r.range
+		case 16:
+			hit = r.range < count_appeared(s, r.unit)
+		}
+		if hit {
+			return change_state(s, e, false, r.action, time)
+		}
+	}
+	return
+}
+
+// G_EG_RuleCondition_IsEntityActive / IsEntityTrackingPlayer: an appeared
+// entity of the unit, within `range` of `from` (0 = anywhere). "Tracking"
+// additionally needs the entity to be rotating towards its target.
+any_entity_of :: proc "contextless" (s: ^State, unit: Res_ID, from: Vec, range: i32, tracking: bool) -> bool {
+	w := &s.world
+	g := w.active.head
+	for g != NO_LINK {
+		i := w.groups[g].entities.head
+		for i != NO_LINK {
+			o := entity_at(s, i)
+			if s.defs.units[o.unit].id == unit && o.appear_delay < 1 && (!tracking || o.rotating) {
+				if range == 0 || distance_to(from, o.loc) <= f32(range) {
+					return true
+				}
+			}
+			i = w.entity_links[i].next
+		}
+		g = w.group_links[g].next
+	}
+	return false
+}
+
+// G_EG_RuleCondition_IsAnyDestroyable{Air,Ground}EntityActive: counted by
+// the accuracy flags. Ground entities must also be within the game area.
+any_destroyable :: proc(s: ^State, air: bool) -> bool {
+	w := &s.world
+	g := w.active.head
+	for g != NO_LINK {
+		i := w.groups[g].entities.head
+		for i != NO_LINK {
+			o := entity_at(s, i)
+			u := &s.defs.units[o.unit]
+			if air && u.include_in_air_accuracy_count {
+				return true
+			}
+			if !air && u.include_in_ground_accuracy_count && within_game_area(s, o) {
+				return true
+			}
+			i = w.entity_links[i].next
+		}
+		g = w.group_links[g].next
+	}
+	return false
+}
+
+// G_EG_RuleCondition_GetNumEntitiesActive_ByEntityType.
+count_appeared :: proc "contextless" (s: ^State, unit: Res_ID) -> (n: i32) {
+	if unit == NONE {
+		return
+	}
+	w := &s.world
+	g := w.active.head
+	for g != NO_LINK {
+		i := w.groups[g].entities.head
+		for i != NO_LINK {
+			o := entity_at(s, i)
+			if s.defs.units[o.unit].id == unit && o.appear_delay < 1 {
+				n += 1
+			}
+			i = w.entity_links[i].next
+		}
+		g = w.group_links[g].next
+	}
+	return
+}

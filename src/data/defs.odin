@@ -1,5 +1,6 @@
 package data
 
+import "core:fmt"
 import "core:reflect"
 import "core:strconv"
 import "core:strings"
@@ -16,9 +17,20 @@ Defs_Report :: struct {
 	units:       int,
 	missing:     int, // keys a struct declares that a record did not supply
 	malformed:   int, // values that did not parse as the field's type
+	first_malformed: string,
 	perm_floats: int,
 	sprites:     int,
 	bad_plates:  int,
+	levels:      int,
+}
+
+// Level play order: the twelve identifiers G_Level_BuildInfoList compares
+// against, stored encrypted (tagged-text transform) at 0x4e7ba9 in the
+// executable, 64 bytes apart. Level n is the level whose identifier is the
+// n-th name.
+LEVEL_ORDER := [12]string {
+	"Lucena", "Yippe", "Vista", "Swoop", "Conrad", "Delos",
+	"Sparta", "Saratoga", "Hannibal", "Leonidas", "Thebes", "Yamato",
 }
 
 // Fills `dst` from `fields` by each field's `dr` tag. Absent keys keep the
@@ -36,6 +48,9 @@ def_fill :: proc(dst: ^$T, fields: []Tag, report: ^Defs_Report, allocator := con
 		}
 		ptr := rawptr(uintptr(dst) + f.offset)
 		if !fill_value(ptr, f.type.id, value, allocator) {
+			if report.malformed == 0 {
+				report.first_malformed = fmt.aprintf("%s = %q", key, value, allocator = allocator)
+			}
 			report.malformed += 1
 		}
 	}
@@ -68,14 +83,21 @@ fill_value :: proc(ptr: rawptr, id: typeid, value: string, allocator := context.
 		(^sim.Color)(ptr)^ = sim.Color(v)
 		return ok
 	case sim.Rect:
+		// Text order is left, top, right, bottom: U_Token_GetRect stores its
+		// second value in U_Rect.top, the first in .left, the fourth in
+		// .bottom and the third in .right.
 		r, ok := tag_rect(value)
-		(^sim.Rect)(ptr)^ = sim.Rect{i32(r.left), i32(r.top), i32(r.right), i32(r.bottom)}
+		(^sim.Rect)(ptr)^ = rect_from(r)
 		return ok
 	case string:
 		(^string)(ptr)^ = strings.clone(value, allocator)
 		return true
 	}
 	return false
+}
+
+rect_from :: proc "contextless" (r: Rect) -> sim.Rect {
+	return {top = i32(r.top), left = i32(r.left), bottom = i32(r.bottom), right = i32(r.right)}
 }
 
 // Converts one parsed unit definition.
@@ -182,6 +204,74 @@ defs_load :: proc(p: ^Resource_Provider, allocator := context.allocator) -> (def
 	}
 	defs.sprites = sprites[:]
 	report.sprites = len(sprites)
+
+	// Player definitions: flat plde records.
+	players := make([dynamic]sim.Player_Entry, allocator)
+	for e, n in p.entries {
+		key := e.key
+		if key.type != fourcc_from("plde") {
+			continue
+		}
+		if i, ok := p.index[key]; !ok || i != n {
+			continue
+		}
+		body, owned, err := resource_get(p, "plde", fourcc_string(&key.id), context.temp_allocator)
+		if err != .None {
+			continue
+		}
+		_ = owned
+		d, derr := definition_parse(key.id, body, context.temp_allocator)
+		if derr != .None {
+			continue
+		}
+		pe := sim.Player_Entry{id = sim.Res_ID(key.id)}
+		def_fill(&pe.def, d.header, &report, allocator)
+		append(&players, pe)
+	}
+	defs.players = players[:]
+
+	// Levels, in play order.
+	levels := make([dynamic]sim.Level_Def, allocator)
+	for name, i in LEVEL_ORDER {
+		for e, n in p.entries {
+			key := e.key
+			if key.type != fourcc_from("leve") {
+				continue
+			}
+			if j, ok := p.index[key]; !ok || j != n {
+				continue
+			}
+			body, _, err := resource_get(p, "leve", fourcc_string(&key.id), context.temp_allocator)
+			if err != .None {
+				continue
+			}
+			lv, lerr := level_parse(body, context.temp_allocator)
+			if lerr != .None || lv.identifier != name {
+				continue
+			}
+			l := sim.Level_Def {
+				id         = sim.Res_ID(key.id),
+				identifier = strings.clone(lv.identifier, allocator),
+				number     = i32(i + 1),
+				background = rect_from(lv.background),
+				placements = make([]sim.Placement_Def, len(lv.placements), allocator),
+			}
+			for pl, k in lv.placements {
+				l.placements[k] = {
+					unit            = sim.Res_ID(pl.unit),
+					x               = i32(pl.x),
+					y               = i32(pl.y),
+					heading         = i32(pl.heading_degrees),
+					stationary      = pl.is_stationary,
+					terrain_effects = pl.terrain_effects,
+				}
+			}
+			append(&levels, l)
+			break
+		}
+	}
+	defs.levels = levels[:]
+	report.levels = len(levels)
 
 	// flli "gafl": 220 floats read positionally (FUN_004383b0).
 	if body, owned, err := resource_get(p, "flli", "gafl", context.temp_allocator); err == .None {

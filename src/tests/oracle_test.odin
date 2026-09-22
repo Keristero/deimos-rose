@@ -116,12 +116,18 @@ draw_log_overflow_is_counted_not_fatal :: proc(t: ^testing.T) {
 }
 
 @(test)
-step_stamps_draws_with_the_trace_step_number :: proc(t: ^testing.T) {
-	buf: [1]sim.Draw
+film_reads_stamp_draws_with_the_trace_step_number :: proc(t: ^testing.T) {
+	// Trace steps count G_Film::GetInputs calls, so the stamp follows film
+	// reads, not game steps.
+	buf: [4]sim.Draw
 	log := sim.Draw_Log{draws = buf[:]}
-	s: sim.State
-	sim.init(&s, sim.Session{seed = 1, level_id = sim.level_id("le01"), game_type = .Single}, &log)
-	sim.step(&s, {})
-	// The original's first G_Film::GetInputs is step 1.
+	frames := make([]sim.Frame_Input, 3, context.temp_allocator)
+	film := sim.Film{session = {seed = 1, level_id = sim.level_id("le01"), game_type = .Single}, frames = frames}
+	s := new(sim.State)
+	defer free(s)
+	sim.init(s, film.session, synthetic_defs(), &log)
+	for s.film_cursor[0] == 0 {
+		sim.step(s, {}, &film)
+	}
 	testing.expect_value(t, log.frame, u32(1))
 }
