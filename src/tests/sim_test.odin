@@ -21,8 +21,22 @@ synthetic_defs :: proc() -> ^sim.Defs {
 		p.def.entry_initial_delay = 3
 		p.def.entry_spawn = sim.NONE
 	}
+	weapons := make([]sim.Weapon, 2, context.temp_allocator)
+	weapons[0] = {id = sim.res_id("wair"), def = {type = sim.WEP_AIR, default = sim.WEP_DEFAULT_AIR, minimum_level_available = 1, maximum_level_available = 12, auto_repeat = true}}
+	weapons[1] = {id = sim.res_id("wgnd"), def = {type = sim.WEP_GROUND, default = sim.WEP_DEFAULT_GROUND, minimum_level_available = 1, maximum_level_available = 12}}
+	for &w in weapons {
+		w.player1_appearance_face = sim.NONE
+		w.player2_appearance_face = sim.NONE
+		w.crosshair_face = sim.NONE
+		w.crosshair_spawn_on_activation = sim.NONE
+		w.powerup_air_activation_spawn = sim.NONE
+		w.powerup_air_release_spawn = sim.NONE
+		w.powerup_ground_activation_spawn = sim.NONE
+		w.powerup_ground_release_spawn = sim.NONE
+	}
 	d.levels = levels
 	d.players = players
+	d.weapons = weapons
 	for &o in d.perm_objects {
 		o = sim.NONE
 	}

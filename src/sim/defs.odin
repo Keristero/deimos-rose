@@ -70,7 +70,27 @@ Level_Def :: struct {
 	number:     i32,
 	background: Rect,
 	placements: []Placement_Def,
+	// The media mask (im16 TGA named by the level's mediaMask_ID): raw 16-bit
+	// pixels, 0x001f where the ground is water. One mask pixel covers
+	// `media_scale` background pixels (background width / mask width).
+	media:       []u16,
+	media_w:     i32,
+	media_h:     i32,
+	media_scale: i32,
 }
+
+Weapon :: struct {
+	id:        Res_ID,
+	using def: Wep_Def,
+	spawns:    []Wep_Spawn_Def, // +0x1c0
+}
+
+// Weapon types (Wep_Def.type), compared as ids by the original.
+WEP_AIR :: Res_ID{'P', 'E', 'A', 'A'}
+WEP_GROUND :: Res_ID{'P', 'E', 'A', 'G'}
+WEP_AUX :: Res_ID{'A', 'U', 'X', ' '}
+WEP_DEFAULT_AIR :: Res_ID{'D', 'E', 'A', 'A'}
+WEP_DEFAULT_GROUND :: Res_ID{'D', 'E', 'A', 'G'}
 
 Player_Entry :: struct {
 	id:  Res_ID,
@@ -104,6 +124,7 @@ Sprite :: struct {
 Defs :: struct {
 	units:        []Unit,
 	levels:       []Level_Def, // ordered by number
+	weapons:      []Weapon,    // master list, in resource order
 	players:      []Player_Entry,
 	sprites:      []Sprite,
 	perm_floats:  [PERM_FLOATS]f32,

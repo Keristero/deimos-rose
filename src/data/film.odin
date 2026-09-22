@@ -77,30 +77,31 @@ rd_fourcc :: proc(b: []byte, o: int) -> (f: FourCC) {
 
 // The seven input bits, in the order G_Film::SetInputs writes them.
 //
-// Resolved through three pieces of evidence rather than assumed:
+// Resolved from the code that consumes the inputs, not from labels.
 //
-//  1. G_Film::SetInputs maps each bit to a field index in
-//     G_Input_PlayerInputs: 0x01->3, 0x02->1, 0x04->0, 0x08->2, 0x10->4,
-//     0x20->5, 0x40->6.
-//  2. G_Input_CachePlayerInputs maps U_Prefs_PlayerControlCodes entry i to
-//     those same field indices: 0->0, 1->3, 2->1, 3->2, 4->5, 5->4, 6->6.
-//  3. The "Edit Key Controls" dialog (resource 102, read out of .rsrc) lists
-//     the control entries in order: Move Up, Move Down, Move Left, Move Right,
-//     Fire Air, Fire Ground, Switch Weapon.
+// G_Film::GetInputs / SetInputs map each bit to a G_Input_PlayerInputs field
+// (the 7 bytes at G_Player +0x1f6): 0x01->3, 0x02->1, 0x04->0, 0x08->2,
+// 0x10->4, 0x20->5, 0x40->6. G_Player::Process then gives the fields their
+// meaning: field 0 accelerates up (vel.y -= accel), 1 right (vel.x +=),
+// 2 down (vel.y +=), 3 left (vel.x -=); 4, 5 and 6 go to
+// G_WeaponHandler::Process. Checked against the trace: in de01's first 89
+// frames only 0x01 (19 frames) and 0x02 (13) are held, and the player's
+// plasma bomb appears at the start height, 20 px left of the start --
+// horizontal motion, net left. Bit 0x10 is that bomb (fire ground).
 //
-// Composing those gives the mapping below. Note that up/down and left/right
-// are not adjacent in the on-disk bit order, and that fire-air and fire-ground
-// are transposed relative to the prefs order -- which is exactly why this
-// needed proving instead of guessing.
+// CORRECTION: Phase 2 mapped 0x01 to Down and 0x02 to Left, by assuming the
+// "Edit Key Controls" dialog (resource 102) lists controls in
+// U_Prefs_PlayerControlCodes order. It does not: the prefs order is Up,
+// Left, Right, Down.
 @(private = "file")
 BIT_TO_BUTTON := [7]sim.Button {
-	0 = .Down,        // bit 0x01 -> input field 3 -> "Move Down"
-	1 = .Left,        // bit 0x02 -> field 1       -> "Move Left"
-	2 = .Up,          // bit 0x04 -> field 0       -> "Move Up"
-	3 = .Right,       // bit 0x08 -> field 2       -> "Move Right"
-	4 = .Fire_Ground, // bit 0x10 -> field 4       -> "Fire Ground"
-	5 = .Fire_Air,    // bit 0x20 -> field 5       -> "Fire Air"
-	6 = .Change_Air,  // bit 0x40 -> field 6       -> "Switch Weapon"
+	0 = .Left,        // bit 0x01 -> field 3
+	1 = .Right,       // bit 0x02 -> field 1
+	2 = .Up,          // bit 0x04 -> field 0
+	3 = .Down,        // bit 0x08 -> field 2
+	4 = .Fire_Ground, // bit 0x10 -> field 4
+	5 = .Fire_Air,    // bit 0x20 -> field 5
+	6 = .Change_Air,  // bit 0x40 -> field 6
 }
 
 film_buttons_from_byte :: proc "contextless" (v: u8) -> (b: sim.Buttons) {

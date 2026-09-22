@@ -162,8 +162,16 @@ main :: proc() {
 		if log.dropped > 0 {
 			fmt.printfln("    WARNING: draw log overflowed by %d", log.dropped)
 		}
-		if state.unported != 0 {
-			fmt.printfln("    reached unported code at %s [%#x]", site_name(syms, state.unported), u32(state.unported))
+		div_step := max(i32)
+		if div, bad := d.first.?; bad {
+			if w, ok := div.want.?; ok {
+				div_step = i32(w.frame)
+			}
+		}
+		for g in state.gaps[:state.gap_count] {
+			if g.step <= div_step {
+				fmt.printfln("    unported before the divergence: %s [%#x] from step %d", site_name(syms, g.site), u32(g.site), g.step)
+			}
 		}
 		if div, bad := d.first.?; bad {
 			failures += 1

@@ -48,7 +48,7 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 		}
 		if due {
 			if st.particles_max_num_bursts == 0 || e.particle_count < st.particles_max_num_bursts {
-				unported(s, 0x418528) // G_Particle_NewGroup
+				particle_burst(s, e.loc, st.particles_color, st.particles, u.is_ground_based)
 			}
 			e.particle_count += 1
 			e.particle_time = time
@@ -88,7 +88,7 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 			e.target_player = -1
 			return
 		case to == "Destroy":
-			unported(s, 0x41874f) // G_Entity::Destroy
+			entity_destroy(s, e, -1, time)
 			return
 		case to != "" && to != "none":
 			del, des := change_state(s, e, false, to, time)
@@ -98,7 +98,7 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 				return
 			}
 			if des {
-				unported(s, 0x418a3d) // G_Entity::Destroy
+				entity_destroy(s, e, -1, time)
 				return
 			}
 			st = state_of(s, e)
@@ -118,7 +118,7 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 			return
 		}
 		if des {
-			unported(s, 0x418a60) // G_Entity::Destroy
+			entity_destroy(s, e, -1, time)
 			return
 		}
 		st = state_of(s, e)
@@ -138,16 +138,23 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 	e.scale_delta = f32(st.scale_delta_percent) / 100
 	do_scaling(&e.obj)
 	calculate_dimensions(s, &e.obj)
-	if e.glowing {
-		unported(s, 0x4244d0) // G_GameObject::Glow_Process
-	}
+	// G_GameObject::Glow_Process: the hit glow is presentation.
 	if (st.use_owners_visibility || st.use_owners_scale || st.visually_reflect_owner_hits) &&
 	   ref_valid(s, e.owner) {
-		unported(s, 0x4188a4) // FUN_0041b5d0: follow the owner's look
+		// FUN_0041b5d0: follow the owner's look (the hit glow is presentation).
+		o := entity_at(s, e.owner.index)
+		if st.use_owners_visibility {
+			e.visibility = o.visibility
+		}
+		if st.use_owners_scale {
+			e.dims_dirty = o.dims_dirty
+			e.scale, e.scale_target, e.scale_delta = o.scale, o.scale_target, o.scale_delta
+			calculate_dimensions(s, &e.obj)
+		}
 	}
 
 	if st.destruct_if_vertical_scrolling_not_paused && s.bgnd.speed != 0 {
-		unported(s, 0x418aa8) // G_Entity::Destroy
+		entity_destroy(s, e, -1, time)
 		return
 	}
 	del, des := movement_ai(s, e, time)
@@ -157,7 +164,7 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 		return
 	}
 	if des {
-		unported(s, 0x418a70) // G_Entity::Destroy
+		entity_destroy(s, e, -1, time)
 		return
 	}
 	if !move_and_check_position(s, &e.obj, 0x80, true) {
@@ -165,8 +172,14 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 		e.target_player = -1
 		return
 	}
-	if st.lock_to_owner_loc || st.link_to_owner_loc || st.orbit_owner {
-		unported(s, 0x41890c) // FUN_0041bd90 / be80 / bf70: owner-relative motion
+	if st.lock_to_owner_loc {
+		lock_to_owner(s, e)
+	}
+	if st.link_to_owner_loc {
+		link_to_owner(s, e)
+	}
+	if st.orbit_owner {
+		orbit_owner(s, e)
 	}
 	spawn_control(s, e, time)
 	if e.deleted {
@@ -267,7 +280,10 @@ entity_collisions :: proc(s: ^State, e: ^Entity) {
 				continue
 			}
 			if circles_collide(e.loc, f32(halve(me.bottom - me.top)), o.loc, f32(halve(ob.bottom - ob.top))) {
-				unported(s, 0x41bb00) // entity hit
+				collide_entities(s, e, o, s.time)
+				if e.deleted {
+					return
+				}
 			}
 		}
 	}
@@ -588,10 +604,15 @@ sweep_deleted :: proc(s: ^State) {
 				w.ground_targets -= 1
 			}
 			if e.destroyed {
-				unported(s, 0x41b3b0) // destroy-owner-on-destruction
+				if state_of(s, e).destroy_owner_on_destruction && ref_valid(s, e.owner) {
+					o := entity_at(s, e.owner.index)
+					if !o.deleted {
+						entity_destroy(s, o, e.target_player, s.time)
+					}
+				}
 			}
-			if u.deletion_spawn != NONE && !e.destroyed {
-				unported(s, 0x41b420) // CanSpawnOnMedia + deletion spawn
+			if u.deletion_spawn != NONE && !e.destroyed && can_spawn_on_media(s, e) {
+				spawn_from(s, e, u.deletion_spawn)
 			}
 			group_emptied := remove_from_group(s, gi, e, e.destroyed, e.target_player != -1)
 			list_remove(&w.groups[gi].entities, w.entity_links[:], ei, &ec)
@@ -618,9 +639,22 @@ remove_from_group :: proc(s: ^State, gi: i32, e: ^Entity, destroyed, by_player: 
 			unported(s, 0x41ae5c) // FUN_0041b1b0
 		}
 	}
+	all_killed := false
 	if destroyed {
-		unported(s, 0x41ae70) // kill accounting, coin release, G_Entity::Destroy
+		g.killed += 1
+		all_killed = g.killed == g.count
 	}
+	if by_player && destroyed && !e.killed_by_player {
+		if u.destruct_coin != NONE && u.destruct_num_coins_to_release > 0 {
+			for _ in 0 ..< u.destruct_num_coins_to_release {
+				spawn_from(s, e, u.destruct_coin)
+			}
+		}
+		if g.unit != PERM_GROUP_UNIT && all_killed && u.destruct_coin_on_group_kill != NONE {
+			spawn_from(s, e, u.destruct_coin_on_group_kill)
+		}
+	}
+	// G_Entity::Destroy here is a no-op: the entity is already deleted.
 	e.deleted = true
 	g.total -= 1
 	return g.total < 1 && g.unit != PERM_GROUP_UNIT
@@ -746,4 +780,64 @@ count_appeared :: proc "contextless" (s: ^State, unit: Res_ID) -> (n: i32) {
 		g = w.group_links[g].next
 	}
 	return
+}
+
+// Where an entity's owner is: the owning entity if it still exists, else the
+// owning player if in play.
+@(private = "file")
+owner_loc :: proc "contextless" (s: ^State, e: ^Entity) -> (loc: Vec, ok: bool) {
+	if ref_valid(s, e.owner) {
+		return entity_at(s, e.owner.index).loc, true
+	}
+	if e.owner_player != -1 {
+		p := &s.players[e.owner_player]
+		if p.state == .Playing {
+			return p.loc, true
+		}
+	}
+	return {}, false
+}
+
+// FUN_0041bd90: sit at a fixed offset from the owner.
+lock_to_owner :: proc "contextless" (s: ^State, e: ^Entity) {
+	o, ok := owner_loc(s, e)
+	if ok && (o.x != e.loc.x || o.y != e.loc.y) {
+		e.loc = {o.x + e.owner_offset.x, o.y + e.owner_offset.y}
+	}
+}
+
+// FUN_0041be80: move by however far the owner moved since last step.
+link_to_owner :: proc "contextless" (s: ^State, e: ^Entity) {
+	o, ok := owner_loc(s, e)
+	if !ok {
+		return
+	}
+	d := Vec{e.owner_loc.x - o.x, e.owner_loc.y - o.y}
+	e.loc = {e.loc.x - d.x, e.loc.y - d.y}
+	e.owner_loc = o
+}
+
+// FUN_0041bf70: circle the owner, the angle advancing by the (truncated)
+// horizontal speed each step.
+orbit_owner :: proc "contextless" (s: ^State, e: ^Entity) {
+	o, ok := owner_loc(s, e)
+	if !ok || (o.x == e.loc.x && o.y == e.loc.y) {
+		return
+	}
+	next: Vec
+	step := trunc_i32(e.vel.x)
+	if e.orbit_radius == 0 || step == 0 {
+		next = {o.x + e.owner_offset.x, o.y + e.owner_offset.y}
+	} else {
+		e.orbit_angle += step
+		if e.orbit_angle >= 360 {
+			e.orbit_angle -= 360
+		} else if e.orbit_angle < 0 {
+			e.orbit_angle += 360
+		}
+		p := vector_from_angle_and_speed(e.orbit_angle, e.orbit_radius)
+		next = {o.x + p.x, o.y + p.y}
+	}
+	e.loc = next
+	e.owner_offset = {e.loc.x - o.x, e.loc.y - o.y}
 }

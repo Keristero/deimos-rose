@@ -213,6 +213,13 @@ Composing them:
 | `0x20` | Fire Air |
 | `0x40` | Switch Weapon |
 
+> **Correction (Phase 4).** The directions above are wrong. Step 3 assumed
+> the dialog lists controls in `U_Prefs_PlayerControlCodes` order, which it
+> does not. `G_Player::Process` shows what each field does: field 0 moves
+> up, 1 right, 2 down, 3 left. The movement in de01's film confirms it. The
+> correct mapping is `0x01` Left, `0x02` Right, `0x04` Up, `0x08` Down; the
+> fire and switch bits stand. See `data/film.odin`.
+
 Up/down and left/right are not adjacent in the on-disk order, and fire-air and
 fire-ground are transposed relative to the prefs order. The provisional table
 written in the previous pass had five of the seven wrong, which is the whole

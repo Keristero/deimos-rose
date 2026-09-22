@@ -230,6 +230,59 @@ defs_load :: proc(p: ^Resource_Provider, allocator := context.allocator) -> (def
 	}
 	defs.players = players[:]
 
+	// Weapon definitions: flat wede records whose spawn records repeat the
+	// spawn_* keys, each opened by spawn_Name_STR (FUN_00445cf0).
+	weapons := make([dynamic]sim.Weapon, allocator)
+	for e, n in p.entries {
+		key := e.key
+		if key.type != fourcc_from("wede") {
+			continue
+		}
+		if i, ok := p.index[key]; !ok || i != n {
+			continue
+		}
+		body, _, err := resource_get(p, "wede", fourcc_string(&key.id), context.temp_allocator)
+		if err != .None {
+			continue
+		}
+		d, derr := definition_parse(key.id, body, context.temp_allocator)
+		if derr != .None {
+			continue
+		}
+		wp := sim.Weapon{id = sim.Res_ID(key.id)}
+		def_fill(&wp.def, d.header, &report, allocator)
+		spawns := make([dynamic]sim.Wep_Spawn_Def, allocator)
+		cur: [dynamic]Tag
+		cur.allocator = context.temp_allocator
+		flush :: proc(spawns: ^[dynamic]sim.Wep_Spawn_Def, cur: ^[dynamic]Tag, report: ^Defs_Report, allocator := context.allocator) {
+			if len(cur) == 0 {
+				return
+			}
+			sp: sim.Wep_Spawn_Def
+			def_fill(&sp, cur[:], report, allocator)
+			// Angles are normalised on load.
+			if sp.angle < 0 {
+				sp.angle += 360
+			} else if sp.angle > 359 {
+				sp.angle -= 360
+			}
+			append(spawns, sp)
+			clear(cur)
+		}
+		for t in d.header {
+			if t.key == "spawn_Name_STR" {
+				flush(&spawns, &cur, &report, allocator)
+				append(&cur, t)
+			} else if strings.has_prefix(t.key, "spawn_") && t.key != "spawn_NumUnitsToSpawn_INT" && len(cur) > 0 {
+				append(&cur, t)
+			}
+		}
+		flush(&spawns, &cur, &report, allocator)
+		wp.spawns = spawns[:]
+		append(&weapons, wp)
+	}
+	defs.weapons = weapons[:]
+
 	// Levels, in play order.
 	levels := make([dynamic]sim.Level_Def, allocator)
 	for name, i in LEVEL_ORDER {
@@ -255,6 +308,13 @@ defs_load :: proc(p: ^Resource_Provider, allocator := context.allocator) -> (def
 				number     = i32(i + 1),
 				background = rect_from(lv.background),
 				placements = make([]sim.Placement_Def, len(lv.placements), allocator),
+			}
+			if mbody, _, merr := resource_get(p, "im16", fourcc_string(&lv.media_mask), context.temp_allocator); merr == .None {
+				if px, mw, mh, terr := tga_decode_raw16(mbody, allocator); terr == .None && mw > 0 {
+					l.media = px
+					l.media_w, l.media_h = i32(mw), i32(mh)
+					l.media_scale = (l.background.right - l.background.left) / i32(mw)
+				}
 			}
 			for pl, k in lv.placements {
 				l.placements[k] = {

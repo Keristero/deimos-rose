@@ -43,12 +43,24 @@ State :: struct {
 	players:      [MAX_PLAYERS]Player,
 	world:        World,
 	bgnd:         Bgnd,
-	sounds:       Sound_Queue, // this step's sound events, for presentation
+	sounds:       Sound_Queue,    // this step's sound events, for presentation
+	particles:    Particle_Queue, // this step's particle bursts, for presentation
+	accuracy_targets:   i32,  // DAT_004e4856
+	accuracy_destroyed: i32,  // DAT_004e485a
+	accuracy_reward_this_level: bool, // DAT_004e4828
 	player1_seen_playing: bool, // FUN_00420280's first argument
 	level_ending: bool,         // DAT_004e4855
 	// The first original function reached that is not ported yet, by
-	// address; 0 while the port covers everything run so far.
+	// address; 0 while the port covers everything run so far. `gaps` keeps
+	// each distinct site with the film step it was first reached at.
 	unported:     Site,
+	gaps:         [32]Gap,
+	gap_count:    int,
+}
+
+Gap :: struct {
+	site: Site,
+	step: i32,
 }
 
 // Records that execution reached code the port does not cover yet. The
@@ -57,6 +69,15 @@ State :: struct {
 unported :: proc "contextless" (s: ^State, site: Site) {
 	if s.unported == 0 {
 		s.unported = site
+	}
+	for g in s.gaps[:s.gap_count] {
+		if g.site == site {
+			return
+		}
+	}
+	if s.gap_count < len(s.gaps) {
+		s.gaps[s.gap_count] = {site, s.film_cursor[0]}
+		s.gap_count += 1
 	}
 }
 
@@ -106,6 +127,7 @@ level_start :: proc(s: ^State) {
 // one frame per step they spend in play.
 step :: proc(s: ^State, input: Frame_Input, film: ^Film = nil) {
 	s.sounds.count = 0
+	s.particles.count = 0
 	if !s.player1_seen_playing && s.players[0].state == .Playing {
 		s.player1_seen_playing = true
 	}

@@ -192,7 +192,8 @@ change_state :: proc(s: ^State, e: ^Entity, init: bool, name: string, time: i32)
 	e.state = i32(next)
 	e.state_time = time
 	e.entry_counts[e.state] += 1
-	e.state_time2 = time
+	e.collision_time = time
+	e.collision_count = 0
 	e.sound_count = 0
 	e.particle_count = 0
 	e.anim_done = false
@@ -323,7 +324,9 @@ approach :: proc "contextless" (e: ^Entity, angle: i32, max_speed, delta: f32) {
 	e.vel_target = vector_from_angle_and_speed(angle, max_speed)
 }
 
-// G_EG_CacheOwnerLocOffsetsAndAngles.
+// G_EG_CacheOwnerLocOffsetsAndAngles: for states that follow their owner,
+// remember where the owner is and how far away (lock / link: the offset;
+// orbit: the offset, radius and angle).
 cache_owner_offsets :: proc(s: ^State, e: ^Entity) {
 	e.owner_offset = {}
 	e.owner_loc = {}
@@ -331,7 +334,32 @@ cache_owner_offsets :: proc(s: ^State, e: ^Entity) {
 	if !(st.orbit_owner || st.lock_to_owner_loc || st.link_to_owner_loc) {
 		return
 	}
-	unported(s, 0x417f00)
+	owner: Vec
+	found := false
+	if ref_valid(s, e.owner) {
+		owner = entity_at(s, e.owner.index).loc
+		found = true
+	} else if e.owner_player != -1 {
+		p := &s.players[e.owner_player]
+		if p.state == .Playing {
+			owner, found = p.loc, true
+		}
+	}
+	if !found {
+		return
+	}
+	e.owner_loc = owner
+	me := e.loc
+	// The original spells a - b as either (a - b) or -(b - a) depending on
+	// the sign; both are the same value.
+	if st.orbit_owner {
+		e.owner_offset = {owner.x < me.x ? me.x - owner.x : -(owner.x - me.x), owner.y < me.y ? me.y - owner.y : -(owner.y - me.y)}
+		e.orbit_radius = f32(trunc_i32(distance_to(owner, me)))
+		e.orbit_angle = invert_angle(intercept_angle(trunc_i32(owner.x), trunc_i32(owner.y), trunc_i32(me.x), trunc_i32(me.y)))
+	}
+	if st.lock_to_owner_loc {
+		e.owner_offset = {owner.x < me.x ? me.x - owner.x : -(owner.x - me.x), owner.y < me.y ? me.y - owner.y : -(owner.y - me.y)}
+	}
 }
 
 // G_Entity::Animate.

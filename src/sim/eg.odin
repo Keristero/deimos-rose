@@ -164,8 +164,8 @@ eg_request_spawn :: proc(s: ^State, req: Spawn_Request) -> Entity_Ref {
 	if count <= 0 {
 		return NO_REF
 	}
-	if u.can_be_spawned_only_when_players_active {
-		unported(s, 0x417b3d) // needs G_Game_Player_IsAnyActive / waiting-for-level-end
+	// DAT_004e34aa is on unless toggled from the debug console.
+	if u.can_be_spawned_only_when_players_active && !(players_in_play(s) > 0 && !s.level_ending) {
 		return NO_REF
 	}
 	if u.do_not_spawn_if_type_already_exists && count_of_unit(s, req.unit) != 0 {
@@ -388,6 +388,7 @@ spawn_entity :: proc(
 		unported(s, 0x41ad3a) // frame from owner's angle
 	}
 	if u.include_in_ground_accuracy_count {
+		s.accuracy_targets += 1 // G_Game_GroundAccuracy_AddTarget
 		w.ground_targets += 1
 	}
 	return {ei, e.number}

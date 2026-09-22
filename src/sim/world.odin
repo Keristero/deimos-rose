@@ -171,6 +171,7 @@ Entity :: struct {
 	state:         i32,          // +0x9e current state index, -1 before the first
 	hittable:      bool,         // +0xa2
 	appear_delay:  i32,          // +0xa4 steps before the entity starts processing
+	last_hit:      i32,          // +0xa8
 	timer:         i32,          // +0xac current state's duration
 	anim_time:     i32,          // +0xb0 time of the last animation step
 	anim_backwards: bool,        // +0xb4
@@ -183,7 +184,8 @@ Entity :: struct {
 	deleted:       bool,         // +0xbf marked for removal
 	fleeing:       bool,         // +0xc0
 	has_depletion_state: bool,   // +0xc1 unit has a use-on-shield-depletion state
-	state_time2:   i32,          // +0xc2
+	collision_time: i32,         // +0xc2 last collision spawn
+	collision_count: i32,        // +0xc6
 	owner_player:  i32,          // +0xca -1, or the player that spawned it
 	target_player: i32,          // +0xce
 	destroyed:     bool,         // +0xd2
@@ -194,6 +196,7 @@ Entity :: struct {
 	blur_time:     i32,          // +0xe4 last motion blur
 	particle_time: i32,          // +0xe8
 	particle_count: i32,         // +0xec
+	hit_state_time: i32,         // +0xf4
 	powerup_weapon: Res_ID,      // +0xf0
 	vel_prev:      Vec,          // +0xf8
 	vel_target:    Vec,          // +0x100

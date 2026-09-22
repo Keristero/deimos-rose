@@ -60,3 +60,38 @@ tga_decode_1555 :: proc(
 	}
 	return out, width, height, .None
 }
+
+// Raw 16-bit pixel values in top-down row order, as U_PixelBuffer holds them
+// after U_Image loads a TGA. The media masks are compared against raw values
+// (G_Bgnd_MediaMask_GetSurfaceAtLoc tests `== 0x1f`), so no conversion.
+tga_decode_raw16 :: proc(
+	src: []byte,
+	allocator := context.allocator,
+) -> (
+	pixels: []u16,
+	w, h: int,
+	err: Tga_Error,
+) {
+	if len(src) < 18 {
+		return nil, 0, 0, .Truncated
+	}
+	id_len := int(src[0])
+	width := int(r_u16(src, 12))
+	height := int(r_u16(src, 14))
+	if src[1] != 0 || src[2] != 2 || src[16] != 16 {
+		return nil, 0, 0, .Unsupported
+	}
+	off := 18 + id_len
+	if off + width * height * 2 > len(src) {
+		return nil, 0, 0, .Truncated
+	}
+	top_origin := src[17] & 0x20 != 0
+	out := make([]u16, width * height, allocator)
+	for y in 0 ..< height {
+		src_y := top_origin ? y : height - 1 - y
+		for x in 0 ..< width {
+			out[y * width + x] = r_u16(src, off + (src_y * width + x) * 2)
+		}
+	}
+	return out, width, height, .None
+}

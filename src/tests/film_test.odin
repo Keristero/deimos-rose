@@ -153,10 +153,10 @@ shipped_films_parse :: proc(t: ^testing.T) {
 
 @(test)
 film_input_bits_match_the_recovered_control_order :: proc(t: ^testing.T) {
-	// Composed from G_Film::SetInputs, G_Input_CachePlayerInputs and the
-	// "Edit Key Controls" dialog template. See data/film.odin for the chain.
+	// From G_Film::GetInputs' field mapping and what G_Player::Process does
+	// with each field. See data/film.odin for the evidence.
 	expect := [7]sim.Button {
-		0 = .Down, 1 = .Left, 2 = .Up, 3 = .Right,
+		0 = .Left, 1 = .Right, 2 = .Up, 3 = .Down,
 		4 = .Fire_Ground, 5 = .Fire_Air, 6 = .Change_Air,
 	}
 	for want, i in expect {
