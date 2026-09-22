@@ -146,3 +146,19 @@ screen would mean it never appears if the level's scroll never finishes (e.g.
 losing early, far from the level's end point). `game/flow.odin` checks
 `state.game_over` every step and transitions immediately, `level_end.complete`
 being for the normal "finished a level" path only.
+
+
+### D20 — Hand-rolled UDP on `core:net`, not `vendor:ENet`
+
+Supersedes D5's "provisional" choice of ENet. `vendor:ENet` links via
+`foreign import ENet "system:enet"` on Linux, which needs a system-installed
+`libenet.so` — confirmed entirely absent on this host (`ldconfig -p`,
+`pkg-config`, `rpm -qa`, `find` all came up empty), unlike raylib's X11/GL
+deps, which `tools/setupdeps/setup.sh` can always find already on the host and
+just symlinks; ENet would be the project's first dependency on a package the
+user has to `dnf install` themselves. Asked directly, the user chose a
+hand-rolled UDP protocol on `core:net` instead: it must build on both Linux
+and Windows (`core/net` has `socket_linux.odin`/`socket_windows.odin`/
+`socket_posix.odin`, so this is a real cross-platform API, not Linux-only),
+and should be written with a possible future WebSocket transport (for a
+hypothetical WASM build) in mind, without building that abstraction now.
