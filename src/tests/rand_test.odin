@@ -40,7 +40,7 @@ random_int_matches_u_utils_random_int :: proc(t: ^testing.T) {
 	r := sim.rand_init(42)
 	want := [6]i32{17, 15, 11, 17, 17, 14}
 	for w in want {
-		testing.expect_value(t, sim.random_int(&r, 10, 20), w)
+		testing.expect_value(t, sim.random_int(&r, 10, 20, 0), w)
 	}
 }
 
@@ -49,7 +49,7 @@ random_int_equal_bounds_consume_nothing :: proc(t: ^testing.T) {
 	// The early-out changes how many numbers are drawn, so it must hold.
 	a := sim.rand_init(7)
 	b := sim.rand_init(7)
-	testing.expect_value(t, sim.random_int(&a, 5, 5), i32(5))
+	testing.expect_value(t, sim.random_int(&a, 5, 5, 0), i32(5))
 	testing.expect_value(t, a.next, b.next)
 }
 
@@ -58,7 +58,7 @@ random_float_matches_u_utils_random_float :: proc(t: ^testing.T) {
 	r := sim.rand_init(42)
 	want := [4]f32{1.082323670387268, 1.0198217630386353, 0.9659870862960815, 1.2770317792892456}
 	for w in want {
-		testing.expect_value(t, sim.random_float(&r, 0.5, 1.5), w)
+		testing.expect_value(t, sim.random_float(&r, 0.5, 1.5, 0), w)
 	}
 }
 
@@ -68,7 +68,7 @@ random_float_reproduces_the_reversed_bounds_quirk :: proc(t: ^testing.T) {
 	// [2b - a, b]. Reproduced deliberately.
 	r := sim.rand_init(3)
 	for _ in 0 ..< 1000 {
-		v := sim.random_float(&r, 10, 4)
+		v := sim.random_float(&r, 10, 4, 0)
 		testing.expect(t, v >= -2 && v <= 4, "reversed bounds land in [2b-a, b]")
 	}
 }

@@ -20,7 +20,7 @@ main :: proc() {
 	rl.SetTargetFPS(60)
 
 	state: sim.State
-	sim.init(&state, sim.Session{seed = 0x1234_5678, level_id = 1, game_type = .Single})
+	sim.init(&state, sim.Session{seed = 0x1234_5678, level_id = sim.level_id("le01"), game_type = .Single})
 
 	for !rl.WindowShouldClose() {
 		sim.step(&state, gather_input())

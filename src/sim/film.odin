@@ -14,9 +14,9 @@ Film :: struct {
 // Replay a film from frame zero, invoking `observe` after each step. Returns
 // the final state. Used by the regression harness to diff against recorded
 // traces.
-replay :: proc(film: Film, observe: proc(s: ^State) = nil) -> State {
+replay :: proc(film: Film, observe: proc(s: ^State) = nil, log: ^Draw_Log = nil) -> State {
 	s: State
-	init(&s, film.session)
+	init(&s, film.session, log)
 	for input in film.frames {
 		step(&s, input)
 		if observe != nil {

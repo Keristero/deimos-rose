@@ -53,9 +53,11 @@ run = [
   "odin check game $DR_COLL -vet -strict-style",
   "odin check sim  $DR_COLL -vet -strict-style -no-entry-point",
   "odin check data $DR_COLL -vet -strict-style -no-entry-point",
+  "odin check oracle $DR_COLL -vet -strict-style -no-entry-point",
   "odin check tools/extract $DR_COLL -vet -strict-style",
   "odin check tools/verify  $DR_COLL -vet -strict-style",
   "odin check tools/records $DR_COLL -vet -strict-style",
+  "odin check tools/diff    $DR_COLL -vet -strict-style",
 ]
 
 [tasks.test]
@@ -100,6 +102,14 @@ run = "bash tools/oracle/prefix.sh"
 [tasks."oracle:run"]
 description = "Run the original under Xvfb and screenshot it; args are seconds"
 run = "bash tools/oracle/run.sh"
+
+[tasks."oracle:trace"]
+description = "Play the original's demos under gdb, logging RNG draws per step; arg is seconds"
+run = "bash tools/oracle/trace.sh"
+
+[tasks."oracle:diff"]
+description = "Compare the simulation's random calls with the original's trace, per demo film"
+run = "odin run tools/diff $DR_COLL -out:$DR_BUILD/oracle-diff --"
 
 [tasks."assets:extract"]
 description = "Extract original PAKs into modern formats (PNG/WAV/JSON)"

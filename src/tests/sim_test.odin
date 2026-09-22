@@ -13,9 +13,9 @@ sim_is_deterministic :: proc(t: ^testing.T) {
 	r := sim.rand_init(99)
 	for i in 0 ..< len(inputs) {
 		a := sim.Buttons{}
-		if sim.random_int(&r, 0, 1) == 0 { a += {.Left} }
-		if sim.random_int(&r, 0, 1) == 0 { a += {.Up} }
-		if sim.random_int(&r, 0, 2) == 0 { a += {.Fire_Air} }
+		if sim.random_int(&r, 0, 1, 0) == 0 { a += {.Left} }
+		if sim.random_int(&r, 0, 1, 0) == 0 { a += {.Up} }
+		if sim.random_int(&r, 0, 2, 0) == 0 { a += {.Fire_Air} }
 		inputs[i] = sim.Frame_Input{a, {}}
 	}
 

@@ -49,10 +49,12 @@ Player :: struct {
 	score:  u32,
 }
 
-init :: proc "contextless" (s: ^State, session: Session) {
+// `log`, when given, records every random call for comparison with the
+// original (see oracle/).
+init :: proc "contextless" (s: ^State, session: Session, log: ^Draw_Log = nil) {
 	s^ = State{}
 	s.session = session
-	s.rng = rand_init(session.seed)
+	s.rng = rand_init(session.seed, log)
 	count := session.game_type == .Co_Op ? 2 : 1
 	for i in 0 ..< count {
 		s.players[i] = Player{active = true, x = 208, y = 400}
@@ -62,6 +64,11 @@ init :: proc "contextless" (s: ^State, session: Session) {
 // Advance exactly one frame. Pure: same state plus same input always yields
 // the same next state.
 step :: proc "contextless" (s: ^State, input: Frame_Input) {
+	if s.rng.log != nil {
+		// Matches the trace's step numbering: the original's first
+		// G_Film::GetInputs call is step 1.
+		s.rng.log.frame = s.frame + 1
+	}
 	for i in 0 ..< MAX_PLAYERS {
 		p := &s.players[i]
 		if !p.active {
