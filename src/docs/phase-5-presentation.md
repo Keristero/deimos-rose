@@ -90,4 +90,30 @@ with `oracle:diff` still exact and `mise run ci` green.
 
 ## Progress
 
-Nothing built yet; this document is the plan.
+**Assets and Renderer are done** (commits 77e6970, 84deaf7). The frame index
+and JSON definition loader from the "Assets" section above are built and
+tested against the original, field for field. The renderer composites all
+sixteen layers, the scrolling terrain, shadows, tint and glow, and the sprite
+font, verified against the original with a new tool: a gdb harness
+(`tools/oracle/shot.py`, `mise run oracle:shot`) freezes the running original
+at an exact game step and photographs it, which `mise run shots:compare`
+compares pixel-for-pixel against our own headless capture of the same step.
+That comparison — not just the call-trace diff — found four real gaps no
+behavioural test had caught: the sideways view scroll was never ported, swept
+units with `destructDrawToTerrain` were never stamped into the map (the
+Lucena fortress was simply missing), the hit glow was being treated as
+presentation-only when it is deterministic per-step state, and a tint colour
+field was never read (tinted objects rendered black). All four are fixed in
+`sim/`; `oracle:diff` still matches the original call for call on all four
+demos and the test suite is green.
+
+**The 60 FPS double-speed bug is fixed.** `FPS_MaxRate`/`FPS_Delay` (perm
+floats 0x20/0x21) show the original runs at a fixed 30 FPS; the live loop in
+`game/main.odin` now steps the simulation on a fixed-timestep accumulator
+gated to that rate (see decisions.md D17) instead of once per render call.
+A `-highrefreshrate` flag presents at the monitor's native refresh rate
+without changing gameplay speed. A `-classic`/`Settings.classic` flag exists
+per D16 for a future fidelity choice to gate on; nothing uses it yet.
+
+Still open: Effects (particles, debris, motion blur), Interface (score bar,
+notices), Audio, Flow.

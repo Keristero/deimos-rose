@@ -97,3 +97,26 @@ placeholder, which could never have replayed a film.
 The original's audio and particle code consume the gameplay RNG. `sim/` makes
 those draws and emits events carrying the results; presentation executes them
 and draws nothing itself.
+
+### D16 — Accurate by default, but not accurate at the expense of looking worse
+
+The screenshot-comparison harness (Phase 5) is ground truth for correctness,
+not a mandate to reproduce every original limitation. Where matching the
+original would reduce fidelity for no gameplay reason -- and subtle Wine
+colour-grading differences from the original's own presentation, which stay
+unaddressed until after Phase 6 -- the higher-fidelity choice wins by default.
+A `-classic` flag (`game/settings.odin`) exists for anyone who wants the
+closest possible match instead; it is lower priority than reaching ~95%
+accuracy across the whole game, which comes first. Nothing has used the flag
+to diverge yet -- Stage 3 onward is where a real fidelity choice will show up.
+
+### D17 — The simulation steps on a fixed clock, independent of the render rate
+
+`FPS_MaxRate`/`FPS_Delay` (perm floats 0x20/0x21) show the original targets
+30 FPS and paces itself with a busy-wait in `G_GameInterface::Draw`, stepping
+once per drawn frame. `game/main.odin` reproduces the 30 Hz step rate with a
+fixed-timestep accumulator instead of one step per render call, so gameplay
+speed no longer depends on how often the frame is presented: `SetTargetFPS(60)`
+had been running the simulation at double speed. `-highrefreshrate` raises the
+*presentation* rate to the monitor's native refresh; the accumulator still
+gates `sim.step` to 30 Hz either way.

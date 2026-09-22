@@ -85,14 +85,17 @@ Renderer :: struct {
 	// Set by DR_DUMP: print every sprite of the next frame, which is how a
 	// misplaced or mis-scaled draw gets identified.
 	dump:     bool,
+	// -classic (Settings.classic): unused so far -- see settings.odin.
+	classic:  bool,
 }
 
-renderer_init :: proc(r: ^Renderer, root: string) {
+renderer_init :: proc(r: ^Renderer, root: string, classic: bool = false) {
 	textures_load(&r.textures, root)
 	for &l in r.layers {
 		l = make([dynamic]Item, 0, 64)
 	}
 	r.shadows = true
+	r.classic = classic
 }
 
 renderer_destroy :: proc(r: ^Renderer) {

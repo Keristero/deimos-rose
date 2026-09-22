@@ -18,7 +18,13 @@ PLAY_H :: 480
 
 WINDOW_SCALE :: 2
 
+// A stall (window drag, breakpoint, GC pause) must not make the simulation
+// try to catch up all at once; cap how many steps one render frame can run.
+MAX_STEPS_PER_FRAME :: 4
+
 main :: proc() {
+	settings := settings_parse(os.args)
+
 	// Everything comes out of the extracted assets tree. The original
 	// install is needed only to produce it, and by the oracle tooling.
 	root := os.get_env("DR_ASSETS", context.temp_allocator)
@@ -34,10 +40,22 @@ main :: proc() {
 	rl.SetConfigFlags({.VSYNC_HINT, .WINDOW_RESIZABLE})
 	rl.InitWindow(PLAY_W * WINDOW_SCALE, PLAY_H * WINDOW_SCALE, "Deimos Rising")
 	defer rl.CloseWindow()
-	rl.SetTargetFPS(60)
+
+	// FPS_MaxRate (perm float 0x20) is 30.0 in the shipped data:
+	// G_GameInterface::Draw steps once, draws, then busy-waits on FPS_Delay
+	// (0x21, in ~16.66ms ticks) before the next step. The original runs at
+	// 30 FPS, not 60 -- an unconditional SetTargetFPS(60) here previously
+	// ran the whole simulation at double speed.
+	step_hz := defs.perm_floats[0x20]
+	if settings.high_refresh_rate {
+		rate := rl.GetMonitorRefreshRate(rl.GetCurrentMonitor())
+		rl.SetTargetFPS(rate > 0 ? rate : 60)
+	} else {
+		rl.SetTargetFPS(i32(step_hz))
+	}
 
 	renderer: Renderer
-	renderer_init(&renderer, root)
+	renderer_init(&renderer, root, settings.classic)
 	defer renderer_destroy(&renderer)
 
 	state := new(sim.State)
@@ -72,6 +90,12 @@ main :: proc() {
 		return
 	}
 
+	// Fixed-step: the simulation advances in slices of step_dt regardless of
+	// how often the frame is actually presented, so -highrefreshrate (or a
+	// slow/fast monitor, or a stall) changes how smoothly the game is shown,
+	// never how fast it plays.
+	step_dt := 1.0 / f64(step_hz)
+	accumulator: f64 = 0
 	show_debug := false
 	for !rl.WindowShouldClose() {
 		if rl.IsKeyPressed(.F1) {
@@ -80,7 +104,11 @@ main :: proc() {
 		if rl.IsKeyPressed(.F2) {
 			renderer.shadows = !renderer.shadows
 		}
-		sim.step(state, gather_input(), playing_film ? &film : nil)
+		accumulator += f64(rl.GetFrameTime())
+		for steps := 0; accumulator >= step_dt && steps < MAX_STEPS_PER_FRAME; steps += 1 {
+			sim.step(state, gather_input(), playing_film ? &film : nil)
+			accumulator -= step_dt
+		}
 		build_frame(&renderer, state)
 
 		rl.BeginDrawing()
