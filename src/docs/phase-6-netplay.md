@@ -124,5 +124,37 @@ a tick past the retry interval actually resends (backdating `sent_at` with
 `RELIABLE_MAX_RETRIES` exceeded reports the channel dead. Stage 2 is now
 complete as scoped. `mise run ci` is green (79 tests).
 
-Stages 3-6 (prediction/rollback wiring onto real network input, desync
-detection, lobby, two-machine playtest) are unstarted.
+**Stage 3 is done.** `net/session.odin` adds `Rollback_Session`, which turns
+"my local input" plus "a decoded `Input_Packet` from the peer" into
+`sim.step` calls -- no socket, on purpose, so it's testable as pure logic.
+`Input_Log` tracks, per player per frame, a button value and whether it's
+confirmed (known for certain) or predicted (repeated from the last known
+value, the standard first-guess rollback netcode makes, on the theory that
+most buttons are held for many frames in a row). `rollback_session_advance`
+records the local frame (always confirmed -- it's this machine's own input),
+predicts the remote frame if nothing newer has arrived, steps, and saves a
+snapshot. `rollback_session_receive` confirms whichever frames a packet
+covers that weren't already known, and if any of those had already been
+simulated on a guess that turns out wrong, restores the snapshot from just
+before the earliest one and resimulates forward -- repredicting, frame by
+frame, any frame in between that still has no confirmed value of its own,
+since the "last known value" those repredictions chain from just changed.
+`rollback_session_local_window` hands the caller the redundant window of
+recent local input an outgoing Input packet should carry.
+
+`tests/rollback_session_test.odin`'s
+`rollback_session_converges_under_latency_and_loss` is the real proof: two
+independent `Rollback_Session`s, each driving one local player, handed each
+other's encoded Input packets through a fake network that delays every send
+by 4 ticks and drops every 5th one, converge to an identical `checksum()`
+after 120 frames of input that changes often enough to guarantee
+mispredictions actually happened (asserted via a new `rollback_count` field,
+so the test can't pass vacuously by never exercising a rollback at all).
+`mise run ci` is green (81 tests).
+
+Stages 4-6 (desync detection, lobby, two-machine playtest) are unstarted.
+Also still open: what happens when a rollback needs a frame that has aged
+out of the snapshot ring (`rollback_to` just gives up silently right now --
+fine for stage 3's own test, since ROLLBACK_DEPTH (64) comfortably exceeds
+any latency used there, but a real desync-recovery story, or at least
+detecting and surfacing it, belongs with stage 4).
