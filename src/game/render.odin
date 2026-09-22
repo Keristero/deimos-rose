@@ -22,6 +22,17 @@ import "dr:sim"
 
 LAYERS :: 16
 
+// U_Display::Init hardcodes the screen to 640x480 and centres a 576-wide
+// front buffer (the 416-wide play field plus a 160-wide score bar panel,
+// im16 "scor") inside it, leaving a 32px black margin on each side --
+// confirmed against a real screenshot of the running original
+// (work/wine/cmp/orig-00900.png: the panel is exactly scor.png's own 160x480,
+// and 32+416+160+32 = 640), not derived from U_Display::Init's offset
+// arithmetic, which is a maze of raw struct offsets not worth transliterating.
+VIEW_X :: 32
+SCOREBAR_W :: 160
+SCOREBAR_X :: VIEW_X + PLAY_W
+
 // G_GameObject::Priv_Draw's switch on drawLayer_ID. "defa" splits by whether
 // the object is in the air; an empty or "none" layer is treated as "defa".
 layer_of :: proc "contextless" (id: sim.Res_ID, is_air: bool) -> int {
@@ -82,6 +93,10 @@ Renderer :: struct {
 	// and wrecks straight into it; this is the same buffer.
 	terrain:       rl.RenderTexture2D,
 	terrain_level: sim.Res_ID,
+	// The score bar's backdrop (im16 "scor", 160x480): the metal panel and
+	// its cutouts for the score slot, life icon, weapon icons and the
+	// shields/power bars. Loaded once; nothing ever changes it.
+	scorebar_panel: rl.Texture2D,
 	// Set by DR_DUMP: print every sprite of the next frame, which is how a
 	// misplaced or mis-scaled draw gets identified.
 	dump:     bool,
@@ -96,9 +111,13 @@ renderer_init :: proc(r: ^Renderer, root: string, classic: bool = false) {
 	}
 	r.shadows = true
 	r.classic = classic
+	r.scorebar_panel = rl.LoadTexture(fmt.ctprintf("%s/images/im16/scor.png", root))
 }
 
 renderer_destroy :: proc(r: ^Renderer) {
+	if r.scorebar_panel.id != 0 {
+		rl.UnloadTexture(r.scorebar_panel)
+	}
 	if r.terrain.id != 0 {
 		rl.UnloadRenderTexture(r.terrain)
 	}
@@ -260,7 +279,7 @@ present :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, scale: f32) 
 		for l in lo ..= hi {
 			for it in r.layers[l] {
 				dst := it.dst
-				dst.x *= scale
+				dst.x = (dst.x + VIEW_X) * scale
 				dst.y *= scale
 				dst.width *= scale
 				dst.height *= scale
@@ -272,8 +291,8 @@ present :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, scale: f32) 
 	draw_terrain(r, s, scale)
 	run(r, 2, 5, scale)
 	particles_draw(particles, scale)
-	// particles belong here
 	run(r, 6, 15, scale)
+	scorebar_draw(r, s, scale)
 }
 
 // The map buffer for a level: the image, plus every mark burned into it
@@ -339,6 +358,6 @@ draw_terrain :: proc(r: ^Renderer, s: ^sim.State, scale: f32) {
 	// The map went into the buffer flipped, so it reads like any other
 	// texture from here on.
 	src := rl.Rectangle{f32(left), f32(s.bgnd.view_top), w, h}
-	dst := rl.Rectangle{0, 0, w * scale, h * scale}
+	dst := rl.Rectangle{VIEW_X * scale, 0, w * scale, h * scale}
 	rl.DrawTexturePro(r.terrain.texture, src, dst, {0, 0}, 0, rl.WHITE)
 }

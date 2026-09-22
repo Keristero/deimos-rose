@@ -3,8 +3,10 @@
 # Usage: [FILM=de01] [STEPS=900] [OUT=cmp] compare.sh
 #
 # Expects `mise run oracle:shot` to have captured the original already; it
-# renders our side here. The original's window is 640x480 with the 416-wide
-# play field inset at x=32, so that is what gets cropped for comparison.
+# renders our side here. Both windows are 640x480 with the 416-wide play
+# field inset at x=32 (game/render.odin's VIEW_X), so that is what gets
+# cropped for comparison; our capture is normalised to 640x480 first since it
+# may be taken at a different WINDOW_SCALE.
 set -euo pipefail
 SRC="$(cd "$(dirname "$0")/../.." && pwd)"
 WORK="$SRC/../work"
@@ -28,7 +30,7 @@ for step in ${STEPS//,/ }; do
     o="$WORK/shots/cmp/orig-$padded.png"
     u="$WORK/shots/cmp/ours-$padded.png"
     magick "$orig" -crop 416x480+32+0 +repage "$o"
-    magick "$ours" -resize 416x480! "$u"
+    magick "$ours" -resize 640x480! -crop 416x480+32+0 +repage "$u"
     magick "$o" "$u" +append "$WORK/shots/cmp/side-$padded.png"
     magick "$o" "$u" -compose difference -composite -auto-level "$WORK/shots/cmp/diff-$padded.png"
     echo "step $step: $WORK/shots/cmp/side-$padded.png"

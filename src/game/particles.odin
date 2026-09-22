@@ -93,7 +93,7 @@ particles_draw :: proc(p: ^Particles, scale: f32) {
 		c.a = u8(alpha * 255)
 		size: f32 = 2 * scale
 		rl.DrawRectangleV(
-			{pt.loc.x * scale - size / 2, pt.loc.y * scale - size / 2},
+			{(pt.loc.x + VIEW_X) * scale - size / 2, pt.loc.y * scale - size / 2},
 			{size, size},
 			c,
 		)

@@ -118,10 +118,31 @@ Level_Media :: struct {
 	music:      string,
 }
 
+// Where the score bar's widgets sit, per player (G_ScoreBar_Init's
+// G_Res_GetPermRect(0..7) for player 1, (8..15) for player 2). Positions are
+// local to the score bar panel, which the original places at the right edge
+// of the 416-wide play field (U_Display::GetFrontScorebarRect = play field
+// width + a fixed margin, on a screen that G_Display::Init hardcodes to
+// 640x480): rect.left/top here are relative to that panel's own origin, not
+// the window.
+Score_Bar_Rects :: struct {
+	score:       sim.Rect,
+	life_symbol: sim.Rect,
+	life_count:  sim.Rect,
+	weapon:      [3]sim.Rect,
+	shields:     sim.Rect,
+	power:       sim.Rect,
+}
+
+Score_Bar_Layout :: struct {
+	players: [2]Score_Bar_Rects,
+}
+
 Assets :: struct {
-	root:    string,
-	sprites: []Sprite_Plate,
-	levels:  []Level_Media,
+	root:     string,
+	sprites:  []Sprite_Plate,
+	levels:   []Level_Media,
+	scorebar: Score_Bar_Layout,
 }
 
 // --- loading ---------------------------------------------------------------
@@ -197,6 +218,31 @@ assets_open :: proc(root: string, allocator := context.allocator) -> (a: Assets)
 		})
 	}
 	a.levels = media[:]
+
+	// inre "reli": 16 score bar rects (8 per player, in G_Res_GetPermRect
+	// order -- verified against G_ScoreBar_Init/Draw), then 6 more for the
+	// level-select and briefing screens that Stage 6 will use.
+	if paths := record_paths(root, "reli", context.temp_allocator); len(paths) > 0 {
+		jd: Json_Definition
+		if read_json(paths[0], &jd, context.temp_allocator) && len(jd.fields) >= 16 {
+			rect :: proc(f: Json_Field) -> sim.Rect {
+				r, _ := tag_rect(f.value)
+				return rect_from(r)
+			}
+			for pn in 0 ..< 2 {
+				base := pn * 8
+				p := &a.scorebar.players[pn]
+				p.score = rect(jd.fields[base + 0])
+				p.life_symbol = rect(jd.fields[base + 1])
+				p.life_count = rect(jd.fields[base + 2])
+				p.weapon[0] = rect(jd.fields[base + 3])
+				p.weapon[1] = rect(jd.fields[base + 4])
+				p.weapon[2] = rect(jd.fields[base + 5])
+				p.shields = rect(jd.fields[base + 6])
+				p.power = rect(jd.fields[base + 7])
+			}
+		}
+	}
 	return
 }
 
