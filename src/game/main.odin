@@ -42,12 +42,23 @@ main :: proc() {
 		os.exit(1)
 	}
 
+	// DR_SHOT (below) drives every headless capture -- oracle:shot's compare
+	// and the shots:compare task both run under xvfb-run with no PulseAudio
+	// session behind it, and nothing is there to hear it either way, so skip
+	// the audio device and asset loading entirely rather than let raylib log
+	// device-init failures every run.
+	headless := os.get_env("DR_SHOT", context.temp_allocator) != ""
+
 	rl.SetConfigFlags({.VSYNC_HINT, .WINDOW_RESIZABLE})
 	rl.InitWindow(SCREEN_W * WINDOW_SCALE, SCREEN_H * WINDOW_SCALE, "Deimos Rising")
 	defer rl.CloseWindow()
 
-	rl.InitAudioDevice()
-	defer rl.CloseAudioDevice()
+	if !headless {
+		rl.InitAudioDevice()
+	}
+	defer if !headless {
+		rl.CloseAudioDevice()
+	}
 
 	// FPS_MaxRate (perm float 0x20) is 30.0 in the shipped data:
 	// G_GameInterface::Draw steps once, draws, then busy-waits on FPS_Delay
@@ -63,7 +74,7 @@ main :: proc() {
 	}
 
 	renderer: Renderer
-	renderer_init(&renderer, root, settings.classic)
+	renderer_init(&renderer, root, settings.classic, !headless)
 	defer renderer_destroy(&renderer)
 
 	particles: Particles
@@ -98,8 +109,10 @@ main :: proc() {
 		sim.init(state, sim.Session{seed = 0x1234_5678, level_id = level, game_type = .Single}, &defs)
 	}
 
-	if music, ok := music_track(&renderer.textures, state.level.id); ok {
-		rl.PlayMusicStream(music)
+	if !headless {
+		if music, ok := music_track(&renderer.textures, state.level.id); ok {
+			rl.PlayMusicStream(music)
+		}
 	}
 
 	// DR_SHOT=<path> renders DR_SHOT_AT steps (comma-separated) and writes a

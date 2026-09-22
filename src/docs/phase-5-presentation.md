@@ -231,7 +231,12 @@ built yet.
 Verified by actually running the game, not just `DR_SHOT`: raylib's own log
 confirms the audio device initialized against PulseAudio, all 98 effect
 clips loaded, and `mu03.wav` loaded exactly once as a music stream rather
-than a duplicate sound effect. `oracle:diff` is still exact on all four
-demos and the test suite is green.
+than a duplicate sound effect. A `DR_SHOT` run (`shots:compare`, `oracle:shot`)
+now skips `InitAudioDevice` and all sound/music loading entirely — those runs
+happen under `xvfb-run` with no PulseAudio session behind them, and nothing
+is there to hear the result either way, so there is no reason to open a
+device or log its absence on every headless capture.
+
+`oracle:diff` is still exact on all four demos and the test suite is green.
 
 Still open: Flow.

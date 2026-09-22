@@ -42,7 +42,12 @@ Textures :: struct {
 	music:   map[string]rl.Music, // by the level's own music id, e.g. "mu03"
 }
 
-textures_load :: proc(t: ^Textures, root: string) {
+// `audio` is false for a headless run (DR_SHOT): main.odin skips
+// InitAudioDevice there, and rl.LoadSound/LoadMusicStream against a
+// non-existent device would just fail per call (harmless, but noisy in the
+// log and pointless work for frames nothing will ever hear) -- see
+// sounds_step and music_track, which no-op cleanly when these maps stay empty.
+textures_load :: proc(t: ^Textures, root: string, audio: bool = true) {
 	t.root = strings.clone(root)
 	t.assets = data.assets_open(root)
 	t.plates = make(map[sim.Res_ID]Plate, len(t.assets.sprites))
@@ -56,19 +61,21 @@ textures_load :: proc(t: ^Textures, root: string) {
 		t.plates[p.id] = Plate{texture = tex, frames = p.frames}
 	}
 
-	t.sounds = make(map[sim.Res_ID]Sound_Clip, len(t.assets.sounds))
-	for id in t.assets.sounds {
-		path := fmt.ctprintf("%s/audio/%s.wav", root, id)
-		snd := rl.LoadSound(path)
-		if snd.frameCount == 0 {
-			continue
+	t.sounds = make(map[sim.Res_ID]Sound_Clip, audio ? len(t.assets.sounds) : 0)
+	if audio {
+		for id in t.assets.sounds {
+			path := fmt.ctprintf("%s/audio/%s.wav", root, id)
+			snd := rl.LoadSound(path)
+			if snd.frameCount == 0 {
+				continue
+			}
+			clip: Sound_Clip
+			clip.voices[0] = snd
+			for i in 1 ..< SOUND_VOICES {
+				clip.voices[i] = rl.LoadSoundAlias(snd)
+			}
+			t.sounds[sim.res_id(id)] = clip
 		}
-		clip: Sound_Clip
-		clip.voices[0] = snd
-		for i in 1 ..< SOUND_VOICES {
-			clip.voices[i] = rl.LoadSoundAlias(snd)
-		}
-		t.sounds[sim.res_id(id)] = clip
 	}
 	t.music = make(map[string]rl.Music)
 }

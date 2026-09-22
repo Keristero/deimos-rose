@@ -104,8 +104,8 @@ Renderer :: struct {
 	classic:  bool,
 }
 
-renderer_init :: proc(r: ^Renderer, root: string, classic: bool = false) {
-	textures_load(&r.textures, root)
+renderer_init :: proc(r: ^Renderer, root: string, classic: bool = false, audio: bool = true) {
+	textures_load(&r.textures, root, audio)
 	for &l in r.layers {
 		l = make([dynamic]Item, 0, 64)
 	}
