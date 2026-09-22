@@ -26,13 +26,17 @@ assumption. Check before building on it.
 - `vendor:ggpo` "is available in Odin" — it is Windows-only and will not link.
 - The IA sprite plate "is an alpha mask" — it is, but *inverted*, and assuming
   otherwise produced 125 sprites on solid green.
+- The original "launched and stayed running" under Wine — it was actually
+  blocked on a "QuickTime could not be initialized" dialog. A process that does
+  not exit is not a process that works.
 
 The cost of checking is minutes. The cost of not checking is a phase built on
 sand. When a claim matters, find the bytes that prove it and put the evidence
 in the commit message or the phase doc.
 
 **Look at the output.** The sprite inversion was caught by opening the PNG, not
-by reading code. Decode a file, render an image, play a sound, print the
+by reading code, and the QuickTime failure by taking a screenshot rather than
+trusting an exit code. Decode a file, render an image, play a sound, print the
 numbers. Counts passing is not the same as content being correct.
 
 ## Sources of truth, in order

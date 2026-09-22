@@ -13,9 +13,9 @@ sim_is_deterministic :: proc(t: ^testing.T) {
 	r := sim.rand_init(99)
 	for i in 0 ..< len(inputs) {
 		a := sim.Buttons{}
-		if sim.rand_below(&r, 2) == 0 { a += {.Left} }
-		if sim.rand_below(&r, 2) == 0 { a += {.Up} }
-		if sim.rand_below(&r, 3) == 0 { a += {.Fire_Air} }
+		if sim.random_int(&r, 0, 1) == 0 { a += {.Left} }
+		if sim.random_int(&r, 0, 1) == 0 { a += {.Up} }
+		if sim.random_int(&r, 0, 2) == 0 { a += {.Fire_Air} }
 		inputs[i] = sim.Frame_Input{a, {}}
 	}
 
@@ -46,7 +46,7 @@ rng_is_reproducible :: proc(t: ^testing.T) {
 	a := sim.rand_init(12345)
 	b := sim.rand_init(12345)
 	for _ in 0 ..< 1000 {
-		testing.expect_value(t, sim.rand_u32(&a), sim.rand_u32(&b))
+		testing.expect_value(t, sim.rand_next(&a), sim.rand_next(&b))
 	}
 }
 

@@ -94,7 +94,7 @@ checksum :: proc "contextless" (s: ^State) -> u64 {
 		}
 	}
 	mix(&h, u64(s.frame))
-	mix(&h, u64(s.rng.state))
+	mix(&h, u64(s.rng.next))
 	for i in 0 ..< MAX_PLAYERS {
 		p := s.players[i]
 		mix(&h, u64(p.active ? 1 : 0))

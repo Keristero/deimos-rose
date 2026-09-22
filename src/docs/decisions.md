@@ -85,3 +85,15 @@ Unit definitions are read by field name with `stateName_STR`,
 reader derived from one record handles 359 of 386 and then fails on optional
 fields. Declared counts are validated afterwards rather than trusted to drive
 the walk.
+
+### D14 — The simulation reproduces the original RNG exactly
+
+MSL `rand()` and the two `U_Utils` helpers, including their early-outs and the
+reversed-bounds quirk in `RandomFloat`. Replaces the Phase 0 xorshift
+placeholder, which could never have replayed a film.
+
+### D15 — Sound and particle RNG draws happen in `sim/`
+
+The original's audio and particle code consume the gameplay RNG. `sim/` makes
+those draws and emits events carrying the results; presentation executes them
+and draws nothing itself.
