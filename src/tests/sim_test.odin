@@ -208,3 +208,56 @@ money_counter_converts_money_at_the_level_multiplier :: proc(t: ^testing.T) {
 	testing.expect_value(t, p.counter.step, i32(1)) // 2% of 50, floored at 1
 	testing.expect_value(t, p.counter.money, i32(10))
 }
+
+// No shipped unit sets entryNotice_STR or destructNotice_STR (see
+// sim/notice.odin), so this path never runs against the original's data;
+// exercised directly here instead.
+@(test)
+notice_plays_its_sound_once_the_delay_elapses :: proc(t: ^testing.T) {
+	defs := synthetic_defs()
+	s := new(sim.State)
+	defer free(s)
+	sim.init(s, sim.Session{seed = 1, level_id = sim.level_id("le01"), game_type = .Single}, defs)
+
+	u := sim.Unit {
+		entry_notice                  = "Test Notice",
+		entry_notice_sound            = sim.res_id("snd1"),
+		entry_notice_sound_min_volume = 50,
+		entry_notice_sound_max_volume = 50,
+		entry_notice_delay            = 3,
+	}
+	sim.notice_request(s, &u, s.time)
+	testing.expect_value(t, s.notices.count, 1)
+	testing.expect_value(t, s.notices.events[0].text, "Test Notice")
+
+	for _ in 0 ..< 3 {
+		s.sounds.count = 0
+		sim.notice_process(s)
+		testing.expect_value(t, s.sounds.count, 0)
+	}
+	s.sounds.count = 0
+	sim.notice_process(s)
+	testing.expect_value(t, s.sounds.count, 1)
+	testing.expect_value(t, s.sounds.events[0].id, u.entry_notice_sound)
+
+	// The slot stays busy, so a second request while this one shows is dropped.
+	u2 := sim.Unit{entry_notice = "Other", entry_notice_sound = sim.NONE}
+	sim.notice_request(s, &u2, s.time)
+	testing.expect_value(t, s.notices.count, 1)
+}
+
+@(test)
+destruct_notice_never_draws_a_sound :: proc(t: ^testing.T) {
+	defs := synthetic_defs()
+	s := new(sim.State)
+	defer free(s)
+	sim.init(s, sim.Session{seed = 3, level_id = sim.level_id("le01"), game_type = .Single}, defs)
+
+	sim.notice_request_destruct(s, "Destroyed")
+	testing.expect_value(t, s.notices.count, 1)
+	for _ in 0 ..< sim.NOTICE_HOLD_FRAMES + 2 {
+		sim.notice_process(s)
+	}
+	testing.expect_value(t, s.sounds.count, 0)
+	testing.expect(t, !s.notice.pending, "the slot releases once the hold ends")
+}

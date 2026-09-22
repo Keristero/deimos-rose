@@ -71,6 +71,8 @@ main :: proc() {
 	blurs_init(&blurs)
 	defer blurs_destroy(&blurs)
 
+	notices: Notices
+
 	state := new(sim.State)
 	defer free(state)
 
@@ -98,7 +100,7 @@ main :: proc() {
 	// whether the compositing is right, and this makes that reviewable
 	// without a desktop session.
 	if shot := os.get_env("DR_SHOT", context.temp_allocator); shot != "" {
-		run_shots(&renderer, state, &particles, &blurs, playing_film ? &film : nil, shot,
+		run_shots(&renderer, state, &particles, &blurs, &notices, playing_film ? &film : nil, shot,
 			os.get_env("DR_SHOT_AT", context.temp_allocator))
 		return
 	}
@@ -122,9 +124,10 @@ main :: proc() {
 			sim.step(state, gather_input(), playing_film ? &film : nil)
 			particles_step(&particles, state)
 			blurs_step(&blurs, state)
+			notices_step(&notices, state)
 			accumulator -= step_dt
 		}
-		build_frame(&renderer, state, &blurs)
+		build_frame(&renderer, state, &blurs, &notices)
 
 		rl.BeginDrawing()
 		rl.ClearBackground(rl.Color{0, 0, 0, 255})
@@ -137,7 +140,7 @@ main :: proc() {
 }
 
 // Steps the simulation, capturing the frame at each requested step.
-run_shots :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, blurs: ^Blurs, film: ^sim.Film, path, at: string) {
+run_shots :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, blurs: ^Blurs, notices: ^Notices, film: ^sim.Film, path, at: string) {
 	steps := make([dynamic]int, context.temp_allocator)
 	rest := at == "" ? "120" : at
 	for field in strings.split_iterator(&rest, ",") {
@@ -154,7 +157,7 @@ run_shots :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, blurs: ^Bl
 		if r.dump {
 			fmt.printfln("step %v draw list:", i)
 		}
-		build_frame(r, s, blurs)
+		build_frame(r, s, blurs, notices)
 		rl.BeginDrawing()
 		rl.ClearBackground(rl.Color{0, 0, 0, 255})
 		present(r, s, particles, WINDOW_SCALE)
@@ -173,6 +176,7 @@ run_shots :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, blurs: ^Bl
 		sim.step(s, {}, film)
 		particles_step(particles, s)
 		blurs_step(blurs, s)
+		notices_step(notices, s)
 	}
 }
 

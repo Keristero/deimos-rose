@@ -244,12 +244,14 @@ draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shad
 	}
 }
 
-// FUN_00420740: entities, both players, then motion blur ghosts. Notices and
-// the score bar follow once they are ported. The original draws motion blur
-// after the players (G_MotionBlur_BuildDrawList runs in Process, ahead of
-// entities and players in the build order); the ordering doesn't matter here
-// since every draw only ever appends to its own layer's list.
-build_frame :: proc(r: ^Renderer, s: ^sim.State, blurs: ^Blurs) {
+// FUN_00420740: entities, both players, then motion blur ghosts, then the
+// notice banner. The score bar is drawn separately, straight to the score
+// bar panel rather than through a layer (see scorebar_draw). The original
+// draws motion blur after the players (G_MotionBlur_BuildDrawList runs in
+// Process, ahead of entities and players in the build order); the ordering
+// doesn't matter here since every draw only ever appends to its own layer's
+// list.
+build_frame :: proc(r: ^Renderer, s: ^sim.State, blurs: ^Blurs, notices: ^Notices) {
 	for &l in r.layers {
 		clear(&l)
 	}
@@ -271,6 +273,7 @@ build_frame :: proc(r: ^Renderer, s: ^sim.State, blurs: ^Blurs) {
 	for &o in blurs.live {
 		draw_object(r, s, &o, false)
 	}
+	notices_draw(r, notices)
 }
 
 // Draws what build_frame collected, in the original's order.

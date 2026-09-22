@@ -142,7 +142,7 @@ entity_destroy :: proc(s: ^State, e: ^Entity, player: i32, time: i32) {
 		spawn_from(s, e, u.destruct_spawn)
 	}
 	if u.destruct_notice != "" && u.destruct_notice != "none" {
-		unported(s, 0x415328) // G_Notice_Request
+		notice_request_destruct(s, u.destruct_notice)
 	}
 	if u.destruct_sound != NONE {
 		sound_play(s, Sound_Settings {
