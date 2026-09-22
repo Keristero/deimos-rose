@@ -3,10 +3,10 @@ package sim
 // Game_Type mirrors the original's G_Game_Type enum, which G_Film records
 // alongside the seed and level so a replay reconstructs the same session.
 //
-// Single = 1 is verified: G_Player::Priv_ResetPosition reads the single-player
-// start position out of G_PlayerDef when the value is 1 and the two-player
-// start otherwise, and G_Player's constructor defaults the field to 1.
-// The co-operative value is PROVISIONAL -- no evidence pins it yet.
+// Both values are verified. G_Game_Play switches on the game type to label the
+// session: case 1 -> "1 Player", case 2 -> "2 Player". Corroborated by
+// G_Player::Priv_ResetPosition, which reads the single-player start position
+// out of G_PlayerDef when the value is 1 and the two-player start otherwise.
 Game_Type :: enum u8 {
 	Single = 1,
 	Co_Op  = 2,

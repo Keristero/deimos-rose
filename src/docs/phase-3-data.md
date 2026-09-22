@@ -1,13 +1,13 @@
 # Phase 3 — Definition and data layer
 
-**Status: core complete.** Tagged-text decoding, the level loader, the film
-parser and JSON export are done and tested. Typed loaders for unit, weapon and
-player definitions remain — see *What is left* below.
+**Status: complete.** Tagged-text decoding, typed loaders for every definition
+family, the film parser, resource precedence and JSON export, all tested
+against the full corpus. 39 tests.
 
 ```
 mise run assets:records   # tagged text -> assets/data/**.json
 mise run assets:all       # media + records in one go
-mise run test             # 29 tests
+mise run test             # 39 tests
 ```
 
 ## Exit criteria
@@ -17,7 +17,10 @@ mise run test             # 29 tests
 | All 12 levels parse | yes, field order validated |
 | Declared object counts reconcile | yes, **565 placements** exactly |
 | Cross-resource references resolve | yes — every unit, image and music id |
-| Records available as JSON | 473 records, 474 JSON files, 19 MB |
+| Records available as JSON | 473 records, structured where typed |
+| Unit definitions reconcile | 386 records: **1,167 states, 5,835 rules, 532 spawn sets** |
+| Rule conditions all known | every value is one of the 17 |
+| `Data/Local` precedence | implemented, both real override cases tested |
 
 565 matches the figure the clean-room remaster reports for the Mac 1.0.6
 corpus, reached independently here from the Windows 1.0.2 data.
@@ -117,11 +120,101 @@ nine families are emitted as ordered key/value lists — lossless, and a typed
 loader can be layered on later without re-deriving the encoding. Unit
 definitions are substantial: `01b1` alone carries 498 fields.
 
-## What is left
+## Definitions
 
-- Typed loaders for `unde` (386), `wede` (5) and `plde` (2). The JSON is
-  already usable; what is missing is a schema. 717 distinct field tags appear
-  across the corpus.
-- The 17-condition unit-behaviour vocabulary and state/rule execution.
-- `Data/Local` override lookup — the engine checks it before the PAKs.
-- The co-operative `G_Game_Type` value, and the input field semantics.
+`unde` nests; `wede` and `plde` are flat. A unit definition is a header, then
+`numStates_INT` states, each declaring `stateNumSpawnSets_INT` spawn sets and
+`stateNumRules_INT` rules.
+
+**Parsing is scope-driven, not positional.** A positional reader built from the
+first record matches 359 of 386 and then fails: 27 records carry optional extra
+fields — `stateFleeNorth_BOOL` among them — inside the state block. Keying on
+field names, with `stateName_STR`, `stateSpawnSetName_STR` and
+`stateRuleName_STR` as scope openers, handles those. All 386 then reconcile
+against their declared counts:
+
+| | |
+|---|---:|
+| unit definitions | 386 |
+| states | 1,167 |
+| rules | 5,835 |
+| spawn sets | 532 |
+
+### The 17-condition vocabulary
+
+Rule conditions are a closed set, read from a 17-entry table of 64-byte strings
+in the executable at file offset 805379 (an identical second copy sits at
+903169). This independently confirms the count the remaster reports for Mac
+1.0.6. The shipped campaign exercises 9 of the 17; `Rule_Condition` carries all
+of them in table order, so the enum index matches the engine's dispatch index.
+
+`stateRuleAction_STR` is **not** resolved. It is neither an engine verb nor
+reliably a state name: only 118 of 2,974 actions name a state in their own
+record, and none name one in the unit the rule targets. It is kept verbatim.
+
+Most rules look like editor-written placeholders — 2,773 of them are
+`Is Tracking Player` → `Delete` with no target unit — so Phase 4 should not
+assume every rule is meaningful.
+
+## Resource precedence
+
+`U_Pak_BuildTagIndex` scans fifteen `Data/Local/<type>/` directories first and
+only then the archives in `Data/Paks/`, appending everything to one list;
+`U_Pak_GetPtrToTagData` takes the first match. **Loose files in `Data/Local`
+shadow the same id inside a PAK.** The fifteen types in the switch match the
+fifteen directories the game creates exactly.
+
+The shipped tree has two real override cases, both tested:
+
+| Resource | Shadows |
+|---|---|
+| `im08/TESM` | `Interface.pak` |
+| `stli/cred` | `Game.pak` |
+
+Plus `film/last` and `pref/pref`, which exist only locally. 873 distinct ids
+across 875 index entries.
+
+This also corrects a Phase 1 claim: `TESM` is not an alpha-only plate. Both
+its plates are in `Interface.pak`; the local file overrides only the alpha.
+
+## The input bits, resolved
+
+Phase 3 closed the last provisional item in `sim/`. Three pieces of evidence
+compose:
+
+1. `G_Film::SetInputs` maps each bit to a `G_Input_PlayerInputs` field index:
+   `0x01`→3, `0x02`→1, `0x04`→0, `0x08`→2, `0x10`→4, `0x20`→5, `0x40`→6.
+2. `G_Input_CachePlayerInputs` maps `U_Prefs_PlayerControlCodes` entry *i* to
+   those same field indices: 0→0, 1→3, 2→1, 3→2, 4→5, 5→4, 6→6.
+3. The "Edit Key Controls" dialog — resource 102, read out of `.rsrc` — lists
+   its entries in order: Move Up, Move Down, Move Left, Move Right, Fire Air,
+   Fire Ground, Switch Weapon.
+
+Composing them:
+
+| Bit | Button |
+|---|---|
+| `0x01` | Move Down |
+| `0x02` | Move Left |
+| `0x04` | Move Up |
+| `0x08` | Move Right |
+| `0x10` | Fire Ground |
+| `0x20` | Fire Air |
+| `0x40` | Switch Weapon |
+
+Up/down and left/right are not adjacent in the on-disk order, and fire-air and
+fire-ground are transposed relative to the prefs order. The provisional table
+written in the previous pass had five of the seven wrong, which is the whole
+argument for proving this rather than assuming it.
+
+**`G_Game_Type.Co_Op` is 2**, also now verified: `G_Game_Play` switches on the
+value to label the session, `case 1` → `"1 Player"`, `case 2` → `"2 Player"`.
+
+## What is left for later phases
+
+- `stateRuleAction_STR` dispatch — what an action actually does.
+- Executing states and rules at runtime. The data is loaded and validated;
+  running it is Phase 4.
+- Typed schemas for the remaining header/state fields. 717 distinct tags appear
+  across the corpus; the loader exposes all of them by name and types the ones
+  that are used structurally.

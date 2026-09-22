@@ -107,9 +107,11 @@ recorded channel count and sample rate.
   `cred` (a string list). The engine looks in `Data/Local` *before* the PAKs,
   so these are overrides; implementing that lookup order belongs with the
   resource layer in Phase 3.
-- **Alpha-only plates exist.** `Text - Small IA[TESM].gif` has no `IC` partner
-  in `Data/Local` or in any PAK. A mask with no colour plate is presumably
-  tinted at draw time, which is how a bitmap font would work. Within the PAKs
-  every plate pairs cleanly, so TESM is currently the only known case.
+- ~~Alpha-only plates exist.~~ **Wrong — corrected in Phase 3.** `TESM` does
+  have a colour plate: both `Text - Small IA[TESM].gif` and
+  `Text - Small IC[tesm].gif` live in `Interface.pak`. The original claim came
+  from searching only `Game.pak`. The loose copy in `Data/Local/im08` overrides
+  just the alpha plate, which is the resource-precedence behaviour described in
+  [phase-3-data.md](phase-3-data.md). Every plate in the corpus pairs.
 - `im08` is 8-bit-sourced and `im16` 16-bit, but both decode to RGBA. Whether
   the engine treats them differently at runtime is not yet established.

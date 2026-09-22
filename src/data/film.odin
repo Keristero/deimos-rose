@@ -32,10 +32,10 @@ FILM_PLAYER_STRIDE :: 0x4eac
 FILM_HEADER_SIZE :: 0x10
 FILM_MAX_FRAMES :: 20000
 
-// Verified: G_Player::Priv_ResetPosition selects the single-player start
-// position from G_PlayerDef when the game type is 1, and the two-player start
-// otherwise. The co-operative value is not yet established.
+// Verified in G_Game_Play, which switches on the game type to label the run:
+// case 1 -> "1 Player", case 2 -> "2 Player".
 FILM_GAME_TYPE_SINGLE :: 1
+FILM_GAME_TYPE_CO_OP :: 2
 
 Film_Error :: enum {
 	None,
@@ -75,22 +75,32 @@ rd_fourcc :: proc(b: []byte, o: int) -> (f: FourCC) {
 	return
 }
 
-// The seven input bits, in the order G_Film::SetInputs writes them. Each maps
-// to a field index in G_Input_PlayerInputs; the semantic identity of those
-// fields is still unproven, so this table is the one place to correct once
-// G_Input_CachePlayerInputs and U_Prefs_GetPlayerKeyCodes are worked through.
+// The seven input bits, in the order G_Film::SetInputs writes them.
 //
-// PROVISIONAL: the ordering below assumes the prefs control order is
-// up, down, left, right, fire-air, fire-ground, change-weapon.
+// Resolved through three pieces of evidence rather than assumed:
+//
+//  1. G_Film::SetInputs maps each bit to a field index in
+//     G_Input_PlayerInputs: 0x01->3, 0x02->1, 0x04->0, 0x08->2, 0x10->4,
+//     0x20->5, 0x40->6.
+//  2. G_Input_CachePlayerInputs maps U_Prefs_PlayerControlCodes entry i to
+//     those same field indices: 0->0, 1->3, 2->1, 3->2, 4->5, 5->4, 6->6.
+//  3. The "Edit Key Controls" dialog (resource 102, read out of .rsrc) lists
+//     the control entries in order: Move Up, Move Down, Move Left, Move Right,
+//     Fire Air, Fire Ground, Switch Weapon.
+//
+// Composing those gives the mapping below. Note that up/down and left/right
+// are not adjacent in the on-disk bit order, and that fire-air and fire-ground
+// are transposed relative to the prefs order -- which is exactly why this
+// needed proving instead of guessing.
 @(private = "file")
 BIT_TO_BUTTON := [7]sim.Button {
-	0 = .Right,       // bit 0x01 -> G_Input_PlayerInputs field 3
-	1 = .Down,        // bit 0x02 -> field 1
-	2 = .Up,          // bit 0x04 -> field 0
-	3 = .Left,        // bit 0x08 -> field 2
-	4 = .Fire_Air,    // bit 0x10 -> field 4
-	5 = .Fire_Ground, // bit 0x20 -> field 5
-	6 = .Change_Air,  // bit 0x40 -> field 6
+	0 = .Down,        // bit 0x01 -> input field 3 -> "Move Down"
+	1 = .Left,        // bit 0x02 -> field 1       -> "Move Left"
+	2 = .Up,          // bit 0x04 -> field 0       -> "Move Up"
+	3 = .Right,       // bit 0x08 -> field 2       -> "Move Right"
+	4 = .Fire_Ground, // bit 0x10 -> field 4       -> "Fire Ground"
+	5 = .Fire_Air,    // bit 0x20 -> field 5       -> "Fire Air"
+	6 = .Change_Air,  // bit 0x40 -> field 6       -> "Switch Weapon"
 }
 
 film_buttons_from_byte :: proc "contextless" (v: u8) -> (b: sim.Buttons) {

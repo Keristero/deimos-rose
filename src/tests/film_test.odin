@@ -144,3 +144,17 @@ shipped_films_parse :: proc(t: ^testing.T) {
 		testing.expect_value(t, data.fourcc_string(&f.tracks[1].level_id), "none")
 	}
 }
+
+@(test)
+film_input_bits_match_the_recovered_control_order :: proc(t: ^testing.T) {
+	// Composed from G_Film::SetInputs, G_Input_CachePlayerInputs and the
+	// "Edit Key Controls" dialog template. See data/film.odin for the chain.
+	expect := [7]sim.Button {
+		0 = .Down, 1 = .Left, 2 = .Up, 3 = .Right,
+		4 = .Fire_Ground, 5 = .Fire_Air, 6 = .Change_Air,
+	}
+	for want, i in expect {
+		got := data.film_buttons_from_byte(u8(1 << u8(i)))
+		testing.expectf(t, got == {want}, "bit %d should be %v, got %v", i, want, got)
+	}
+}

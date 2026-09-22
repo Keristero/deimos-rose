@@ -140,7 +140,7 @@ level_rejects_a_count_mismatch :: proc(t: ^testing.T) {
 // --- integration: the real corpus -----------------------------------------
 // Skipped when assets/ has not been extracted, so CI runs without game data.
 
-@(private = "file")
+// Shared by the integration tests in this package.
 ASSETS :: "assets"
 
 @(test)

@@ -61,6 +61,45 @@ Json_Level :: struct {
 	placements:       []Json_Placement `json:"placements"`,
 }
 
+Json_Rule :: struct {
+	name:      string `json:"name"`,
+	unit:      string `json:"unit"`,
+	range:     int    `json:"range"`,
+	condition: string `json:"condition"`,
+	action:    string `json:"action"`,
+}
+
+Json_Spawn_Set :: struct {
+	name:            string  `json:"name"`,
+	spawn:           string  `json:"spawn"`,
+	x_offset:        int     `json:"x_offset"`,
+	y_offset:        int     `json:"y_offset"`,
+	absolute_coords: bool    `json:"absolute_coords"`,
+	repeat_spawns:   bool    `json:"repeat_spawns"`,
+	rate_min:        int     `json:"rate_min"`,
+	rate_max:        int     `json:"rate_max"`,
+	fields:          []Field `json:"fields"`,
+}
+
+Json_State :: struct {
+	name:       string           `json:"name"`,
+	spawn_sets: []Json_Spawn_Set `json:"spawn_sets"`,
+	rules:      []Json_Rule      `json:"rules"`,
+	fields:     []Field          `json:"fields"`,
+}
+
+// Unit definitions keep their nesting: header, then states, each with its own
+// spawn sets and rules. Weapon and player definitions are flat and carry no
+// states at all.
+Json_Definition :: struct {
+	id:     string       `json:"id"`,
+	type:   string       `json:"type"`,
+	name:   string       `json:"name"`,
+	family: string       `json:"family"`,
+	states: []Json_State `json:"states"`,
+	header: []Field      `json:"header"`,
+}
+
 Index :: struct {
 	generator:        string         `json:"generator"`,
 	counts:           map[string]int `json:"counts"`,
@@ -107,7 +146,12 @@ main :: proc() {
 				continue
 			}
 
-			if type == "leve" {
+			if type == "unde" || type == "wede" || type == "plde" {
+				if !emit_definition(assets, type, id, raw) {
+					fails += 1
+					continue
+				}
+			} else if type == "leve" {
 				n := emit_level(assets, id, raw)
 				if n < 0 {
 					fails += 1
@@ -147,10 +191,6 @@ emit_level :: proc(assets, id: string, raw: []byte) -> int {
 		fmt.eprintfln("  level %v: %v", id, err)
 		return -1
 	}
-	fc :: proc(f: FourCC_Alias) -> string {
-		f := f
-		return strings.clone(data.fourcc_string(&f), context.temp_allocator)
-	}
 	out := Json_Level {
 		id               = id,
 		name             = lv.name,
@@ -182,7 +222,70 @@ emit_level :: proc(assets, id: string, raw: []byte) -> int {
 	return len(lv.placements)
 }
 
-FourCC_Alias :: data.FourCC
+fc :: proc(f: data.FourCC) -> string {
+	f := f
+	return strings.clone(data.fourcc_string(&f), context.temp_allocator)
+}
+
+to_fields :: proc(tags: []data.Tag) -> []Field {
+	out := make([]Field, len(tags), context.temp_allocator)
+	for t, i in tags {
+		out[i] = Field{key = t.key, value = t.value}
+	}
+	return out
+}
+
+emit_definition :: proc(assets, type, id: string, raw: []byte) -> bool {
+	def, err := data.definition_parse(
+		data.fourcc_from(id), raw, context.temp_allocator)
+	if err != .None {
+		fmt.eprintfln("  %v/%v: %v", type, id, err)
+		return false
+	}
+	states := make([]Json_State, len(def.states), context.temp_allocator)
+	for s, i in def.states {
+		sets := make([]Json_Spawn_Set, len(s.spawn_sets), context.temp_allocator)
+		for ss, j in s.spawn_sets {
+			ss := ss
+			sets[j] = Json_Spawn_Set {
+				name            = ss.name,
+				spawn           = fc(ss.spawn),
+				x_offset        = ss.x_offset,
+				y_offset        = ss.y_offset,
+				absolute_coords = ss.absolute_coords,
+				repeat_spawns   = ss.repeat_spawns,
+				rate_min        = ss.rate_min,
+				rate_max        = ss.rate_max,
+				fields          = to_fields(ss.fields),
+			}
+		}
+		rules := make([]Json_Rule, len(s.rules), context.temp_allocator)
+		for r, j in s.rules {
+			rules[j] = Json_Rule {
+				name      = r.name,
+				unit      = fc(r.unit),
+				range     = r.range,
+				condition = data.RULE_CONDITION_NAMES[r.condition],
+				action    = r.action,
+			}
+		}
+		states[i] = Json_State {
+			name       = s.name,
+			spawn_sets = sets,
+			rules      = rules,
+			fields     = to_fields(s.fields),
+		}
+	}
+	write_json(fmt.tprintf("%s/data/%s/%s.json", assets, type, id), Json_Definition{
+		id     = id,
+		type   = type,
+		name   = data.def_str(def.header, "name_STR"),
+		family = data.def_str(def.header, "familyName_STR"),
+		states = states,
+		header = to_fields(def.header),
+	})
+	return true
+}
 
 emit_generic :: proc(assets, type, id: string, raw: []byte) -> bool {
 	text := data.tagged_decode(raw, context.temp_allocator)
