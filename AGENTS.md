@@ -29,6 +29,10 @@ assumption. Check before building on it.
 - The original "launched and stayed running" under Wine — it was actually
   blocked on a "QuickTime could not be initialized" dialog. A process that does
   not exit is not a process that works.
+- QuickTime "installs with winetricks" — its verb crashes and rolls back. The
+  real cause, a missing Apple Application Support MSI, only showed up in a
+  `+module,+seh` trace. When an installer fails, trace the failing load
+  instead of retrying variations of the same install.
 
 The cost of checking is minutes. The cost of not checking is a phase built on
 sand. When a claim matters, find the bytes that prove it and put the evidence

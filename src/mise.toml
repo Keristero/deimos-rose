@@ -89,6 +89,18 @@ run = "bash tools/decomp/find.sh"
 description = "Summarise the exported decomp corpus"
 run = "bash tools/decomp/index.sh"
 
+[tasks."oracle:fetch"]
+description = "Download QuickTime 7.6.9 (checksum-pinned) for the Wine oracle"
+run = "bash tools/oracle/fetch.sh"
+
+[tasks."oracle:prefix"]
+description = "Build a network-isolated Wine prefix that runs the original game"
+run = "bash tools/oracle/prefix.sh"
+
+[tasks."oracle:run"]
+description = "Run the original under Xvfb and screenshot it; args are seconds"
+run = "bash tools/oracle/run.sh"
+
 [tasks."assets:extract"]
 description = "Extract original PAKs into modern formats (PNG/WAV/JSON)"
 depends = ["setup"]

@@ -1,6 +1,7 @@
 # Phase 4 — Deterministic simulation
 
-**Status: readiness assessed; one blocker open.**
+**Status: readiness assessed; oracle blocker resolved — the original now runs
+under Wine (see "Resolved: the original runs"). Next: the gdb trace.**
 
 The exit criterion is that the shipped films replay through the Odin
 simulation to a state trace matching the original. A readiness pass found the
@@ -77,7 +78,7 @@ the original is x87 code (`math_x87.obj`, `ansifp_x86.obj`). Odin computes
 between stores. Over thousands of steps that can diverge. Whether it does is an
 empirical question that needs the reference oracle below.
 
-## Blocker: there is no reference trace
+## Blocker (resolved): there is no reference trace
 
 Films record inputs, not state. Replaying one through our simulation proves
 our simulation is *deterministic*, not that it is *correct*. Proving
@@ -111,3 +112,44 @@ running" under Wine. That was wrong: it was sitting on this dialog.
 The RNG state is the most valuable thing the oracle would provide: if
 `rand.next` matches at every step, every random draw happened in the original
 order, which transitively validates a great deal of behaviour at once.
+
+Path 1 was chosen and has worked; see below.
+
+## Resolved: the original runs
+
+`mise run oracle:fetch && mise run oracle:prefix && mise run oracle:run`
+builds a network-isolated 32-bit Wine prefix and screenshots the original at
+its title menu (1 PLAYER / 2 PLAYER / PREFERENCES / SCORES / DEMOS / QUIT /
+REGISTER). Three findings got it there, each checked with a trace or a
+screenshot:
+
+1. **The obvious install fails.** `QuickTimeInstaller.exe` (7.6.9, SHA-256
+   pinned to winetricks' `c2dcda76…`) run silently, and winetricks'
+   `quicktime76` verb, which runs it the same way, crash in the
+   `QuickTimePostInstallMSIProc_deferred` custom action. The MSI then rolls
+   back every file. Same result on Wine 8.0 and 10.0.
+2. **Copying the files in by hand isn't enough either.** With `msiextract`'s
+   output placed in the prefix and the `QuickTime.qts folder` registry value
+   set, `WINEDEBUG=+module,+seh` shows `QuickTime.qts` loading, looking up
+   `CoreFoundation.dll`, and then jumping to address 0
+   (`ecx=c000007a`, procedure not found). QuickTime 7.6.9 needs Apple
+   Application Support, which the bootstrapper bundles as a separate MSI. That
+   missing DLL is also why the custom action crashed.
+3. **Install `AppleApplicationSupport.msi` first**, then `QuickTime.msi`, and
+   both succeed (rc 0, no rollback). The game then gets past QTML.
+
+After QuickTime, the game needs an audio device. With none, DirectSound fails
+("sound is disabled"), and then the game faults in the Ambrosia SSP music code
+(null read at `0x453a7a`, inside the region named `SSP_IsMusicFading`). A
+PulseAudio null sink in the container fixes it. Running with sound disabled
+would not have skewed the RNG anyway: `U_Sound_Play` makes its random draws
+before touching the device, and skips them only for the `'none'` sound id.
+But the crash makes the question moot.
+
+The shared image (`tools/Containerfile`) moved to Debian trixie (Wine 10) and
+gained `msitools`, `gdb`, `xdotool`, `pulseaudio` and `winetricks`. Installer
+extraction was re-run on the new image, and all files match `game/SHA256SUMS`.
+
+Next: attach `gdb` to the Wine process, break at `G_Film::GetInputs`
+(`0x41e300`) once per step while a demo film plays (DEMOS on the menu), and
+record `rand.next` and player positions into a trace file.

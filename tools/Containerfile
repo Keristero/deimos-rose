@@ -1,9 +1,18 @@
-FROM docker.io/library/debian:bookworm-slim
-RUN dpkg --add-architecture i386 && \
+# Wine toolbox for the original Windows build. Used network-isolated
+# (`podman run --network=none`) for installer extraction and the Phase 4 oracle.
+#
+# trixie for Wine 10. contrib carries winetricks (kept for convenience; its
+# quicktime76 verb does *not* work here -- see src/tools/oracle/prefix.sh).
+# msitools unpacks MSIs natively, gdb/xdotool drive the oracle, and
+# pulseaudio provides a silent null sink so DirectSound can start.
+FROM docker.io/library/debian:trixie-slim
+RUN sed -i 's/^Components: main$/Components: main contrib/' /etc/apt/sources.list.d/debian.sources && \
+    dpkg --add-architecture i386 && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
         wine wine32:i386 wine64 xvfb xauth x11-apps imagemagick \
-        cabextract p7zip-full file ca-certificates && \
+        cabextract p7zip-full file ca-certificates unzip \
+        winetricks msitools gdb xdotool pulseaudio && \
     rm -rf /var/lib/apt/lists/*
 ENV WINEDEBUG=-all
 ENV WINEDLLOVERRIDES=mscoree=d;mshtml=d
