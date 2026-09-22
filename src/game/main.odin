@@ -2,6 +2,9 @@ package game
 
 import "core:fmt"
 import "core:os"
+import "core:slice"
+import "core:strconv"
+import "core:strings"
 import rl "vendor:raylib"
 
 import "dr:data"
@@ -16,55 +19,166 @@ PLAY_H :: 480
 WINDOW_SCALE :: 2
 
 main :: proc() {
+	// Everything comes out of the extracted assets tree. The original
+	// install is needed only to produce it, and by the oracle tooling.
+	root := os.get_env("DR_ASSETS", context.temp_allocator)
+	if root == "" {
+		root = "assets"
+	}
+	defs, report := data.assets_defs_load(root)
+	if len(defs.levels) == 0 {
+		fmt.eprintfln("no level definitions under %v -- run `mise run assets:all`", root)
+		os.exit(1)
+	}
+
 	rl.SetConfigFlags({.VSYNC_HINT, .WINDOW_RESIZABLE})
 	rl.InitWindow(PLAY_W * WINDOW_SCALE, PLAY_H * WINDOW_SCALE, "Deimos Rising")
 	defer rl.CloseWindow()
 	rl.SetTargetFPS(60)
 
-	// Until Phase 5 the game reads the original install directly.
-	provider := data.provider_open(os.get_env("DR_ORIG", context.temp_allocator))
-	defs, _ := data.defs_load(&provider)
+	renderer: Renderer
+	renderer_init(&renderer, root)
+	defer renderer_destroy(&renderer)
 
 	state := new(sim.State)
 	defer free(state)
-	sim.init(state, sim.Session{seed = 0x1234_5678, level_id = sim.level_id("le07"), game_type = .Single}, &defs)
 
+	// DR_FILM=de01 replays a shipped demo instead of taking input, so a
+	// screenshot can be compared with the original stopped at the same step.
+	film: sim.Film
+	playing_film := false
+	if name := os.get_env("DR_FILM", context.temp_allocator); name != "" {
+		bytes, ferr := os.read_entire_file(fmt.tprintf("%s/films/%s.film", root, name), context.allocator)
+		f, perr := data.film_parse(bytes)
+		if ferr != nil || perr != .None {
+			fmt.eprintfln("cannot read film %v: %v/%v", name, ferr, perr)
+			os.exit(1)
+		}
+		film = data.film_to_sim(f)
+		playing_film = true
+		sim.init(state, film.session, &defs)
+	} else {
+		level := defs.levels[0].id // play order: Lucena is level 1
+		sim.init(state, sim.Session{seed = 0x1234_5678, level_id = level, game_type = .Single}, &defs)
+	}
+
+	// DR_SHOT=<path> renders DR_SHOT_AT steps (comma-separated) and writes a
+	// PNG of each, then exits. Running the real thing is the only way to see
+	// whether the compositing is right, and this makes that reviewable
+	// without a desktop session.
+	if shot := os.get_env("DR_SHOT", context.temp_allocator); shot != "" {
+		run_shots(&renderer, state, playing_film ? &film : nil, shot,
+			os.get_env("DR_SHOT_AT", context.temp_allocator))
+		return
+	}
+
+	show_debug := false
 	for !rl.WindowShouldClose() {
-		sim.step(state, gather_input())
+		if rl.IsKeyPressed(.F1) {
+			show_debug = !show_debug
+		}
+		if rl.IsKeyPressed(.F2) {
+			renderer.shadows = !renderer.shadows
+		}
+		sim.step(state, gather_input(), playing_film ? &film : nil)
+		build_frame(&renderer, state)
 
 		rl.BeginDrawing()
-		rl.ClearBackground(rl.Color{12, 14, 22, 255})
-
-		// Placeholder view: entity and player bounds.
-		box :: proc(o: ^sim.Game_Object, c: rl.Color) {
-			b := sim.object_bounds(o)
-			rl.DrawRectangleLines(b.left * WINDOW_SCALE, b.top * WINDOW_SCALE,
-				(b.right - b.left) * WINDOW_SCALE, (b.bottom - b.top) * WINDOW_SCALE, c)
+		rl.ClearBackground(rl.Color{0, 0, 0, 255})
+		present(&renderer, state, WINDOW_SCALE)
+		if show_debug {
+			draw_debug(state, &report)
 		}
-		for used, i in state.world.entity_used {
-			if used {
-				box(&state.world.entities[i].obj, rl.Color{220, 170, 90, 255})
-			}
-		}
-		box(&state.players[0].obj, rl.Color{120, 200, 255, 255})
-
-		rl.DrawText(
-			fmt.ctprintf("frame %v  entities %v  checksum %16x", state.frame, state.world.used_count, sim.checksum(state)),
-			10, 10, 16, rl.Color{150, 160, 180, 255},
-		)
 		rl.EndDrawing()
 	}
+}
+
+// Steps the simulation, capturing the frame at each requested step.
+run_shots :: proc(r: ^Renderer, s: ^sim.State, film: ^sim.Film, path, at: string) {
+	steps := make([dynamic]int, context.temp_allocator)
+	rest := at == "" ? "120" : at
+	for field in strings.split_iterator(&rest, ",") {
+		if v, ok := strconv.parse_int(strings.trim_space(field)); ok {
+			append(&steps, v)
+		}
+	}
+	slice.sort(steps[:])
+	last := len(steps) == 0 ? 0 : steps[len(steps) - 1]
+	next := 0
+	dump := os.get_env("DR_DUMP", context.temp_allocator) != ""
+	for i in 0 ..= last {
+		r.dump = dump && next < len(steps) && steps[next] == i
+		if r.dump {
+			fmt.printfln("step %v draw list:", i)
+		}
+		build_frame(r, s)
+		rl.BeginDrawing()
+		rl.ClearBackground(rl.Color{0, 0, 0, 255})
+		present(r, s, WINDOW_SCALE)
+		rl.EndDrawing()
+		if r.dump {
+			r.dump = false
+		}
+		for next < len(steps) && steps[next] == i {
+			img := rl.LoadImageFromScreen()
+			name := fmt.ctprintf("%s-%04d.png", path, i)
+			rl.ExportImage(img, name)
+			rl.UnloadImage(img)
+			fmt.printfln("wrote %s  (step %v, %v entities)", name, i, s.world.used_count)
+			next += 1
+		}
+		sim.step(s, {}, film)
+	}
+}
+
+draw_debug :: proc(s: ^sim.State, report: ^data.Defs_Report) {
+	rl.DrawText(
+		fmt.ctprintf(
+			"frame %v  time %v  entities %v  scroll %v\nplayer shields %.0f lives %v score %v\ndefs: %v units %v sprites %v levels",
+			s.frame, s.time, s.world.used_count, s.bgnd.view_top,
+			s.players[0].shields, s.players[0].lives, s.players[0].score,
+			report.units, report.sprites, report.levels,
+		),
+		8, 8, 14, rl.Color{150, 230, 150, 255},
+	)
+	for used, i in s.world.entity_used {
+		if !used {
+			continue
+		}
+		b := sim.object_bounds(&s.world.entities[i].obj)
+		rl.DrawRectangleLines(b.left * WINDOW_SCALE, b.top * WINDOW_SCALE,
+			(b.right - b.left) * WINDOW_SCALE, (b.bottom - b.top) * WINDOW_SCALE,
+			rl.Color{220, 170, 90, 120})
+	}
+	b := sim.object_bounds(&s.players[0].obj)
+	rl.DrawRectangleLines(b.left * WINDOW_SCALE, b.top * WINDOW_SCALE,
+		(b.right - b.left) * WINDOW_SCALE, (b.bottom - b.top) * WINDOW_SCALE,
+		rl.Color{120, 200, 255, 160})
 }
 
 // Presentation-side input capture. The simulation never reads a device.
 gather_input :: proc() -> sim.Frame_Input {
 	b: sim.Buttons
-	if rl.IsKeyDown(.LEFT)  || rl.IsKeyDown(.A) { b += {.Left} }
-	if rl.IsKeyDown(.RIGHT) || rl.IsKeyDown(.D) { b += {.Right} }
-	if rl.IsKeyDown(.UP)    || rl.IsKeyDown(.W) { b += {.Up} }
-	if rl.IsKeyDown(.DOWN)  || rl.IsKeyDown(.S) { b += {.Down} }
-	if rl.IsKeyDown(.SPACE)                     { b += {.Fire_Air} }
-	if rl.IsKeyDown(.LEFT_CONTROL)              { b += {.Fire_Ground} }
-	if rl.IsKeyPressed(.LEFT_SHIFT)             { b += {.Change_Air} }
+	if rl.IsKeyDown(.LEFT) || rl.IsKeyDown(.A) {
+		b += {.Left}
+	}
+	if rl.IsKeyDown(.RIGHT) || rl.IsKeyDown(.D) {
+		b += {.Right}
+	}
+	if rl.IsKeyDown(.UP) || rl.IsKeyDown(.W) {
+		b += {.Up}
+	}
+	if rl.IsKeyDown(.DOWN) || rl.IsKeyDown(.S) {
+		b += {.Down}
+	}
+	if rl.IsKeyDown(.SPACE) {
+		b += {.Fire_Air}
+	}
+	if rl.IsKeyDown(.LEFT_CONTROL) {
+		b += {.Fire_Ground}
+	}
+	if rl.IsKeyPressed(.LEFT_SHIFT) {
+		b += {.Change_Air}
+	}
 	return sim.Frame_Input{b, {}}
 }

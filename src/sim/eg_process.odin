@@ -129,6 +129,7 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 	e.colorise = st.do_colorise
 	e.tint_target = f32(st.tint_percent)
 	e.tint_delta = f32(st.tint_delta_percent)
+	e.tint_color = color_1555(st.tint_color)
 	adjust_visibility_and_tinting(&e.obj)
 	e.hittable = true
 	if e.visibility < 100 && !u.hittable_when_invisible {
@@ -138,7 +139,7 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 	e.scale_delta = f32(st.scale_delta_percent) / 100
 	do_scaling(&e.obj)
 	calculate_dimensions(s, &e.obj)
-	// G_GameObject::Glow_Process: the hit glow is presentation.
+	glow_process(&e.obj)
 	if (st.use_owners_visibility || st.use_owners_scale || st.visually_reflect_owner_hits) &&
 	   ref_valid(s, e.owner) {
 		// FUN_0041b5d0: follow the owner's look (the hit glow is presentation).
@@ -730,6 +731,11 @@ sweep_deleted :: proc(s: ^State) {
 			u := unit_of(s, e)
 			if u.include_in_ground_accuracy_count {
 				w.ground_targets -= 1
+			}
+			// The wreck is burned into the map as the entity is swept up, so
+			// it stays where it fell and scrolls with the ground.
+			if u.destruct_draw_to_terrain {
+				stamp_object(s, &e.obj, u.casts_shadows)
 			}
 			if e.destroyed {
 				if state_of(s, e).destroy_owner_on_destruction && ref_valid(s, e.owner) {

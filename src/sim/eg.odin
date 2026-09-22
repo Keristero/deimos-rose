@@ -320,7 +320,7 @@ spawn_entity :: proc(
 	// G_Entity::SetUnitRef.
 	e.unit = ui
 	if u.draw_layer == res_id("hud ") {
-		e.casts_shadow = false
+		e.scrolls_sideways = false
 	}
 	for &st in u.states {
 		if len(st.spawn_sets) > 0 {

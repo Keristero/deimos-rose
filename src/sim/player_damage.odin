@@ -51,7 +51,7 @@ player_hit :: proc(s: ^State, p: ^Player, damage: f32, time: i32) {
 		player_destroy(s, p, time)
 		return
 	}
-	p.glowing = true // Glow_Start with the definition's hit colour
+	glow_start(&p.obj, color_1555(d.hit_glow_color), d.hit_glow_speed, false)
 	if damage <= 0 {
 		return
 	}

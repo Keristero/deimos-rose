@@ -235,6 +235,7 @@ change_state :: proc(s: ^State, e: ^Entity, init: bool, name: string, time: i32)
 		e.tint = f32(st.tint_percent)
 		e.tint_target = f32(st.tint_percent)
 		e.tint_delta = f32(st.tint_delta_percent)
+		e.tint_color = color_1555(st.tint_color)
 		scale := u.initial_scale_percent
 		if tol := u.initial_scale_percent_tolerance; tol != 0 {
 			half := halve(tol)
@@ -448,5 +449,46 @@ entity_flee :: proc(s: ^State, e: ^Entity, flee: Res_ID) {
 	case NONE:
 	case:
 		unported(s, 0x416520) // east/west/random/opposite flees
+	}
+}
+
+// G_GameObject::Glow_Start. `restart` re-triggers a glow already running.
+glow_start :: proc "contextless" (o: ^Game_Object, color: u16, speed: i32, restart: bool) {
+	if o.glowing && !restart {
+		return
+	}
+	o.glowing = true
+	o.glow_falling = true
+	o.glow_amount = 32
+	o.glow_speed = speed
+	o.glow_color = color
+}
+
+// G_GameObject::Glow_Stop.
+glow_stop :: proc "contextless" (o: ^Game_Object) {
+	o.glowing = false
+	o.glow_falling = false
+	o.glow_amount = 0
+}
+
+// G_GameObject::Glow_Process: the blend falls from 32 to 4 and back, and the
+// glow ends when it reaches 32 again.
+glow_process :: proc "contextless" (o: ^Game_Object) {
+	if !o.glowing {
+		return
+	}
+	if o.glow_falling {
+		o.glow_amount -= o.glow_speed
+		if o.glow_amount < 4 {
+			o.glow_amount = 4
+			o.glow_falling = false
+		}
+	} else {
+		o.glow_amount += o.glow_speed
+		if o.glow_amount > 32 {
+			o.glow_amount = 32
+			o.glow_falling = true
+			o.glowing = false
+		}
 	}
 }

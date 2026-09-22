@@ -129,7 +129,7 @@ entity_destroy :: proc(s: ^State, e: ^Entity, player: i32, time: i32) {
 	}
 	u := unit_of(s, e)
 	record_event(s, Event{kind = .Destroy, unit = u.id, number = e.number, loc = e.loc})
-	e.glowing = false
+	glow_stop(&e.obj)
 	if !e.is_air && u.destruct_create_obstacle {
 		debris_new(s, object_bounds(&e.obj))
 	}

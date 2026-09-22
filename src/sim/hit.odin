@@ -53,7 +53,7 @@ entity_hit :: proc(s: ^State, e: ^Entity, damage: f32, player: i32, time: i32) -
 		return dealt
 	}
 	if !st.do_not_glow_on_collision {
-		e.glowing = true // G_GameObject::Glow_Start: presentation
+		glow_start(&e.obj, 0x7fff, 6, false)
 	}
 	if u.hit_particles != NONE {
 		particle_burst(s, e.loc, u.hit_particles_color, u.hit_particles, u.is_ground_based)

@@ -16,6 +16,11 @@ Bgnd :: struct {
 	speed:       i32,  // DAT_004de708: rows per step, 0 while paused
 	finished:    bool, // DAT_004de70c: reached the top of the map
 	scrolled:    i32,  // DAT_004de71e: rows scrolled this step
+	// DAT_004de70d: how far the view has slid sideways, -32..31, and
+	// DAT_004de711, which way it moved this step. Only drawing reads them,
+	// but a player's input moves them, so they belong to the state.
+	side_scroll:     i32,
+	side_scroll_dir: i32,
 }
 
 // Visible play area (perm floats 0x36, 0x37).
@@ -25,6 +30,29 @@ view_width :: proc "contextless" (d: ^Defs) -> i32 {
 
 view_height :: proc "contextless" (d: ^Defs) -> i32 {
 	return trunc_i32(d.perm_floats[PF_VISIBLE_GAME_HEIGHT])
+}
+
+// G_Bgnd_AdjustSideScroll: the view slides one pixel a step while a player
+// holds left or right, to 32 pixels either way, and simply stays where it was
+// left -- there is no recentring. Both players push the same view.
+bgnd_adjust_side_scroll :: proc "contextless" (s: ^State, right: bool) {
+	b := &s.bgnd
+	b.side_scroll_dir = 0
+	if right {
+		b.side_scroll += 1
+		if b.side_scroll < 32 {
+			b.side_scroll_dir = 1
+		} else {
+			b.side_scroll = 31
+		}
+	} else {
+		b.side_scroll -= 1
+		if b.side_scroll < -32 {
+			b.side_scroll = -32
+		} else {
+			b.side_scroll_dir = -1
+		}
+	}
 }
 
 // G_Bgnd_ResetAtLevelStart.

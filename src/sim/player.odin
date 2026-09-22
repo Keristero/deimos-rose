@@ -108,7 +108,7 @@ player_level_reset :: proc (s: ^State, p: ^Player, time: i32) {
 	p.defence_spawned = false
 	weapons_appear(s, &p.weapons, true)
 	p.appeared = false
-	p.glowing = false // Glow_Stop
+	glow_stop(&p.obj) // Glow_Stop
 	p.money = 0       // Money_Reset
 	p.counter = {}    // MoneyCounter_Reset
 	player_shields_reset(s, p, true)
@@ -245,6 +245,7 @@ player_process :: proc(s: ^State, p: ^Player, time: i32, input: Buttons, film: ^
 		p.appeared = false
 	}
 	calculate_dimensions(s, &p.obj)
+	glow_process(&p.obj)
 	if p.state != .Playing {
 		return
 	}
@@ -344,9 +345,12 @@ player_move :: proc(s: ^State, p: ^Player, time: i32) {
 	}
 
 	p.loc += p.vel
-	if left || right {
-		// G_Bgnd_AdjustSideScroll: presentation (the background's sideways
-		// parallax).
+	// Holding left or right slides the view sideways; left wins when both
+	// are held, as in the original's nested test.
+	if left {
+		bgnd_adjust_side_scroll(s, false)
+	} else if right {
+		bgnd_adjust_side_scroll(s, true)
 	}
 
 	w, h := view_width(s.defs), view_height(s.defs)

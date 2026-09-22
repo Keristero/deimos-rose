@@ -96,7 +96,12 @@ list_nth :: proc "contextless" (l: ^List, links: []Link, n: i32) -> i32 {
 Game_Object :: struct {
 	loc:            Vec,    // +0x00
 	vel:            Vec,    // +0x10
-	casts_shadow:   bool,   // +0x18
+	// +0x18: the object moves with the background's horizontal scroll.
+	// Cleared for units whose draw layer is "hud " (G_Entity::SetUnitRef).
+	scrolls_sideways: bool,
+	// +0x38: draws a shadow, from the unit's castsShadows_BOOL. Presentation
+	// only, but it is part of the object's state, so it lives here.
+	casts_shadow:   bool,
 	is_air:         bool,   // +0x19  layer is "air "
 	shadow_scaled:  bool,   // +0x1a  unit's adjustShadowLocForScaling
 	sprite:         Res_ID, // +0x1c
@@ -118,7 +123,13 @@ Game_Object :: struct {
 	visibility:     f32,    // +0x62
 	visibility_target: f32, // +0x66
 	visibility_delta:  f32, // +0x6a
-	glowing:        bool,   // +0x6e
+	// The glow flash: +0x6e on, +0x6f falling, +0x70 blend amount (32 is
+	// invisible, 4 nearly solid), +0x74 speed, +0x78 colour.
+	glowing:        bool,
+	glow_falling:   bool,
+	glow_amount:    i32,
+	glow_speed:     i32,
+	glow_color:     u16,
 	scale:          f32,    // +0x7a
 	scale_target:   f32,    // +0x7e
 	scale_delta:    f32,    // +0x82
@@ -127,6 +138,7 @@ Game_Object :: struct {
 // G_GameObject::SetDefaults.
 object_defaults :: proc "contextless" (o: ^Game_Object) {
 	o^ = Game_Object {
+		scrolls_sideways  = true,
 		casts_shadow      = true,
 		is_air            = true,
 		sprite            = NONE,
