@@ -21,7 +21,9 @@ Particle_Queue :: struct {
 	count:  int,
 }
 
-@(private = "file")
+// The number of particles a burst of this size id spawns; presentation reuses
+// it so its own particle count matches what the RNG draws in particle_burst
+// were actually for.
 particle_count :: proc "contextless" (size: Res_ID) -> i32 {
 	switch size {
 	case res_id("med "), res_id("meci"):

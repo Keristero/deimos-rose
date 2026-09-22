@@ -225,7 +225,7 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 		gap := random_int(&s.rng, st.motion_blur_min_time_between_blurs, st.motion_blur_max_time_between_blurs, 0x418d92)
 		if e.blur_time + gap < time {
 			e.blur_time = time
-			// G_MotionBlur_New: presentation, no draws.
+			blur_spawn(s, &e.obj, st)
 		}
 	}
 	if !u.harmless_to_players && u.is_ground_based && u.can_be_hit_by_player_projectile && st.is_targetable {

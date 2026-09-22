@@ -39,9 +39,14 @@ layer, insertion order.
 | `defa` (air) | 7 | | `plui` | 13 |
 | `ailo` | 7 | | `atmo` | 14 |
 | `aihi` | 8 | | `hud ` | 15 |
-| `plwe` | 9 | | motion blur | 1 |
+| `plwe` | 9 | | | |
 
-An empty or `none` layer becomes `defa`.
+An empty or `none` layer becomes `defa`. `draw_to_terrain` objects (a
+state's `stateDrawToTerrain` -- live tank tracks and craters, not the
+permanent wrecks `destructDrawToTerrain` stamps into the map at destruction)
+skip this switch entirely and always land in layer 1, regardless of
+`drawLayer_ID` -- confirmed against `G_GameObject::Priv_Draw`, not guessed
+from the name.
 
 **One object** draws up to three sprites (`G_GameObject::Priv_Draw`), in order:
 its shadow (when `castsShadow` and the shadows option is on), the sprite
@@ -78,7 +83,10 @@ Two pieces are missing and this phase adds them:
 
 1. **Assets** — frame index, JSON definition loader, `Defs` equality test.
 2. **Renderer** — layers, sprites, terrain scroll, shadows, tint, glow.
-3. **Effects** — particles, debris, motion blur, driven by what the sim emits.
+3. **Effects** — particles, motion blur, driven by what the sim emits. (Debris
+   has no draw of its own in the original — `G_Debris` is a pure collision
+   rectangle, checked against the full decompiled corpus, which has no draw
+   proc for it at all.)
 4. **Interface** — score bar, notices, text.
 5. **Audio** — sound events and music.
 6. **Flow** — title, attract demos, level transitions, game over, pause.
@@ -115,5 +123,16 @@ A `-highrefreshrate` flag presents at the monitor's native refresh rate
 without changing gameplay speed. A `-classic`/`Settings.classic` flag exists
 per D16 for a future fidelity choice to gate on; nothing uses it yet.
 
-Still open: Effects (particles, debris, motion blur), Interface (score bar,
-notices), Audio, Flow.
+**Effects are done.** `sim/blur.odin` and `sim/particles.odin` (already
+present in `sim/destroy.odin`/`eg_process.odin`) emit `Blur_Event`/
+`Particle_Event`s; `game/blur.odin` and `game/particles.odin` turn those into
+drawable state — a motion-blur ghost is a frozen clone of the object that
+fades exactly as `G_MotionBlur_Process` does, while particles fan out and fade
+on a simplified curve rather than the original's exact direction table, since
+particle motion is cosmetic and never feeds back into gameplay or RNG (the
+draw *count* still matches, via the same `particle_count` the RNG burst in
+`sim/destroy.odin` used). Debris needed no draw work — see the Stage 3 note
+above. `oracle:diff` is still exact on all four demos and the test suite is
+green.
+
+Still open: Interface (score bar, notices), Audio, Flow.

@@ -47,6 +47,7 @@ State :: struct {
 	sounds:       Sound_Queue,    // this step's sound events, for presentation
 	particles:    Particle_Queue, // this step's particle bursts, for presentation
 	stamps:       Stamp_Queue,    // this step's marks on the terrain
+	blurs:        Blur_Queue,     // this step's new motion-blur ghosts
 	accuracy_targets:   i32,  // DAT_004e4856
 	accuracy_destroyed: i32,  // DAT_004e485a
 	accuracy_reward_this_level: bool, // DAT_004e4828
@@ -153,6 +154,7 @@ step :: proc(s: ^State, input: Frame_Input, film: ^Film = nil) {
 	s.sounds.count = 0
 	s.particles.count = 0
 	s.stamps.count = 0
+	s.blurs.count = 0
 	if !s.player1_seen_playing && s.players[0].state == .Playing {
 		s.player1_seen_playing = true
 	}

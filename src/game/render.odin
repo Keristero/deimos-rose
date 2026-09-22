@@ -170,7 +170,11 @@ draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shad
 		return {f32(x - sim.halve(w)), f32(y - sim.halve(h)), f32(w), f32(h)}
 	}
 	dst := place(x, y, src, o.scale)
-	layer := layer_of(o.draw_layer, o.is_air)
+	// G_GameObject::Priv_Draw: draw_to_terrain objects skip the drawLayer_ID
+	// switch entirely and always land in layer 1, ahead of the terrain --
+	// live tank tracks and craters (stateDrawToTerrain), not the permanent
+	// wrecks stamp_object burns into the map at destruction.
+	layer := o.draw_to_terrain ? 1 : layer_of(o.draw_layer, o.is_air)
 
 	if r.dump {
 		id := o.sprite
@@ -221,9 +225,12 @@ draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shad
 	}
 }
 
-// FUN_00420740: entities, then both players. Notices and the score bar follow
-// once they are ported.
-build_frame :: proc(r: ^Renderer, s: ^sim.State) {
+// FUN_00420740: entities, both players, then motion blur ghosts. Notices and
+// the score bar follow once they are ported. The original draws motion blur
+// after the players (G_MotionBlur_BuildDrawList runs in Process, ahead of
+// entities and players in the build order); the ordering doesn't matter here
+// since every draw only ever appends to its own layer's list.
+build_frame :: proc(r: ^Renderer, s: ^sim.State, blurs: ^Blurs) {
 	for &l in r.layers {
 		clear(&l)
 	}
@@ -242,10 +249,13 @@ build_frame :: proc(r: ^Renderer, s: ^sim.State) {
 			draw_object(r, s, &p.obj, true)
 		}
 	}
+	for &o in blurs.live {
+		draw_object(r, s, &o, false)
+	}
 }
 
 // Draws what build_frame collected, in the original's order.
-present :: proc(r: ^Renderer, s: ^sim.State, scale: f32) {
+present :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, scale: f32) {
 	run :: proc(r: ^Renderer, lo, hi: int, scale: f32) {
 		for l in lo ..= hi {
 			for it in r.layers[l] {
@@ -261,6 +271,7 @@ present :: proc(r: ^Renderer, s: ^sim.State, scale: f32) {
 	run(r, 0, 1, scale)
 	draw_terrain(r, s, scale)
 	run(r, 2, 5, scale)
+	particles_draw(particles, scale)
 	// particles belong here
 	run(r, 6, 15, scale)
 }
