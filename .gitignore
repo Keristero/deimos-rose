@@ -1,0 +1,11 @@
+# Original and extracted game content is copyrighted and not redistributed.
+/orig/*
+!/orig/SHA256SUMS
+/game/*
+!/game/SHA256SUMS
+
+# Raw CodeView blob is carved straight out of the copyrighted executable.
+/symbols/*.cv
+
+__pycache__/
+*.pyc

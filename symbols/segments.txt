@@ -1,0 +1,11 @@
+# CodeView segment map vs PE sections (imagebase 0x400000)
+# seg  section   rva         vsize     cv_size
+   1   .text     0x00001000  0x0bd756  0x0bd756
+   2   .rdata    0x000bf000  0x003e04  0x003e04
+   3   .exc      0x000c3000  0x00285c  0x00285c
+   4   .data     0x000c6000  0x056554  0x056554
+   5   .CRT      0x0011d000  0x0000cc  0x0000cc
+   6   .rsrc     0x0011e000  0x004f5c  0x004f5c
+   7   .idata    0x00123000  0x001ce6  0x001ce6
+   8   .bss      0x00125000  0x008dbb  0x008dbb
+   9   .reloc    0x0012e000  0x00a8cc  0xffffffff
