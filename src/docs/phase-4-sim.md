@@ -301,12 +301,92 @@ Findings along the way:
   executable (`mise run decomp:sites`). Porting them all is the measurable
   scope of this phase.
 
-Code not yet ported calls `unported(site)`; `oracle:diff` reports the first
-site reached. Status now:
+Code not yet ported calls `unported(site)`; `oracle:diff` reports every site
+reached. Status now:
 
 ```
-de01  calls matched 55 / 42447   next: player movement and weapons (plbo at step 89)
-de02  calls matched 55 / 81185
-de03  calls matched 48 / 112287  next: canBeSpawnedOnlyWhenPlayersActive
-de04  calls matched 55 / 95085
+de01  calls matched 42446 / 42447 (100.0%)   4809 frames
+de02  calls matched 81184 / 81185 (100.0%)   8357 frames
+de03  calls matched 112286 / 112287 (100.0%) 10058 frames
+de04  calls matched 95085 / 95085 (100.0%)   5649 frames
 ```
+
+All four shipped demos replay through the port making exactly the original's
+random calls, in the same order, with the same bounds, from the same call
+sites, for every frame of the film. The one leftover call in three of them is
+the nag draw at the top of `G_Game_Play`, made when the original starts the
+*next* demo -- past the end of the film, so outside the replay. No
+`unported` site is reached during any demo.
+
+That is the phase's acceptance test: the RNG is a hash of every gameplay
+decision, so agreeing on all 95,085 calls of de04 means the simulation took
+the same path through the same code for 5,649 frames.
+
+## Debugging technique
+
+Three layers, each finding what the one above cannot:
+
+1. **Call diff** -- which random call first differs, named by the original's
+   call site. Says *when* and *what code*, not *why*.
+2. **Event diff** (`DETAIL=1`) -- spawns, state changes, sounds and spawn
+   control, compared in order. Names the entity and the unit.
+3. **Player snapshots** -- the decoded shields, money, lives, score,
+   multiplier and position of both players at the top of every step. Values
+   like shields drift silently for thousands of frames before anything about
+   them reaches the RNG, so this is what catches a wrong rule rather than a
+   wrong calculation.
+
+Layer 3 found the last two divergences. Both were cases where the port did
+*more* than the original:
+
+- **Priv_Appear granted invulnerability and refilled shields.** It does
+  neither. A player is invulnerable only from the moment it is destroyed
+  until `entry_invulnerability_time` after it reappears, and one that merely
+  entered the level was never invulnerable at all. Ours ignored early damage,
+  so its shields stayed high all level and it never crossed the warning
+  threshold that spawns the warning notice.
+- **Two "unported" markers were false.** `FUN_0041c1b0` does nothing at all
+  for an air, ground or special weapon pickup beyond refusing it while the
+  player is invulnerable; the weapon changes later, when the player presses
+  Change_Air, in `G_WeaponHandler::Process`. A false gap is worse than none:
+  it excuses a real divergence.
+
+## Findings, second half
+
+- **Level end.** The accuracy tally (`FUN_00420930` sets it up, `FUN_00420d90`
+  runs eleven states) and then each player's money counter, converting money
+  to score at a per-level multiplier. Both are mostly presentation, but both
+  call `Score_Adjust`, which awards a life, which spawns. States 9 and 10 are
+  the perfect-game bonus, reached only when every level of the list was
+  finished at 100%.
+- **Two U_Sound_Play overloads.** The settings form draws pitch and volume
+  from the gameplay RNG; the `(id, priority, volume, loop)` form, which the
+  tally uses, does not. Using the wrong one inserts phantom draws.
+- **Accuracy reward.** Finishing a level at 100% sets a flag that the *next*
+  level start turns into "one bonus pickup is owed", once.
+- **Sprite quantisation.** The original measures a frame after quantising the
+  plate in an 8-bit GWorld, so the scanner has to compare colour-cube
+  quantised colours. Before that, GLOW measured 49x92 instead of 49x49. All
+  1,037 frames now match.
+
+## What is not ported
+
+Nothing the demos reach. These sites remain, all on paths the four films
+never take, and each is marked in the source:
+
+- notices that play sounds (`0x415328`, `0x41cdf0`)
+- the auxiliary weapon list, ground power-up and auxiliary spawns
+  (`0x447130`, `0x44741a`, `0x448590`)
+- game over (`0x42037a`) and the between-levels transition (`FUN_004207f0`,
+  which runs outside the game step and starts the next level)
+- east/west/random/opposite flees (`0x416520`)
+- spawn headings that hunt the closest player, burst or implode, or come
+  from the owner's sprite (`0x41c8f0`, `0x41c9a0`, `0x41ca5c`)
+- the sprite a weapon pickup shows for the weapon it carries (`0x41377e`)
+- `U_Sound_IsPlaying` as a rule condition (`0x418614`): needs a model of how
+  long a sound lasts
+- an entity whose first state is Delete or Destroy (`0x41ab1c`)
+
+They matter for real play, not for the demos, and each needs its own
+evidence. The way to get it is a recorded film of live play that exercises
+the path, traced the same way.

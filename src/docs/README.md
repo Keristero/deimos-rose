@@ -10,7 +10,7 @@ do, and which decisions are still open.
 | 1 — Asset pipeline | **complete** | [phase-1-assets.md](phase-1-assets.md) |
 | 2 — Decomp corpus | **complete** | [phase-2-decomp.md](phase-2-decomp.md) |
 | 3 — Definition & data layer | **complete** | [phase-3-data.md](phase-3-data.md) |
-| 4 — Deterministic simulation | **in progress — original runs under Wine; building gdb trace** | [phase-4-sim.md](phase-4-sim.md) |
+| 4 — Deterministic simulation | **complete** — all four shipped demos replay call for call (42,446 / 81,184 / 112,286 / 95,085 random calls) | [phase-4-sim.md](phase-4-sim.md) |
 | 5 — Presentation | not started | |
 | 6 — Netplay | not started | |
 

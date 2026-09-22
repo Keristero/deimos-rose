@@ -31,6 +31,9 @@ Player :: struct {
 	multiplier:    i32,          // +0xaa
 	multiplier_entity: i32,      // +0xae the icon's unique entity number
 	invulnerable:  bool,         // +0xca
+	// +0xcb: invulnerability that does not wear off. Only the console
+	// cheat in FUN_00421970 sets it; the end of a level does not.
+	invulnerable_always: bool,
 	shield_warned: bool,         // +0xcd
 	hit_time:      i32,          // +0x1fd
 	hit_spawn_time: i32,         // +0x201
@@ -105,6 +108,11 @@ player_level_reset :: proc (s: ^State, p: ^Player, time: i32) {
 	p.defence_spawned = false
 	weapons_appear(s, &p.weapons, true)
 	p.appeared = false
+	p.glowing = false // Glow_Stop
+	p.money = 0       // Money_Reset
+	p.counter = {}    // MoneyCounter_Reset
+	player_shields_reset(s, p, true)
+	overload_clear(p)
 	player_reset_sprite(s, p)
 	calculate_dimensions(s, &p.obj)
 	player_reset_position(s, p)
@@ -139,12 +147,12 @@ player_appear :: proc(s: ^State, p: ^Player, time: i32) {
 	player_reset_sprite(s, p)
 	calculate_dimensions(s, &p.obj)
 	player_reset_position(s, p)
-	p.overloaded = false
-	player_shields_reset(s, p, true)
-	p.invulnerable = true // entry invulnerability
-	p.colorise = false
-	p.tint, p.tint_target, p.tint_delta = 0, 0, 0
-	p.tint_color = 0x7fff
+	// The overload state is cleared here, but not the shields and not
+	// invulnerability: a player is invulnerable from the moment it is
+	// destroyed until entry_invulnerability_time after it reappears, and
+	// one that simply entered the level was never invulnerable at all.
+	overload_clear(p)
+	p.crosshair_reach = 0
 	p.appeared = true
 	p.state, p.state_time = .Playing, time
 	p.visibility = s.defs.perm_floats[PF_PLAYER_APPEARS_INITIAL]
@@ -178,7 +186,28 @@ player_process_state :: proc(s: ^State, p: ^Player, time: i32) {
 			player_appear(s, p, time)
 		}
 	case .Dying:
-		unported(s, 0x435620)
+		// The last life lingers longer before the game is over.
+		wait := p.lives == 1 ? d.final_dying_time : d.dying_time
+		if wait + p.state_time >= time {
+			break
+		}
+		// A life is only spent once player 1 has actually been in play.
+		if s.player1_seen_playing && p.active {
+			p.lives = max(p.lives - 1, 0)
+		}
+		if p.lives <= 0 {
+			p.state, p.state_time = .Gone, time
+			break
+		}
+		player_appear(s, p, time)
+		player_shields_reset(s, p, true)
+	case .Playing:
+		// Entry invulnerability wears off; the kind granted at the end of
+		// a level does not.
+		if p.invulnerable && !s.level_ending && !p.invulnerable_always &&
+		   d.entry_invulnerability_time + p.state_time < time && p.active {
+			p.invulnerable = false
+		}
 	}
 }
 

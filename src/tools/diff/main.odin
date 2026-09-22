@@ -281,6 +281,20 @@ main :: proc() {
 		}
 
 		if div, bad := d.first.?; bad {
+			// The trace runs on past the film: when the demo ends the
+			// original starts the next session, whose first act is the nag
+			// draw at the top of G_Game_Play. The replay stops with the
+			// film, so calls left over at a step beyond its last frame are
+			// out of scope, not a disagreement.
+			after_film := false
+			if w, ok := div.want.?; ok && div.got == nil {
+				after_film = int(w.frame) > len(film.frames)
+			}
+			if after_film {
+				fmt.printfln("    matched the original to the last frame of the film;" +
+					" %d later call(s) belong to the next demo", len(t.calls) - div.index)
+				continue
+			}
 			failures += 1
 			fmt.printfln("    first divergence at call %d", div.index)
 			fmt.printfln("      original:   %s", describe(syms, div.want))

@@ -205,13 +205,14 @@ player_collect :: proc(s: ^State, p: ^Player, e: ^Entity) -> bool {
 	u := unit_of(s, e)
 	switch u.pickup_type {
 	case res_id("air "), res_id("grnd"):
-		// Weapon pickups are ignored while invulnerable.
+		// An invulnerable player leaves a weapon pickup where it is.
+		// Collecting one only destroys it: the weapon itself changes when
+		// the player presses Change_Air, in G_WeaponHandler::Process.
 		if p.invulnerable {
 			return false
 		}
-		unported(s, 0x41c1e0) // weapon pickup: ChangeWeapon
 	case res_id("spec"):
-		unported(s, 0x41c220) // special weapon pickup
+		// Collected and destroyed, with no other effect (FUN_0041c1b0).
 	case res_id("shie"):
 		player_shields_add(s, p, f32(u.pickup_value))
 	case res_id("exli"):
@@ -282,7 +283,7 @@ player_overload_process :: proc(s: ^State, p: ^Player, time: i32) {
 	p.tint_color = color_1555(d.powerup_overload_hilite)
 }
 
-@(private = "file")
+// G_Player::PowerupOverload_Reset.
 overload_clear :: proc "contextless" (p: ^Player) {
 	p.overloaded = false
 	p.overload_rising = false

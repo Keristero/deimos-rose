@@ -131,3 +131,30 @@ film_reads_stamp_draws_with_the_trace_step_number :: proc(t: ^testing.T) {
 	}
 	testing.expect_value(t, log.frame, u32(1))
 }
+
+@(test)
+trace_parses_player_snapshots :: proc(t: ^testing.T) {
+	// Detail traces carry the player's own state at the top of each step,
+	// decoded from the original's offset-by-a-constant storage.
+	films, _, err := oracle.trace_parse(
+		"S 11 7\n" +
+		"E 11 player_process player=0 state=4 x=208.5 y=330 shields=62.5 money=13 " +
+		"lives=2 score=4500 mult=3 warned=1\n" +
+		"I 11 0 1\n")
+	defer oracle.trace_destroy(films)
+	testing.expect_value(t, err, oracle.Trace_Error.None)
+	testing.expect_value(t, len(films), 1)
+	testing.expect_value(t, len(films[0].players), 1)
+	p := films[0].players[0]
+	testing.expect_value(t, p.player, i32(0))
+	testing.expect_value(t, p.state, i32(4))
+	testing.expect_value(t, p.loc, sim.Vec{208.5, 330})
+	testing.expect_value(t, p.shields, f32(62.5))
+	testing.expect_value(t, p.money, i32(13))
+	testing.expect_value(t, p.lives, i32(2))
+	testing.expect_value(t, p.score, i32(4500))
+	testing.expect_value(t, p.mult, i32(3))
+	testing.expect(t, p.warned, "the shield warning flag must survive parsing")
+	// The snapshot belongs to the step it precedes: no film read yet.
+	testing.expect_value(t, p.frame, u32(0))
+}

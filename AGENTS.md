@@ -33,10 +33,26 @@ assumption. Check before building on it.
   real cause, a missing Apple Application Support MSI, only showed up in a
   `+module,+seh` trace. When an installer fails, trace the failing load
   instead of retrying variations of the same install.
+- A port that is "missing something" is usually doing *too much*. Both of the
+  last divergences in Phase 4 were code the port added: invulnerability the
+  original never granted, and an `unported()` marker on a function that in
+  fact does nothing. Before adding a mechanism, check the original is not
+  simply silent there.
+
+**A false gap is worse than no gap.** `unported(site)` tells the diff that a
+divergence beyond that point is expected, so a marker on code that does
+nothing hides a real bug. Only mark a site after reading what it does.
 
 The cost of checking is minutes. The cost of not checking is a phase built on
 sand. When a claim matters, find the bytes that prove it and put the evidence
 in the commit message or the phase doc.
+
+**Compare state, not just behaviour.** The call diff says when a divergence
+happened; the event diff says which entity; only a snapshot of the state
+itself — shields, money, lives, position, step by step — says why. Values
+drift silently for thousands of frames before they reach the RNG, so the
+first *observable* difference is usually far from the cause. Extend the
+oracle to record whatever you are guessing about; it is cheaper than guessing.
 
 **Look at the output.** The sprite inversion was caught by opening the PNG, not
 by reading code, and the QuickTime failure by taking a screenshot rather than

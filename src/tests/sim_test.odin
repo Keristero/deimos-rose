@@ -162,3 +162,49 @@ list_cursor_survives_deletion :: proc(t: ^testing.T) {
 	testing.expect_value(t, l.count, i32(3))
 	testing.expect_value(t, l.head, i32(1))
 }
+
+@(test)
+level_end_tally_scores_the_ground_accuracy :: proc(t: ^testing.T) {
+	// FUN_00420930: the bonus tier steps down from 100% by whole multiples
+	// of perm float 0xbc, and is multiplied by the level number. The
+	// countdown step is 2% of the total but never below perm float 0xc7.
+	defs := synthetic_defs()
+	defs.perm_floats[0xbc] = 5 // the gap between tiers
+	tiers := [6]f32{5000, 2000, 1000, 500, 250, 0}
+	for v, i in tiers {
+		defs.perm_floats[0xbd + i] = v
+	}
+	defs.perm_floats[0xc7] = 100  // smallest step
+	defs.perm_floats[0xc8] = 0.02 // 2% of the bonus per tick
+	s := new(sim.State)
+	defer free(s)
+	sim.init(s, sim.Session{seed = 3, level_id = sim.level_id("le01"), game_type = .Single}, defs)
+	s.accuracy_targets, s.accuracy_destroyed = 50, 47 // 94%
+	sim.level_end_step(s, s.time)
+	testing.expect(t, s.level_ending, "the level must be marked as ending")
+	testing.expect_value(t, s.level_end.percent, i32(94))
+	// 94% is under 95 but not under 90, so the third tier.
+	testing.expect_value(t, s.level_end.bonus, i32(1000))
+	testing.expect_value(t, s.level_end.bonus_step, i32(100))
+	testing.expect_value(t, s.level_end.state, i32(1))
+	testing.expect(t, s.players[0].invulnerable, "players are safe once the level is over")
+}
+
+@(test)
+money_counter_converts_money_at_the_level_multiplier :: proc(t: ^testing.T) {
+	defs := synthetic_defs()
+	defs.perm_floats[0xaa] = 0 // do not scale the multiplier by the level
+	defs.perm_floats[0xab] = 5
+	defs.perm_floats[0xc7] = 1
+	defs.perm_floats[0xc8] = 0.02
+	s := new(sim.State)
+	defer free(s)
+	sim.init(s, sim.Session{seed = 3, level_id = sim.level_id("le01"), game_type = .Single}, defs)
+	p := &s.players[0]
+	p.money = 10
+	testing.expect(t, sim.money_counter_start(s, p, s.time, false))
+	testing.expect(t, sim.money_counter_active(p))
+	testing.expect_value(t, p.counter.value, i32(50))
+	testing.expect_value(t, p.counter.step, i32(1)) // 2% of 50, floored at 1
+	testing.expect_value(t, p.counter.money, i32(10))
+}
