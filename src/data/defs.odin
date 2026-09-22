@@ -17,6 +17,8 @@ Defs_Report :: struct {
 	missing:     int, // keys a struct declares that a record did not supply
 	malformed:   int, // values that did not parse as the field's type
 	perm_floats: int,
+	sprites:     int,
+	bad_plates:  int,
 }
 
 // Fills `dst` from `fields` by each field's `dr` tag. Absent keys keep the
@@ -136,6 +138,50 @@ defs_load :: proc(p: ^Resource_Provider, allocator := context.allocator) -> (def
 	}
 	defs.units = units[:]
 	report.units = len(units)
+
+	// Sprite groups: every upper-case im08 id is an alpha plate.
+	sprites := make([dynamic]sim.Sprite, allocator)
+	for e, n in p.entries {
+		key := e.key
+		if key.type != fourcc_from("im08") {
+			continue
+		}
+		if i, ok := p.index[key]; !ok || i != n {
+			continue
+		}
+		upper := true
+		for c in key.id {
+			if c >= 'a' && c <= 'z' {
+				upper = false
+			}
+		}
+		if !upper {
+			continue
+		}
+		body, owned, err := resource_get(p, "im08", fourcc_string(&key.id), context.temp_allocator)
+		if err != .None {
+			continue
+		}
+		_ = owned
+		g, gerr := gif_decode(body, context.temp_allocator)
+		if gerr != .None {
+			report.bad_plates += 1
+			continue
+		}
+		frames, perr := plate_frames(g.pixels, g.width, g.height, context.temp_allocator)
+		if perr != .None {
+			report.bad_plates += 1
+			continue
+		}
+		spr := sim.Sprite{id = sim.res_id_lower(sim.Res_ID(key.id))}
+		spr.frames = make([]sim.Sprite_Frame, len(frames), allocator)
+		for f, i in frames {
+			spr.frames[i] = {i32(f.width), i32(f.height)}
+		}
+		append(&sprites, spr)
+	}
+	defs.sprites = sprites[:]
+	report.sprites = len(sprites)
 
 	// flli "gafl": 220 floats read positionally (FUN_004383b0).
 	if body, owned, err := resource_get(p, "flli", "gafl", context.temp_allocator); err == .None {

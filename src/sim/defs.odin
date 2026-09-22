@@ -54,8 +54,22 @@ Unit :: struct {
 PERM_FLOATS :: 220 // flli "gafl"
 PERM_OBJECTS :: 40 // idli "gaob"
 
+// One frame of a sprite group: the trimmed box from its alpha plate
+// (data/sprite_plate.odin). Only the size matters to the simulation.
+Sprite_Frame :: struct {
+	width, height: i32,
+}
+
+// Sprite groups are keyed by the lower-cased id: U_Sprite_Load cuts the
+// upper-cased alpha plate, and unit data names sprites in lower case.
+Sprite :: struct {
+	id:     Res_ID,
+	frames: []Sprite_Frame,
+}
+
 Defs :: struct {
 	units:        []Unit,
+	sprites:      []Sprite,
 	perm_floats:  [PERM_FLOATS]f32,
 	perm_objects: [PERM_OBJECTS]Res_ID,
 }
@@ -67,6 +81,23 @@ unit_find :: proc "contextless" (d: ^Defs, id: Res_ID) -> ^Unit {
 		}
 	}
 	return nil
+}
+
+sprite_find :: proc "contextless" (d: ^Defs, id: Res_ID) -> ^Sprite {
+	key := res_id_lower(id)
+	for &s in d.sprites {
+		if s.id == key {
+			return &s
+		}
+	}
+	return nil
+}
+
+res_id_lower :: proc "contextless" (id: Res_ID) -> (out: Res_ID) {
+	for c, i in id {
+		out[i] = c >= 'A' && c <= 'Z' ? c + 32 : c
+	}
+	return
 }
 
 // State lookup by name, as G_Entity::ChangeState does it: a linear scan in

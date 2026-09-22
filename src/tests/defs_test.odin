@@ -81,6 +81,30 @@ defs_load_from_the_original :: proc(t: ^testing.T) {
 	testing.expect_value(t, r.perm_floats, sim.PERM_FLOATS)
 	testing.expect_value(t, defs.perm_objects[0], sim.res_id("pl01"))
 
+	// Every alpha plate cuts, and every sprite-using state's frame range fits
+	// inside its sprite. ZBLI is three 42x42 glows.
+	testing.expect_value(t, r.sprites, 125)
+	testing.expect_value(t, r.bad_plates, 0)
+	zb := sim.sprite_find(&defs, sim.res_id("zbli"))
+	testing.expect(t, zb != nil && len(zb.frames) == 3)
+	if zb != nil && len(zb.frames) > 0 {
+		testing.expect_value(t, zb.frames[0], sim.Sprite_Frame{42, 42})
+	}
+	over := 0
+	for &u in defs.units {
+		for &s in u.states {
+			if s.sprite_face == sim.NONE {
+				continue
+			}
+			spr := sim.sprite_find(&defs, s.sprite_face)
+			need := int(max(s.sprite_frame_max, s.num_directions * s.frames_per_direction - 1))
+			if spr == nil || need >= len(spr.frames) {
+				over += 1
+			}
+		}
+	}
+	testing.expect_value(t, over, 0)
+
 	// Spot values the reference trace shows the original using: the first
 	// placement-level state timer in de01 is RandomInt(40, 40).
 	u := sim.unit_find(&defs, sim.res_id("01b1"))
@@ -92,4 +116,25 @@ defs_load_from_the_original :: proc(t: ^testing.T) {
 		testing.expect_value(t, u.states[0].on_timer_max, i32(40))
 	}
 	log.infof("defs: %d units, %d missing keys", r.units, r.missing)
+}
+
+@(test)
+plate_frames_cuts_boxes_and_trims_background :: proc(t: ^testing.T) {
+	// 9x5 plate: marker 1, background 0. Row 1 and column 0 are borders
+	// (column 0 carries the separator markers), two boxes split by column 4.
+	M, B, X :: u8(1), u8(0), u8(7)
+	px := []u8 {
+		2, M, 3, B, B, B, B, B, B,
+		M, M, M, M, M, M, M, M, M,
+		B, B, X, B, M, B, B, B, M,
+		B, B, X, X, M, B, X, B, M,
+		M, M, M, M, M, M, M, M, M,
+	}
+	frames, err := data.plate_frames(px, 9, 5, context.temp_allocator)
+	testing.expect_value(t, err, data.Plate_Error.None)
+	testing.expect_value(t, len(frames), 2)
+	if len(frames) == 2 {
+		testing.expect_value(t, frames[0], data.Plate_Frame{x = 2, y = 2, width = 2, height = 2})
+		testing.expect_value(t, frames[1], data.Plate_Frame{x = 6, y = 3, width = 1, height = 1})
+	}
 }
