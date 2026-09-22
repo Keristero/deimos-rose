@@ -58,6 +58,7 @@ State :: struct {
 	player1_seen_playing: bool, // FUN_00420280's first argument
 	level_ending: bool,         // DAT_004e4855
 	game_over:    bool,         // DAT_004e4826: no player left in the game
+	game_over_notice: bool,     // FUN_00420280's third argument: the game-over banner has been spawned
 	level_end:    Level_End,
 	// The first original function reached that is not ported yet, by
 	// address; 0 while the port covers everything run so far. `gaps` keeps
@@ -149,6 +150,25 @@ level_start :: proc(s: ^State) {
 	}
 }
 
+// Moves to the next level in list order once level_end.complete is true and
+// this was not the last one (level_end.all_done), keeping the session's
+// score/money the same way the original does: G_LevelSelect_GetStartingLevelID
+// -FromUser only ever picks the *first* level of a new session
+// (G_LevelSelect_IsRunning has one caller, the title flow) -- levels within a
+// session always play in list order, so there is nothing to choose here.
+// `defs.levels` is ordered by number and level_number is 1-based, so the next
+// entry is simply the array index at the current number.
+level_advance :: proc(s: ^State) -> bool {
+	next := int(s.level_number)
+	if next >= len(s.defs.levels) {
+		return false
+	}
+	s.level = &s.defs.levels[next]
+	s.level_number = s.level.number
+	level_start(s)
+	return true
+}
+
 // One game step: FUN_00420280, then the game-time advance in G_Game_Play.
 // `input` drives live play; with a film, players read the film instead,
 // one frame per step they spend in play.
@@ -178,7 +198,31 @@ step :: proc(s: ^State, input: Frame_Input, film: ^Film = nil) {
 	}
 	if !any_in_game {
 		s.game_over = true
-		unported(s, 0x42037a) // game over
+		// FUN_00420280 LAB_0042037a: the first step no player is left in
+		// game spawns the Notice_GameOver banner (perm object 0x18) once, at
+		// screen centre -- the same position formula level_end_begin uses
+		// for Notice_LevelEnd/AllLevelsCompleted. Confirmed 0x18 is
+		// Notice_GameOver, not guessed: assets/data/idli/gaob.json lists
+		// perm objects in order, and index 0x16 Notice_LevelEnd / 0x17
+		// Notice_AllLevelsCompleted / 0x18 Notice_GameOver / 0x19
+		// RandomBonus_1 lines up exactly with level_end.odin's own 0x16/0x17
+		// and destroy.odin's 0x19..0x22 RandomBonus comment. This spawn
+		// draws from the RNG like any other, so a real session that runs out
+		// of lives needs it for the replay to stay in sync -- no shipped
+		// demo film reaches game over, so oracle:diff never exercised this
+		// gap before.
+		if !s.game_over_notice {
+			notice := s.defs.perm_objects[0x18]
+			if notice != NONE {
+				req := spawn_request(notice)
+				req.loc = {
+					s.defs.perm_floats[PF_VISIBLE_GAME_WIDTH] / 2,
+					s.defs.perm_floats[PF_VISIBLE_GAME_HEIGHT] / 2,
+				}
+				eg_request_spawn(s, req)
+			}
+			s.game_over_notice = true
+		}
 	}
 	if bgnd_process(s) {
 		level_end_step(s, s.time)
