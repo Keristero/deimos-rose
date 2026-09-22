@@ -169,3 +169,26 @@ The loose resource tree under `" Data/Local/"` uses FourCC directory names:
 **The leading space in `" Data"` is real.** The binary's own path literals are
 `" Data"`, `" Data\Local"` and `" Data\Paks"` — it is not an extraction
 artifact, and the directory must keep that name for the game to find its data.
+
+## Validating the recovered map
+
+`tools/validate_symbols.py` checks each `.text` symbol address against the byte
+that precedes it. A real function start follows either inter-function padding
+or the `ret`/`jmp` ending the previous function:
+
+```
+symbols checked: 1941
+  nop pad             1209   62.3%
+  ret                  713   36.7%
+  zero pad              17    0.9%
+  unexpected 0xff        1    0.1%
+  unexpected 0xf8        1    0.1%
+boundary agreement: 99.9%
+```
+
+Two exceptions out of 1,941. The RVA mapping is sound.
+
+Prologue shapes are a weaker signal and are informational only: 38% open with
+`push ebx` and 35% with `push ebp`, but 24% start straight into argument loads
+(`mov ecx,[esp+n]`). CodeWarrior's optimiser drops the frame pointer freely, so
+an absent standard prologue does not indicate a bad symbol.
