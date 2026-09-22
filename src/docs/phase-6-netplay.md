@@ -58,9 +58,13 @@ the only place a `Frame_Input` is either read from a device or handed to
    the real input arrives, trigger rollback-and-resimulate from the ring.
 4. **Desync detection** — periodic `sim.checksum()` exchange between peers;
    surfaced somewhere visible rather than silently ignored.
-5. **Lobby** — host/join by address, ready-up, ping display. Almost certainly
-   another `Flow_Mode`-shaped state layered in front of the existing
-   `game/flow.odin` states rather than a separate system.
+5. **Lobby** — host/join by address, ready-up, ping display. Another
+   `Flow_Mode`-shaped state layered in front of the existing `game/flow.odin`
+   states rather than a separate system. **Deferred until Phase 7 (faithful
+   menu recreation) lands**: the project owner asked for all menus, old and
+   new, to share one visual style, and for new (netplay-only) items to be
+   hidden under `-classic` — building the lobby ahead of that button/plate
+   system would mean redoing it. See `phase-7-faithful-menus.md` stage 6.
 6. **Two-machine playtest** — the phase's actual exit criterion, run for
    real rather than simulated loopback.
 
@@ -188,4 +192,7 @@ fake network already proven to converge, and asserts neither monitor ever
 false-positives -- the two peers really do agree the whole way through, not
 just at the final checksum. `mise run ci` is green (85 tests).
 
-Stages 5-6 (lobby, two-machine playtest) are unstarted.
+Stages 5-6 (lobby, two-machine playtest) are unstarted; stage 5 is deferred
+until Phase 7 (faithful menu recreation) delivers the button/plate system the
+lobby will be built on, per the project owner's direction that old and new
+menus share one visual style.

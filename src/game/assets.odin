@@ -38,6 +38,7 @@ Textures :: struct {
 	assets:  data.Assets,
 	plates:  map[sim.Res_ID]Plate,
 	terrain: map[string]rl.Texture2D, // by im16 image id
+	images:  map[string]rl.Texture2D, // by im16 image id -- menu backgrounds, not level-tied
 	sounds:  map[sim.Res_ID]Sound_Clip,
 	music:   map[string]rl.Music, // by the level's own music id, e.g. "mu03"
 }
@@ -52,6 +53,7 @@ textures_load :: proc(t: ^Textures, root: string, audio: bool = true) {
 	t.assets = data.assets_open(root)
 	t.plates = make(map[sim.Res_ID]Plate, len(t.assets.sprites))
 	t.terrain = make(map[string]rl.Texture2D)
+	t.images = make(map[string]rl.Texture2D)
 	for &p in t.assets.sprites {
 		path := fmt.ctprintf("%s/%s", root, p.image)
 		tex := rl.LoadTexture(path)
@@ -87,6 +89,9 @@ textures_unload :: proc(t: ^Textures) {
 	for _, tex in t.terrain {
 		rl.UnloadTexture(tex)
 	}
+	for _, tex in t.images {
+		rl.UnloadTexture(tex)
+	}
 	for _, clip in t.sounds {
 		for i in 1 ..< SOUND_VOICES {
 			rl.UnloadSoundAlias(clip.voices[i])
@@ -98,6 +103,7 @@ textures_unload :: proc(t: ^Textures) {
 	}
 	delete(t.plates)
 	delete(t.terrain)
+	delete(t.images)
 	delete(t.sounds)
 	delete(t.music)
 }
@@ -138,6 +144,22 @@ terrain_texture :: proc(t: ^Textures, level: sim.Res_ID) -> (rl.Texture2D, bool)
 		return {}, false
 	}
 	t.terrain[media.background] = tex
+	return tex, true
+}
+
+// A full-screen im16 image not tied to any level (menu backgrounds: "back",
+// "lese", …), loaded once and cached by name -- the same lazy-load pattern
+// terrain_texture uses, minus the per-level media indirection.
+menu_image :: proc(t: ^Textures, id: string) -> (rl.Texture2D, bool) {
+	if tex, ok := t.images[id]; ok {
+		return tex, true
+	}
+	path := fmt.ctprintf("%s/images/im16/%s.png", t.root, id)
+	tex := rl.LoadTexture(path)
+	if tex.id == 0 {
+		return {}, false
+	}
+	t.images[id] = tex
 	return tex, true
 }
 

@@ -312,3 +312,12 @@ per state in `flow.odin`/`main.odin`).
 
 Phase 5's exit criterion — playable single-player from the title screen to
 the end of the last level — is met.
+
+**Reopened.** The plain-text stand-in described above (D18) was a deliberate
+placeholder, not a final choice, and the project owner has since asked for the
+original's actual menus (title/main menu, level select, credits, high scores,
+pause) to be faithfully recreated instead — see D21 and
+[phase-7-faithful-menus.md](phase-7-faithful-menus.md), which supersedes this
+phase's Flow/menu work without reopening the simulation-facing parts of Phase
+5 (`oracle:diff`, the fixed-step loop, the game-over spawn fix) that this note
+sits below.

@@ -46,13 +46,15 @@ Flow :: struct {
 	sim_film:   sim.Film,     // aliases film.frames; what sim.step actually reads
 	end_timer:  i32,          // steps spent on the current Game_Over/Complete screen
 	last_level: sim.Level_ID, // the level music_track was last started for
+	main_menu:  Main_Menu,    // Phase 7: the faithfully-recreated title screen
 }
 
-flow_init :: proc(fl: ^Flow, root: string, defs: ^sim.Defs, state: ^sim.State) {
+flow_init :: proc(fl: ^Flow, root: string, defs: ^sim.Defs, state: ^sim.State, r: ^Renderer) {
 	fl.root = root
 	fl.defs = defs
 	fl.state = state
 	fl.mode = .Title
+	main_menu_init(&fl.main_menu, &r.textures)
 }
 
 flow_destroy :: proc(fl: ^Flow) {
@@ -69,13 +71,9 @@ flow_destroy :: proc(fl: ^Flow) {
 flow_handle_input :: proc(fl: ^Flow, r: ^Renderer) {
 	switch fl.mode {
 	case .Title:
-		if rl.IsKeyPressed(.ESCAPE) {
-			fl.quit = true
-		} else if rl.IsKeyPressed(.SPACE) || rl.IsKeyPressed(.ENTER) {
-			flow_start_session(fl, flow_random_seed())
-		} else if rl.IsKeyPressed(.D) {
-			flow_load_demo(fl, 0)
-		}
+		// Mouse-driven, like the original's own button list -- see
+		// main_menu_update (game/menu_main.odin).
+		main_menu_update(fl, r, &fl.main_menu)
 	case .Playing:
 		if rl.IsKeyPressed(.ESCAPE) || rl.IsKeyPressed(.P) {
 			fl.mode = .Paused
@@ -175,15 +173,17 @@ flow_sim_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Bl
 	sounds_step(&r.textures, fl.state)
 }
 
-@(private = "file")
+// Called from the main menu's 1 Player/2 Player buttons (game/menu_main.odin).
 flow_random_seed :: proc() -> u32 {
 	return u32(time.to_unix_nanoseconds(time.now()))
 }
 
-@(private = "file")
-flow_start_session :: proc(fl: ^Flow, seed: u32) {
+// Called from the main menu's 1 Player/2 Player buttons (game/menu_main.odin).
+// Level select is deferred to Phase 7 stage 2 -- levels still always start
+// from list order, exactly as before.
+flow_start_session :: proc(fl: ^Flow, seed: u32, game_type: sim.Game_Type) {
 	level := fl.defs.levels[0].id // play order: Lucena is level 1
-	sim.init(fl.state, sim.Session{seed = seed, level_id = level, game_type = .Single}, fl.defs)
+	sim.init(fl.state, sim.Session{seed = seed, level_id = level, game_type = game_type}, fl.defs)
 	fl.mode = .Playing
 }
 
@@ -192,7 +192,8 @@ flow_start_session :: proc(fl: ^Flow, seed: u32) {
 // than stopping after one lap ("Clicking DEMOS again plays the next film",
 // phase-4-sim.md) -- nothing in the original bounds how long the attract
 // loop is left running.
-@(private = "file")
+// Called from the main menu's Play Demo button (game/menu_main.odin) and
+// Attract's own advance-to-next-demo.
 flow_load_demo :: proc(fl: ^Flow, index: int) -> bool {
 	path := fmt.tprintf("%s/films/de%02d.film", fl.root, index + 1)
 	bytes, rerr := os.read_entire_file(path, context.temp_allocator)
@@ -226,14 +227,17 @@ flow_load_demo :: proc(fl: ^Flow, index: int) -> bool {
 // draw_debug already takes for its dev overlay.
 flow_draw :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs, notices: ^Notices, scale: f32) {
 	if fl.mode == .Title {
-		draw_title()
+		main_menu_draw(r, &fl.main_menu)
 		return
 	}
 	build_frame(r, fl.state, blurs, notices)
 	present(r, fl.state, particles, scale)
 	switch fl.mode {
 	case .Paused:
-		draw_banner("PAUSED", "Esc or P to resume")
+		// G_Interface_PauseGame (read in full) draws no on-screen text at
+		// all -- stop sound, pause music, darken the borders, idle. D21:
+		// matched exactly rather than adding a label the original never had.
+		draw_paused_borders()
 	case .Game_Over:
 		draw_banner("GAME OVER", "")
 	case .Complete:
@@ -245,16 +249,15 @@ flow_draw :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 	}
 }
 
+// U_Display::DrawBlackBorders (read in full) blacks out two perm-float-sized
+// strips rather than the whole screen; the exact rects depend on perm floats
+// 0x34/0x35/0x3b whose border-specific semantics weren't pinned down here.
+// Approximated as a full-screen dim, which gives the same "the game froze
+// and darkened" read without claiming pixel-exact border geometry -- refine
+// if a live screenshot comparison calls for it.
 @(private = "file")
-draw_title :: proc() {
-	title :: "DEIMOS RISING"
-	sub :: "SPACE or ENTER to play    D for a demo    Esc to quit"
-	tw := rl.MeasureText(title, 48)
-	rl.DrawText(title, (SCREEN_W * WINDOW_SCALE - tw) / 2, SCREEN_H * WINDOW_SCALE / 2 - 60,
-		48, rl.Color{230, 230, 255, 255})
-	sw := rl.MeasureText(sub, 20)
-	rl.DrawText(sub, (SCREEN_W * WINDOW_SCALE - sw) / 2, SCREEN_H * WINDOW_SCALE / 2 + 20,
-		20, rl.Color{180, 180, 180, 255})
+draw_paused_borders :: proc() {
+	rl.DrawRectangle(0, 0, SCREEN_W * WINDOW_SCALE, SCREEN_H * WINDOW_SCALE, rl.Color{0, 0, 0, 120})
 }
 
 @(private = "file")

@@ -136,7 +136,7 @@ main :: proc() {
 	// the player starts one, then Playing/Paused/Game_Over/Complete/Attract),
 	// so state stays zeroed until flow_start_session or flow_load_demo runs.
 	flow: Flow
-	flow_init(&flow, root, &defs, state)
+	flow_init(&flow, root, &defs, state, &renderer)
 	defer flow_destroy(&flow)
 
 	// Escape means pause/resume/back everywhere in Flow, not an instant quit

@@ -162,3 +162,42 @@ and Windows (`core/net` has `socket_linux.odin`/`socket_windows.odin`/
 `socket_posix.odin`, so this is a real cross-platform API, not Linux-only),
 and should be written with a possible future WebSocket transport (for a
 hypothetical WASM build) in mind, without building that abstraction now.
+
+### D21 — Faithful menu recreation supersedes D18; scope and exclusions
+
+Supersedes D18. The project owner asked for all of the original's menus to be
+recreated faithfully (button graphics, layout, behaviour), except "activate",
+with new (netplay) menu items added in the same style but hidden under
+`-classic`. A research pass reading the relevant decompiled functions in full
+(`G_Interface_025fd0.c` and its `FUN_004277e0`/`FUN_00427cb0`/`FUN_00427dc0`/
+`FUN_00428240` helpers, `G_LevelSelect_GetStartingLevelIDFromUser_02a0c0.c`,
+`Priv_Preview/*`, `G_Credits_Display_0120e0.c`, `G_Scores_Display_03b7c0.c`,
+`FUN_0043bb00.c`, `G_Interface_PauseGame_026510.c`, `U_Registration/*`,
+`G_Console/*`) settled the scope:
+
+- **"Activate" confirmed** as the main menu's 7th button (only shown when
+  `U_Registration::Is()` is false), which opens the `U_Registration`/RT3
+  shareware-registration nag. Excluded, as asked.
+- **`G_Interface_DisplayAd`** (a full-screen ad shown once at quit if
+  unregistered) is a separate function from the registration nag but the same
+  shareware category. Excluded too, by the project owner's call.
+- **The dev/cheat console (`G_Console`) and the level editor** are real UI the
+  original binary can show but are hidden developer tools, not normal player
+  menus. Deferred to a new "Bonus — Developer tools" phase rather than
+  in scope for faithful player-menu recreation (see `docs/README.md`).
+- **Pause has no on-screen "PAUSED" text in the original at all** —
+  `G_Interface_PauseGame` only stops sound, pauses music and darkens the
+  borders (`U_Display::DrawBlackBorders`) while idling. The project owner
+  chose to match this exactly: the faithful pause screen drops the "PAUSED"
+  banner Flow currently draws.
+- **A mission-briefing screen has full text/timing perm data defined
+  (`Briefing_*`) but is never read by any code, and every shipped level sets
+  `briefing: "none"`.** Cut content — not part of the recreation.
+- **In scope**: Main Menu/Title, Level Select (carousel + previews + accept/
+  reject animation), Credits, High Scores (view + name entry), Pause (minimal,
+  as above). Preferences is a native Win32 dialog with no bespoke art to
+  port — `-classic` gets a fresh, simply-styled settings screen instead of a
+  pixel port of OS chrome.
+
+Full inventory, function-by-function, in
+[phase-7-faithful-menus.md](phase-7-faithful-menus.md).
