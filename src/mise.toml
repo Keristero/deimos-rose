@@ -3,6 +3,8 @@
 
 [tools]
 odin = "dev-2026-09"
+# Ghidra 12 needs JDK 21+. Only used by the decomp:* tasks.
+java = "temurin-21"
 
 [env]
 # Repository-relative anchors. DR_ORIG points at the extracted 1.0.2 install.
@@ -11,6 +13,12 @@ DR_ORIG   = "{{config_root}}/../game"
 DR_ASSETS = "{{config_root}}/assets"
 DR_BUILD  = "{{config_root}}/build"
 DR_DEPS   = "{{config_root}}/.deps"
+# Ghidra and its project live outside the repo: ~1.5 GB of tooling and a
+# derived corpus, neither of which belongs near tracked files.
+DR_GHIDRA = "{{env.HOME}}/.cache/deimos-rising/ghidra"
+DR_DECOMP = "{{env.HOME}}/.cache/deimos-rising/decomp"
+DR_EXE    = "{{config_root}}/../game/DeimosRising.exe"
+DR_SYMS   = "{{config_root}}/../symbols/functions.csv"
 # Odin collection so packages import as "dr:sim", "dr:data", ...
 # Kept separate because `odin check` rejects linker flags.
 DR_COLL   = "-collection:dr={{config_root}}"
@@ -54,6 +62,23 @@ run = "odin test tests $DR_COLL $DR_LINK -out:$DR_BUILD/tests"
 [tasks.purity]
 description = "Enforce: sim/ imports no raylib and performs no I/O"
 run = "bash tools/purity/check.sh"
+
+[tasks."decomp:setup"]
+description = "Download and unpack Ghidra into the user cache (idempotent)"
+run = "bash tools/decomp/setup.sh"
+
+[tasks."decomp:export"]
+description = "Headless Ghidra: import our symbols, decompile, export C per function"
+depends = ["decomp:setup"]
+run = "bash tools/decomp/export.sh"
+
+[tasks."decomp:find"]
+description = "Find decompiled functions by name substring; -c prints the source"
+run = "bash tools/decomp/find.sh"
+
+[tasks."decomp:index"]
+description = "Summarise the exported decomp corpus"
+run = "bash tools/decomp/index.sh"
 
 [tasks."assets:extract"]
 description = "Extract original PAKs into modern formats (PNG/WAV/JSON)"

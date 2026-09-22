@@ -36,7 +36,9 @@ verification for free, which is what the 871/871 figure above is.
 **Sprites ship as two GIF plates.** `Expl Small Red IA[EXSR].gif` is the
 alpha plate, `Expl Small Red IC[exsr].gif` the colour plate; the four-byte code
 is UPPERCASE for alpha and lowercase for colour. 125 pairs, zero dimension
-mismatches.
+mismatches. Pairing keys on the four-byte code with case folded away, not on
+the human-readable name; name-based pairing leaves two false orphans because
+the labels differ in whitespace.
 
 **The IA plate is a QuickDraw mask and is inverted with respect to alpha.**
 White (255) is fully *transparent*, black fully opaque, greys are partial
@@ -100,7 +102,14 @@ recorded channel count and sample rate.
 
 - Frame rectangles within sprite strips: what exactly do the blue and magenta
   markers delimit? Needed before anything can be drawn.
-- Two loose files in `" Data/Local"` (`TESM` text image, `cred` string list)
-  are not yet processed; the extractor only walks the PAKs.
+- The extractor only walks the PAKs. `" Data/Local"` holds four more files —
+  `last` (a saved replay), `TESM` (a text image), `pref` (preferences) and
+  `cred` (a string list). The engine looks in `Data/Local` *before* the PAKs,
+  so these are overrides; implementing that lookup order belongs with the
+  resource layer in Phase 3.
+- **Alpha-only plates exist.** `Text - Small IA[TESM].gif` has no `IC` partner
+  in `Data/Local` or in any PAK. A mask with no colour plate is presumably
+  tinted at draw time, which is how a bitmap font would work. Within the PAKs
+  every plate pairs cleanly, so TESM is currently the only known case.
 - `im08` is 8-bit-sourced and `im16` 16-bit, but both decode to RGBA. Whether
   the engine treats them differently at runtime is not yet established.
