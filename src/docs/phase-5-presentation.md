@@ -239,4 +239,76 @@ device or log its absence on every headless capture.
 
 `oracle:diff` is still exact on all four demos and the test suite is green.
 
-Still open: Flow.
+**Flow is done.** The one simulation gap it needed was the game-over spawn:
+`sim/state.odin`'s `step()` had an `unported(s, 0x42037a)` marker for
+`FUN_00420280`'s branch reached once no player is left in the game. Reading
+that function in full showed it does two things when this first happens: set
+`DAT_004e4826` (already `s.game_over`) and spawn the `Notice_GameOver` banner
+(perm object 0x18, confirmed by position in `assets/data/idli/gaob.json`'s
+name list, not guessed) at screen centre — the same RNG-drawing spawn every
+other notice uses, so a real session that runs out of lives needs it ported
+for a replay to stay in sync (no shipped demo film reaches game over, so
+`oracle:diff` never exercised the gap before). The countdown FUN_00420280 runs
+afterwards against `DAT_004e4824` turned out not to need porting at all:
+grepping the full decompiled corpus, that flag's only reader anywhere is
+`G_Interface_PauseGame`, making it presentation-only. Reading that function
+also confirmed pause itself needs no `sim/` changes — the original implements
+it as a native OS-level modal loop (stop sound, pause music, busy-wait) around
+the outside of the simulation, not as simulation state, matching Flow's
+`.Paused` mode here: skip stepping, keep rendering the last frame, done at the
+`game/` layer.
+
+`sim/state.odin` also gained `level_advance`, moving to the next level in
+list order once `level_end.complete` is true. `G_LevelSelect_GetStartingLevelID
+FromUser` has exactly one caller in the whole corpus (the title/session-start
+flow), confirmed by grepping `symbols/functions.csv` — level-select only ever
+picks the *first* level of a new session, so there is nothing to choose
+between levels within one, and sequential list order is correct.
+
+`game/flow.odin` is the state machine tying this together: `Flow_Mode` is
+`Title`, `Playing`, `Paused`, `Game_Over`, `Complete`, `Attract`. Session
+lifecycle now belongs to Flow, not to an eager `sim.init` at startup — `Title`
+leaves `sim.State` zeroed until the player starts one (fresh seed from
+`core:time`, permitted at the `game/` layer since the purity rule only binds
+`sim/`) or loads a demo film. Attract cycles `assets/films/de01.film`
+.. `de04.film` in order and wraps back to the first rather than stopping
+after one lap (`phase-4-sim.md`'s "Clicking DEMOS again plays the next film"),
+managing the `data.Film`'s owned `frames` allocation explicitly
+(`data.film_destroy` before loading the next) since `data.film_to_sim` shares
+the same slice rather than copying it. `game_over` is checked directly each
+step, ahead of `level_end.complete`, since `FUN_00420280` sets it the instant
+the last player leaves play, independent of whether the level has finished
+scrolling; `level_end_step` only learns about it once the background does
+report scroll-complete, and by then just short-circuits straight to
+`complete` with no tally to show (`sim/level_end.odin`'s
+`if s.game_over { l.started = true; return }`, verified to be an already-
+correct existing port, not a bug, by re-tracing FUN_00420280's control flow
+before touching anything).
+
+`DR_FILM`/`DR_SHOT` (used by `oracle:diff`, `shots:compare`, `oracle:shot`)
+bypass Flow entirely, exactly as before — confirmed by re-running all of them
+after the `main.odin` rewiring, with unchanged results.
+
+Deliberately simplified rather than pixel-matched, per the standing guidance
+not to let fidelity get in the way of a better result (`notes/user-guidance-
+mid-phase5.md`): the title screen, pause banner and end screens are plain
+text drawn with raylib's own font (the same shortcut `draw_debug` already
+takes for its dev overlay), not a reconstruction of the original's button-
+based menus and level-select screen with preview thumbnails
+(`assets/data/flli/gafl.json`'s `LevSel_*` perm floats describe that screen,
+unbuilt). None of this is simulation-visible or RNG-affecting, so it doesn't
+threaten `oracle:diff`.
+
+Verified interactively, not just headlessly: `xvfb-run` plus `xdotool`
+click through every state (Title, start a session, Play, Pause both via Esc
+and P, resume both ways, start Attract, watch the demo autopilot, Esc back to
+Title) with screenshots at each step, confirmed by looking at the output —
+the HUD, terrain, level-name notice and pause/demo overlays all render
+correctly, and Escape has one consistent meaning throughout instead of
+raylib's default instant-quit (`rl.SetExitKey(.KEY_NULL)`, handled explicitly
+per state in `flow.odin`/`main.odin`).
+
+`oracle:diff` is still exact on all four demos and the test suite is green.
+
+Phase 5's exit criterion — playable single-player from the title screen to
+the end of the last level — is met.

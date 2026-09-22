@@ -104,12 +104,19 @@ main :: proc() {
 		film = data.film_to_sim(f)
 		playing_film = true
 		sim.init(state, film.session, &defs)
-	} else {
+	}
+
+	shot := os.get_env("DR_SHOT", context.temp_allocator)
+	if shot != "" && !playing_film {
+		// DR_SHOT with no DR_FILM shoots the same fixed-seed default session
+		// this always started with, before Flow made a fresh interactive run
+		// defer sim.init to the title screen -- preserved so existing
+		// DR_SHOT-only invocations keep seeing the same frames.
 		level := defs.levels[0].id // play order: Lucena is level 1
 		sim.init(state, sim.Session{seed = 0x1234_5678, level_id = level, game_type = .Single}, &defs)
 	}
 
-	if !headless {
+	if !headless && state.level != nil {
 		if music, ok := music_track(&renderer.textures, state.level.id); ok {
 			rl.PlayMusicStream(music)
 		}
@@ -119,11 +126,23 @@ main :: proc() {
 	// PNG of each, then exits. Running the real thing is the only way to see
 	// whether the compositing is right, and this makes that reviewable
 	// without a desktop session.
-	if shot := os.get_env("DR_SHOT", context.temp_allocator); shot != "" {
+	if shot != "" {
 		run_shots(&renderer, state, &particles, &blurs, &notices, playing_film ? &film : nil, shot,
 			os.get_env("DR_SHOT_AT", context.temp_allocator))
 		return
 	}
+
+	// Interactive: Flow owns the session lifecycle from here on (Title until
+	// the player starts one, then Playing/Paused/Game_Over/Complete/Attract),
+	// so state stays zeroed until flow_start_session or flow_load_demo runs.
+	flow: Flow
+	flow_init(&flow, root, &defs, state)
+	defer flow_destroy(&flow)
+
+	// Escape means pause/resume/back everywhere in Flow, not an instant quit
+	// (raylib's own default exit key is Escape); flow.quit below is the only
+	// path left that closes the window on Escape, from the title screen.
+	rl.SetExitKey(.KEY_NULL)
 
 	// Fixed-step: the simulation advances in slices of step_dt regardless of
 	// how often the frame is actually presented, so -highrefreshrate (or a
@@ -132,31 +151,29 @@ main :: proc() {
 	step_dt := 1.0 / f64(step_hz)
 	accumulator: f64 = 0
 	show_debug := false
-	for !rl.WindowShouldClose() {
+	for !rl.WindowShouldClose() && !flow.quit {
 		if rl.IsKeyPressed(.F1) {
 			show_debug = !show_debug
 		}
 		if rl.IsKeyPressed(.F2) {
 			renderer.shadows = !renderer.shadows
 		}
+		flow_handle_input(&flow, &renderer)
 		accumulator += f64(rl.GetFrameTime())
 		for steps := 0; accumulator >= step_dt && steps < MAX_STEPS_PER_FRAME; steps += 1 {
-			sim.step(state, gather_input(), playing_film ? &film : nil)
-			particles_step(&particles, state)
-			blurs_step(&blurs, state)
-			notices_step(&notices, state)
-			sounds_step(&renderer.textures, state)
+			flow_step(&flow, &renderer, &particles, &blurs, &notices)
 			accumulator -= step_dt
 		}
-		if music, ok := music_track(&renderer.textures, state.level.id); ok {
-			rl.UpdateMusicStream(music)
+		if state.level != nil {
+			if music, ok := music_track(&renderer.textures, state.level.id); ok {
+				rl.UpdateMusicStream(music)
+			}
 		}
-		build_frame(&renderer, state, &blurs, &notices)
 
 		rl.BeginDrawing()
 		rl.ClearBackground(rl.Color{0, 0, 0, 255})
-		present(&renderer, state, &particles, WINDOW_SCALE)
-		if show_debug {
+		flow_draw(&flow, &renderer, &particles, &blurs, &notices, WINDOW_SCALE)
+		if show_debug && state.level != nil {
 			draw_debug(state, &report)
 		}
 		rl.EndDrawing()

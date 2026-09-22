@@ -120,3 +120,29 @@ speed no longer depends on how often the frame is presented: `SetTargetFPS(60)`
 had been running the simulation at double speed. `-highrefreshrate` raises the
 *presentation* rate to the monitor's native refresh; the accumulator still
 gates `sim.step` to 30 Hz either way.
+
+### D18 — Flow's screens are plain text, not a reconstruction of the original's menus
+
+The original's title, pause and game-over/level-complete screens are built
+from button graphics and (for level-select) preview thumbnails whose layout
+was never traced (`assets/data/flli/gafl.json`'s `LevSel_*`/`Interface_Btn_*`
+perm floats describe it, unbuilt). None of that is simulation-visible or
+RNG-affecting, so `game/flow.odin` draws plain text with raylib's own font
+instead (the same shortcut `draw_debug` already takes for its dev overlay) and
+defers the level-select screen entirely — levels always play in list order
+within a session regardless (see the Flow progress note in
+phase-5-presentation.md), so nothing is lost by not building a picker for it
+yet. Consistent with D16: accurate where it affects the simulation or a
+screenshot comparison, not obligated to match everywhere else.
+
+### D19 — Flow reacts to `game_over` directly, not only through `level_end.complete`
+
+`FUN_00420280` sets `DAT_004e4826` (`s.game_over`) the instant the last player
+leaves play, independent of whether the level has finished scrolling;
+`level_end_step` only learns about it later, once the background reports
+scroll-complete, and then just short-circuits straight to `complete` with no
+tally to show. Waiting for `level_end.complete` alone to show a game-over
+screen would mean it never appears if the level's scroll never finishes (e.g.
+losing early, far from the level's end point). `game/flow.odin` checks
+`state.game_over` every step and transitions immediately, `level_end.complete`
+being for the normal "finished a level" path only.
