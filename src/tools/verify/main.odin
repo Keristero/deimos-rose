@@ -6,6 +6,7 @@ package verify
 import "core:encoding/json"
 import "core:fmt"
 import "core:os"
+import "core:strconv"
 import "core:strings"
 
 import rl "vendor:raylib"
@@ -26,6 +27,25 @@ Entry :: struct {
 	channels: int    `json:"channels"`,
 	rate:     int    `json:"sample_rate"`,
 	frames:   int    `json:"frames"`,
+}
+
+Frame_Rect :: struct {
+	x, y, w, h: int,
+}
+
+Sprite_Index_Entry :: struct {
+	fourcc: string       `json:"fourcc"`,
+	dir:    string       `json:"dir"`,
+	image:  string       `json:"image"`,
+	width:  int          `json:"width"`,
+	height: int          `json:"height"`,
+	frames: []Frame_Rect `json:"frames"`,
+}
+
+Sprite_Index :: struct {
+	generator: string               `json:"generator"`,
+	totals:    map[string]int       `json:"totals"`,
+	sprites:   []Sprite_Index_Entry `json:"sprites"`,
 }
 
 Manifest :: struct {
@@ -143,9 +163,89 @@ main :: proc() {
 	}
 
 	fmt.printfln("outputs present: %v/%v", counted, len(m.entries))
+
+	verify_sprite_index(assets)
 	if fails > 0 {
 		fmt.eprintfln("\n%v problem(s)", fails)
 		os.exit(1)
 	}
 	fmt.println("assets verified")
+}
+
+// 5. Frame rectangles: inside their plate, non-empty, and -- when a dump from
+// the running original is present -- the same size the original computed.
+//
+// $DR_WINE/sprites.tsv is written by `mise run oracle:sprites`, which reads
+// every loaded sprite group out of the live game under gdb. It covers the 55
+// groups a demo session loads, which is the only ground truth we have; the
+// remaining plates are checked for self-consistency only.
+verify_sprite_index :: proc(assets: string) {
+	path := strings.concatenate({assets, "/sprites/index.json"}, context.temp_allocator)
+	blob, err := os.read_entire_file(path, context.temp_allocator)
+	if err != nil {
+		fail("sprite index unreadable: %v", path)
+		return
+	}
+	idx: Sprite_Index
+	if jerr := json.unmarshal(blob, &idx, allocator = context.temp_allocator); jerr != nil {
+		fail("sprite index parse: %v", jerr)
+		return
+	}
+	frames := 0
+	for s in idx.sprites {
+		if len(s.frames) == 0 {
+			fail("%v: no frames", s.fourcc)
+		}
+		for f, i in s.frames {
+			frames += 1
+			if f.w < 1 || f.h < 1 {
+				fail("%v frame %v: empty rect %vx%v", s.fourcc, i, f.w, f.h)
+			}
+			if f.x < 0 || f.y < 0 || f.x + f.w > s.width || f.y + f.h > s.height {
+				fail("%v frame %v: %v,%v %vx%v outside the %vx%v plate",
+					s.fourcc, i, f.x, f.y, f.w, f.h, s.width, s.height)
+			}
+		}
+	}
+	fmt.printfln("sprite index: %v plates, %v frames", len(idx.sprites), frames)
+
+	dump := strings.concatenate({os.get_env("DR_WINE", context.temp_allocator), "/sprites.tsv"},
+		context.temp_allocator)
+	text, terr := os.read_entire_file(dump, context.temp_allocator)
+	if terr != nil {
+		fmt.printfln("no %v; skipping the comparison with the original", dump)
+		return
+	}
+	by_id := make(map[string][]Frame_Rect, len(idx.sprites), context.temp_allocator)
+	for s in idx.sprites {
+		by_id[strings.to_lower(s.fourcc, context.temp_allocator)] = s.frames
+	}
+	checked, missing := 0, 0
+	lines := string(text)
+	for line in strings.split_lines_iterator(&lines) {
+		f := strings.split(line, "\t", context.temp_allocator)
+		if len(f) < 4 || f[0] == "sprite" {
+			continue // header or blank
+		}
+		i, ok1 := strconv.parse_int(f[1])
+		w, ok2 := strconv.parse_int(f[2])
+		h, ok3 := strconv.parse_int(f[3])
+		if !(ok1 && ok2 && ok3) {
+			continue
+		}
+		rects, known := by_id[f[0]]
+		if !known || i >= len(rects) {
+			missing += 1
+			continue
+		}
+		checked += 1
+		if rects[i].w != w || rects[i].h != h {
+			fail("%v frame %v: the original says %vx%v, our cut is %vx%v",
+				f[0], i, w, h, rects[i].w, rects[i].h)
+		}
+	}
+	if missing > 0 {
+		fail("%v frame(s) in the original's dump have no entry in our index", missing)
+	}
+	fmt.printfln("frames checked against the running original: %v", checked)
 }

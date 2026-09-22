@@ -100,6 +100,40 @@ rect_from :: proc "contextless" (r: Rect) -> sim.Rect {
 	return {top = i32(r.top), left = i32(r.left), bottom = i32(r.bottom), right = i32(r.right)}
 }
 
+// A weapon definition is flat, but its spawn records repeat the same spawn_*
+// keys one after another (FUN_00445cf0): each `spawn_Name_STR` opens a new
+// record. spawn_NumUnitsToSpawn_INT belongs to the weapon, not to a spawn.
+weapon_spawns :: proc(header: []Tag, report: ^Defs_Report, allocator := context.allocator) -> []sim.Wep_Spawn_Def {
+	spawns := make([dynamic]sim.Wep_Spawn_Def, allocator)
+	cur: [dynamic]Tag
+	cur.allocator = context.temp_allocator
+	flush :: proc(spawns: ^[dynamic]sim.Wep_Spawn_Def, cur: ^[dynamic]Tag, report: ^Defs_Report, allocator := context.allocator) {
+		if len(cur) == 0 {
+			return
+		}
+		sp: sim.Wep_Spawn_Def
+		def_fill(&sp, cur[:], report, allocator)
+		// Angles are normalised on load.
+		if sp.angle < 0 {
+			sp.angle += 360
+		} else if sp.angle > 359 {
+			sp.angle -= 360
+		}
+		append(spawns, sp)
+		clear(cur)
+	}
+	for t in header {
+		if t.key == "spawn_Name_STR" {
+			flush(&spawns, &cur, report, allocator)
+			append(&cur, t)
+		} else if strings.has_prefix(t.key, "spawn_") && t.key != "spawn_NumUnitsToSpawn_INT" && len(cur) > 0 {
+			append(&cur, t)
+		}
+	}
+	flush(&spawns, &cur, report, allocator)
+	return spawns[:]
+}
+
 // Converts one parsed unit definition.
 unit_from_definition :: proc(d: ^Definition, report: ^Defs_Report, allocator := context.allocator) -> (u: sim.Unit) {
 	u.id = sim.Res_ID(d.id)
@@ -251,34 +285,7 @@ defs_load :: proc(p: ^Resource_Provider, allocator := context.allocator) -> (def
 		}
 		wp := sim.Weapon{id = sim.Res_ID(key.id)}
 		def_fill(&wp.def, d.header, &report, allocator)
-		spawns := make([dynamic]sim.Wep_Spawn_Def, allocator)
-		cur: [dynamic]Tag
-		cur.allocator = context.temp_allocator
-		flush :: proc(spawns: ^[dynamic]sim.Wep_Spawn_Def, cur: ^[dynamic]Tag, report: ^Defs_Report, allocator := context.allocator) {
-			if len(cur) == 0 {
-				return
-			}
-			sp: sim.Wep_Spawn_Def
-			def_fill(&sp, cur[:], report, allocator)
-			// Angles are normalised on load.
-			if sp.angle < 0 {
-				sp.angle += 360
-			} else if sp.angle > 359 {
-				sp.angle -= 360
-			}
-			append(spawns, sp)
-			clear(cur)
-		}
-		for t in d.header {
-			if t.key == "spawn_Name_STR" {
-				flush(&spawns, &cur, &report, allocator)
-				append(&cur, t)
-			} else if strings.has_prefix(t.key, "spawn_") && t.key != "spawn_NumUnitsToSpawn_INT" && len(cur) > 0 {
-				append(&cur, t)
-			}
-		}
-		flush(&spawns, &cur, &report, allocator)
-		wp.spawns = spawns[:]
+		wp.spawns = weapon_spawns(d.header, &report, allocator)
 		append(&weapons, wp)
 	}
 	defs.weapons = weapons[:]

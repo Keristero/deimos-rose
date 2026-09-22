@@ -20,6 +20,8 @@ DR_GHIDRA = "{{env.HOME}}/.cache/deimos-rising/ghidra"
 # gitignored work/ directory beside the repo's tracked files. Kept out of
 # src/build/ so that `mise run clean` does not discard minutes of analysis.
 DR_DECOMP = "{{config_root}}/../work/decomp"
+# Wine prefix and the oracle's captures (traces, the sprite dump).
+DR_WINE   = "{{config_root}}/../work/wine"
 DR_EXE    = "{{config_root}}/../game/DeimosRising.exe"
 DR_SYMS   = "{{config_root}}/../symbols/functions.csv"
 # Odin collection so packages import as "dr:sim", "dr:data", ...

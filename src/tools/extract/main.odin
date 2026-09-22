@@ -4,6 +4,7 @@
 // writes an `assets/` directory of ordinary modern formats:
 //
 //   sprites/<dir>/<FOURCC>.png   IA alpha plate + IC colour plate -> RGBA PNG
+//   sprites/index.json           each plate's frame rectangles
 //   images/<dir>/<FOURCC>.png    16-bit TGA -> RGBA PNG
 //   audio/<FOURCC>.wav           AIFF-C ima4 -> 16-bit PCM WAV
 //   films/<FOURCC>.film          replay data, copied verbatim
@@ -61,7 +62,31 @@ Stats :: struct {
 	read, crc_ok, crc_bad, written, skipped: int,
 }
 
+// A plate is a grid of boxes; each frame is one box trimmed of its
+// background. The cut is simulation data -- frame size decides collision
+// bounds -- so it is verified against the original in Phase 4, and baked here
+// so the game does not rescan 125 plates at startup.
+Frame_Rect :: struct {
+	x, y, w, h: int,
+}
+
+Sprite_Index_Entry :: struct {
+	fourcc: string       `json:"fourcc"`,
+	dir:    string       `json:"dir"`,
+	image:  string       `json:"image"`,
+	width:  int          `json:"width"`,
+	height: int          `json:"height"`,
+	frames: []Frame_Rect `json:"frames"`,
+}
+
+Sprite_Index :: struct {
+	generator: string               `json:"generator"`,
+	totals:    map[string]int       `json:"totals"`,
+	sprites:   []Sprite_Index_Entry `json:"sprites"`,
+}
+
 g_entries: [dynamic]Manifest_Entry
+g_sprites: [dynamic]Sprite_Index_Entry
 g_stats: Stats
 
 main :: proc() {
@@ -81,6 +106,7 @@ main :: proc() {
 	}
 
 	write_manifest(out)
+	write_sprite_index(out)
 
 	fmt.printfln(
 		"\nread %v entries  crc ok %v  crc bad %v  written %v  passthrough %v",
@@ -257,7 +283,40 @@ emit_sprite :: proc(key: data.Pair_Key, pair: [2]([]byte), rn: data.Res_Name, la
 		e := data.Zip_Entry{size = u32(len(alpha_raw) + len(color_raw))}
 		record(rn, "sprite", label, e, rel,
 			fmt.tprintf("%08x", hash.crc32(color_raw)), w, h, 0, 0, 0)
+		index_frames(code, rn, rel, alpha_raw, w, h)
 	}
+}
+
+// Cut the plate the way the original does (data/sprite_plate.odin) and record
+// the rectangles.
+//
+// The cut is taken from the ALPHA plate, as U_Sprite_Load does. Both plates
+// carry the same grid, but artwork in the colour plate can contain the marker
+// colour itself: the NOTI plate has a magenta pixel inside a notice graphic,
+// which splits one 190-wide frame into 149 + 40 and shifts every later frame.
+index_frames :: proc(code: string, rn: data.Res_Name, rel: string, plate: []byte, w, h: int) {
+	g, gerr := data.gif_decode(plate, context.temp_allocator)
+	if gerr != .None {
+		fmt.eprintfln("  frame index: gif decode failed for %v", code)
+		return
+	}
+	cut, perr := data.plate_frames(g.pixels, g.palette, g.width, g.height, context.temp_allocator)
+	if perr != .None {
+		fmt.eprintfln("  frame index: %v is not a plate (%v)", code, perr)
+		return
+	}
+	frames := make([]Frame_Rect, len(cut))
+	for f, i in cut {
+		frames[i] = {f.x, f.y, f.width, f.height}
+	}
+	append(&g_sprites, Sprite_Index_Entry {
+		fourcc = strings.clone(code),
+		dir    = strings.clone(rn.dir),
+		image  = strings.clone(rel),
+		width  = w,
+		height = h,
+		frames = frames,
+	})
 }
 
 // --- output helpers -------------------------------------------------------
@@ -323,6 +382,36 @@ record :: proc(
 		rate     = rate,
 		frames   = frames,
 	})
+}
+
+write_sprite_index :: proc(out: string) {
+	slice.sort_by(g_sprites[:], proc(a, b: Sprite_Index_Entry) -> bool {
+		if a.dir != b.dir {
+			return a.dir < b.dir
+		}
+		return a.fourcc < b.fourcc
+	})
+	totals := make(map[string]int)
+	defer delete(totals)
+	frames := 0
+	for s in g_sprites {
+		frames += len(s.frames)
+	}
+	totals["plates"] = len(g_sprites)
+	totals["frames"] = frames
+	idx := Sprite_Index {
+		generator = "tools/extract",
+		totals    = totals,
+		sprites   = g_sprites[:],
+	}
+	blob, err := json.marshal(idx, {pretty = true, use_spaces = true}, context.temp_allocator)
+	if err != nil {
+		fmt.eprintfln("sprite index marshal failed: %v", err)
+		return
+	}
+	if write_raw(out, "sprites/index.json", blob) {
+		fmt.printfln("sprite index    %4d plates, %d frames", len(g_sprites), frames)
+	}
 }
 
 write_manifest :: proc(out: string) {
