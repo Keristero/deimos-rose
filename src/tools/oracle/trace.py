@@ -118,6 +118,12 @@ DETAILS = [
         f"unit={fourcc(u32s(u32s(ecx + 0x8A, 1)[0] + 4, 1)[0])} "
         f"entity={u32s(ecx + 0x92, 1)[0]} init={u32s(esp + 4, 1)[0] & 0xFF} "
         f"state={cstr(u32s(esp + 8, 1)[0])!r}")),
+    # G_GameObject::MoveAndCheckPosition: entity number and position, for
+    # comparing trajectories with the simulation.
+    ("move", 0x424530, lambda esp, ecx: (
+        f"entity={u32s(ecx + 0x92, 1)[0]} x={f32(u32s(ecx, 1)[0]):g} y={f32(u32s(ecx + 4, 1)[0]):g}")),
+    ("spawn_control", 0x414AE0, lambda esp, ecx: (
+        f"entity={u32s(ecx + 0x92, 1)[0]} state={s32(u32s(ecx + 0x9E, 1)[0])}")),
     ("sound_play", 0x44F5F0, lambda esp, ecx: (lambda st: (
         f"id={fourcc(u32s(st, 1)[0])}"))(u32s(esp + 4, 1)[0])),
     ("notice_process", 0x42E180, lambda esp, ecx: ""),

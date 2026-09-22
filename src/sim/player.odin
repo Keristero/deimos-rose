@@ -25,8 +25,15 @@ Player :: struct {
 	next_life_score: i32,        // +0x92
 	life_step:     i32,          // +0x96
 	speed:         f32,          // +0x9a maximum speed
+	shields:       f32,          // +0x9e as a percentage
+	money:         i32,          // +0xa2
 	score:         i32,          // +0xa6 (stored + 0x5532a3e in the original)
 	multiplier:    i32,          // +0xaa
+	multiplier_entity: i32,      // +0xae the icon's unique entity number
+	invulnerable:  bool,         // +0xca
+	shield_warned: bool,         // +0xcd
+	hit_time:      i32,          // +0x1fd
+	hit_spawn_time: i32,         // +0x201
 	frame_time:    i32,          // +0xce time of the last banking frame change
 	defence_spawned: bool,       // +0xcc
 	inputs:        Buttons,      // +0x1f6 this step's inputs
@@ -58,6 +65,8 @@ player_setup :: proc (s: ^State, p: ^Player, number: i32, game_type: Game_Type) 
 	p.life_step = 0
 	p.score = 0
 	p.multiplier = 1
+	p.multiplier_entity = -1
+	player_shields_reset(s, p, true)
 	weapons_new_game(s, &p.weapons, number, s.time, s.level_number)
 	p.speed = player_def(s, p).active_default_max_speed
 	if p.active {
@@ -126,6 +135,8 @@ player_appear :: proc(s: ^State, p: ^Player, time: i32) {
 	calculate_dimensions(s, &p.obj)
 	player_reset_position(s, p)
 	p.overloaded = false
+	player_shields_reset(s, p, true)
+	p.invulnerable = true // entry invulnerability
 	p.colorise = false
 	p.tint, p.tint_target, p.tint_delta = 0, 0, 0
 	p.tint_color = 0x7fff

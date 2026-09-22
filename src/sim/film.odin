@@ -19,8 +19,8 @@ film_finished :: proc "contextless" (s: ^State, film: ^Film) -> bool {
 
 // Replay a film into `s` (State is large: callers own it, usually on the heap).
 // `max_steps` bounds a replay that never finishes, e.g. one that has diverged.
-replay :: proc(s: ^State, film: ^Film, defs: ^Defs, log: ^Draw_Log = nil, max_steps := 1_000_000) {
-	init(s, film.session, defs, log)
+replay :: proc(s: ^State, film: ^Film, defs: ^Defs, log: ^Draw_Log = nil, max_steps := 1_000_000, events: ^Event_Log = nil) {
+	init(s, film.session, defs, log, events)
 	for i := 0; i < max_steps && !film_finished(s, film); i += 1 {
 		step(s, {}, film)
 	}

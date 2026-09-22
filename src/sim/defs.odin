@@ -107,6 +107,7 @@ PF_PLAYER_APPEARS_DELTA :: 0xa5
 // Sizes of the original's permanent tables (G_Res_LoadPermData).
 PERM_FLOATS :: 220 // flli "gafl"
 PERM_OBJECTS :: 40 // idli "gaob"
+PERM_SOUNDS :: 24 // idli "gaso"
 
 // One frame of a sprite group: the trimmed box from its alpha plate
 // (data/sprite_plate.odin). Only the size matters to the simulation.
@@ -129,6 +130,7 @@ Defs :: struct {
 	sprites:      []Sprite,
 	perm_floats:  [PERM_FLOATS]f32,
 	perm_objects: [PERM_OBJECTS]Res_ID,
+	perm_sounds:  [PERM_SOUNDS]Res_ID,
 }
 
 unit_find :: proc "contextless" (d: ^Defs, id: Res_ID) -> ^Unit {

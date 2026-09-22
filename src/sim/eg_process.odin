@@ -190,12 +190,30 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 	if players_in_play(s) > 0 && st.collides && !u.harmless_to_players && st.collides_with_players &&
 	   b.right > -33 && b.left <= w + 32 && b.bottom >= 0 && b.top <= h {
 		for &p in s.players {
-			if p.state != .Playing {
+			if p.state != .Playing || e.deleted {
 				continue
 			}
 			pb := object_bounds(&p.obj)
-			if pb.top <= b.bottom && b.top <= pb.bottom && pb.left <= b.right && b.left <= pb.right {
-				unported(s, 0x4189c0) // player collisions: circle test, Hit, pickups
+			if !(pb.top <= b.bottom && b.top <= pb.bottom && pb.left <= b.right && b.left <= pb.right) {
+				continue
+			}
+			if !circles_collide(p.loc, f32(pb.bottom - pb.top) / 2, e.loc, f32(halve(b.bottom - b.top))) {
+				continue
+			}
+			if u.pickup_type == NONE {
+				// Both sides take damage; a state can pass hits to its owner.
+				hit_owner := false
+				if st.pass_hits_to_owner && ref_valid(s, e.owner) {
+					entity_hit(s, entity_at(s, e.owner.index), s.defs.perm_floats[0xa1], p.number, s.time)
+					hit_owner = true
+				}
+				if !hit_owner {
+					entity_hit(s, e, s.defs.perm_floats[0xa1], p.number, s.time)
+				}
+				player_hit(s, &p, u.damage, s.time)
+			} else if player_collect(s, &p, e) {
+				entity_destroy(s, e, p.number, s.time)
+				e.killed_by_player = true
 			}
 		}
 	}
@@ -212,8 +230,15 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 	if !u.harmless_to_players && u.is_ground_based && u.can_be_hit_by_player_projectile && st.is_targetable {
 		// Crosshair highlighting: presentation only.
 	}
-	// G_Debris_CheckCollision: debris are only created by destruction, which
-	// is not ported yet, so there is nothing to collide with.
+	if !e.stationary && !e.is_air && u.collides_with_ground_obstacles {
+		if debris_hits(s, object_bounds(&e.obj)) {
+			e.vel = {}
+			e.stationary = true
+			if u.destruct_create_obstacle {
+				debris_new(s, object_bounds(&e.obj))
+			}
+		}
+	}
 	if !e.deleted && st.collides {
 		entity_collisions(s, e)
 	}
@@ -291,6 +316,7 @@ entity_collisions :: proc(s: ^State, e: ^Entity) {
 
 // G_Entity::SpawnControl: run the current state's spawn sets.
 spawn_control :: proc(s: ^State, e: ^Entity, time: i32) {
+	record_event(s, Event{kind = .Spawn_Control, unit = unit_of(s, e).id, number = e.number})
 	rotate_as_required(s, e, time)
 	if !e.spawning {
 		return
@@ -418,21 +444,97 @@ within_game_area :: proc "contextless" (s: ^State, e: ^Entity) -> bool {
 	return !(e.loc.x < 0) && !(w < e.loc.x) && !(e.loc.y < 0) && !(h < e.loc.y)
 }
 
-// G_Entity::Priv_DoRotationAsRequired.
+// G_Entity::Priv_DoRotationAsRequired: rotate unless a spawn volley is in
+// progress (the state can pause rotation while spawning).
 rotate_as_required :: proc(s: ^State, e: ^Entity, time: i32) -> bool {
 	st := state_of(s, e)
 	if !st.do_rotate_to_target {
 		e.rotating = false
 		return true
 	}
-	unported(s, 0x416150) // rotation towards the target
+	if e.spawn_pause > 0 {
+		e.spawn_pause -= 1
+		if e.spawn_pause < 0 {
+			e.spawn_pause = 0
+		}
+	}
+	spawning := e.spawn_pause >= 1
+	if !spawning {
+		for &set, i in st.spawn_sets {
+			info := &e.spawn_info[i]
+			if set.spawn != NONE && info.active && set.pause_any_rotation_while_spawning &&
+			   info.left > 0 && info.left < info.volley {
+				spawning = true
+				break
+			}
+		}
+	}
+	if spawning {
+		return false
+	}
+	return rotate_to_target(s, e, time)
+}
+
+// G_Entity::Priv_RotateToTargetLoc: turn one animation direction per frame
+// delay towards the hunt target, the frame encoding the heading.
+rotate_to_target :: proc(s: ^State, e: ^Entity, time: i32) -> bool {
+	st := state_of(s, e)
+	if !st.do_rotate_to_target {
+		e.rotating = false
+		return true
+	}
+	if !e.fleeing {
+		if e.hunt_player == -1 {
+			e.rotating = false
+			return false
+		}
+		e.rotating = true
+	}
+	if !(e.anim_time + st.frame_delay < time) {
+		return false
+	}
+	want := intercept_angle(trunc_i32(e.loc.x), trunc_i32(e.loc.y),
+		trunc_i32(e.hunt_target.x), trunc_i32(e.hunt_target.y))
+	if e.frame == frame_for_angle(s, e, want) {
+		return true
+	}
+	have := angle_from_sprite(s, e)
+	per_dir := st.frames_per_direction
+	frames := per_dir * st.num_directions
+	diff := want - have
+	if diff > 180 {
+		diff -= 360
+	}
+	if diff < -180 {
+		diff += 360
+	}
+	if diff < 1 {
+		for _ in 0 ..< per_dir {
+			e.frame -= 1
+			if e.frame < 0 {
+				e.frame = frames - 1
+			}
+		}
+	} else {
+		for _ in 0 ..< per_dir {
+			e.frame += 1
+			if frames <= e.frame {
+				e.frame = 0
+			}
+		}
+	}
+	e.anim_time = time
+	e.dims_dirty = true
+	e.has_frame_ptr = true
 	return false
 }
 
 // G_Entity::DoMovementAI.
 movement_ai :: proc(s: ^State, e: ^Entity, time: i32) -> (delete, destroy: bool) {
 	if e.fleeing {
-		unported(s, 0x4141a0) // flee movement
+		// DoMovementAI's flee path: steer to the flee target and rotate.
+		move_to_target(s, e)
+		rotate_to_target(s, e, time)
 		return
 	}
 	st := state_of(s, e)
@@ -446,16 +548,20 @@ movement_ai :: proc(s: ^State, e: ^Entity, time: i32) -> (delete, destroy: bool)
 		if st.destruct_on_no_active_players {
 			return false, true
 		}
-		if u.flees_north_on_no_active_players || u.flees_south_on_no_active_players {
-			unported(s, 0x414244) // Priv_Flee
+		if u.flees_north_on_no_active_players {
+			entity_flee(s, e, res_id("nora"))
+			return
+		}
+		if u.flees_south_on_no_active_players {
+			entity_flee(s, e, res_id("sora"))
 			return
 		}
 	}
 	if st.cyclic_motion {
-		unported(s, 0x415fc0) // Priv_DoCyclicMotion
+		cyclic_motion(s, e)
 	}
 	if u.constrain_in_game_area {
-		unported(s, 0x4167b0) // Priv_ConstrainInGameArea
+		constrain_in_game_area(s, e)
 	}
 	hunt := false
 	e.hunt_target = target
@@ -464,8 +570,30 @@ movement_ai :: proc(s: ^State, e: ^Entity, time: i32) -> (delete, destroy: bool)
 		if st.on_range == 0 || !(dist < st.on_range) {
 			hunt = st.hunts
 		} else {
-			unported(s, 0x414318) // within range: state change / hold / reverse
-			return
+			// In range: react.
+			to := st.on_range_change_to
+			if to == "Delete" {
+				return true, false
+			}
+			if to == "Destroy" {
+				return false, true
+			}
+			if to != "" && to != "none" {
+				del, des := change_state(s, e, false, to, time)
+				if del || des {
+					return del, des
+				}
+				st = state_of(s, e)
+				if st.reverse_direction_on_reaction {
+					reverse_from_target(s, e, target, dist)
+				}
+			}
+			if !st.hold_position_to_target {
+				hunt = st.hunts
+			} else {
+				hold_to_target(s, e, target)
+				hunt = false
+			}
 		}
 	}
 	if !e.fleeing && hunt {
@@ -633,10 +761,10 @@ remove_from_group :: proc(s: ^State, gi: i32, e: ^Entity, destroyed, by_player: 
 	u := unit_of(s, e)
 	if e.has_spawn_info {
 		if destroyed && u.destruct_destroy_children {
-			unported(s, 0x41ae4a) // FUN_0041b090
+			children_follow(s, e, true)
 		}
 		if u.destruct_delete_children {
-			unported(s, 0x41ae5c) // FUN_0041b1b0
+			children_follow(s, e, false)
 		}
 	}
 	all_killed := false
@@ -654,7 +782,11 @@ remove_from_group :: proc(s: ^State, gi: i32, e: ^Entity, destroyed, by_player: 
 			spawn_from(s, e, u.destruct_coin_on_group_kill)
 		}
 	}
-	// G_Entity::Destroy here is a no-op: the entity is already deleted.
+	// Destroy is a no-op for an entity the sweep already marked deleted, but
+	// not for a child pulled in by children_follow.
+	if destroyed {
+		entity_destroy(s, e, e.target_player, s.time)
+	}
 	e.deleted = true
 	g.total -= 1
 	return g.total < 1 && g.unit != PERM_GROUP_UNIT
@@ -691,9 +823,13 @@ process_rules :: proc(s: ^State, e: ^Entity, time: i32) -> (delete, destroy: boo
 		case 7:
 			hit = players_in_play(s) == 0
 		case 8, 9:
+			// G_Entity::Priv_CheckWithinRangeOfPlayers.
+			within := false
 			if r.range != 0 {
-				unported(s, 0x4172f0) // Priv_CheckWithinRangeOfPlayers
+				_, dist, _, found := closest_active_player(s, e.loc)
+				within = found && dist < f32(r.range)
 			}
+			hit = r.condition - 1 == 8 ? within : !within
 		case 10:
 			hit = e.anim_done
 		case 11:
@@ -840,4 +976,136 @@ orbit_owner :: proc "contextless" (s: ^State, e: ^Entity) {
 	}
 	e.loc = next
 	e.owner_offset = {e.loc.x - o.x, e.loc.y - o.y}
+}
+
+// G_Entity::Priv_DoCyclicMotion: wander, re-drawing a speed limit each step
+// and reversing the acceleration whenever the velocity passes it.
+cyclic_motion :: proc "contextless" (s: ^State, e: ^Entity) {
+	st := state_of(s, e)
+	top := trunc_i32(st.max_speed)
+	whole := random_int(&s.rng, halve(top), top, 0x416032)
+	frac := random_int(&s.rng, 1, 100, 0x41604f)
+	limit := f32(whole) + f32(frac) / 100
+	flip :: proc "contextless" (v: ^f32) {
+		v^ = transmute(f32)(transmute(u32)v^ ~ 0x8000_0000)
+	}
+	if limit < e.vel.x {
+		e.vel.x = limit
+		flip(&e.vel_delta.x)
+	}
+	if e.vel.x < -limit {
+		e.vel.x = -limit
+		flip(&e.vel_delta.x)
+	}
+	if limit < e.vel.y {
+		e.vel.y = limit
+		flip(&e.vel_delta.y)
+	}
+	if e.vel.y < -limit {
+		e.vel.y = -limit
+		flip(&e.vel_delta.y)
+	}
+	e.vel += e.vel_delta
+	e.vel_target = e.vel
+}
+
+// G_Entity::Priv_ConstrainInGameArea: bounce off the edges of the play area,
+// reversing velocity, acceleration and target velocity together. The left and
+// right edges use the full width; the top and bottom use half the height.
+constrain_in_game_area :: proc "contextless" (s: ^State, e: ^Entity) {
+	w, h := view_width(s.defs), view_height(s.defs)
+	flip :: proc "contextless" (v: ^f32) {
+		v^ = transmute(f32)(transmute(u32)v^ ~ 0x8000_0000)
+	}
+	bounce_x :: proc "contextless" (e: ^Entity) {
+		flip(&e.vel.x)
+		flip(&e.vel_delta.x)
+		flip(&e.vel_target.x)
+	}
+	bounce_y :: proc "contextless" (e: ^Entity) {
+		flip(&e.vel.y)
+		flip(&e.vel_delta.y)
+		flip(&e.vel_target.y)
+	}
+	if e.loc.x < -32 {
+		flip(&e.vel.x)
+		e.loc.x = -32
+		flip(&e.vel_delta.x)
+		flip(&e.vel_target.x)
+	}
+	if f32(w + 32) < f32(e.dims.x) + e.loc.x {
+		e.loc.x = f32(w - e.dims.x + 32)
+		bounce_x(e)
+	}
+	if e.loc.y - f32(e.half.y) < 0 {
+		flip(&e.vel.y)
+		e.loc.y = f32(e.half.y)
+		flip(&e.vel_delta.y)
+		flip(&e.vel_target.y)
+	}
+	if f32(h) < f32(e.half.y) + e.loc.y {
+		flip(&e.vel.y)
+		e.loc.y = f32(h - e.half.y)
+		flip(&e.vel_delta.y)
+		flip(&e.vel_target.y)
+	}
+}
+
+// FUN_0041b090 / FUN_0041b1b0: when a spawner dies or is deleted, its
+// children follow if their state allows it. The group totals are decremented
+// here and again when the sweep reaches the child -- as in the original.
+children_follow :: proc(s: ^State, parent: ^Entity, destroyed: bool) {
+	w := &s.world
+	n := w.active.count
+	gc := Cursor{NO_LINK}
+	for _ in 0 ..< n {
+		gi := list_next(&w.active, w.group_links[:], &gc)
+		m := w.groups[gi].entities.count
+		ec := Cursor{NO_LINK}
+		for _ in 0 ..< m {
+			ci := list_next(&w.groups[gi].entities, w.entity_links[:], &ec)
+			c := entity_at(s, ci)
+			if c == parent || c.owner.number != parent.number {
+				continue
+			}
+			st := state_of(s, c)
+			if destroyed {
+				if st.can_be_destroyed_on_owner_destruction {
+					remove_from_group(s, gi, c, true, c.target_player != -1)
+				}
+			} else if st.can_be_deleted_on_owner_deletion {
+				remove_from_group(s, gi, c, false, false)
+			}
+		}
+	}
+}
+
+// G_Entity::Priv_HoldToTarget: close on the target at the state's hold speed.
+hold_to_target :: proc "contextless" (s: ^State, e: ^Entity, target: Vec) {
+	st := state_of(s, e)
+	top, delta := st.hold_max_speed, st.hold_delta
+	e.vel_delta.x = e.loc.x < target.x ? delta : -delta
+	e.vel_delta.y = e.loc.y < target.y ? delta : -delta
+	e.vel.x += e.vel_delta.x
+	if e.vel.x > top {
+		e.vel.x = top
+	} else if e.vel.x < -top {
+		e.vel.x = -top
+	}
+	e.vel.y += e.vel_delta.y
+	if e.vel.y > top {
+		e.vel.y = top
+	} else if e.vel.y < -top {
+		e.vel.y = -top
+	}
+}
+
+// G_Entity::Priv_ReverseFromTarget: head away from the target at full speed.
+reverse_from_target :: proc "contextless" (s: ^State, e: ^Entity, target: Vec, dist: f32) {
+	d := target - e.loc
+	if dist != 0 {
+		d /= dist
+	}
+	top := state_of(s, e).max_speed
+	e.vel_target = {-(d.x * top), -(d.y * top)}
 }

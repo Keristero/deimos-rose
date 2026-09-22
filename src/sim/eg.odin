@@ -155,6 +155,8 @@ count_of_unit :: proc "contextless" (s: ^State, id: Res_ID) -> (n: i32) {
 eg_request_spawn :: proc(s: ^State, req: Spawn_Request) -> Entity_Ref {
 	w := &s.world
 	time := s.time
+	// Logged on entry, where the original's trace hook sits.
+	record_event(s, Event{kind = .Spawn, unit = req.unit, loc = req.loc})
 	ui := unit_index(s.defs, req.unit)
 	if ui < 0 {
 		return NO_REF // "ERROR: Couldn't get the Unit for ..."
@@ -175,8 +177,22 @@ eg_request_spawn :: proc(s: ^State, req: Spawn_Request) -> Entity_Ref {
 		w.limit_warned = true // "Reached Entity Limit"
 		return NO_REF
 	}
+	// FUN_0041b820: this player's existing entities of the same unit make way.
 	if u.delete_existing_entities_of_this_type_owned_by_player && req.owner_player != -1 {
-		unported(s, 0x417bf3) // FUN_0041b820
+		n := w.active.count
+		gc := Cursor{NO_LINK}
+		for _ in 0 ..< n {
+			gi := list_next(&w.active, w.group_links[:], &gc)
+			m := w.groups[gi].entities.count
+			ec := Cursor{NO_LINK}
+			for _ in 0 ..< m {
+				ei := list_next(&w.groups[gi].entities, w.entity_links[:], &ec)
+				o := entity_at(s, ei)
+				if s.defs.units[o.unit].id == req.unit && o.owner_player == req.owner_player {
+					remove_from_group(s, gi, o, false, false)
+				}
+			}
+		}
 	}
 
 	// A single entity with no owner outside the PERM group joins PERM.
@@ -382,10 +398,18 @@ spawn_entity :: proc(
 		cyclic_velocity(s, e)
 	}
 	if e.stationary && u.destruct_create_obstacle {
-		unported(s, 0x41ad0e) // G_Debris_New
+		debris_new(s, object_bounds(&e.obj))
 	}
 	if st.use_parent_direction && ref_valid(s, e.owner) {
-		unported(s, 0x41ad3a) // frame from owner's angle
+		// Face the way the owner faces.
+		o := entity_at(s, e.owner.index)
+		if o.state >= 0 {
+			f := frame_for_angle(s, e, angle_from_sprite(s, o))
+			spr := sprite_find(s.defs, e.sprite)
+			n := spr == nil ? 0 : i32(len(spr.frames))
+			e.frame = f < 0 || f >= n ? 0 : f
+			e.has_frame_ptr = true
+		}
 	}
 	if u.include_in_ground_accuracy_count {
 		s.accuracy_targets += 1 // G_Game_GroundAccuracy_AddTarget

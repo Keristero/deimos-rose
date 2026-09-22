@@ -165,6 +165,9 @@ change_state :: proc(s: ^State, e: ^Entity, init: bool, name: string, time: i32)
 		return false, true
 	}
 	u := unit_of(s, e)
+	// Logged before the lookup, where the original's trace hook sits: a name
+	// that matches no state is still an attempt (and does nothing).
+	record_event(s, Event{kind = .State, unit = u.id, number = e.number, state = name, loc = e.loc})
 	next, found := state_find(u, name)
 	if !found {
 		return
@@ -274,7 +277,7 @@ change_state :: proc(s: ^State, e: ^Entity, init: bool, name: string, time: i32)
 			e.fleeing = false
 		}
 	} else {
-		unported(s, 0x413b9a) // G_Entity::Priv_Flee
+		entity_flee(s, e, st.flee)
 	}
 
 	reset_spawn_info(s, e, time)
@@ -410,4 +413,40 @@ entity_animate :: proc(s: ^State, e: ^Entity, time: i32) {
 	e.anim_time = time
 	e.dims_dirty = true
 	e.has_frame_ptr = true
+}
+
+// G_Entity::Priv_Flee: head off the map in the named direction. The target
+// point goes in the hunt target, which Priv_MoveToTargetLoc then steers to at
+// the state's flee speed.
+//
+// Only the ids the shipped data uses are ported: nora, sora, cega, noce and
+// soce (1,150 states name "none"). The rest mark themselves unported rather
+// than guess which of Priv_Flee's twelve call sites belongs to which branch.
+//
+// The two sites seen in the traces both draw RandomFloat(0, 416) -- the x
+// coordinate for nora and sora -- so the RNG stream is the same either way,
+// but the site identifies the branch: de04 step 2065 shows a "sora" flee
+// drawing at 0x416630, so 0x4165f0 is nora.
+entity_flee :: proc(s: ^State, e: ^Entity, flee: Res_ID) {
+	e.fleeing = true
+	d := s.defs
+	w := d.perm_floats[PF_VISIBLE_GAME_WIDTH]
+	h := d.perm_floats[PF_VISIBLE_GAME_HEIGHT]
+	north := d.perm_floats[0xe] // Game_EntityFleeNorthLocation
+	south := d.perm_floats[0xf]
+	switch flee {
+	case res_id("cega"): // centre
+		e.hunt_target = {w / 2, h / 2}
+	case res_id("nora"): // north, random x
+		e.hunt_target = {random_float(&s.rng, 0, w, 0x4165f0), north}
+	case res_id("sora"): // south, random x
+		e.hunt_target = {random_float(&s.rng, 0, w, 0x416630), south}
+	case res_id("noce"): // north, centred
+		e.hunt_target = {w / 2, north}
+	case res_id("soce"): // south, centred
+		e.hunt_target = {w / 2, south}
+	case NONE:
+	case:
+		unported(s, 0x416520) // east/west/random/opposite flees
+	}
 }

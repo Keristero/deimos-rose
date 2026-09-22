@@ -347,6 +347,18 @@ defs_load :: proc(p: ^Resource_Provider, allocator := context.allocator) -> (def
 		}
 		_ = owned
 	}
+	// idli "gaso": 24 sound ids.
+	if body, _, err := resource_get(p, "idli", "gaso", context.temp_allocator); err == .None {
+		text := tagged_decode(body, context.temp_allocator)
+		tags := tagged_parse(text, context.temp_allocator)
+		for t, i in tags {
+			if i >= sim.PERM_SOUNDS {
+				break
+			}
+			v, _ := tag_fourcc(t.value)
+			defs.perm_sounds[i] = sim.Res_ID(v)
+		}
+	}
 	// idli "gaob": 40 object ids.
 	if body, _, err := resource_get(p, "idli", "gaob", context.temp_allocator); err == .None {
 		text := tagged_decode(body, context.temp_allocator)

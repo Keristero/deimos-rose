@@ -130,6 +130,12 @@ main :: proc() {
 	defs, _ := data.defs_load(&provider)
 	state := new(sim.State)
 
+	// DR_DIFF_CONTEXT=n prints n calls of context around the divergence.
+	context_lines := 0
+	if v, ok := strconv.parse_int(os.get_env("DR_DIFF_CONTEXT", context.temp_allocator)); ok {
+		context_lines = v
+	}
+
 	failures := 0
 	seen: map[u32]bool
 	for t in traces {
@@ -148,7 +154,12 @@ main :: proc() {
 
 		buf := make([]sim.Draw, 2 * len(t.calls) + 1024)
 		log := sim.Draw_Log{draws = buf}
-		sim.replay(state, &film, &defs, &log, max_steps = 4 * len(film.frames) + 10_000)
+		events: sim.Event_Log
+		if len(t.events) > 0 {
+			events = {events = make([]sim.Event, 8 * len(t.events) + 1024)}
+		}
+		sim.replay(state, &film, &defs, &log, max_steps = 4 * len(film.frames) + 10_000,
+			events = len(t.events) > 0 ? &events : nil)
 		got := sim.draw_log_entries(&log)
 		d := oracle.diff(t.calls[:], got)
 
@@ -173,13 +184,75 @@ main :: proc() {
 				fmt.printfln("    unported before the divergence: %s [%#x] from step %d", site_name(syms, g.site), u32(g.site), g.step)
 			}
 		}
+		// With a detail trace, compare event streams too: that names the
+		// entity that diverged, where the draws only say when.
+		if len(t.events) > 0 {
+			// The trace only hooks spawns, state changes and sounds.
+			all := sim.event_log_entries(&events)
+			sim_events := make([dynamic]sim.Event, 0, len(all), context.temp_allocator)
+			for e in all {
+				#partial switch e.kind {
+				case .Spawn, .State, .Sound, .Spawn_Control:
+					append(&sim_events, e)
+				}
+			}
+			n := min(len(t.events), len(sim_events))
+			at := -1
+			for i in 0 ..< n {
+				w, g := t.events[i], sim_events[i]
+				// The trace's SpawnControl events carry the entity number, not
+				// the unit id.
+				bad := w.kind != g.kind
+				if !bad && w.kind == .Spawn_Control {
+					bad = w.number != g.number
+				} else if !bad {
+					bad = w.unit != g.unit || (w.kind == .State && w.state != g.state)
+				}
+				if bad {
+					at = i
+					break
+				}
+			}
+			if at < 0 && len(t.events) != len(sim_events) {
+				at = n
+			}
+			if at >= 0 {
+				fmt.printfln("    first event mismatch at %d (of %d traced, %d simulated)", at, len(t.events), len(sim_events))
+				lo := max(0, at - 4)
+				for i in lo ..< min(at + 5, len(t.events)) {
+					e := t.events[i]
+					id := e.unit
+					fmt.printfln("      orig %5d step %5d %v %s %q entity %d", i, e.frame, e.kind, data.fourcc_string(cast(^data.FourCC)&id), e.state, e.number)
+				}
+				for i in lo ..< min(at + 5, len(sim_events)) {
+					e := sim_events[i]
+					id := e.unit
+					fmt.printfln("      sim  %5d step %5d %v %s %q entity %d", i, e.frame, e.kind, data.fourcc_string(cast(^data.FourCC)&id), e.state, e.number)
+				}
+			}
+		}
+
 		if div, bad := d.first.?; bad {
 			failures += 1
 			fmt.printfln("    first divergence at call %d", div.index)
 			fmt.printfln("      original:   %s", describe(syms, div.want))
 			fmt.printfln("      simulation: %s", describe(syms, div.got))
+			if context_lines > 0 {
+				fmt.printfln("      --- last %d matching calls, then each side ---", context_lines)
+				lo := max(0, div.index - context_lines)
+				for i in lo ..< div.index {
+					fmt.printfln("      both %5d: %s", i, describe(syms, t.calls[i]))
+				}
+				for i in div.index ..< min(div.index + context_lines, len(t.calls)) {
+					fmt.printfln("      orig %5d: %s", i, describe(syms, t.calls[i]))
+				}
+				for i in div.index ..< min(div.index + context_lines, len(got)) {
+					fmt.printfln("      sim  %5d: %s", i, describe(syms, got[i]))
+				}
+			}
 		}
 	}
+	_ = state
 	if len(seen) == 0 {
 		fmt.eprintln("trace contains no films")
 		os.exit(2)

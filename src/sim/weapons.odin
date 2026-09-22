@@ -269,7 +269,11 @@ weapons_process :: proc(
 		}
 		h.appeared = true
 		air_changed = true
-		unported(s, 0x4476f0) // U_Sound_Play(id, priority, volume): the id overload
+		// U_Sound_Play(id, priority, volume, loop): no draws in this overload.
+		if id := s.defs.perm_sounds[0x12]; id != NONE && s.sounds.count < MAX_SOUND_EVENTS {
+			s.sounds.events[s.sounds.count] = {id, 100, 0x4b, 1, true}
+			s.sounds.count += 1
+		}
 	} else if air && h.air_powerup.state == 0 {
 		fire_air = check_spawning_air(s, h, time)
 		fire_aux = check_spawning_aux(s, h, time)
@@ -314,8 +318,15 @@ powerup_release :: proc(s: ^State, entity: i32, time: i32) {
 	for g != NO_LINK {
 		i := w.groups[g].entities.head
 		for i != NO_LINK {
-			if entity_at(s, i).number == entity {
-				unported(s, 0x416fb0) // G_Entity::ChangeToWeaponPowerupReleaseState
+			if e := entity_at(s, i); e.number == entity {
+				// G_Entity::ChangeToWeaponPowerupReleaseState: the first state
+				// flagged for a weapon-powerup release.
+				for &st in unit_of(s, e).states {
+					if st.use_this_state_on_weapon_powerup_release {
+						_, _ = change_state(s, e, false, st.name, time)
+						break
+					}
+				}
 				return
 			}
 			i = w.entity_links[i].next

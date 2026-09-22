@@ -14,6 +14,16 @@ import "core:strings"
 import "dr:sim"
 
 // One film's worth of trace: everything from its srand to the next.
+// One detail-mode event (trace.py's "E" lines): only the kinds worth
+// comparing with the simulation's own log.
+Trace_Event :: struct {
+	kind:   sim.Event_Kind,
+	unit:   sim.Res_ID,
+	number: i32,
+	state:  string,
+	frame:  u32,
+}
+
 Film_Trace :: struct {
 	seed:  u32,
 	// G_Film::GetInputs calls for player 1. A film of N frames shows N + 1:
@@ -26,6 +36,8 @@ Film_Trace :: struct {
 	// are incomplete.
 	draws:    int,
 	unpaired: int,
+	// Detail mode only; empty for an ordinary trace.
+	events: [dynamic]Trace_Event,
 }
 
 Trace_Error :: enum {
@@ -55,7 +67,54 @@ trace_parse :: proc(
 		if len(line) == 0 {
 			continue
 		}
-		f: [5]string
+		// Detail-mode events are parsed first: a state name may contain
+		// spaces, so the generic field split does not apply.
+		if strings.has_prefix(line, "E ") {
+			rest := line[2:]
+			_, _, rest = strings.partition(rest, " ") // thread id
+			name, _, args := strings.partition(rest, " ")
+			ev := Trace_Event{}
+			known := true
+			switch name {
+			case "request_spawn":
+				ev.kind = .Spawn
+			case "change_state":
+				ev.kind = .State
+			case "sound_play":
+				ev.kind = .Sound
+			case "spawn_control":
+				ev.kind = .Spawn_Control
+			case:
+				known = false
+			}
+			if !known || cur == nil {
+				continue
+			}
+			ev.frame = u32(cur.steps)
+			for len(args) > 0 {
+				key, _, tail := strings.partition(args, "=")
+				value: string
+				if strings.has_prefix(tail, "'") {
+					value, _, args = strings.partition(tail[1:], "'")
+					args = strings.trim_left_space(args)
+				} else {
+					value, _, args = strings.partition(tail, " ")
+				}
+				switch key {
+				case "unit", "id":
+					ev.unit = sim.res_id(value)
+				case "entity":
+					v, _ := strconv.parse_int(value)
+					ev.number = i32(v)
+				case "state":
+					ev.state = value
+				}
+			}
+			append(&cur.events, ev)
+			continue
+		}
+
+		f: [8]string
 		n := 0
 		rest := line
 		for field in strings.fields_iterator(&rest) {
@@ -78,7 +137,11 @@ trace_parse :: proc(
 			if !ok {
 				return films, line_no, .Malformed_Line
 			}
-			append(&films, Film_Trace{seed = u32(seed), calls = make([dynamic]sim.Draw, allocator)})
+			append(&films, Film_Trace{
+				seed   = u32(seed),
+				calls  = make([dynamic]sim.Draw, allocator),
+				events = make([dynamic]Trace_Event, allocator),
+			})
 			cur = &films[len(films) - 1]
 			film_tid = tid
 			pending = false
@@ -138,6 +201,7 @@ trace_parse :: proc(
 trace_destroy :: proc(films: [dynamic]Film_Trace) {
 	for f in films {
 		delete(f.calls)
+		delete(f.events)
 	}
 	delete(films)
 }

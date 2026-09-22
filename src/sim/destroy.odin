@@ -45,6 +45,7 @@ particle_burst :: proc "contextless" (s: ^State, loc: Vec, color: Color, size: R
 	for _ in 0 ..< n {
 		_ = random_int(&s.rng, 0, 4, 0x42ee00)
 	}
+	record_event(s, Event{kind = .Burst, unit = size, loc = loc})
 	q := &s.particles
 	if q.count < MAX_PARTICLE_EVENTS {
 		q.events[q.count] = {loc, color, size, ground}
@@ -127,9 +128,10 @@ entity_destroy :: proc(s: ^State, e: ^Entity, player: i32, time: i32) {
 		return
 	}
 	u := unit_of(s, e)
+	record_event(s, Event{kind = .Destroy, unit = u.id, number = e.number, loc = e.loc})
 	e.glowing = false
 	if !e.is_air && u.destruct_create_obstacle {
-		unported(s, 0x4152a0) // G_Debris_New: ground obstacles
+		debris_new(s, object_bounds(&e.obj))
 	}
 	if u.destruct_particle != NONE {
 		particle_burst(s, e.loc, u.destruct_particle_color, u.destruct_particle, u.is_ground_based)

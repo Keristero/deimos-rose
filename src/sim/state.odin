@@ -43,6 +43,7 @@ State :: struct {
 	players:      [MAX_PLAYERS]Player,
 	world:        World,
 	bgnd:         Bgnd,
+	debris:       Debris,
 	sounds:       Sound_Queue,    // this step's sound events, for presentation
 	particles:    Particle_Queue, // this step's particle bursts, for presentation
 	accuracy_targets:   i32,  // DAT_004e4856
@@ -54,6 +55,7 @@ State :: struct {
 	// address; 0 while the port covers everything run so far. `gaps` keeps
 	// each distinct site with the film step it was first reached at.
 	unported:     Site,
+	events:       ^Event_Log, // debugging aid; see events.odin
 	gaps:         [32]Gap,
 	gap_count:    int,
 }
@@ -83,10 +85,11 @@ unported :: proc "contextless" (s: ^State, site: Site) {
 
 // G_Game_Play's set-up for one session: srand(seed), both players, the
 // first level.
-init :: proc(s: ^State, session: Session, defs: ^Defs, log: ^Draw_Log = nil) {
+init :: proc(s: ^State, session: Session, defs: ^Defs, log: ^Draw_Log = nil, events: ^Event_Log = nil) {
 	s^ = State{}
 	s.session = session
 	s.defs = defs
+	s.events = events
 	s.rng = rand_init(session.seed, log)
 	s.level = level_by_id(defs, session.level_id)
 	if s.level == nil {
@@ -106,6 +109,7 @@ level_start :: proc(s: ^State) {
 	for &p in s.players {
 		player_level_reset(s, &p, s.time)
 	}
+	s.debris.count = 0 // G_Debris_ResetAtLevelStart
 	bgnd_reset(s, s.level)
 	eg_reset(s, s.level)
 	bgnd_initial_spawns(s)
@@ -131,9 +135,10 @@ step :: proc(s: ^State, input: Frame_Input, film: ^Film = nil) {
 	if !s.player1_seen_playing && s.players[0].state == .Playing {
 		s.player1_seen_playing = true
 	}
-	// G_Notice_Process, G_Debris_Process, G_Particle_Process,
-	// G_MotionBlur_Process: nothing they do draws yet (see notice.odin).
+	// G_Notice_Process, G_Particle_Process and G_MotionBlur_Process do not
+	// draw; G_Debris_Process moves the ground wreckage with the scroll.
 	notice_process(s)
+	debris_process(s)
 	for i in 0 ..< MAX_PLAYERS {
 		player_process(s, &s.players[i], s.time, input[i], film)
 	}
