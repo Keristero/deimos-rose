@@ -102,6 +102,27 @@ share a layout, never cross-decode into each other, and that a truncated
 buffer is rejected rather than read out of bounds) and, in
 `socket_sends_and_receives_on_loopback`, opens two real UDP sockets on
 loopback and exchanges an actual Input packet between them -- the first test
-in the project that touches a socket at all. `mise run ci` is green (76
-tests). Still to build: the reliable channel for Hello/Ready/Goodbye (sent
-so far, never yet resent or acked), and everything in stages 3-6.
+in the project that touches a socket at all.
+
+`net/reliable.odin` adds the small reliable channel: `Reliable_Channel` is
+stop-and-wait, one message in flight at a time (all a two-player handshake
+ever needs) -- `send_hello`/`send_ready`/`send_goodbye` queue a seq-numbered
+packet and send it immediately, `reliable_tick` resends it once
+`RELIABLE_RETRY` (200ms) passes with no ack and reports the channel dead
+after `RELIABLE_MAX_RETRIES` (20, ~4s) with none, `reliable_accept` on the
+receiving side always acks and tells the caller whether a seq is new or a
+repeat so a resent Hello isn't handled twice, and `reliable_handle_ack`
+clears the pending send. Odin has no closures, which is why `send_hello` /
+`send_ready` / `send_goodbye` each repeat their own small bookkeeping around
+`encode_hello`/`encode_ready`/`encode_goodbye` rather than sharing it through
+a callback. Hello/Ready/Goodbye's wire format grew a seq byte to carry this
+(D20 predates this addition; nothing external depends on the old layout yet).
+`tests/net_test.odin` proves the full Hello→accept→Ack→cleared-pending loop
+over real loopback sockets, that a repeated seq is rejected as not-new, that
+a tick past the retry interval actually resends (backdating `sent_at` with
+`time.time_add` rather than sleeping, to keep the test fast), and that
+`RELIABLE_MAX_RETRIES` exceeded reports the channel dead. Stage 2 is now
+complete as scoped. `mise run ci` is green (79 tests).
+
+Stages 3-6 (prediction/rollback wiring onto real network input, desync
+detection, lobby, two-machine playtest) are unstarted.

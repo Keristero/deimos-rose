@@ -2,6 +2,7 @@ package tests
 
 import core_net "core:net"
 import "core:testing"
+import "core:time"
 
 import net "dr:net"
 import "dr:sim"
@@ -9,12 +10,13 @@ import "dr:sim"
 @(test)
 packet_hello_round_trips :: proc(t: ^testing.T) {
 	buf: [64]byte
-	n := net.encode_hello(buf[:], 1)
+	n := net.encode_hello(buf[:], 5, 1)
 	kind, kok := net.peek_kind(buf[:n])
 	testing.expect(t, kok)
 	testing.expect_value(t, kind, net.Packet_Kind.Hello)
-	player, ok := net.decode_hello(buf[:n])
+	seq, player, ok := net.decode_hello(buf[:n])
 	testing.expect(t, ok)
+	testing.expect_value(t, seq, u8(5))
 	testing.expect_value(t, player, u8(1))
 }
 
@@ -106,6 +108,107 @@ socket_sends_and_receives_on_loopback :: proc(t: ^testing.T) {
 	testing.expect_value(t, p.count, 2)
 	testing.expect_value(t, p.frames[0], sim.Buttons{.Left, .Fire_Ground})
 	testing.expect_value(t, p.frames[1], sim.Buttons{.Right})
+}
+
+// The Hello -> Ack handshake over real loopback sockets, exactly as a lobby
+// would run it: a's Reliable_Channel sends Hello, b receives and accepts it
+// (reporting it as new), b's Ack reaches a, and a's channel clears pending.
+@(test)
+reliable_handshake_completes_over_loopback :: proc(t: ^testing.T) {
+	a, aok := net.open(0)
+	testing.expect(t, aok)
+	defer net.close(&a)
+	b, bok := net.open(0)
+	testing.expect(t, bok)
+	defer net.close(&b)
+
+	a_ep, _ := net.local_endpoint(&a)
+	b_ep, _ := net.local_endpoint(&b)
+	a_to_b := core_net.Endpoint{address = core_net.IP4_Loopback, port = b_ep.port}
+	b_to_a := core_net.Endpoint{address = core_net.IP4_Loopback, port = a_ep.port}
+
+	rc_a: net.Reliable_Channel
+	net.reliable_init(&rc_a, a_to_b)
+	net.send_hello(&rc_a, &a, 0)
+	testing.expect(t, rc_a.pending, "hello should be pending until acked")
+
+	buf: [64]byte
+	n, _, ok := poll_until_received(&b, buf[:])
+	testing.expect(t, ok, "b should receive a's Hello")
+	if !ok {
+		return
+	}
+	kind, kok := net.peek_kind(buf[:n])
+	testing.expect(t, kok && kind == .Hello)
+	seq, player, dok := net.decode_hello(buf[:n])
+	testing.expect(t, dok)
+	testing.expect_value(t, player, u8(0))
+
+	rc_b: net.Reliable_Channel
+	net.reliable_init(&rc_b, b_to_a)
+	is_new := net.reliable_accept(&rc_b, &b, b_to_a, seq)
+	testing.expect(t, is_new, "first delivery of a seq must be new")
+	is_new_again := net.reliable_accept(&rc_b, &b, b_to_a, seq)
+	testing.expect(t, !is_new_again, "a repeated seq must not be new")
+
+	m, _, ackok := poll_until_received(&a, buf[:])
+	testing.expect(t, ackok, "a should receive b's Ack")
+	if !ackok {
+		return
+	}
+	net.reliable_handle_ack(&rc_a, buf[:m])
+	testing.expect(t, !rc_a.pending, "the ack should clear the pending hello")
+}
+
+@(test)
+reliable_tick_resends_after_the_retry_interval :: proc(t: ^testing.T) {
+	a, aok := net.open(0)
+	testing.expect(t, aok)
+	defer net.close(&a)
+	b, bok := net.open(0)
+	testing.expect(t, bok)
+	defer net.close(&b)
+	b_ep, _ := net.local_endpoint(&b)
+
+	rc: net.Reliable_Channel
+	net.reliable_init(&rc, core_net.Endpoint{address = core_net.IP4_Loopback, port = b_ep.port})
+	net.send_ready(&rc, &a)
+
+	buf: [64]byte
+	_, _, first := poll_until_received(&b, buf[:])
+	testing.expect(t, first, "the initial send should arrive")
+
+	// Nothing has acked it yet: back-date sent_at past the retry interval
+	// (rather than actually sleeping) and confirm a tick resends it.
+	rc.sent_at = time.time_add(time.now(), -net.RELIABLE_RETRY - time.Millisecond)
+	testing.expect(t, net.reliable_tick(&rc, &a), "one retry should not exhaust the channel")
+	testing.expect_value(t, rc.retries, 1)
+	_, _, resent := poll_until_received(&b, buf[:])
+	testing.expect(t, resent, "the retry should have been sent")
+
+	rc.pending = false
+	testing.expect(t, net.reliable_tick(&rc, &a), "nothing pending is trivially alive")
+}
+
+@(test)
+reliable_tick_gives_up_after_max_retries :: proc(t: ^testing.T) {
+	a, aok := net.open(0)
+	testing.expect(t, aok)
+	defer net.close(&a)
+
+	rc: net.Reliable_Channel
+	net.reliable_init(&rc, core_net.Endpoint{address = core_net.IP4_Loopback, port = 1}) // nobody listening
+	net.send_goodbye(&rc, &a)
+
+	alive := true
+	for _ in 0 ..< net.RELIABLE_MAX_RETRIES {
+		rc.sent_at = time.time_add(time.now(), -net.RELIABLE_RETRY - time.Millisecond)
+		alive = net.reliable_tick(&rc, &a)
+		testing.expect(t, alive)
+	}
+	rc.sent_at = time.time_add(time.now(), -net.RELIABLE_RETRY - time.Millisecond)
+	alive = net.reliable_tick(&rc, &a)
+	testing.expect(t, !alive, "the channel should give up once retries are exhausted")
 }
 
 // poll_recv is non-blocking; a freshly sent loopback packet is normally

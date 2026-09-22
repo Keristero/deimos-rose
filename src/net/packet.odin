@@ -20,6 +20,7 @@ Packet_Kind :: enum u8 {
 	Ping    = 4, // RTT probe, unreliable, sent on a timer
 	Pong    = 5, // Ping's reply, echoes the same nonce
 	Input   = 6, // a player's recent input history, unreliable and redundant
+	Ack     = 7, // acknowledges one Hello/Ready/Goodbye by its seq
 }
 
 // How many consecutive frames of input one packet can carry. Sized so a
@@ -35,7 +36,7 @@ peek_kind :: proc(buf: []byte) -> (kind: Packet_Kind, ok: bool) {
 	}
 	k := Packet_Kind(buf[0])
 	switch k {
-	case .Hello, .Ready, .Goodbye, .Ping, .Pong, .Input:
+	case .Hello, .Ready, .Goodbye, .Ping, .Pong, .Input, .Ack:
 		return k, true
 	}
 	return {}, false
@@ -67,27 +68,61 @@ get_u64 :: proc(b: []byte) -> u64 {
 	return v
 }
 
-encode_hello :: proc(buf: []byte, player: u8) -> int {
+// Hello, Ready and Goodbye all carry a seq byte (byte 1) -- see
+// net/reliable.odin -- so each can be resent verbatim until acked and a
+// duplicate delivery can be told apart from a new message.
+
+encode_hello :: proc(buf: []byte, seq: u8, player: u8) -> int {
 	buf[0] = u8(Packet_Kind.Hello)
-	buf[1] = player
+	buf[1] = seq
+	buf[2] = player
+	return 3
+}
+
+decode_hello :: proc(buf: []byte) -> (seq: u8, player: u8, ok: bool) {
+	if len(buf) < 3 || Packet_Kind(buf[0]) != .Hello {
+		return 0, 0, false
+	}
+	return buf[1], buf[2], true
+}
+
+encode_ready :: proc(buf: []byte, seq: u8) -> int {
+	buf[0] = u8(Packet_Kind.Ready)
+	buf[1] = seq
 	return 2
 }
 
-decode_hello :: proc(buf: []byte) -> (player: u8, ok: bool) {
-	if len(buf) < 2 || Packet_Kind(buf[0]) != .Hello {
+decode_ready :: proc(buf: []byte) -> (seq: u8, ok: bool) {
+	if len(buf) < 2 || Packet_Kind(buf[0]) != .Ready {
 		return 0, false
 	}
 	return buf[1], true
 }
 
-encode_ready :: proc(buf: []byte) -> int {
-	buf[0] = u8(Packet_Kind.Ready)
-	return 1
+encode_goodbye :: proc(buf: []byte, seq: u8) -> int {
+	buf[0] = u8(Packet_Kind.Goodbye)
+	buf[1] = seq
+	return 2
 }
 
-encode_goodbye :: proc(buf: []byte) -> int {
-	buf[0] = u8(Packet_Kind.Goodbye)
-	return 1
+decode_goodbye :: proc(buf: []byte) -> (seq: u8, ok: bool) {
+	if len(buf) < 2 || Packet_Kind(buf[0]) != .Goodbye {
+		return 0, false
+	}
+	return buf[1], true
+}
+
+encode_ack :: proc(buf: []byte, seq: u8) -> int {
+	buf[0] = u8(Packet_Kind.Ack)
+	buf[1] = seq
+	return 2
+}
+
+decode_ack :: proc(buf: []byte) -> (seq: u8, ok: bool) {
+	if len(buf) < 2 || Packet_Kind(buf[0]) != .Ack {
+		return 0, false
+	}
+	return buf[1], true
 }
 
 // Ping and Pong share a layout (a nonce to echo back); the kind byte is what
