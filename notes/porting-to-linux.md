@@ -69,15 +69,48 @@ integration. You end up owning the real engine, bit-accurate behaviour, and
 the ability to diff against the original. This is the route this repository is
 set up for.
 
-**Route B — use the reimplementation.**
+**Route B — build on the reimplementation.**
 [adamjvr/Deimos-Rising-Remastered](https://github.com/adamjvr/Deimos-Rising-Remastered)
-is already C++20 + CMake and already parses the real PAKs and all 12 levels.
-If the goal is *playing Deimos Rising on Linux*, that project is far closer to
-a build than a from-scratch decomp will be for many months.
+is C++20 + CMake and genuinely parses the real PAKs: 871 files CRC-validate
+across four archives, all 12 levels and 386 unit definitions parse.
 
-The catch: it maintains a clean-room policy (`docs/CLEAN_ROOM.md`). Symbol
-data and disassembly derived from the original executable must not be fed into
-it without checking that policy. The two efforts cannot be casually merged.
+But it is **not closer to a playable Linux build than a decomp is** — it has no
+platform layer whatsoever. `CMakeLists.txt` builds exactly one static library
+(`deimos_core`, zero external dependencies) plus a `deimos_reference_probe`
+validation tool and the test binaries. There is no `main`, no window, no input
+handling and no audio output; `render_backend.hpp` composites into a
+`std::vector<std::uint16_t>` held in memory. `docs/PLATFORM_PLAN.md` is 605
+bytes of intent, and it ranks Linux third behind macOS and iPadOS.
+
+On its own roadmap (7 phases), it self-reports as Phase 1 with early Phase-2
+primitives. **Playable is Phase 4; Linux is Phase 5.**
+
+Its value to this project is the format and behaviour research in
+`reverse/formats/`, not a shortcut to a running game.
+
+### The clean-room policy is less restrictive than it first appears
+
+`docs/CLEAN_ROOM.md` forbids copying "decompiler pseudocode or
+machine-translated original implementation" into their source tree. Its
+explicitly **allowed** observations include:
+
+- "hashes, sizes, offsets, resource tags, filenames, and paths";
+- "API/library imports and linkage structure";
+- "original source filenames/assertion text as correspondence evidence";
+- "manually assigned semantic names supported by evidence".
+
+Everything in `symbols/` falls in that allowed column — it is names, offsets,
+linkage and the object-file list, not translated code. An earlier note in this
+repository claimed the two efforts could not be merged; that overstated the
+policy.
+
+There is a concrete reason to think the symbol map is useful to them: their
+`include/deimos/render_backend.hpp` carries the comment *"Exact low request
+bits consumed by 0x19570"*. In this repository's map, `0x19570` falls inside
+`G_EG_BuildDrawList` (RVA `0x19060`, 2,160 bytes) — an entity-group draw-list
+builder, exactly the subsystem that header reconstructs. They are citing
+addresses this map can name. One corroborating data point rather than proof,
+but a promising one.
 
 ## Highest-leverage next steps
 

@@ -125,10 +125,15 @@ Note that its `PEF_1_0_6.md` targets the **Mac PowerPC** build. The Windows
 binary analysed here ships full CodeView symbols, which the PEF build is
 unlikely to have — so this symbol map may be new information for that project.
 
-Because that project maintains a clean-room policy, symbol data and
-disassembly derived from the original executable should **not** be contributed
-to it without checking its `docs/CLEAN_ROOM.md` and `docs/ASSET_POLICY.md`
-first.
+That project is **not** a shortcut to a playable Linux build: it has no
+platform layer at all — no `main`, window, input or audio output — and on its
+own 7-phase roadmap, playable is Phase 4 and Linux is Phase 5, while it
+self-reports as Phase 1. Its value here is the format research.
+
+Its `docs/CLEAN_ROOM.md` forbids importing decompiler pseudocode, but
+explicitly permits offsets, linkage structure, original source filenames and
+evidence-backed semantic names — which is what `symbols/` contains. See
+[notes/porting-to-linux.md](notes/porting-to-linux.md).
 
 ## Legal
 
