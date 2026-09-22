@@ -63,3 +63,16 @@ Ghidra goes in `~/.cache/deimos-rising/`; the project and corpus in a
 gitignored `work/`. Not `src/build/`, because `mise run clean` would discard
 minutes of analysis. Not a dotted path, because the headless analyser rejects
 any path element beginning with `.`.
+
+### D11 — Typed loaders only where the format is proven
+
+Levels and films get typed structs because their layouts are fully recovered.
+The other nine tagged-text families are exported as ordered key/value JSON:
+lossless, immediately usable, and no guessing at a schema. Typed loaders land
+when the evidence does.
+
+### D12 — Guesses are marked in the code, not just the docs
+
+`BIT_TO_BUTTON` and `Game_Type.Co_Op` carry PROVISIONAL comments naming what
+would resolve them. Two Phase 0 guesses (`Single = 0`, `level_id: u16`) turned
+out wrong; marking them in the source is what makes them cheap to fix.

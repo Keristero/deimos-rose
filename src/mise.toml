@@ -55,6 +55,7 @@ run = [
   "odin check data $DR_COLL -vet -strict-style -no-entry-point",
   "odin check tools/extract $DR_COLL -vet -strict-style",
   "odin check tools/verify  $DR_COLL -vet -strict-style",
+  "odin check tools/records $DR_COLL -vet -strict-style",
 ]
 
 [tasks.test]
@@ -92,6 +93,15 @@ run = "bash tools/decomp/index.sh"
 description = "Extract original PAKs into modern formats (PNG/WAV/JSON)"
 depends = ["setup"]
 run = "odin run tools/extract $DR_COLL $DR_LINK -out:$DR_BUILD/extract -- $DR_ORIG $DR_ASSETS"
+
+[tasks."assets:records"]
+description = "Decode the tagged-text resources into JSON under assets/data/"
+depends = ["setup"]
+run = "odin run tools/records $DR_COLL $DR_LINK -out:$DR_BUILD/records -- $DR_ASSETS"
+
+[tasks."assets:all"]
+description = "Extract media and decode records"
+depends = ["assets:extract", "assets:records"]
 
 [tasks."assets:verify"]
 description = "Verify extracted assets against the manifest and the original PAKs"

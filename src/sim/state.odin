@@ -2,16 +2,32 @@ package sim
 
 // Game_Type mirrors the original's G_Game_Type enum, which G_Film records
 // alongside the seed and level so a replay reconstructs the same session.
+//
+// Single = 1 is verified: G_Player::Priv_ResetPosition reads the single-player
+// start position out of G_PlayerDef when the value is 1 and the two-player
+// start otherwise, and G_Player's constructor defaults the field to 1.
+// The co-operative value is PROVISIONAL -- no evidence pins it yet.
 Game_Type :: enum u8 {
-	Single  = 0,
-	Co_Op   = 1,
+	Single = 1,
+	Co_Op  = 2,
+}
+
+// Levels are addressed by four-byte resource id ("le01" ... "le12"), not by
+// index. "none" is the canonical empty id.
+Level_ID :: distinct [4]u8
+
+level_id :: proc "contextless" (s: string) -> (id: Level_ID) {
+	for i in 0 ..< 4 {
+		id[i] = i < len(s) ? s[i] : ' '
+	}
+	return
 }
 
 // Session parameters fixed at start and never mutated. A film stores exactly
 // these three values plus the per-frame inputs.
 Session :: struct {
 	seed:      u32,
-	level_id:  u16,
+	level_id:  Level_ID,
 	game_type: Game_Type,
 }
 
