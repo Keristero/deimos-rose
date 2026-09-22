@@ -3,7 +3,8 @@
 # Usage: [DETAIL=1] [STEPS=n] [DEMOS=n] [OUT=name] trace.sh [max seconds]
 #   DETAIL=1 also logs entry to key functions (see trace.py); STEPS=n logs
 #   only the first n steps of each film; DEMOS=n stops after n films;
-#   OUT names the output directory under $DR_WINE (default "traces").
+#   OUT names the output directory under $DR_WINE (default "traces");
+#   ENTITY=n also logs that entity's position every step.
 # Writes $DR_WINE/traces/trace.txt (see trace.py for the format), plus a
 # screenshot a minute so a stalled or crashed run is visible.
 source "$(dirname "$0")/common.sh"
@@ -29,6 +30,7 @@ gdb -q -batch -p "$pid" -ex "set pagination off" \
     -ex "handle all nostop noprint pass" \
     -ex "set \$trace_out=\"/w/'"$name"'/trace.txt\"" \
     -ex "set \$trace_detail='"${DETAIL:-0}"'" -ex "set \$trace_steps='"${STEPS:-0}"'" \
+    -ex "set \$trace_entity='"${ENTITY:-0}"'" \
     -ex "source /w/'"$name"'/trace.py" -ex continue >/w/'"$name"'/gdb.log 2>&1 &
 sleep 8
 # DEMOS on the title menu. The game polls button state, so an instantaneous

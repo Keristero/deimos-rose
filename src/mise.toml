@@ -127,6 +127,10 @@ run = "bash tools/oracle/trace.sh"
 description = "Dump the original's U_Math lookup tables (sin/cos/atan/sqrt) from memory"
 run = "bash tools/oracle/tables.sh"
 
+[tasks."oracle:sprites"]
+description = "Dump the original's sprite frame dimensions (ground truth for the plate scanner)"
+run = "bash tools/oracle/sprites.sh"
+
 [tasks."oracle:diff"]
 description = "Compare the simulation's random calls with the original's trace, per demo film"
 run = "odin run tools/diff $DR_COLL -out:$DR_BUILD/oracle-diff --"

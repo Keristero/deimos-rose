@@ -226,3 +226,81 @@ player_collect :: proc(s: ^State, p: ^Player, e: ^Entity) -> bool {
 	}
 	return true
 }
+
+// G_Player::PowerupOverload_Process: while an air power-up is overloaded the
+// player flashes and a warning sounds at a shrinking interval; after
+// `powerupOverload_NumWarnings` warnings the player is destroyed.
+player_overload_process :: proc(s: ^State, p: ^Player, time: i32) {
+	if p.state != .Playing {
+		if p.overloaded {
+			overload_clear(p)
+		}
+		return
+	}
+	if !p.overloaded {
+		return
+	}
+	if s.level_ending {
+		overload_clear(p)
+		return
+	}
+	d := player_def(s, p)
+	if !p.overload_rising {
+		p.tint -= d.powerup_overload_warning_fade_percent
+		if p.tint <= 0 {
+			p.tint = 0
+			p.overload_rising = true
+		}
+	} else if p.overload_time + p.overload_interval < time {
+		p.overload_time = time
+		p.tint += 100
+		if 100 <= p.tint {
+			p.tint = 100
+			p.overload_rising = false
+			p.overload_interval -= 1
+			if p.overload_interval < d.powerup_overload_minimum_time_between_warnings {
+				p.overload_interval = d.powerup_overload_minimum_time_between_warnings
+			}
+			p.overload_warnings += 1
+			if p.overload_warnings == d.powerup_overload_num_warnings {
+				player_destroy(s, p, time)
+				return
+			}
+			sound_play(s, Sound_Settings {
+				id         = d.powerup_overload_sound,
+				min_volume = d.powerup_overload_sound_min_volume,
+				max_volume = d.powerup_overload_sound_max_volume,
+				priority   = d.powerup_overload_sound_priority,
+				min_pitch  = d.powerup_overload_sound_min_pitch,
+				max_pitch  = d.powerup_overload_sound_max_pitch,
+			}, true)
+		}
+	}
+	p.colorise = false
+	p.tint_target = p.tint
+	p.tint_delta = 0
+	p.tint_color = color_1555(d.powerup_overload_hilite)
+}
+
+@(private = "file")
+overload_clear :: proc "contextless" (p: ^Player) {
+	p.overloaded = false
+	p.overload_rising = false
+	p.overload_time = 0
+	p.overload_interval = 0
+	p.overload_warnings = 0
+	p.colorise = false
+	p.tint, p.tint_target, p.tint_delta = 0, 0, 0
+	p.tint_color = 0x7fff
+}
+
+// The overload start in G_Player::Process, when the weapon handler reports it.
+player_overload_begin :: proc "contextless" (s: ^State, p: ^Player, time: i32) {
+	d := player_def(s, p)
+	p.overloaded = true
+	p.overload_rising = true
+	p.overload_time = time
+	p.overload_interval = d.powerup_overload_initial_time_between_warnings
+	p.overload_warnings = 0
+	p.tint_color = color_1555(d.powerup_overload_hilite)
+}

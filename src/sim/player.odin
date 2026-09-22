@@ -39,7 +39,12 @@ Player :: struct {
 	inputs:        Buttons,      // +0x1f6 this step's inputs
 	crosshair_reach: i32,        // +0x205 how far the crosshair is pushed out
 	overloaded:    bool,         // +0x209 air power-up overload in progress
+	overload_rising: bool,       // +0x20a
+	overload_time: i32,          // +0x20f
+	overload_interval: i32,      // +0x213
+	overload_warnings: i32,      // +0x217
 	nag_time:      i32,          // +0x22b unregistered-copy nag timer
+	counter:       Money_Counter, // +0xd2 the end-of-level money readout
 	weapons:       Weapon_Handler, // +0x235
 }
 
@@ -205,9 +210,7 @@ player_process :: proc(s: ^State, p: ^Player, time: i32, input: Buttons, film: ^
 		}
 	}
 	do_scaling(&p.obj)
-	if p.overloaded {
-		unported(s, 0x431410) // G_Player::PowerupOverload_Process
-	}
+	player_overload_process(s, p, time)
 	adjust_visibility_and_tinting(&p.obj)
 	if p.appeared && p.visibility == p.visibility_target {
 		p.appeared = false
@@ -225,11 +228,12 @@ player_process :: proc(s: ^State, p: ^Player, time: i32, input: Buttons, film: ^
 		switch result {
 		case .Overload:
 			if p.state == .Playing && !s.level_ending && !p.overloaded {
-				p.overloaded = true
-				unported(s, 0x432c90) // overload warning set-up
+				player_overload_begin(s, p, time)
 			}
 		case .Released:
 			p.overloaded = false
+			p.overload_rising = false
+			p.overload_time, p.overload_interval, p.overload_warnings = 0, 0, 0
 			p.colorise = false
 			p.tint, p.tint_target, p.tint_delta = 0, 0, 0
 			p.tint_color = 0x7fff

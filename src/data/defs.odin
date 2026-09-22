@@ -190,7 +190,7 @@ defs_load :: proc(p: ^Resource_Provider, allocator := context.allocator) -> (def
 			report.bad_plates += 1
 			continue
 		}
-		frames, perr := plate_frames(g.pixels, g.width, g.height, context.temp_allocator)
+		frames, perr := plate_frames(g.pixels, g.palette, g.width, g.height, context.temp_allocator)
 		if perr != .None {
 			report.bad_plates += 1
 			continue

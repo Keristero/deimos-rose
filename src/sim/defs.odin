@@ -29,6 +29,13 @@ Rect :: struct {
 
 Color :: [3]u8
 
+// The original stores colours as 1555 pixels (U_Token_GetColor reads them
+// straight into a u16); our records keep the RGB triple, so pack when a
+// packed value is needed.
+color_1555 :: proc "contextless" (c: Color) -> u16 {
+	return u16(c.r >> 3) << 10 | u16(c.g >> 3) << 5 | u16(c.b >> 3)
+}
+
 // A rule as the state loader reads it. Its fields go through locals in the
 // original, so they are not in the generated layouts; see data/definition.odin.
 Rule :: struct {

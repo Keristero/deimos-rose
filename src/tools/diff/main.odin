@@ -158,8 +158,31 @@ main :: proc() {
 		if len(t.events) > 0 {
 			events = {events = make([]sim.Event, 8 * len(t.events) + 1024)}
 		}
-		sim.replay(state, &film, &defs, &log, max_steps = 4 * len(film.frames) + 10_000,
-			events = len(t.events) > 0 ? &events : nil)
+		// A detail trace records both players at the top of every step, so
+		// the replay is driven here rather than through sim.replay: the same
+		// snapshot is taken at the same point and compared below.
+		snaps := make([dynamic]oracle.Player_Snapshot, 0, len(t.players), context.temp_allocator)
+		max_steps := 4 * len(film.frames) + 10_000
+		sim.init(state, film.session, &defs, &log, len(t.events) > 0 ? &events : nil)
+		for i := 0; i < max_steps && !sim.film_finished(state, &film); i += 1 {
+			if len(t.players) > 0 {
+				for &p in state.players {
+					append(&snaps, oracle.Player_Snapshot {
+						frame   = u32(state.film_cursor[0]),
+						player  = p.number,
+						state   = i32(p.state),
+						loc     = p.loc,
+						shields = p.shields,
+						money   = p.money,
+						lives   = p.lives,
+						score   = p.score,
+						mult    = p.multiplier,
+						warned  = p.shield_warned,
+					})
+				}
+			}
+			sim.step(state, {}, &film)
+		}
 		got := sim.draw_log_entries(&log)
 		d := oracle.diff(t.calls[:], got)
 
@@ -229,6 +252,31 @@ main :: proc() {
 					id := e.unit
 					fmt.printfln("      sim  %5d step %5d %v %s %q entity %d", i, e.frame, e.kind, data.fourcc_string(cast(^data.FourCC)&id), e.state, e.number)
 				}
+			}
+		}
+
+		// The player snapshots are two per step, in processing order, so a
+		// plain walk finds the first step where a player's own state drifted
+		// -- usually long before any of it reaches the RNG.
+		if len(t.players) > 0 {
+			near :: proc(a, b: f32, tol: f32) -> bool {
+				d := a - b
+				return (d < 0 ? -d : d) <= tol
+			}
+			n := min(len(t.players), len(snaps))
+			for i in 0 ..< n {
+				w, g := t.players[i], snaps[i]
+				// The trace prints floats with six significant digits.
+				if w.state == g.state && w.money == g.money && w.lives == g.lives &&
+				   w.score == g.score && w.mult == g.mult && w.warned == g.warned &&
+				   near(w.shields, g.shields, 0.01) &&
+				   near(w.loc.x, g.loc.x, 0.01) && near(w.loc.y, g.loc.y, 0.01) {
+					continue
+				}
+				fmt.printfln("    first player mismatch at step %d, player %d", i / 2, g.player)
+				fmt.printfln("      original:   %#v", w)
+				fmt.printfln("      simulation: %#v", g)
+				break
 			}
 		}
 

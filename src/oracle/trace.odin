@@ -24,6 +24,23 @@ Trace_Event :: struct {
 	frame:  u32,
 }
 
+// One G_Player::Process entry from a detail trace: the player as the original
+// saw it at the start of that step. Shields, money, lives and the score drift
+// silently -- nothing about them reaches the RNG until much later -- so
+// comparing them step by step finds the cause long before the draws diverge.
+Player_Snapshot :: struct {
+	frame:   u32,
+	player:  i32,
+	state:   i32,
+	loc:     sim.Vec,
+	shields: f32,
+	money:   i32,
+	lives:   i32,
+	score:   i32,
+	mult:    i32,
+	warned:  bool,
+}
+
 Film_Trace :: struct {
 	seed:  u32,
 	// G_Film::GetInputs calls for player 1. A film of N frames shows N + 1:
@@ -37,7 +54,8 @@ Film_Trace :: struct {
 	draws:    int,
 	unpaired: int,
 	// Detail mode only; empty for an ordinary trace.
-	events: [dynamic]Trace_Event,
+	events:  [dynamic]Trace_Event,
+	players: [dynamic]Player_Snapshot,
 }
 
 Trace_Error :: enum {
@@ -73,6 +91,42 @@ trace_parse :: proc(
 			rest := line[2:]
 			_, _, rest = strings.partition(rest, " ") // thread id
 			name, _, args := strings.partition(rest, " ")
+			if name == "player_process" {
+				if cur == nil {
+					continue
+				}
+				p := Player_Snapshot{frame = u32(cur.steps)}
+				for len(args) > 0 {
+					key, _, tail := strings.partition(args, "=")
+					value: string
+					value, _, args = strings.partition(tail, " ")
+					num, _ := strconv.parse_f64(value)
+					switch key {
+					case "player":
+						p.player = i32(num)
+					case "state":
+						p.state = i32(num)
+					case "x":
+						p.loc.x = f32(num)
+					case "y":
+						p.loc.y = f32(num)
+					case "shields":
+						p.shields = f32(num)
+					case "money":
+						p.money = i32(num)
+					case "lives":
+						p.lives = i32(num)
+					case "score":
+						p.score = i32(num)
+					case "mult":
+						p.mult = i32(num)
+					case "warned":
+						p.warned = num != 0
+					}
+				}
+				append(&cur.players, p)
+				continue
+			}
 			ev := Trace_Event{}
 			known := true
 			switch name {
@@ -138,9 +192,10 @@ trace_parse :: proc(
 				return films, line_no, .Malformed_Line
 			}
 			append(&films, Film_Trace{
-				seed   = u32(seed),
-				calls  = make([dynamic]sim.Draw, allocator),
-				events = make([dynamic]Trace_Event, allocator),
+				seed    = u32(seed),
+				calls   = make([dynamic]sim.Draw, allocator),
+				events  = make([dynamic]Trace_Event, allocator),
+				players = make([dynamic]Player_Snapshot, allocator),
 			})
 			cur = &films[len(films) - 1]
 			film_tid = tid
@@ -202,6 +257,7 @@ trace_destroy :: proc(films: [dynamic]Film_Trace) {
 	for f in films {
 		delete(f.calls)
 		delete(f.events)
+		delete(f.players)
 	}
 	delete(films)
 }

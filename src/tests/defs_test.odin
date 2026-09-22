@@ -130,7 +130,9 @@ plate_frames_cuts_boxes_and_trims_background :: proc(t: ^testing.T) {
 		B, B, X, X, M, B, X, B, M,
 		M, M, M, M, M, M, M, M, M,
 	}
-	frames, err := data.plate_frames(px, 9, 5, context.temp_allocator)
+	// Distinct palette entries so the quantised comparison keeps them apart.
+	pal := [][3]u8{{0, 0, 0}, {255, 0, 255}, {0, 255, 0}, {0, 0, 255}, {51, 51, 51}, {102, 0, 0}, {0, 102, 0}, {255, 255, 255}}
+	frames, err := data.plate_frames(px, pal, 9, 5, context.temp_allocator)
 	testing.expect_value(t, err, data.Plate_Error.None)
 	testing.expect_value(t, len(frames), 2)
 	if len(frames) == 2 {

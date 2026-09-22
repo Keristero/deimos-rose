@@ -49,8 +49,12 @@ State :: struct {
 	accuracy_targets:   i32,  // DAT_004e4856
 	accuracy_destroyed: i32,  // DAT_004e485a
 	accuracy_reward_this_level: bool, // DAT_004e4828
+	perfect_level: bool,        // DAT_004e4827: this level ended at 100%
+	levels_played: i32,         // DAT_004e482a: levels started this session
 	player1_seen_playing: bool, // FUN_00420280's first argument
 	level_ending: bool,         // DAT_004e4855
+	game_over:    bool,         // DAT_004e4826: no player left in the game
+	level_end:    Level_End,
 	// The first original function reached that is not ported yet, by
 	// address; 0 while the port covers everything run so far. `gaps` keeps
 	// each distinct site with the film step it was first reached at.
@@ -106,6 +110,21 @@ init :: proc(s: ^State, session: Session, defs: ^Defs, log: ^Draw_Log = nil, eve
 // FUN_0041fc80: the start of a level.
 level_start :: proc(s: ^State) {
 	s.time = 0
+	s.accuracy_targets = 0
+	s.accuracy_destroyed = 0
+	// FUN_004208d0: the tally resets, but not the count of levels finished
+	// at 100%, nor `all_done`/`complete`, which belong to the session.
+	l := &s.level_end
+	l.started, l.started_time = false, 0
+	l.state, l.state_time, l.count_time = 0, 0, 0
+	l.fade = 0x20
+	l.percent, l.bonus, l.bonus_step = 0, 0, 0
+	l.perfect, l.perfect_count = false, 0
+	// A level finished at 100% accuracy earns the bonus pickup on the next
+	// one, once (G_Game_GroundAccuracy_CheckForRewardThisLevel).
+	s.accuracy_reward_this_level = s.perfect_level
+	s.perfect_level = false
+	s.levels_played += 1
 	for &p in s.players {
 		player_level_reset(s, &p, s.time)
 	}
@@ -151,11 +170,11 @@ step :: proc(s: ^State, input: Frame_Input, film: ^Film = nil) {
 		}
 	}
 	if !any_in_game {
+		s.game_over = true
 		unported(s, 0x42037a) // game over
 	}
 	if bgnd_process(s) {
-		s.level_ending = true
-		unported(s, 0x4203d0) // end of level
+		level_end_step(s, s.time)
 	}
 	if eg_process(s, s.time) {
 		bgnd_stop(s)

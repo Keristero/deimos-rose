@@ -29,6 +29,7 @@ inferior = gdb.selected_inferior()
 step = [0]
 DETAIL = int(gdb.convenience_variable("trace_detail") or 0)
 MAX_STEPS = int(gdb.convenience_variable("trace_steps") or 0)
+TRACE_ENTITY = int(gdb.convenience_variable("trace_entity") or 0)
 
 
 def logging():
@@ -118,16 +119,33 @@ DETAILS = [
         f"unit={fourcc(u32s(u32s(ecx + 0x8A, 1)[0] + 4, 1)[0])} "
         f"entity={u32s(ecx + 0x92, 1)[0]} init={u32s(esp + 4, 1)[0] & 0xFF} "
         f"state={cstr(u32s(esp + 8, 1)[0])!r}")),
-    # G_GameObject::MoveAndCheckPosition: entity number and position, for
-    # comparing trajectories with the simulation.
+    # G_GameObject::MoveAndCheckPosition: the position of one entity, for
+    # comparing a trajectory with the simulation. $trace_entity picks it; 0
+    # logs none, since this fires for every entity every step.
     ("move", 0x424530, lambda esp, ecx: (
-        f"entity={u32s(ecx + 0x92, 1)[0]} x={f32(u32s(ecx, 1)[0]):g} y={f32(u32s(ecx + 4, 1)[0]):g}")),
+        f"entity={u32s(ecx + 0x92, 1)[0]} x={f32(u32s(ecx, 1)[0]):g} y={f32(u32s(ecx + 4, 1)[0]):g} "
+        f"w={s32(u32s(ecx + 0x24, 1)[0])} h={s32(u32s(ecx + 0x28, 1)[0])} "
+        f"hw={s32(u32s(ecx + 0x2C, 1)[0])} hh={s32(u32s(ecx + 0x30, 1)[0])} "
+        f"sprite={fourcc(u32s(ecx + 0x1C, 1)[0])} frame={s32(u32s(ecx + 0x20, 1)[0])} "
+        f"scale={f32(u32s(ecx + 0x7A, 1)[0]):g}"
+        if TRACE_ENTITY and u32s(ecx + 0x92, 1)[0] == TRACE_ENTITY else None)),
     ("spawn_control", 0x414AE0, lambda esp, ecx: (
         f"entity={u32s(ecx + 0x92, 1)[0]} state={s32(u32s(ecx + 0x9E, 1)[0])}")),
     ("sound_play", 0x44F5F0, lambda esp, ecx: (lambda st: (
         f"id={fourcc(u32s(st, 1)[0])}"))(u32s(esp + 4, 1)[0])),
     ("notice_process", 0x42E180, lambda esp, ecx: ""),
-    ("player_process", 0x432820, lambda esp, ecx: f"player={u32s(ecx + 0xC2, 1)[0]} state={u32s(ecx + 0xBA, 1)[0]}"),
+    # Shields, money, lives and score are stored with a constant added to
+    # them (light anti-tampering); the constants live at 0x4eca70 and in the
+    # literals below. Logging them decoded makes a silent drift in the port
+    # visible at the step it starts.
+    ("player_process", 0x432820, lambda esp, ecx: (
+        f"player={u32s(ecx + 0xC2, 1)[0]} state={u32s(ecx + 0xBA, 1)[0]} "
+        f"x={f32(u32s(ecx + 0x00, 1)[0]):g} y={f32(u32s(ecx + 0x04, 1)[0]):g} "
+        f"shields={f32(u32s(ecx + 0x9E, 1)[0]) - f32(u32s(0x4ECA70, 1)[0]):g} "
+        f"money={s32(u32s(ecx + 0xA2, 1)[0]) - 0xB2CCE} "
+        f"lives={s32(u32s(ecx + 0x8E, 1)[0]) - 0x1524DCEF} "
+        f"score={s32(u32s(ecx + 0xA6, 1)[0]) - 0x5532A3E} "
+        f"mult={s32(u32s(ecx + 0xAA, 1)[0])} warned={u32s(ecx + 0xCD, 1)[0] & 0xFF}")),
 ]
 
 
@@ -144,6 +162,8 @@ class Detail(gdb.Breakpoint):
             d = self.fmt(reg("esp"), reg("ecx"))
         except gdb.MemoryError:
             d = "?"
+        if d is None:
+            return False
         log.write(f"E {tid} {self.name} {d}\n".rstrip() + "\n")
         return False
 
