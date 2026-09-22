@@ -46,7 +46,23 @@ run = "odin build game -out:$DR_BUILD/deimos-dev $DR_COLL $DR_LINK -debug"
 [tasks.run]
 description = "Build and run the game"
 depends = ["build"]
-run = "$DR_BUILD/deimos"
+# Every launch flag the game itself parses (game/settings.odin's
+# settings_parse) gets a matching flag here, so `mise run run --help` and
+# `mise generate task-docs` stay the single source of truth for what's
+# available -- add a line to both this usage block and settings_parse
+# together whenever a new one lands.
+usage = '''
+flag "--classic" help="Reproduce -classic mode: hide the new (non-original) menu items such as the netplay lobby"
+flag "--highrefreshrate" help="Reproduce -highrefreshrate mode: uncap the frame rate above the original's fixed step"
+'''
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+args=()
+[ "${usage_classic:-false}" = "true" ] && args+=(-classic)
+[ "${usage_highrefreshrate:-false}" = "true" ] && args+=(-highrefreshrate)
+exec "$DR_BUILD/deimos" "${args[@]}"
+'''
 
 [tasks.check]
 description = "Type-check and vet every package"
