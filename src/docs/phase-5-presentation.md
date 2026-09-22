@@ -155,6 +155,23 @@ caught after an initial `Player.active`-gated version left it empty. Not yet
 drawn: the life icon and the three weapon icons, whose sprite selection is
 data-driven per player/weapon definition and wasn't traced.
 
+`text_panel`'s anchoring was wrong, caught after the fact by a closer look at
+the panel: every rect in `inre.json` is an oversized bounding box, not a tight
+fit around its text (life count's is 46x44 for one digit that belongs in a
+~30px round badge cutout), and text was drawn at the rect's raw top-left
+corner. The score rect happens to be barely taller than its text, so the bug
+was nearly invisible there, but it left the life count digit floating well
+above its badge. Measured pixel-for-pixel against `orig-00900.png`: centering
+horizontally and anchoring to the rect's bottom edge lands both exactly where
+the original draws them. A second, subtler gap turned up alongside it once
+the first was fixed and the score digits were re-checked: `text_panel` drew
+consecutive digits with no gap, while a column-brightness scan of the
+original's "0001250" found a consistent 3px gap between glyphs (matching
+`game/text.odin`'s existing `spacing` convention, which `text_panel` had never
+picked up). Both fixes verified by re-measuring digit-ink column positions in
+a fresh screenshot: the score run that started ~11px off after the first fix
+alone now differs from the original by 1-2px, within antialiasing noise.
+
 `sim/notice.odin` now ports `G_Notice_Request`/`G_Notice_Process` for real,
 replacing the stale `unported` markers in both `notice.odin` and
 `destroy.odin`. This turned out to be dead code in the shipped game —

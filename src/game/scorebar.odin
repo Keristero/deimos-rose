@@ -53,10 +53,42 @@ panel_rect :: proc(rc: sim.Rect, scale: f32) -> rl.Rectangle {
 	}
 }
 
+// Every rect in inre.json is a generously oversized bounding box, not a
+// tight fit around its text -- the life count's is 46x44 for one digit that
+// belongs inside a round ~30px badge cutout in the panel backdrop. Checked
+// pixel-for-pixel against orig-00900.png: drawing straight at (rc.left,
+// rc.top), as the score's tight rect happened to get away with, put life
+// count's digit in the empty margin above the badge instead of inside it.
+// Centering horizontally and sitting the text on the rect's bottom edge (its
+// height less the glyph height) lands both the score digits and the life
+// count digit exactly where the original draws them.
+//
+// The score readout also needs a gap between digits: measured per-digit ink
+// columns in orig-00900.png's "0001250" (a column-brightness scan, since the
+// digits and the badge glow are both light on dark) put each digit's left
+// edge 3px past the previous digit's frame width -- e.g. the '0'->'0' and
+// '5'->'0' gaps both land exactly on width+3, matching G_Text_Draw's own
+// look elsewhere (game/text.odin's draw_text already takes a spacing param;
+// text_panel just never added the gap).
+@(private = "file")
+SPACING :: 3
+
 @(private = "file")
 text_panel :: proc(r: ^Renderer, str: string, rc: sim.Rect, scale: f32) {
-	x := (SCOREBAR_X + f32(rc.left)) * scale
-	y := f32(rc.top) * scale
+	w, h: f32
+	for i in 0 ..< len(str) {
+		_, src, ok := frame_rect(&r.textures, FONT, glyph_of(str[i]))
+		if !ok {
+			continue
+		}
+		w += src.width
+		if i > 0 {
+			w += SPACING
+		}
+		h = max(h, src.height)
+	}
+	x := (SCOREBAR_X + f32(rc.left) + (f32(rc.right - rc.left) - w) / 2) * scale
+	y := (f32(rc.bottom) - h) * scale
 	for i in 0 ..< len(str) {
 		tex, src, ok := frame_rect(&r.textures, FONT, glyph_of(str[i]))
 		if !ok {
@@ -64,7 +96,7 @@ text_panel :: proc(r: ^Renderer, str: string, rc: sim.Rect, scale: f32) {
 		}
 		dst := rl.Rectangle{x, y, src.width * scale, src.height * scale}
 		rl.DrawTexturePro(tex, src, dst, {0, 0}, 0, rl.WHITE)
-		x += src.width * scale
+		x += (src.width + SPACING) * scale
 	}
 }
 
