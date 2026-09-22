@@ -25,12 +25,24 @@ import "dr:sim"
 
 GALO :: sim.Res_ID{'g', 'a', 'l', 'o'}
 
-BTN_START_Y :: 168 // Interface_Btn_StartYLoc
-BTN_GAP :: 30 // Interface_Btn_VerticalGap
-// Provisional (see file comment): GALO is 114px tall and buttons start at
-// BTN_START_Y (168), so the logo has to end above that -- confirmed by an
-// actual xvfb screenshot showing LOGO_Y=101 overlapping "1 PLAYER"/"2 PLAYER".
-LOGO_Y :: 40
+BTN_GAP :: 30 // Interface_Btn_VerticalGap -- the row-to-row spacing matches this exactly.
+// Interface_Btn_StartYLoc (168) is not, on its own, where the first row's rect
+// sits: measured against a real screenshot of the original
+// (tools/oracle/menu_shot.sh MENU=main, compared via menu_compare.sh -- see
+// docs/phase-7-faithful-menus.md "Verification"), the first row's rendered
+// label centres at y=198, one whole VerticalGap below StartYLoc, and each
+// later row is another exact VerticalGap down (228, 258, 288, 318, 348, plus
+// 378 for the excluded Register row) -- confirming the *gap* but not
+// StartYLoc's own meaning. FUN_004277e0's layout call was never fully traced
+// (see the file-level comment), so this reproduces the measured rect position
+// (btn 0's frame top, back-computed from its label's rendered centre using
+// this port's own MEBU frame-to-label offset) rather than re-deriving
+// StartYLoc's exact original semantics.
+BTN_FIRST_ROW_Y :: 186
+// Measured the same way (column-brightness scan of a real screenshot vs.
+// ours): the globe's bright limb starts at y=47 in the original, y=40 at the
+// value this used to have -- moved down 7px accordingly.
+LOGO_Y :: 47
 
 // FUN_004277e0's button-list build, in order: frame indices into MEBU/MEBH.
 // Index 3 is real plate art (a 14-frame plate, this main menu uses 6 of its
@@ -62,7 +74,7 @@ Main_Menu :: struct {
 
 main_menu_init :: proc(m: ^Main_Menu, t: ^Textures) {
 	for slot in Main_Menu_Slot {
-		m.buttons[slot] = menu_button_at(t, MAIN_MENU_FRAMES[slot], BTN_START_Y + f32(slot) * BTN_GAP)
+		m.buttons[slot] = menu_button_at(t, MAIN_MENU_FRAMES[slot], BTN_FIRST_ROW_Y + f32(slot) * BTN_GAP)
 	}
 }
 

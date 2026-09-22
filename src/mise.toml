@@ -143,6 +143,15 @@ description = "Our render beside the original's, same film and step (FILM=de01 S
 depends = ["build"]
 run = "bash tools/oracle/compare.sh"
 
+[tasks."oracle:menu-shot"]
+description = "Screenshot the original's menu screens under Wine (MENU=main); slow"
+run = "bash tools/oracle/menu_shot.sh"
+
+[tasks."menu-shots:compare"]
+description = "Our menu render beside the original's (MENU=main); slow, needs oracle:menu-shot first"
+depends = ["build"]
+run = "bash tools/oracle/menu_compare.sh"
+
 [tasks."shots"]
 description = "Render our own frames of a demo film (FILM=de01 AT=a,b,c)"
 depends = ["build"]

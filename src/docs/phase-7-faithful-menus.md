@@ -156,10 +156,10 @@ dialog). `flow.odin`'s `draw_title` is gone; `.Title` now runs through
 needs to load textures. `flow_start_session`/`flow_load_demo`/
 `flow_random_seed` were un-privatized for the menu's buttons to call.
 
-One provisional layout value was corrected by looking at the output rather
-than guessing further: `LOGO_Y` (the logo's un-pinned-by-perm-float vertical
-position) was first set to 101, which a screenshot showed overlapping "1
-PLAYER"/"2 PLAYER"; moved to 40, re-screenshotted, confirmed clear.
+Two provisional layout values (both un-pinned to a perm float — see "What the
+original does" above) were corrected against a real screenshot of the
+original rather than guessed further; see "Verification" below for the
+pipeline and the final `BTN_FIRST_ROW_Y :: 186` / `LOGO_Y :: 47` values.
 
 Verified interactively (`mise run build`, then `xvfb-run` +
 `xdotool`/`import`, the same method Phase 5's Flow work used, not just a
@@ -175,6 +175,54 @@ headless build):
 
 `mise run check`, `mise run test` (85 tests) and `mise run build` all green;
 nothing under `sim/` touched.
+
+## Verification
+
+Interactive `xvfb`/`xdotool` checks (above) confirm behaviour, but not
+pixel-accurate layout — the plan is to eventually hold every faithfully-ported
+menu to a real screenshot of the original, the same way `tools/oracle/shot.sh`
++ `compare.sh` already do for gameplay frames. Stage 1 built the menu
+equivalent of that pair:
+
+- `mise run oracle:menu-shot MENU=main` (`tools/oracle/menu_shot.sh`) drives
+  the original under Wine/Xvfb to a named menu screen (a `case "$MENU"` click-
+  through sequence per screen — "main" needs nothing, since the original boots
+  straight to it) and captures it to `work/wine/menus/<name>/orig.png`.
+- `mise run menu-shots:compare MENU=main` (`tools/oracle/menu_compare.sh`)
+  builds our binary, renders the same named screen headlessly via
+  `DR_MENU_SHOT=<name>` (`game/main.odin`'s `run_menu_shot`, which drives
+  `Flow` to the right mode and exports one frame — a menu has no simulation to
+  step, so there's exactly one frame, unlike `DR_SHOT`'s per-step gameplay
+  captures), and writes `work/shots/menus/<name>/{ours,ours-norm,side,diff}.png`
+  plus an ImageMagick `compare -metric AE` score. Per AGENTS.md ("Look at the
+  output"), the AE score is a quick regression signal, not a pass/fail gate —
+  `side.png`/`diff.png` are the actual check.
+
+Both tasks depend on Wine (`oracle:menu-shot`) or a full build+Xvfb round trip
+(`menu-shots:compare`) and take several seconds to tens of seconds, so neither
+is in `[tasks.ci]` — same convention as the existing `oracle:*`/`shots:compare`
+gameplay tasks, which `mise run ci` (`check`+`purity`+`test`) already excludes.
+
+Running this against Stage 1's Main Menu found two real layout bugs the
+interactive check above had missed, both fixed by measuring column-brightness
+profiles of `orig.png` vs. `ours-norm.png` (`magick ... -crop 1xH+X+0 txt:-` to
+find where a bright run — a button label or the logo's limb — starts) rather
+than eyeballing:
+- Button rows rendered a full `Interface_Btn_VerticalGap` (30px) too high.
+  `BTN_START_Y :: 168` (the raw perm float) plus naive `slot * gap` was wrong;
+  the real first-row rect sits at `BTN_FIRST_ROW_Y :: 186`, one whole gap below
+  the perm float, back-computed from the label's measured centre (198) via
+  this port's own frame-to-label offset. `StartYLoc`'s exact original meaning
+  was never fully re-derived (`FUN_004277e0`'s layout call wasn't fully
+  traced); this reproduces the measured position instead.
+- The logo sat 7px too high: the globe's bright limb starts at y=47 in the
+  original, not the guessed y=40 (now `LOGO_Y :: 47`).
+
+After both fixes, `menu-shots:compare MENU=main` shows only antialiasing-level
+edge noise on buttons/logo, a faint uniform outline on the background
+watermark (a raylib-vs-native-GDI rendering/colorspace difference, not a
+position bug), and the expected, correctly-absent REGISTER row (D21) — judged
+a good match by inspecting `side.png`/`diff.png` directly.
 
 **Stage 5 — done, folded into stage 1's `flow.odin` edit.** Flow's old
 `.Paused` case (`draw_banner("PAUSED", ...)`) is replaced by

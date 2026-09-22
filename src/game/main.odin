@@ -42,12 +42,13 @@ main :: proc() {
 		os.exit(1)
 	}
 
-	// DR_SHOT (below) drives every headless capture -- oracle:shot's compare
-	// and the shots:compare task both run under xvfb-run with no PulseAudio
-	// session behind it, and nothing is there to hear it either way, so skip
-	// the audio device and asset loading entirely rather than let raylib log
-	// device-init failures every run.
-	headless := os.get_env("DR_SHOT", context.temp_allocator) != ""
+	// DR_SHOT and DR_MENU_SHOT (below) drive every headless capture --
+	// oracle:shot's compare, the shots:compare task and menu_compare.sh all
+	// run under xvfb-run with no PulseAudio session behind it, and nothing is
+	// there to hear it either way, so skip the audio device and asset loading
+	// entirely rather than let raylib log device-init failures every run.
+	headless := os.get_env("DR_SHOT", context.temp_allocator) != "" ||
+		os.get_env("DR_MENU_SHOT", context.temp_allocator) != ""
 
 	rl.SetConfigFlags({.VSYNC_HINT, .WINDOW_RESIZABLE})
 	rl.InitWindow(SCREEN_W * WINDOW_SCALE, SCREEN_H * WINDOW_SCALE, "Deimos Rising")
@@ -89,6 +90,15 @@ main :: proc() {
 
 	state := new(sim.State)
 	defer free(state)
+
+	// DR_MENU_SHOT=<name> renders one named menu screen and writes a single
+	// PNG to DR_SHOT, then exits -- the menu equivalent of DR_SHOT below, for
+	// tools/oracle/menu_compare.sh. A menu has no simulation to step, so
+	// there is exactly one frame to capture, not a series of them.
+	if menu_shot := os.get_env("DR_MENU_SHOT", context.temp_allocator); menu_shot != "" {
+		run_menu_shot(&renderer, &defs, state, root, menu_shot, os.get_env("DR_SHOT", context.temp_allocator))
+		return
+	}
 
 	// DR_FILM=de01 replays a shipped demo instead of taking input, so a
 	// screenshot can be compared with the original stopped at the same step.
@@ -178,6 +188,33 @@ main :: proc() {
 		}
 		rl.EndDrawing()
 	}
+}
+
+// One named menu screen, drawn once and exported to <path>.png. See
+// docs/phase-7-faithful-menus.md's "Verification" section and
+// tools/oracle/menu_shot.sh/menu_compare.sh, which drive this to compare
+// against the original. Flow's Title branch (the only menu mode so far)
+// returns before touching particles/blurs/notices, so nil is safe here; add
+// a case as each later stage (Level Select, Credits, High Scores) lands.
+run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, name, path: string) {
+	flow: Flow
+	flow_init(&flow, root, defs, state, r)
+	switch name {
+	case "main":
+		flow.mode = .Title
+	case:
+		fmt.eprintfln("unknown menu %v (see run_menu_shot)", name)
+		os.exit(1)
+	}
+	rl.BeginDrawing()
+	rl.ClearBackground(rl.Color{0, 0, 0, 255})
+	flow_draw(&flow, r, nil, nil, nil, WINDOW_SCALE)
+	rl.EndDrawing()
+	img := rl.LoadImageFromScreen()
+	out := fmt.ctprintf("%s.png", path)
+	rl.ExportImage(img, out)
+	rl.UnloadImage(img)
+	fmt.printfln("wrote %s", out)
 }
 
 // Steps the simulation, capturing the frame at each requested step.
