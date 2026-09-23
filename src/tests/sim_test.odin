@@ -191,6 +191,33 @@ level_end_tally_scores_the_ground_accuracy :: proc(t: ^testing.T) {
 }
 
 @(test)
+level_advance_starts_the_next_level_unfinished :: proc(t: ^testing.T) {
+	// Regression: `complete` survived level_advance, so flow_step advanced
+	// again on the next step and skipped straight through every level.
+	defs := synthetic_defs()
+	levels := make([]sim.Level_Def, 3, context.temp_allocator)
+	for &l, i in levels {
+		l = defs.levels[0]
+		l.number = i32(i + 1)
+	}
+	defs.levels = levels
+	s := new(sim.State)
+	defer free(s)
+	sim.init(s, sim.Session{seed = 3, level_id = sim.level_id("le01"), game_type = .Single}, defs)
+	s.level_ending = true
+	s.level_end.complete = true
+	testing.expect(t, sim.level_advance(s), "level 1 of 3 has a next level")
+	testing.expect_value(t, s.level_number, i32(2))
+	testing.expect(t, !s.level_end.complete, "the new level must not start already complete")
+	testing.expect(t, !s.level_ending, "the new level must not start already ending")
+	for _ in 0 ..< 10 {
+		sim.step(s, {})
+	}
+	testing.expect(t, !s.level_end.complete, "a level cannot complete before it scrolls to its end")
+	testing.expect_value(t, s.level_number, i32(2))
+}
+
+@(test)
 money_counter_converts_money_at_the_level_multiplier :: proc(t: ^testing.T) {
 	defs := synthetic_defs()
 	defs.perm_floats[0xaa] = 0 // do not scale the multiplier by the level

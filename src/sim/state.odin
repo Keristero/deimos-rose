@@ -165,6 +165,17 @@ level_advance :: proc(s: ^State) -> bool {
 	}
 	s.level = &s.defs.levels[next]
 	s.level_number = s.level.number
+	// level_start leaves `complete` alone (FUN_004208d0 does not touch it),
+	// so it has to be consumed here: left set, flow_step saw the next level
+	// as already complete on its very first step and chained through every
+	// remaining level in as many steps. `level_ending` likewise has no reset
+	// anywhere in the port, and left set it keeps players invulnerable and
+	// blocks can_be_spawned_only_when_players_active units for the rest of
+	// the session. Provisional: where the original clears DAT_004e4825 and
+	// DAT_004e4855 between levels has not been traced -- the effect (both
+	// false at the start of every level) is what a playable session needs.
+	s.level_end.complete = false
+	s.level_ending = false
 	level_start(s)
 	return true
 }
