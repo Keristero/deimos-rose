@@ -35,9 +35,38 @@ local_endpoint :: proc(sock: ^Socket) -> (core_net.Endpoint, bool) {
 	return ep, err == nil
 }
 
-// "host:port" or a bare "host" (port 0), same format core:net itself parses.
-resolve :: proc(address: string) -> (core_net.Endpoint, bool) {
-	return core_net.parse_endpoint(address)
+Resolve_Error :: enum u8 {
+	None,
+	Bad_Address, // neither an IP address nor a valid hostname, or a bad port
+	No_IP4,      // an IPv6 literal -- open binds IP4_Any, so it could never be sent to
+	Not_Found,   // a valid hostname with no IPv4 address the resolver could find
+}
+
+// "1.2.3.4", "example.com" or "localhost", each optionally with ":port"
+// (port 0 when absent). IP literals return immediately; hostnames go through
+// core:net's resolver -- DnsQuery on Windows, and on Unix its own resolver
+// over /etc/hosts and resolv.conf's nameservers (1s timeout per nameserver).
+// That lookup blocks, so callers should not run it mid-game. IPv4 only, for
+// the same reason as No_IP4 above.
+resolve :: proc(address: string) -> (core_net.Endpoint, Resolve_Error) {
+	target, perr := core_net.parse_hostname_or_endpoint(address)
+	if perr != .None {
+		return {}, .Bad_Address
+	}
+	switch t in target {
+	case core_net.Endpoint:
+		if _, is4 := t.address.(core_net.IP4_Address); !is4 {
+			return {}, .No_IP4
+		}
+		return t, .None
+	case core_net.Host:
+		ep, err := core_net.resolve_ip4(address)
+		if err != nil {
+			return {}, .Not_Found
+		}
+		return ep, .None
+	}
+	return {}, .Bad_Address
 }
 
 send :: proc(sock: ^Socket, to: core_net.Endpoint, data: []byte) -> bool {

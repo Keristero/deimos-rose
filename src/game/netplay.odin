@@ -33,6 +33,7 @@ package game
 
 import "core:fmt"
 import "core:mem"
+import "core:strings"
 import "core:time"
 
 import core_net "core:net"
@@ -50,7 +51,7 @@ NETPLAY_PORT :: 54217
 NETPLAY_PING_INTERVAL :: 1.0 // seconds between RTT probes once connected
 NETPLAY_INPUT_WINDOW :: 8    // matches tests/rollback_session_test.odin's own WINDOW
 NETPLAY_CHECKSUM_LAG :: 20   // frames behind "now" a checksum is reported at; matches the test, comfortably under ROLLBACK_DEPTH (64)
-NETPLAY_ADDR_MAX :: 63
+NETPLAY_ADDR_MAX :: 260 // a 253-character hostname plus ":65535"
 
 // Phase 8 stage 3/4: pause on disconnect + reconnect.
 NETPLAY_LIVE_TIMEOUT :: 3 * time.Second  // silence from a known peer during .Playing before freezing
@@ -68,6 +69,7 @@ NETPLAY_SYNC_MIN_STALL_EVERY :: 2 // even at a huge lead, stall no more often th
 Netplay_Phase :: enum {
 	Menu,          // choose Host or Join
 	Enter_Address, // guest only: typing "host" or "host:port"
+	Resolving,     // guest only: Enter pressed; one frame of "RESOLVING..." before the blocking lookup
 	Connecting,    // Hello sent (guest) or awaited (host), not yet both-ways confirmed
 	Connected,     // handshake done; ready-up + ping display
 	Starting,      // host: Start sent, waiting for its Ack before beginning
@@ -111,8 +113,9 @@ Netplay :: struct {
 	local_ready:    bool,
 	remote_ready:   bool,
 
-	addr_buf: [NETPLAY_ADDR_MAX]u8,
-	addr_len: int,
+	addr_buf:     [NETPLAY_ADDR_MAX]u8,
+	addr_len:     int,
+	addr_default: bool, // addr_buf still holds the untouched prefill, which the first edit replaces
 
 	ping_nonce:    u64,
 	ping_timer:    f32,
@@ -220,6 +223,11 @@ netplay_lobby_update :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 		netplay_update_menu(fl, r, nl)
 	case .Enter_Address:
 		netplay_update_enter_address(nl, r)
+	case .Resolving:
+		// Drawn as "RESOLVING..." last frame, so the window says what it is
+		// doing while net.resolve blocks on a hostname lookup.
+		nl.phase = .Enter_Address // where a failed join leaves the player
+		netplay_join(nl, string(nl.addr_buf[:nl.addr_len]))
 	case .Connecting:
 		netplay_update_connecting(nl)
 	case .Connected:
@@ -253,6 +261,7 @@ netplay_update_menu :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 	if text_button_update(&nl.menu_join, mouse, dt) {
 		nl.phase = .Enter_Address
 		nl.addr_len = copy(nl.addr_buf[:], "127.0.0.1") // loopback default -- the only peer this port can verify without a second machine
+		nl.addr_default = true
 	}
 	if text_button_update(&nl.menu_back, mouse, dt) || rl.IsKeyPressed(.ESCAPE) {
 		fl.mode = .Title
@@ -292,16 +301,22 @@ netplay_lobby_start_from_flag :: proc(nl: ^Netplay, mode: string) {
 @(private = "file")
 netplay_update_enter_address :: proc(nl: ^Netplay, r: ^Renderer) {
 	for c := rl.GetCharPressed(); c != 0; c = rl.GetCharPressed() {
-		if c < 0x20 || c > 0x7e {
-			continue
-		}
-		if nl.addr_len < NETPLAY_ADDR_MAX {
-			nl.addr_buf[nl.addr_len] = u8(c)
-			nl.addr_len += 1
-		}
+		netplay_addr_append(nl, c)
 	}
-	if rl.IsKeyPressed(.BACKSPACE) && nl.addr_len > 0 {
-		nl.addr_len -= 1
+	// Ctrl+V (Cmd+V on macOS) and Shift+Insert. GLFW sends no character
+	// event for a Ctrl/Cmd chord, so the 'v' never reaches the loop above.
+	ctrl := rl.IsKeyDown(.LEFT_CONTROL) || rl.IsKeyDown(.RIGHT_CONTROL) ||
+		rl.IsKeyDown(.LEFT_SUPER) || rl.IsKeyDown(.RIGHT_SUPER)
+	shift := rl.IsKeyDown(.LEFT_SHIFT) || rl.IsKeyDown(.RIGHT_SHIFT)
+	if (ctrl && rl.IsKeyPressed(.V)) || (shift && rl.IsKeyPressed(.INSERT)) {
+		netplay_addr_paste(nl, string(rl.GetClipboardText()))
+	}
+	if rl.IsKeyPressed(.BACKSPACE) || rl.IsKeyPressedRepeat(.BACKSPACE) {
+		if nl.addr_default {
+			nl.addr_len, nl.addr_default = 0, false
+		} else if nl.addr_len > 0 {
+			nl.addr_len -= 1
+		}
 	}
 	if rl.IsKeyPressed(.ESCAPE) {
 		nl.phase = .Menu
@@ -309,15 +324,69 @@ netplay_update_enter_address :: proc(nl: ^Netplay, r: ^Renderer) {
 		return
 	}
 	if rl.IsKeyPressed(.ENTER) || rl.IsKeyPressed(.KP_ENTER) {
-		netplay_join(nl, string(nl.addr_buf[:nl.addr_len]))
+		if nl.addr_len == 0 {
+			nl.error = "enter an address first"
+		} else {
+			nl.phase, nl.error = .Resolving, ""
+		}
+	}
+}
+
+// Typing or pasting over the untouched prefill replaces it, as if it were
+// selected -- otherwise a pasted address lands after "127.0.0.1".
+@(private = "file")
+netplay_addr_take_default :: proc(nl: ^Netplay) {
+	if nl.addr_default {
+		nl.addr_len, nl.addr_default = 0, false
 	}
 }
 
 @(private = "file")
+netplay_addr_append :: proc(nl: ^Netplay, c: rune) {
+	if c < 0x20 || c > 0x7e {
+		return
+	}
+	netplay_addr_take_default(nl)
+	if nl.addr_len < NETPLAY_ADDR_MAX {
+		nl.addr_buf[nl.addr_len] = u8(c)
+		nl.addr_len += 1
+	}
+}
+
+// Surrounding whitespace is dropped -- a copied address usually brings a
+// trailing newline -- and anything still not printable ASCII is skipped.
+// Text that will not fit is refused whole rather than silently truncated
+// into a different address.
+@(private = "file")
+netplay_addr_paste :: proc(nl: ^Netplay, clip: string) {
+	text := strings.trim_space(clip)
+	if text == "" {
+		return
+	}
+	room := nl.addr_default ? NETPLAY_ADDR_MAX : NETPLAY_ADDR_MAX - nl.addr_len
+	if len(text) > room {
+		nl.error = "pasted text is too long for an address"
+		return
+	}
+	for i in 0 ..< len(text) {
+		netplay_addr_append(nl, rune(text[i]))
+	}
+	nl.error = ""
+}
+
+@(private = "file")
 netplay_join :: proc(nl: ^Netplay, text: string) {
-	ep, ok := net.resolve(text)
-	if !ok {
-		nl.error = "could not resolve that address"
+	ep, rerr := net.resolve(text)
+	switch rerr {
+	case .None:
+	case .Bad_Address:
+		nl.error = "that is not a valid address or hostname"
+		return
+	case .No_IP4:
+		nl.error = "IPv6 is not supported -- use an IPv4 address or hostname"
+		return
+	case .Not_Found:
+		nl.error = "could not find that host"
 		return
 	}
 	if ep.port == 0 {
@@ -936,11 +1005,14 @@ netplay_lobby_draw :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 		}
 	case .Enter_Address:
 		menu_draw_text(r, "JOIN -- ENTER HOST ADDRESS, THEN PRESS ENTER", SCREEN_W / 2, 200, dim, .Centre)
-		menu_draw_text(r, string(nl.addr_buf[:nl.addr_len]), SCREEN_W / 2, 230, white, .Centre)
-		menu_draw_text(r, "ESC TO CANCEL", SCREEN_W / 2, 300, dim, .Centre)
+		menu_draw_text(r, string(nl.addr_buf[:nl.addr_len]), SCREEN_W / 2, 230, nl.addr_default ? dim : white, .Centre)
+		menu_draw_text(r, "CTRL+V TO PASTE -- ESC TO CANCEL", SCREEN_W / 2, 300, dim, .Centre)
 		if nl.error != "" {
 			menu_draw_text(r, nl.error, SCREEN_W / 2, 340, bad, .Centre)
 		}
+	case .Resolving:
+		menu_draw_text(r, "RESOLVING", SCREEN_W / 2, 200, dim, .Centre)
+		menu_draw_text(r, string(nl.addr_buf[:nl.addr_len]), SCREEN_W / 2, 230, white, .Centre)
 	case .Connecting:
 		msg := nl.role == .Host ? "WAITING FOR A PLAYER TO CONNECT..." : "CONNECTING..."
 		menu_draw_text(r, msg, SCREEN_W / 2, 220, white, .Centre)

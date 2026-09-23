@@ -140,6 +140,42 @@ packet_kind_rejects_garbage :: proc(t: ^testing.T) {
 // The one test that touches a real socket: two UDP sockets bound to
 // loopback, each on an OS-assigned ephemeral port, exchanging an Input
 // packet exactly as two peers would.
+// The join box's parsing, all without touching the network: IP literals
+// never reach the resolver, and malformed input is refused before it would.
+// Hostname lookup itself is not tested here -- it depends on the machine's
+// resolver configuration, which CI runners do not promise.
+@(test)
+resolve_accepts_ip4_literals_with_and_without_a_port :: proc(t: ^testing.T) {
+	ep, err := net.resolve("192.168.1.20")
+	testing.expect_value(t, err, net.Resolve_Error.None)
+	testing.expect_value(t, ep.address, core_net.Address(core_net.IP4_Address{192, 168, 1, 20}))
+	testing.expect_value(t, ep.port, 0)
+
+	ep, err = net.resolve("10.0.0.5:54217")
+	testing.expect_value(t, err, net.Resolve_Error.None)
+	testing.expect_value(t, ep.address, core_net.Address(core_net.IP4_Address{10, 0, 0, 5}))
+	testing.expect_value(t, ep.port, 54217)
+}
+
+@(test)
+resolve_refuses_what_it_cannot_send_to :: proc(t: ^testing.T) {
+	cases := []struct {
+		text: string,
+		want: net.Resolve_Error,
+	}{
+		{"", .Bad_Address},
+		{"not a host", .Bad_Address},     // spaces are not valid in a hostname
+		{"10.0.0.5:99999", .Bad_Address}, // port out of range
+		{"10.0.0.5:port", .Bad_Address},
+		{"::1", .No_IP4},                 // the socket is bound IPv4-only
+		{"[::1]:54217", .No_IP4},
+	}
+	for c in cases {
+		_, err := net.resolve(c.text)
+		testing.expectf(t, err == c.want, "%q: got %v, want %v", c.text, err, c.want)
+	}
+}
+
 @(test)
 socket_sends_and_receives_on_loopback :: proc(t: ^testing.T) {
 	a, aok := net.open(0)

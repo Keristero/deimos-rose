@@ -267,6 +267,7 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		netplay_lobby_init(&flow.netplay, r)
 		flow.netplay.phase = .Enter_Address
 		flow.netplay.addr_len = copy(flow.netplay.addr_buf[:], "127.0.0.1")
+		flow.netplay.addr_default = true
 	case "netplay_lobby_connecting":
 		flow.mode = .Netplay_Lobby
 		netplay_lobby_init(&flow.netplay, r)
