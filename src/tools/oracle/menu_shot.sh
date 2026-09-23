@@ -47,6 +47,20 @@ sleep 0.2
 xdotool mouseup --window "$wid" 1
 sleep 2.5
 ' ;;
+    # Click through Main Menu's "HIGH SCORES" button (row index 3: One
+    # Player/Two Player/Preferences/High Scores -- BTN_FIRST_ROW_Y=186 +
+    # 3*BTN_GAP=30, see game/menu_main.odin) to reach the plain viewer.
+    # G_Scores_Display's own hold is 10s (Scores_Duration=600 ticks @
+    # ~60Hz), so 1.5s leaves a wide margin past its 0.53s fade-in.
+    high_scores) reach='
+wid=$(xdotool search --name "Deimos Rising" | head -1)
+xdotool windowfocus --sync "$wid"
+xdotool mousemove --window "$wid" --sync 320 276
+xdotool mousedown --window "$wid" 1
+sleep 0.2
+xdotool mouseup --window "$wid" 1
+sleep 1.5
+' ;;
     *) echo "unknown MENU '$MENU' -- add its click-through to menu_shot.sh" >&2; exit 1 ;;
 esac
 

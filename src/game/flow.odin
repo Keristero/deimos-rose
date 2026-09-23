@@ -19,6 +19,8 @@ Flow_Mode :: enum {
 	Title,
 	Level_Select,
 	Credits,
+	High_Scores,
+	Score_Entry,
 	Playing,
 	Paused,
 	Game_Over,
@@ -70,6 +72,14 @@ Flow :: struct {
 	// Phase 7 stage 3: Credits (game/menu_credits.odin), reached from Main
 	// Menu's copyright link.
 	credits: Credits,
+
+	// Phase 7 stage 4: the High Scores viewer (game/menu_high_scores.odin,
+	// reached from Main Menu's button) and the post-game name-entry prompt
+	// (game/menu_high_score_entry.odin, reached automatically from Game
+	// Over/Complete when a player's score qualifies -- see
+	// flow_finish_session).
+	high_scores: High_Scores,
+	score_entry: Score_Entry,
 }
 
 flow_init :: proc(fl: ^Flow, root: string, defs: ^sim.Defs, state: ^sim.State, r: ^Renderer) {
@@ -102,6 +112,10 @@ flow_handle_input :: proc(fl: ^Flow, r: ^Renderer) {
 		level_select_update(fl, r, &fl.level_select)
 	case .Credits:
 		credits_update(fl, r, &fl.credits)
+	case .High_Scores:
+		high_scores_view_update(fl, r, &fl.high_scores)
+	case .Score_Entry:
+		score_entry_update(fl, r, &fl.score_entry)
 	case .Playing:
 		if rl.IsKeyPressed(.ESCAPE) || rl.IsKeyPressed(.P) {
 			fl.mode = .Paused
@@ -118,8 +132,36 @@ flow_handle_input :: proc(fl: ^Flow, r: ^Renderer) {
 		}
 	case .Game_Over, .Complete:
 		if rl.IsKeyPressed(.SPACE) || rl.IsKeyPressed(.ENTER) || rl.IsKeyPressed(.ESCAPE) {
-			fl.mode = .Title
+			flow_finish_session(fl)
 		}
+	}
+}
+
+// Ends a Game Over/Complete screen, whether by the player skipping ahead
+// (flow_handle_input above) or the hold timer running out (flow_step below).
+// G_Scores_IsAHighScore/G_Scores_GetPlayerNamesAndDisplay (see
+// game/highscores.odin, game/menu_high_score_entry.odin) run at exactly this
+// point in the original -- FUN_00426d80.c (read in full): once the
+// post-session fade-back-to-menu finishes, it checks every active player's
+// G_Res_GetPermScore result against G_Scores_IsAHighScore and, if any
+// qualifies, opens the name-entry screen before finally returning to the
+// menu.
+@(private = "file")
+flow_finish_session :: proc(fl: ^Flow) {
+	scores := [sim.MAX_PLAYERS]int{}
+	active := [sim.MAX_PLAYERS]bool{}
+	sector := ""
+	for i in 0 ..< sim.MAX_PLAYERS {
+		scores[i] = int(fl.state.players[i].score)
+		active[i] = fl.state.players[i].active
+	}
+	if fl.state.level != nil {
+		sector = fl.state.level.identifier
+	}
+	if score_entry_start(&fl.score_entry, scores, active, sector) {
+		fl.mode = .Score_Entry
+	} else {
+		fl.mode = .Title
 	}
 }
 
@@ -152,7 +194,7 @@ flow_set_music_paused :: proc(fl: ^Flow, r: ^Renderer, paused: bool) {
 // than only after (and if) the level happens to finish scrolling.
 flow_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs, notices: ^Notices) {
 	switch fl.mode {
-	case .Title, .Level_Select, .Credits, .Paused:
+	case .Title, .Level_Select, .Credits, .High_Scores, .Score_Entry, .Paused:
 	// nothing to step
 	case .Playing:
 		flow_sim_step(fl, r, particles, blurs, notices, gather_input(), nil)
@@ -180,7 +222,7 @@ flow_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 	case .Game_Over, .Complete:
 		fl.end_timer += 1
 		if fl.end_timer > END_SCREEN_STEPS {
-			fl.mode = .Title
+			flow_finish_session(fl)
 		}
 	}
 	flow_sync_music(fl, r)
@@ -274,6 +316,12 @@ flow_draw :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 	case .Credits:
 		credits_draw(r, &fl.credits)
 		return
+	case .High_Scores:
+		high_scores_view_draw(r, &fl.high_scores)
+		return
+	case .Score_Entry:
+		score_entry_draw(r, &fl.score_entry)
+		return
 	case .Playing, .Paused, .Game_Over, .Complete, .Attract:
 	}
 	build_frame(r, fl.state, blurs, notices)
@@ -291,7 +339,7 @@ flow_draw :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 	case .Attract:
 		rl.DrawText("DEMO -- press any key for the title screen",
 			16, SCREEN_H * WINDOW_SCALE - 28, 18, rl.Color{200, 200, 200, 200})
-	case .Title, .Level_Select, .Credits, .Playing:
+	case .Title, .Level_Select, .Credits, .High_Scores, .Score_Entry, .Playing:
 	}
 }
 

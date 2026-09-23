@@ -350,5 +350,146 @@ not a structural gap.
 
 `mise run check`, `mise run purity`, `mise run test` (85 tests) all green.
 
-Stage 4 (High Scores) and 6 (`-classic` gating, which Phase 6's lobby is
-waiting on) are unstarted.
+## Stage 4 — done.
+
+The High Scores viewer (`game/menu_high_scores.odin`, reached from Main
+Menu's button) and the post-game name-entry prompt
+(`game/menu_high_score_entry.odin`, reached automatically from Game
+Over/Complete via `flow_finish_session` in `game/flow.odin`). Traced from
+`G_Scores_Display_03b7c0.c`, `G_Scores_GetPlayerNamesAndDisplay_03b3a0.c`,
+`G_Scores_IsAHighScore_03b360.c`, `FUN_0043bb00.c` (the name-entry screen)
+and `FUN_0043c480.c` (the shared row-builder both screens call) — all read
+in full — plus `U_Prefs_SetHighScoresToDefaults_0085d0.c` for the default
+table and `U_Utils_String_Encrypt_00f740.c` for the cipher protecting it.
+
+- **The 15-slot table**: `game/highscores.odin`. Each slot is (name, score,
+  sector), sorted descending by score, persisted the same way as
+  `progress.odin`'s "highest level reached" (an XDG data file, not the
+  original's registry-backed `U_Prefs` blob — nothing outside this
+  reimplementation ever reads it, so the file format is our own, not a
+  byte-for-byte `U_Prefs` layout).
+- **Default table names were encrypted in the executable, not plaintext**:
+  `U_Prefs_SetHighScoresToDefaults` copies a static table at `DAT_004d9577`
+  through `U_Utils_String_Encrypt` before writing it into the live prefs
+  blob. That function turns out to be a byte-wise nibble-swap-then-XOR-0xFF
+  transform, which is its own inverse — applying it a second time recovers
+  the cleartext. Verified by peeking the raw bytes
+  (`python3 tools/decomp/peek.py $DR_EXE <va>`) and decrypting them in a
+  throwaway script rather than guessing: all 15 names are Deimos Rising
+  dev-team nicknames, several already known from Credits (Supercobra,
+  Dilvish, Vodi, Fisj, h'biki). Default scores are a flat 15000 down to 1000
+  in 1000-point steps (`U_Prefs_SetHighScoresToDefaults`'s own
+  `iVar1 * -1000 + 16000`), and every default slot's sector is
+  "New Atlantis".
+- **Perm floats, all read via `gafl.json` once their indices were confirmed
+  from call sites** (the same two-step process Stage 3 used):
+  `Scores_VerticalGap` (0x4c, 19.0, row gap), `Scores_YLoc` (0x4d, 107.0,
+  first *data* row's Y — not the header's, see below),
+  `Scores_Duration` (0x4e, 600 ticks = 10s, the plain viewer's hold),
+  `Scores_DurationBetweenPlayers` (0x4f, 25 ticks ≈ 0.42s) — corrects an
+  earlier guess (recorded mid-research, before the value was actually looked
+  up) that this was a *longer* "admire your score" pause; it's the opposite,
+  a brief pace-setting gap so a two-player session's second name-entry
+  screen follows on quickly — `Scores_SymbolXLoc`/`YLoc` (0x50/0x51, 73.0/7.0
+  — turned out to be the position of a small per-row ship-icon sprite
+  FUN_0043c480 optionally draws next to the row being edited, *not* text
+  column offsets as an earlier pass here assumed; skipped as a minor visual
+  flourish, see below), `Scores_PromptFlashDelayAfterKeyHit`/
+  `PromptDelayBetweenFlashes` (0x52/0x53, 30/10 ticks, the name-entry
+  cursor's blink on/off durations).
+- **Perm sounds, resolved via `idli/gaso.json`**: index 2/4 both name
+  "InterfaceClick"/"CommandConfirmation", the same `incl` clip (backspace
+  and Enter-to-commit); index 0 "ButtonClick" `clic` (an ordinary typed
+  character); index 15 "ScoreEntryFailure" `shwa` (buffer full, a keystroke
+  rejected); index 9 "HighScoreAchieved" is `none` — no sound resource at
+  all, despite being played (as a no-op) once when a qualifying player's
+  screen opens, so this reimplementation plays nothing there either.
+- **The row-builder's preset branching** (`FUN_0043c480`, shared by both
+  screens): 3 header nodes ("Name"/"Score"/"Sector", raw strings peeked
+  directly from the executable, not read through any `.stli` table) then 15
+  rows, each a 3-way preset branch (plain viewer / name-entry-but-not-this-
+  row / this-is-the-actively-edited-row) — 9 presets total
+  (`0xd` through `0x15`), none with decompiled colour/position semantics.
+  No rank number is ever drawn as text for any row; rank is implied by
+  position alone.
+- **The optional per-row ship icon was skipped**: each row's `FUN_0043c480`
+  iteration also builds a second, non-text struct (a byte-for-byte copy of a
+  fixed static template) whose two fields get overridden — only for the row
+  currently being edited during name entry — with a player definition's
+  sprite ID. Read as a small "your ship" decoration beside the active row;
+  judged safe to skip given the effort/fidelity tradeoff (a minor visual
+  flourish, never shown in the plain viewer at all, and this reimplementation
+  already omits comparable flourishes elsewhere — see Credits' own skipped
+  per-line fade stagger).
+- **Column X positions and the header's Y have no perm-float backing at
+  all** (same situation as Credits' `CREDITS_X`/colours): recovered by
+  colour/position-sampling a live Wine capture
+  (`mise run oracle:menu-shot MENU=high_scores`) the same way Stage 3 did.
+  Name/Score/Sector columns sit at x=111/346/464 (shared by the header and
+  every data row); the header row itself draws at y≈85, while the first
+  *data* row's y=107 does come from `Scores_YLoc` — `FUN_0043c480` never
+  writes the three header nodes' Y field at all, only each per-row node's,
+  so the header keeps whatever Y its own preset bakes in, independent of
+  `Scores_YLoc`. Header colour is the same solid teal `(0, 255, 189)` as
+  Credits' title; body rows plain white.
+- **The name-entry screen's input handling is a from-scratch text box, not a
+  transliteration of `FUN_0043bb00`'s raw scan-code branches** (8/10/13,
+  and a `0x5e5b` constant for Escape that doesn't map to any obvious literal
+  VK code): reimplemented with raylib's `GetCharPressed` (proper
+  keyboard-layout-aware character input) plus `IsKeyPressed` for
+  Backspace/Enter/Escape, consistent with this project's established
+  practice for input-adjacent, non-simulation code (see Level Select's own
+  click handling).
+- **The easter-egg substitution chain** (`FUN_0043bb00`, on Enter): five
+  unconditional substring checks against the uppercased typed name — `BIKI`
+  → "Filthy Communist", `DILVISH` → "Just Ship It, Baby", `SUPERCOBRA` →
+  "Munkis Rool J00", `PYTHOS` → "Leonard Cohen Rules J00", `FISJ` →
+  "Daikajinn!!" — each unconditionally overwriting the name if it matches
+  (last match wins, since there's no early exit), then an empty-name
+  fallback → "Jar Jar Must Die", checked against the *original* typed text
+  regardless of any substitution already applied. All eleven strings
+  (5 match substrings + 5 replacements + the empty-name fallback) were read
+  directly from the executable's raw bytes via `peek.py`, not guessed, and
+  cross-checked against the dev nicknames already in Credits and the default
+  score table.
+- **Escape's exact original semantics were not fully reproduced**: in
+  `FUN_0043bb00`, Escape (`local_8d = '\0'`) skips straight past the
+  hold-and-save path, discarding only *that* player's entry — but
+  reconstructing the precise partial-table-shift-undo this implies (two
+  players' insertion ranks were computed together, up front, before either
+  screen ran) wasn't fully traceable from the decompiled corpus alone.
+  Simplified here: Escape cancels the *entire* name-entry sequence, not just
+  the current player's turn. Since each commit (`Enter`) persists
+  immediately via `high_scores_save` rather than batching to the end of the
+  whole sequence, an earlier player's already-confirmed entry in the same
+  session is never lost by a later player cancelling.
+- **`FUN_00426d80.c`** (read in full, the post-session flow the original
+  runs after a level ends) confirmed where this all hooks in: once the
+  fade-back-to-menu finishes, it checks every active player's score against
+  `G_Scores_IsAHighScore` and, if any qualifies, calls
+  `G_Scores_GetPlayerNamesAndDisplay` before finally returning to the menu.
+  Reproduced as `flow_finish_session` in `game/flow.odin`, called from both
+  paths that used to go straight from Game Over/Complete to Title (the
+  hold-timer elapsing, and the player skipping ahead with
+  Space/Enter/Escape) — a qualifying score now routes through
+  `.Score_Entry` instead of straight to `.Title`.
+
+Verified via `mise run oracle:menu-shot MENU=high_scores` (clicking Main
+Menu's High Scores button) and `mise run menu-shots:compare MENU=high_scores`:
+AE 22914.3 of 307200 (7.46%), in the same range as Credits' 6.30% — `side.png`
+shows matching column positions and colours, with the residual difference
+being this Wine prefix's own already-dirtied save data (one real high score
+entry from earlier testing, not present in this reimplementation's fresh
+default table) plus background antialiasing noise, not a structural gap. The
+name-entry screen itself has no practical oracle click-through (it needs an
+actual completed session with a qualifying score, not scriptable through
+`xdotool` the way every other screen here is) — spot-checked instead via
+`mise run menu-shot MENU=score_entry`, which stands up a synthetic qualifying
+score the same way `flow_finish_session` does, for a visual sanity check
+rather than a pixel comparison.
+
+`mise run ci` (check, purity, test) and `mise run oracle:diff` (all four
+demos still matching the original call for call) both green.
+
+Stage 6 (`-classic` gating, which Phase 6's lobby is waiting on) is
+unstarted.

@@ -14,10 +14,10 @@ package game
 // original.
 //
 // Register/Activate (frame 7, shown only when unregistered) and the exit-time
-// ad are excluded per D21. Preferences and High Scores are wired to buttons
-// that exist but don't do anything yet -- Preferences becomes a fresh
-// `-classic`-aware settings screen in stage 6, High Scores gets its own
-// screen in stage 4.
+// ad are excluded per D21. High Scores opens its own screen (stage 4,
+// game/menu_high_scores.odin). Preferences is still wired to a button that
+// exists but does nothing yet -- becomes a fresh `-classic`-aware settings
+// screen in stage 6.
 
 import rl "vendor:raylib"
 
@@ -131,12 +131,15 @@ main_menu_activate :: proc(fl: ^Flow, slot: Main_Menu_Slot) {
 		level_select_init(&fl.level_select)
 	case .Play_Demo:
 		flow_load_demo(fl, 0)
+	case .High_Scores:
+		fl.mode = .High_Scores
+		high_scores_view_init(&fl.high_scores)
 	case .Quit:
 		fl.quit = true
-	case .Preferences, .High_Scores:
-	// Inert until stage 6 (a fresh -classic-aware settings screen; the
+	case .Preferences:
+	// Inert until stage 6 -- a fresh -classic-aware settings screen; the
 	// original's own Preferences is a native Win32 dialog with no bespoke
-	// art to port) and stage 4 (the High Scores viewer) respectively.
+	// art to port.
 	}
 }
 

@@ -214,6 +214,23 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		// settled on page 0 at full opacity rather than a blank background.
 		flow.credits.page = 0
 		flow.credits.state = .Holding
+	case "high_scores":
+		flow.mode = .High_Scores
+		high_scores_view_init(&flow.high_scores)
+		// Skip the fade-in -- run_menu_shot draws exactly one static frame,
+		// so start already settled at full opacity rather than mid-fade.
+		flow.high_scores.state = .Holding
+	case "score_entry":
+		// No real gameplay session to trigger this from in a headless shot --
+		// stands up a synthetic qualifying score (single player) the same way
+		// flow_finish_session does, for a quick visual smoke check rather
+		// than an oracle comparison (the original screen needs an actual
+		// completed session with a high enough score, which isn't practical
+		// to script through xdotool -- see docs/phase-7-faithful-menus.md's
+		// Stage 4 notes).
+		score_entry_start(&flow.score_entry, {99999, 0}, {true, false}, "Lucena")
+		flow.mode = .Score_Entry
+		flow.score_entry.state = .Editing
 	case:
 		fmt.eprintfln("unknown menu %v (see run_menu_shot)", name)
 		os.exit(1)
