@@ -31,9 +31,11 @@ jobs:
       - name: Pin Odin for this run only
         run: printf '[tools]\nodin = "dev-2026-09"\n' > mise.local.toml
 
+      # Only Odin: java in mise.toml is for Ghidra's decomp:* tasks alone.
       - uses: jdx/mise-action@v2
         with:
           working_directory: src
+          install_args: odin
 
       - run: odin version
       - run: mise run ci
@@ -47,6 +49,12 @@ jobs:
 
   build-windows:
     runs-on: windows-latest
+    # mise runs inline tasks through `cmd /c` on Windows by default, which
+    # would leave every $DR_* in mise.toml unexpanded; route them through Git
+    # Bash so the same task definitions work on both runners.
+    env:
+      MISE_WINDOWS_DEFAULT_INLINE_SHELL_ARGS: bash -o errexit -c
+      MISE_WINDOWS_DEFAULT_FILE_SHELL_ARGS: bash
     defaults:
       run:
         working-directory: src
@@ -57,9 +65,11 @@ jobs:
       - name: Pin Odin for this run only
         run: printf '[tools]\nodin = "dev-2026-09"\n' > mise.local.toml
 
+      # Only Odin: java in mise.toml is for Ghidra's decomp:* tasks alone.
       - uses: jdx/mise-action@v2
         with:
           working_directory: src
+          install_args: odin
 
       - run: odin version
       - run: mise run ci

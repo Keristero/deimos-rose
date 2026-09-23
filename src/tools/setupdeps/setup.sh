@@ -4,6 +4,11 @@
 # we materialise the dev symlinks into a project-local directory and add it to the
 # linker path. Nothing outside the project is touched.
 set -euo pipefail
+# Only a Linux link needs these; Windows links raylib's own .lib files.
+if [ "$(uname -s)" != Linux ]; then
+    echo "setup: nothing to do on $(uname -s)"
+    exit 0
+fi
 mkdir -p "${DR_BUILD:-build}"
 LIBDIR="${DR_DEPS:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/.deps}/lib"
 mkdir -p "$LIBDIR"

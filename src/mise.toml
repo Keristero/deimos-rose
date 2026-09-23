@@ -16,7 +16,10 @@ DR_ASSETS = "{{config_root}}/assets"
 DR_BUILD  = "{{config_root}}/build"
 DR_DEPS   = "{{config_root}}/.deps"
 # Ghidra itself is ~900 MB of tooling, so it lives in the user cache.
-DR_GHIDRA = "{{env.HOME}}/.cache/deimos-rising/ghidra"
+# Windows has no HOME (the CI runner's env lacks it, and mise's template
+# errors on an undefined field rather than expanding to empty), so fall back
+# to USERPROFILE there.
+DR_GHIDRA = "{{ get_env(name='HOME', default=get_env(name='USERPROFILE', default='')) }}/.cache/deimos-rising/ghidra"
 # The Ghidra project and corpus cannot live under a dotted path -- the headless
 # analyser rejects any path element starting with '.' -- so they go in a
 # gitignored work/ directory beside the repo's tracked files. Kept out of
