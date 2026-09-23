@@ -353,3 +353,44 @@ through real sockets. Untested against real network latency, where the
 "how much stall is enough" question the notes themselves call hard actually
 bites. Revisit with real numbers from a real (non-loopback) playtest. See
 [phase-8-netcode-enhancements.md](phase-8-netcode-enhancements.md)'s stage 5.
+
+### D27 — Windows cross-build: task added, genuinely blocked on this host
+
+Asked to add build tasks for both Linux and Windows. `build:linux` is trivial
+(an alias for the existing `build` task). `build:windows` is real
+infrastructure but currently cannot produce a working binary *from this
+particular Linux sandbox*, for two independent reasons, both checked
+directly rather than assumed:
+
+1. **This Odin install's `vendor:raylib` ships no Windows libraries.**
+   `raylib.odin`'s foreign import references `windows/raylib.lib` and
+   `windows/raylibdll.lib`, resolved relative to the vendor source file
+   itself (not overridable by a `-collection:` flag); this install's
+   `vendor/raylib/windows/` directory exists but is empty. Odin's official
+   release archives are evidently per-platform, and the Linux archive this
+   `mise`-managed toolchain downloaded does not bundle another platform's
+   prebuilt libs.
+2. **Odin's own linker refuses the cross-link outright**, independent of
+   (1): `odin build -target:windows_amd64` on a `linux_amd64` host prints
+   `Linking for cross compilation for this platform is not yet supported
+   (windows amd64)` — confirmed with `-build-mode:obj`, which *does* succeed
+   (proving code generation for the target is fine; only the final link
+   step is blocked), and again with `-linker:lld` explicitly, which hits the
+   identical message before ever reaching a missing-tool error. No
+   mingw-w64, `lld`/`lld-link` or `wine` is installed in this environment
+   either, so there is no available external linker to hand the object file
+   to instead.
+
+Chosen: **add the task anyway**, with the standard target flags
+(`-target:windows_amd64`, no `$DR_LINK`/`setup` dependency — both are
+Linux-specific), so it is ready to work the moment either constraint lifts
+(a future Odin release supporting this link pair, or running the same task
+on/for an actual Windows host, where it becomes an ordinary same-target
+build with no cross-linking involved at all). Made the task fail loudly
+rather than silently: `odin build` was observed to **exit 0 even when this
+exact cross-link failure occurs**, simply producing no output file, so
+`build:windows`'s `run` script checks for the binary explicitly afterward
+and exits nonzero with a pointer to this entry if it's missing — a task that
+reports success while producing nothing would be worse than no task at all.
+This is build tooling, not a gameplay feature, so it has no phase doc of its
+own — tracked here and in `mise.toml`'s own task description instead.

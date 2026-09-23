@@ -38,6 +38,26 @@ description = "Build the game binary"
 depends = ["setup"]
 run = "odin build game -out:$DR_BUILD/deimos $DR_COLL $DR_LINK -o:speed"
 
+[tasks."build:linux"]
+description = "Build the game binary for Linux (x86-64) -- alias for `build`, named explicitly for symmetry with build:windows"
+depends = ["build"]
+
+[tasks."build:windows"]
+description = "Build the game binary for Windows (x86-64). Native on a Windows host (mise/Odin there just do an ordinary same-target build). Cross-compiling from Linux additionally needs vendor:raylib's windows/*.lib (absent from this Odin install's vendor tree) and currently fails outright regardless: this Odin toolchain's own linker refuses windows_amd64 cross-links from a linux_amd64 host ('Linking for cross compilation for this platform is not yet supported'), confirmed directly against it -- see docs/decisions.md D27. Does not depend on `setup` (that task materialises Linux-only X11/GL symlinks) or use $DR_LINK (Linux-only linker search path), neither of which apply to a Windows link."
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+odin build game -out:"$DR_BUILD/deimos.exe" -target:windows_amd64 $DR_COLL -o:speed
+# odin build exits 0 even when this particular cross-link failure occurs
+# (confirmed against this toolchain) and simply produces no binary, so a
+# missing output file has to be checked for explicitly rather than trusted
+# to show up as a nonzero exit code.
+if [ ! -f "$DR_BUILD/deimos.exe" ]; then
+  echo "build:windows: no binary produced -- see this task's description and docs/decisions.md D27" >&2
+  exit 1
+fi
+'''
+
 [tasks.dev]
 description = "Build unoptimised with debug info"
 depends = ["setup"]
@@ -79,6 +99,7 @@ run = [
   "odin check tools/verify  $DR_COLL -vet -strict-style",
   "odin check tools/records $DR_COLL -vet -strict-style",
   "odin check tools/diff    $DR_COLL -vet -strict-style",
+  "odin check tools/rngcheck $DR_COLL -vet -strict-style",
 ]
 
 [tasks.test]
@@ -205,6 +226,10 @@ DISPLAY= xvfb-run -s "-screen 0 1280x1024x24" env \
 [tasks."oracle:diff"]
 description = "Compare the simulation's random calls with the original's trace, per demo film"
 run = "odin run tools/diff $DR_COLL -out:$DR_BUILD/oracle-diff --"
+
+[tasks."rng:determinism"]
+description = "Build tools/rngcheck under several codegen configs (-o:none/-speed, -microarch:native, explicit -target-features:fma) and confirm they all print the same RNG digest -- the practical stand-in, on a host with no working Windows cross-link and no second OS to test against, for 'does sim/'s RNG produce the same bits on every platform' (see docs/decisions.md D27 and tests/rand_test.odin's rand_sequence_digest_is_codegen_stable)"
+run = "bash tools/rngcheck/determinism_check.sh"
 
 [tasks."netplay:loopback"]
 description = "Two-instance loopback smoke test for the netplay lobby and live rollback session (Phase 7 stage 6 / Phase 6 stage 5)"
