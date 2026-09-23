@@ -46,9 +46,11 @@ LOGO_Y :: 47
 
 // FUN_004277e0's button-list build, in order: frame indices into MEBU/MEBH.
 // Index 3 is real plate art (a 14-frame plate, this main menu uses 6 of its
-// 7 non-register slots) but is never referenced by any button here --
-// possibly "REPLAY LAST GAME" (FUN_00428560 supports it; no confirmed menu
-// entry point was found). Not wired; revisit if a use turns up.
+// 7 non-register slots) but is never referenced by any button here -- its
+// baked text is "CONTROLS" (confirmed by cropping the frame directly during
+// stage 2's research pass; not "REPLAY LAST GAME" as an earlier pass here
+// guessed), with no confirmed menu entry point found. Not wired; revisit if a
+// use turns up.
 @(private = "file")
 MAIN_MENU_FRAMES := [6]i32{0, 1, 2, 4, 5, 6}
 
@@ -119,9 +121,13 @@ main_menu_update :: proc(fl: ^Flow, r: ^Renderer, m: ^Main_Menu) {
 main_menu_activate :: proc(fl: ^Flow, slot: Main_Menu_Slot) {
 	switch slot {
 	case .One_Player:
-		flow_start_session(fl, flow_random_seed(), .Single)
+		fl.pending_game_type = .Single
+		fl.mode = .Level_Select
+		level_select_init(&fl.level_select)
 	case .Two_Player:
-		flow_start_session(fl, flow_random_seed(), .Co_Op)
+		fl.pending_game_type = .Co_Op
+		fl.mode = .Level_Select
+		level_select_init(&fl.level_select)
 	case .Play_Demo:
 		flow_load_demo(fl, 0)
 	case .Quit:

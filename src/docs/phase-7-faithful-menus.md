@@ -37,9 +37,10 @@ button; the button-list build (`FUN_004277e0`) fixes the mapping):
 | 7 | 7 | REGISTER/ACTIVATE | `FUN_00428930` — **excluded**, only shown unregistered |
 
 Frame index 3 exists in both plates but is never referenced by the main
-menu's button list — an open question (possibly "REPLAY LAST GAME", which the
-underlying machinery supports via `FUN_00428560` but which has no confirmed
-menu entry point; not blocking, revisit if a use turns up). Two more links
+menu's button list — its baked text is "CONTROLS" (confirmed by cropping the
+frame directly during Stage 2's research pass, correcting an earlier guess of
+"REPLAY LAST GAME"), but no confirmed menu entry point calls it (not
+blocking, revisit if a use turns up). Two more links
 draw as plain text, not plate buttons: a website URL (`U_App_LaunchURL`) and
 a copyright line that opens Credits — the same line the excluded registration
 nag periodically overwrites with its own message, confirming the nag is
@@ -232,5 +233,62 @@ comment on `draw_paused_borders` for the exact-vs-approximated caveat
 `U_Display::DrawBlackBorders`; this approximates that as a full-screen dim
 rather than claiming pixel-exact border geometry).
 
-Stages 2-4 (Level Select, Credits, High Scores) and 6 (`-classic` gating,
-which Phase 6's lobby is waiting on) are unstarted.
+**Stage 2 — done.** `game/menu_level_select.odin`: the 3-slot carousel
+(`LS_RECTS`, `LevSel_Button_Previous/Current/Next`), left/right rotates
+`Level_Select.center` circularly through `fl.defs.levels` (play order, *not*
+the alphabetical-by-filename order `data.Assets.levels` happens to load in —
+looked up per level via `data.assets_level_media`, never assumed parallel),
+center click either accepts (grow-pulse to `MaxScale` 2.0, tint green, starts
+the session via `flow_start_session`) or rejects (grow-pulse tint red, no
+session) depending on lock state. Wired from Main Menu's 1/2 Player buttons
+(`menu_main.odin`, stashing `fl.pending_game_type` and switching to the new
+`.Level_Select` `Flow_Mode` instead of starting a session directly) and from
+`Level_Select` back into `flow_start_session`, which now takes the chosen
+0-based level index rather than always starting at list position 0.
+
+Two things found during this stage's research pass, beyond what "What the
+original does" above already covered:
+
+- **"Video Grid" (VIGR)**: every preview thumbnail gets a translucent
+  scanline texture tiled over it (`G_Game_DrawGridInRect`, perm sprite 0
+  "vigr"/"Video Grid", frame 0), giving it a "monitor screen" look — not
+  mentioned in the original research pass, found by comparing a first,
+  plain-thumbnail render against a real screenshot and tracing the call chain
+  from `Priv_Preview`. Reproduced by `level_select_draw_grid`, tiled flush
+  from the rect's corner rather than reproducing the original's own
+  tile-centring arithmetic (a periodic pattern, so the sub-tile phase
+  difference isn't visually distinguishable — confirmed by direct comparison,
+  not assumed).
+- **"Highest level reached" persistence**: confirmed by a research pass
+  through `FUN_00426d80.c` (the post-session update, `U_Prefs_SetInt(3, ...)`)
+  and `Priv_Preview`/`FUN_0042b4e0.c` (the gate that reads it back) that the
+  original tracks **one global counter**, shared across Single and Co-Op, not
+  per game type — a session's max level reached across whichever player slots
+  were active feeds the same one value, monotonically increased, only when
+  the session started at list position 1 (jumping in via Level Select never
+  raises it, even past levels played along the way). The original persists
+  this via `U_Prefs` slot 3 (Win32 registry); this reimplementation had no
+  save-file infrastructure at all before this stage, so `game/progress.odin`
+  adds the first one — a plain integer written to
+  `$XDG_DATA_HOME/deimos-rising/progress` (or `~/.local/share/deimos-rising/progress`
+  when `XDG_DATA_HOME` is unset), loaded once in `flow_init` and saved
+  whenever `Flow.highest_reached` advances. No existing save-path convention
+  to follow anywhere in the tree, so this picks the ordinary XDG location
+  rather than inventing a project-specific one; best-effort (a read-only home
+  directory just means progress doesn't persist that run, not a crash).
+
+Verified via `mise run menu-shot MENU=level_select` (a new task, wrapping our
+own headless render in `xvfb-run` the same way `shots`/`menu-shots:compare`
+already do — running `$DR_BUILD/deimos` directly picks up the real desktop's
+`DISPLAY` and pops a visible window, so always go through this task or an
+equivalent `xvfb-run` wrapper for a one-off look) with a scratch `HOME`
+pre-seeded with a saved progress file, confirming a level past the default
+unlocks correctly (teal "START"/level name vs. red "NO ACCESS", per
+`level_select_draw`'s `unlocked` check). `mise run menu-shots:compare
+MENU=level_select` against a real screenshot of the original: AE 24641.7 of
+307200 (8.02%), close visually per `side.png`/`diff.png` — the remaining
+difference is mostly the VIGR scanline pattern's sub-tile phase (see above),
+not a structural gap.
+
+Stages 3-4 (Credits, High Scores) and 6 (`-classic` gating, which Phase 6's
+lobby is waiting on) are unstarted.

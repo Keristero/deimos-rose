@@ -168,6 +168,27 @@ description = "Our menu render beside the original's (MENU=main); slow, needs or
 depends = ["build"]
 run = "bash tools/oracle/menu_compare.sh"
 
+[tasks."menu-shot"]
+description = "Render one of our own menu screens headlessly, no comparison (MENU=main [OUT=path]) -- for a quick look, or debug MENU cases from run_menu_shot"
+depends = ["build"]
+# Wrapped in xvfb-run/DISPLAY= exactly like the shots and menu-shots:compare
+# tasks -- running $DR_BUILD/deimos directly (without this) opens a real
+# window against whatever DISPLAY the shell inherits, on the real desktop.
+# HOME (and any other env var the game itself reads, e.g. for progress
+# persistence -- see game/progress.odin) passes through untouched: set it
+# with the usual shell-prefix form, `HOME=/tmp/x mise run menu-shot ...`.
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+MENU="${MENU:-main}"
+OUT="${OUT:-$DR_SRC/../work/shots/menus/$MENU/ours}"
+mkdir -p "$(dirname "$OUT")"
+DISPLAY= xvfb-run -s "-screen 0 1280x1024x24" env \
+  DR_ASSETS="$DR_ASSETS" DR_MENU_SHOT="$MENU" DR_SHOT="$OUT" \
+  "$DR_BUILD/deimos" 2>&1 | grep -E "^wrote|^cannot" || true
+echo "$OUT.png"
+'''
+
 [tasks."shots"]
 description = "Render our own frames of a demo film (FILM=de01 AT=a,b,c)"
 depends = ["build"]

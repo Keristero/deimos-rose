@@ -17,6 +17,22 @@ out="$DR_WINE/menus/$MENU"; rm -rf "$out"; mkdir -p "$out"
 
 case "$MENU" in
     main) reach="" ;;
+    # Click through Main Menu's "1 PLAYER" button (BTN_FIRST_ROW_Y=186,
+    # centred horizontally -- see game/menu_main.odin) to reach Level Select.
+    # The original's own window is native 640x480, unlike our port's
+    # WINDOW_SCALE=2 display window, so these coordinates are plain logical
+    # pixels, not doubled. windowfocus --sync is required first: xdotool
+    # click/mousedown alone silently no-ops against an unfocused Xvfb window
+    # (see docs/phase-7-faithful-menus.md's Stage 1 verification note).
+    level_select) reach='
+wid=$(xdotool search --name "Deimos Rising" | head -1)
+xdotool windowfocus --sync "$wid"
+xdotool mousemove --window "$wid" --sync 320 198
+xdotool mousedown --window "$wid" 1
+sleep 0.2
+xdotool mouseup --window "$wid" 1
+sleep 1
+' ;;
     *) echo "unknown MENU '$MENU' -- add its click-through to menu_shot.sh" >&2; exit 1 ;;
 esac
 

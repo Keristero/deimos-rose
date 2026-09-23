@@ -17,6 +17,7 @@ import "dr:sim"
 
 Flow_Mode :: enum {
 	Title,
+	Level_Select,
 	Playing,
 	Paused,
 	Game_Over,
@@ -47,6 +48,23 @@ Flow :: struct {
 	end_timer:  i32,          // steps spent on the current Game_Over/Complete screen
 	last_level: sim.Level_ID, // the level music_track was last started for
 	main_menu:  Main_Menu,    // Phase 7: the faithfully-recreated title screen
+
+	// Phase 7 stage 2: Level Select. pending_game_type is stashed by
+	// menu_main.odin's One_Player/Two_Player when it hands off to
+	// .Level_Select (Level Select itself, per G_LevelSelect_GetStartingLevelID
+	// -FromUser, is player-count-agnostic -- the count is only needed again
+	// once a level is actually chosen). session_start_pos is the 1-based level
+	// list position the *current* session started at (set by
+	// flow_start_session), and highest_reached is the highest 1-based
+	// position unlocked so far -- global, not per sim.Game_Type (confirmed
+	// against FUN_00426d80.c's post-session U_Prefs_SetInt(3, ...) call, which
+	// loops both player slots regardless of Game_Type). Persisted across runs
+	// via progress_load/progress_save (game/progress.odin), the reimplementation's
+	// stand-in for the original's U_Prefs slot 3 (Win32 registry-backed).
+	pending_game_type: sim.Game_Type,
+	session_start_pos: int,
+	highest_reached:   int,
+	level_select:      Level_Select,
 }
 
 flow_init :: proc(fl: ^Flow, root: string, defs: ^sim.Defs, state: ^sim.State, r: ^Renderer) {
@@ -54,6 +72,7 @@ flow_init :: proc(fl: ^Flow, root: string, defs: ^sim.Defs, state: ^sim.State, r
 	fl.defs = defs
 	fl.state = state
 	fl.mode = .Title
+	fl.highest_reached = progress_load()
 	main_menu_init(&fl.main_menu, &r.textures)
 }
 
@@ -74,6 +93,8 @@ flow_handle_input :: proc(fl: ^Flow, r: ^Renderer) {
 		// Mouse-driven, like the original's own button list -- see
 		// main_menu_update (game/menu_main.odin).
 		main_menu_update(fl, r, &fl.main_menu)
+	case .Level_Select:
+		level_select_update(fl, r, &fl.level_select)
 	case .Playing:
 		if rl.IsKeyPressed(.ESCAPE) || rl.IsKeyPressed(.P) {
 			fl.mode = .Paused
@@ -124,14 +145,23 @@ flow_set_music_paused :: proc(fl: ^Flow, r: ^Renderer, paused: bool) {
 // than only after (and if) the level happens to finish scrolling.
 flow_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs, notices: ^Notices) {
 	switch fl.mode {
-	case .Title, .Paused:
+	case .Title, .Level_Select, .Paused:
 	// nothing to step
 	case .Playing:
 		flow_sim_step(fl, r, particles, blurs, notices, gather_input(), nil)
 		if fl.state.game_over {
 			fl.mode, fl.end_timer = .Game_Over, 0
 		} else if fl.state.level_end.complete {
-			if !sim.level_advance(fl.state) {
+			if sim.level_advance(fl.state) {
+				// G_LevelSelect only ever raises U_Prefs slot 3 (highest
+				// reached) for a session that started at level 1 -- jumping
+				// into the middle via Level Select never advances it, even
+				// past the levels played along the way.
+				if fl.session_start_pos == 1 && int(fl.state.level_number) > fl.highest_reached {
+					fl.highest_reached = int(fl.state.level_number)
+					progress_save(fl.highest_reached)
+				}
+			} else {
 				fl.mode, fl.end_timer = .Complete, 0
 			}
 		}
@@ -178,11 +208,12 @@ flow_random_seed :: proc() -> u32 {
 	return u32(time.to_unix_nanoseconds(time.now()))
 }
 
-// Called from the main menu's 1 Player/2 Player buttons (game/menu_main.odin).
-// Level select is deferred to Phase 7 stage 2 -- levels still always start
-// from list order, exactly as before.
-flow_start_session :: proc(fl: ^Flow, seed: u32, game_type: sim.Game_Type) {
-	level := fl.defs.levels[0].id // play order: Lucena is level 1
+// Called once Level Select's accept pulse finishes (game/menu_level_select.odin).
+// `level_index` is 0-based into fl.defs.levels (play order), matching
+// Level_Select.center.
+flow_start_session :: proc(fl: ^Flow, seed: u32, game_type: sim.Game_Type, level_index: int) {
+	fl.session_start_pos = level_index + 1
+	level := fl.defs.levels[level_index].id
 	sim.init(fl.state, sim.Session{seed = seed, level_id = level, game_type = game_type}, fl.defs)
 	fl.mode = .Playing
 }
@@ -226,9 +257,14 @@ flow_load_demo :: proc(fl: ^Flow, index: int) -> bool {
 // through raylib's own font directly instead -- the same shortcut
 // draw_debug already takes for its dev overlay.
 flow_draw :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs, notices: ^Notices, scale: f32) {
-	if fl.mode == .Title {
+	switch fl.mode {
+	case .Title:
 		main_menu_draw(r, &fl.main_menu)
 		return
+	case .Level_Select:
+		level_select_draw(r, fl, &fl.level_select)
+		return
+	case .Playing, .Paused, .Game_Over, .Complete, .Attract:
 	}
 	build_frame(r, fl.state, blurs, notices)
 	present(r, fl.state, particles, scale)
@@ -245,7 +281,7 @@ flow_draw :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 	case .Attract:
 		rl.DrawText("DEMO -- press any key for the title screen",
 			16, SCREEN_H * WINDOW_SCALE - 28, 18, rl.Color{200, 200, 200, 200})
-	case .Title, .Playing:
+	case .Title, .Level_Select, .Playing:
 	}
 }
 

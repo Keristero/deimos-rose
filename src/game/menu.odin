@@ -22,7 +22,10 @@ HILITE_DELAY :: 10.0 / 30.0
 // A hoverable, clickable rectangle in logical (640x480) space -- the mouse
 // position menu_mouse_pos returns is in the same space, so hit-testing needs
 // no further scaling.
-@(private = "file")
+// Package-visible (not file-private): Level Select's own hit-testing
+// (game/menu_level_select.odin) reuses this too, since its three preview
+// slots need the same hover-accumulate/edge-triggered-click behaviour as a
+// Menu_Button, just at fixed rects rather than a centred plate frame.
 update_hover_click :: proc(rect: rl.Rectangle, hover_time: ^f32, mouse: rl.Vector2, dt: f32) -> (clicked: bool) {
 	if rl.CheckCollisionPointRec(mouse, rect) {
 		hover_time^ += dt
@@ -121,6 +124,24 @@ menu_draw_text :: proc(r: ^Renderer, s: string, x, y: i32, color := rl.Color{255
 		rl.DrawTexturePro(tex, src, dst, {0, 0}, 0, color)
 		x += i32(src.width) + spacing
 	}
+}
+
+// Plays a UI sound directly, bypassing sim's event queue (sound.odin's
+// sounds_step) -- a menu screen has no sim.State backing it to route sound
+// events through. Resets volume/pitch to the plain defaults each time, since
+// a voice alias may have been left at whatever a gameplay sound event last
+// set it to (sound.odin varies both per sim.Sound_Event).
+menu_play_sound :: proc(r: ^Renderer, id: sim.Res_ID) {
+	clip, ok := &r.textures.sounds[id]
+	if !ok {
+		return
+	}
+	v := clip.next
+	clip.next = (clip.next + 1) % SOUND_VOICES
+	snd := clip.voices[v]
+	rl.SetSoundVolume(snd, 1.0)
+	rl.SetSoundPitch(snd, 1.0)
+	rl.PlaySound(snd)
 }
 
 // Mouse position in logical (640x480) space -- the window itself is

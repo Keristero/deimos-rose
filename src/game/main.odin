@@ -202,6 +202,10 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 	switch name {
 	case "main":
 		flow.mode = .Title
+	case "level_select":
+		flow.pending_game_type = .Single
+		flow.mode = .Level_Select
+		level_select_init(&flow.level_select)
 	case:
 		fmt.eprintfln("unknown menu %v (see run_menu_shot)", name)
 		os.exit(1)
