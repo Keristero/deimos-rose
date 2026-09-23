@@ -57,6 +57,14 @@ NETPLAY_LIVE_TIMEOUT :: 3 * time.Second  // silence from a known peer during .Pl
 STATE_CHUNK_BURST :: 64                  // chunks (<= 64KB) sent per frame while transferring -- loopback/LAN handles this trivially; unacked ones just get resent next frame, so this is a sliding window with "one render frame" as its retry granularity, not a per-chunk timer
 STATE_RESYNC_TIMEOUT :: 10 * time.Second // give up if a transfer makes no further progress at all for this long (not a per-chunk retry count -- see STATE_CHUNK_BURST)
 
+// Phase 8 stage 5 (provisional -- see docs/decisions.md D26): synchronised
+// pausing. The notes admit an exact scheme is "hard to measure who is
+// behind"; this is a simple linear throttle, not GGPO's own more elaborate
+// one, and is expected to need retuning against a real (non-loopback)
+// playtest with real latency.
+NETPLAY_SYNC_STALL_THRESHOLD :: 5 // frames of lead over the peer's last confirmed input before this client starts stalling ticks to let them catch up
+NETPLAY_SYNC_MIN_STALL_EVERY :: 2 // even at a huge lead, stall no more often than every-other-tick -- keeps local input responsive instead of freezing solid
+
 Netplay_Phase :: enum {
 	Menu,          // choose Host or Join
 	Enter_Address, // guest only: typing "host" or "host:port"
@@ -838,9 +846,29 @@ netplay_playing_poll :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 	}
 }
 
+// Phase 8 stage 5: true on a tick this client should sit out entirely (no
+// sim advance, no input/checksum send) so the peer's simulation -- confirmed
+// behind via net.rollback_session_frame_advantage -- gets a chance to close
+// the gap rather than the rollback prediction window (and with it,
+// misprediction risk) growing without bound. Skipping a tick outright rather
+// than inserting a real-time sleep keeps this in the same fixed-step
+// accumulator flow.odin already drives, at the cost of this client's
+// simulation rate visibly dipping while it stalls -- exactly the "increase
+// the duration of its updates" the notes ask for. The actual threshold/
+// throttle math lives in net.rollback_session_should_stall so it can be unit
+// tested without a live socket or render loop.
+@(private = "file")
+netplay_should_stall :: proc(nl: ^Netplay) -> bool {
+	return net.rollback_session_should_stall(&nl.rs, NETPLAY_SYNC_STALL_THRESHOLD, NETPLAY_SYNC_MIN_STALL_EVERY)
+}
+
 // Called from flow.odin's .Playing branch of flow_step, once per fixed sim
 // tick, instead of the single-player gather_input()+sim.step path.
 netplay_playing_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs, notices: ^Notices, nl: ^Netplay) {
+	if netplay_should_stall(nl) {
+		return
+	}
+
 	local := gather_input()
 	net.rollback_session_advance(&nl.rs, local)
 	particles_step(particles, fl.state)

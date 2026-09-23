@@ -173,3 +173,53 @@ any ordinary guest, and confirms both sides log the resync completing with
 no desync-monitor warning afterward. Passes in ~18s wall-clock total, almost
 all of it Xvfb/build/handshake overhead and the test's own scripted
 `sleep`s — the resync transfer itself is no longer the bottleneck.
+
+**Stage 5 is done**, as a first cut marked provisional (D26) — the notes'
+own wording for this stage is looser than every other item ("hard to measure
+who is behind", no algorithm specified), so this trades GGPO's fuller
+time-sync scheme for something simple built on a signal the rollback session
+already had for free. `net/session.odin` grew
+`Rollback_Session.remote_confirmed_frame` (the highest remote input frame
+ever *confirmed*, not merely predicted, tracked incrementally inside
+`rollback_session_receive`) and two new procs:
+`rollback_session_frame_advantage` (this machine's frame count minus the
+peer's last confirmed one — GGPO's own "frame advantage": the peer can't
+have generated input for a frame it hasn't simulated, so this is a direct
+proxy for how far behind it actually is) and
+`rollback_session_should_stall(rs, threshold, min_every)`, which turns that
+number into a go/no-go for the current tick: below `threshold`, never
+stalls; above it, stalls on a period that shrinks as the lead grows, floored
+at `min_every` so a very large lead throttles rather than fully freezes
+local input. `game/netplay.odin`'s `netplay_playing_step` calls it
+(`NETPLAY_SYNC_STALL_THRESHOLD :: 5`, `NETPLAY_SYNC_MIN_STALL_EVERY :: 2`)
+and returns immediately on a stall tick — no sim advance, no input/checksum
+send — which lets `game/main.odin`'s existing fixed-step accumulator do the
+actual "increase the duration of its updates" the notes ask for, with no
+second timing mechanism needed.
+
+Both new procs live in `net/session.odin` rather than `game/netplay.odin`
+specifically so the throttle math is unit-testable without a live socket or
+render loop — `netplay_should_stall` (`game/netplay.odin`) is a two-line
+wrapper supplying the constants. Deliberately *not* independently verified
+over real network latency: loopback's near-zero round trip means frame
+advantage rarely exceeds a couple of frames in practice, so the stall path
+is essentially inert in `mise run netplay:loopback` and
+`netplay:reconnect` (both still green — this stage changes nothing about
+the handshake, resync or disconnect paths those exercise) and can only be
+demonstrated by driving a `Rollback_Session` directly.
+
+Verified by `mise run ci` (91 tests — `tests/rollback_session_test.odin`
+grew `rollback_session_frame_advantage_tracks_the_confirmed_remote_frame`
+and `rollback_session_should_stall_throttles_only_once_over_threshold`,
+both driving a session through exact frame counts and confirming the
+advantage and stall-period math frame-by-frame rather than only checking an
+end state) and `mise run netplay:loopback` / `netplay:reconnect` (both
+still green, confirming this stage didn't regress anything stages 1-4
+already covered). The threshold and floor constants are explicitly untuned
+against real latency — see D26 for what would resolve that.
+
+## Exit, revisited
+
+All five stages of `notes/netcode-enhancements.md` are implemented and
+`mise run ci` is green. Stage 5's constants remain provisional pending a
+real (non-loopback) playtest — see D26.

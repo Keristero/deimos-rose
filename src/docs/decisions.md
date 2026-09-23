@@ -321,3 +321,35 @@ multiplication against a `time` unit (`3 * time.Second`), never a bare
 number, matching the pattern `net/reliable.odin`'s `RELIABLE_RETRY` already
 used. See [phase-8-netcode-enhancements.md](phase-8-netcode-enhancements.md)'s
 stage 3/4.
+
+### D26 — Synchronised pausing: a simple linear stall, marked provisional
+
+`notes/netcode-enhancements.md`'s own wording for stage 5 ("hard to measure
+who is behind... in ideal circumstances all clients will be simulating the
+exact same tic") stops short of specifying an actual algorithm, unlike every
+other item in the notes. Rather than reproducing GGPO's full time-sync
+scheme (which reasons about round-trip variance and a client-reported "true"
+frame number this codebase's wire protocol has no packet for), the chosen
+design reuses a signal the rollback session already tracks for free: the
+highest remote input frame ever confirmed
+(`net.rollback_session_frame_advantage`, `net/session.odin`) is a direct
+proxy for "how far the peer has actually gotten", since the peer cannot have
+generated input for a frame it hasn't simulated. When this machine's own
+frame count runs more than `NETPLAY_SYNC_STALL_THRESHOLD` ahead of that,
+`net.rollback_session_should_stall` skips the current tick's sim advance
+entirely on a period that shrinks as the lead grows (floored at
+`NETPLAY_SYNC_MIN_STALL_EVERY` so a very large lead throttles rather than
+fully freezes local input) — `netplay_playing_step` (`game/netplay.odin`)
+just checks it and returns early, reusing the existing fixed-step
+accumulator in `game/main.odin` rather than adding a second timing
+mechanism.
+
+This is explicitly a first cut, not a tuned one: the thresholds (5 frames,
+floor of 2) were chosen to be inert over loopback (where round-trip is near
+zero, so frame advantage rarely exceeds a couple of frames) while still
+demonstrably triggering in `tests/rollback_session_test.odin`'s
+frame-advantage tests, which drive the rollback session directly rather than
+through real sockets. Untested against real network latency, where the
+"how much stall is enough" question the notes themselves call hard actually
+bites. Revisit with real numbers from a real (non-loopback) playtest. See
+[phase-8-netcode-enhancements.md](phase-8-netcode-enhancements.md)'s stage 5.

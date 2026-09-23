@@ -57,6 +57,14 @@ Rollback_Session :: struct {
 	local_log:      Input_Log,
 	remote_log:     Input_Log,
 	rollback_count: int, // how many times a misprediction has forced a resimulation
+
+	// Phase 8 stage 5: the highest remote frame ever confirmed (not merely
+	// predicted) by rollback_session_receive -- the local proxy for "how far
+	// has the peer actually gotten", since the peer can't have generated
+	// input for a frame it hasn't simulated yet. -1 until the first packet
+	// arrives, so rollback_session_frame_advantage can tell "no data yet"
+	// apart from "caught up".
+	remote_confirmed_frame: int,
 }
 
 rollback_session_init :: proc(rs: ^Rollback_Session, state: ^sim.State, local_player: int, allocator := context.allocator) {
@@ -66,6 +74,7 @@ rollback_session_init :: proc(rs: ^Rollback_Session, state: ^sim.State, local_pl
 	sim.snapshot_ring_init(&rs.ring, ROLLBACK_DEPTH, allocator)
 	rs.local_log = {}
 	rs.remote_log = {}
+	rs.remote_confirmed_frame = -1
 }
 
 rollback_session_destroy :: proc(rs: ^Rollback_Session, allocator := context.allocator) {
@@ -120,6 +129,9 @@ rollback_session_receive :: proc(rs: ^Rollback_Session, pkt: Input_Packet) {
 		}
 		wrong_guess := frame <= rs.state.frame && slot.buttons != pkt.frames[i]
 		input_log_set(&rs.remote_log, frame, pkt.frames[i], true)
+		if int(frame) > rs.remote_confirmed_frame {
+			rs.remote_confirmed_frame = int(frame)
+		}
 		if wrong_guess && (!mispredicted || frame < earliest) {
 			earliest, mispredicted = frame, true
 		}
@@ -127,6 +139,41 @@ rollback_session_receive :: proc(rs: ^Rollback_Session, pkt: Input_Packet) {
 	if mispredicted {
 		rollback_to(rs, earliest)
 	}
+}
+
+// Phase 8 stage 5: how many frames this machine has simulated beyond the
+// last one it actually knows the peer's real input for -- GGPO's "frame
+// advantage", used to decide whether this side is running far enough ahead
+// that it should slow down and let the peer close the gap
+// (game/netplay.odin's netplay_should_stall). 0 (not negative) until
+// anything at all has been heard from the peer, since "no data yet" should
+// not itself look like a huge lead worth stalling over.
+rollback_session_frame_advantage :: proc(rs: ^Rollback_Session) -> int {
+	if rs.remote_confirmed_frame < 0 {
+		return 0
+	}
+	return int(rs.state.frame) - rs.remote_confirmed_frame - 1
+}
+
+// Phase 8 stage 5: whether the tick about to run at rs.state.frame should be
+// skipped entirely -- no sim advance -- so a peer confirmed to be running
+// behind (frame_advantage above) gets a chance to close the gap, rather than
+// the rollback prediction window growing without bound. Below threshold,
+// never stalls. Above it, stalls on a period that shrinks (stalls more
+// often) as the lead grows, floored at min_every so even a very large lead
+// throttles rather than fully freezes local input. A simple linear scheme,
+// not GGPO's own more elaborate one -- the notes call an exact algorithm
+// "hard to measure who is behind" and leave it open; see docs/decisions.md
+// D26. Kept here rather than in game/netplay.odin so the actual throttle
+// math is unit-testable without a live socket or render loop.
+rollback_session_should_stall :: proc(rs: ^Rollback_Session, threshold, min_every: int) -> bool {
+	advantage := rollback_session_frame_advantage(rs)
+	if advantage <= threshold {
+		return false
+	}
+	over := advantage - threshold
+	every := max(threshold - over, min_every)
+	return rs.state.frame % u32(every) == 0
 }
 
 @(private = "file")

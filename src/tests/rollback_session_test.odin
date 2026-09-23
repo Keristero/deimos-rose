@@ -185,3 +185,96 @@ rollback_session_local_window_caps_to_what_has_actually_been_played :: proc(t: ^
 	testing.expect_value(t, buf[0], sim.Buttons{.Right})
 	testing.expect_value(t, buf[1], sim.Buttons{.Up})
 }
+
+// Phase 8 stage 5: rollback_session_frame_advantage is the signal
+// netplay_should_stall throttles on -- it must read 0 before anything has
+// been heard from the peer (not a huge false lead), then track the actual
+// gap between frames simulated locally and the highest remote frame
+// confirmed by rollback_session_receive, and must not count a still-
+// predicted (not yet confirmed) remote frame as closing that gap.
+@(test)
+rollback_session_frame_advantage_tracks_the_confirmed_remote_frame :: proc(t: ^testing.T) {
+	defs := synthetic_defs()
+	state := new(sim.State, context.temp_allocator)
+	sim.init(state, sim.Session{seed = 1, level_id = sim.level_id("le01"), game_type = .Co_Op}, defs)
+
+	rs: net.Rollback_Session
+	net.rollback_session_init(&rs, state, 0, context.temp_allocator)
+	defer net.rollback_session_destroy(&rs, context.temp_allocator)
+
+	testing.expect_value(t, net.rollback_session_frame_advantage(&rs), 0)
+
+	// Simulate 6 local frames (0..5, state.frame becomes 6) with nothing at
+	// all confirmed from the peer yet -- still predicting throughout.
+	for i in 0 ..< 6 {
+		net.rollback_session_advance(&rs, {})
+	}
+	testing.expect_value(t, net.rollback_session_frame_advantage(&rs), 0)
+
+	// The peer confirms frames 0..2: this side has simulated frames 0..5
+	// (state.frame == 6) but only knows the peer's real input through frame
+	// 2, i.e. it is 3 frames ahead of what it can confirm (6 - 2 - 1 == 3).
+	frames: [3]sim.Buttons
+	buf: [64]byte
+	n := net.encode_input(buf[:], 1, 0, frames[:])
+	pkt, ok := net.decode_input(buf[:n])
+	testing.expect(t, ok)
+	net.rollback_session_receive(&rs, pkt)
+	testing.expect_value(t, net.rollback_session_frame_advantage(&rs), 3)
+
+	// Advancing further without any new confirmation widens the lead.
+	for i in 0 ..< 2 {
+		net.rollback_session_advance(&rs, {})
+	}
+	testing.expect_value(t, net.rollback_session_frame_advantage(&rs), 5)
+}
+
+// Phase 8 stage 5: rollback_session_should_stall is the throttle
+// netplay_playing_step gates a whole tick on. Drives a Rollback_Session's
+// frame straight to a chosen value (rather than replaying real ticks) via
+// repeated no-input advances, so each case's frame_advantage is exact and
+// the period math can be checked directly against rs.state.frame's parity.
+@(test)
+rollback_session_should_stall_throttles_only_once_over_threshold :: proc(t: ^testing.T) {
+	defs := synthetic_defs()
+	state := new(sim.State, context.temp_allocator)
+	sim.init(state, sim.Session{seed = 1, level_id = sim.level_id("le01"), game_type = .Co_Op}, defs)
+
+	rs: net.Rollback_Session
+	net.rollback_session_init(&rs, state, 0, context.temp_allocator)
+	defer net.rollback_session_destroy(&rs, context.temp_allocator)
+
+	THRESHOLD :: 5
+	MIN_EVERY :: 2
+
+	// No peer input confirmed at all yet -- frame_advantage reads 0
+	// (rollback_session_frame_advantage_tracks_the_confirmed_remote_frame
+	// above), well under THRESHOLD, so never stalls regardless of how many
+	// frames have been simulated locally.
+	for i in 0 ..< 10 {
+		net.rollback_session_advance(&rs, {})
+		testing.expect(t, !net.rollback_session_should_stall(&rs, THRESHOLD, MIN_EVERY))
+	}
+
+	// Confirm frame 3: state.frame is 10, so frame_advantage == 10-3-1 == 6,
+	// one over THRESHOLD -- every == max(5-1, 2) == 4. 10 % 4 == 2, not a
+	// stall point.
+	frames: [4]sim.Buttons
+	buf: [64]byte
+	n := net.encode_input(buf[:], 1, 0, frames[:])
+	pkt, ok := net.decode_input(buf[:n])
+	testing.expect(t, ok)
+	net.rollback_session_receive(&rs, pkt)
+	testing.expect_value(t, net.rollback_session_frame_advantage(&rs), 6)
+	testing.expect(t, !net.rollback_session_should_stall(&rs, THRESHOLD, MIN_EVERY))
+
+	// Advancing without any further confirmation widens the lead each tick,
+	// which shrinks (more aggressive) the throttle period each tick too:
+	// at state.frame 11, advantage 7, every == max(5-2, 2) == 3 (11 % 3 == 2,
+	// no stall); at state.frame 12, advantage 8, every == max(5-3, 2) == 2
+	// (12 % 2 == 0, a stall point).
+	net.rollback_session_advance(&rs, {}) // state.frame -> 11
+	testing.expect(t, !net.rollback_session_should_stall(&rs, THRESHOLD, MIN_EVERY))
+	net.rollback_session_advance(&rs, {}) // state.frame -> 12
+	testing.expect(t, net.rollback_session_should_stall(&rs, THRESHOLD, MIN_EVERY))
+}
