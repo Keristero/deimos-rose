@@ -55,6 +55,7 @@ description = "Build the game binary for Windows (x86-64). Native on a Windows h
 run = '''
 #!/usr/bin/env bash
 set -euo pipefail
+mkdir -p "$DR_BUILD"
 odin build game -out:"$DR_BUILD/deimos.exe" -target:windows_amd64 $DR_COLL -o:speed
 # odin build exits 0 even when this particular cross-link failure occurs
 # (confirmed against this toolchain) and simply produces no binary, so a
