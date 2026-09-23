@@ -24,3 +24,5 @@
 ### Reconnect
 - When a client reconnects, the host needs to send the current game state to the connecting client so that they can resynchronise and continue.
 
+# Netflow enhancements (continued)
+- When transitioning between levels, desyncs are occuring, we need to ensure that transitions occur on the same tic for both cients by queing them as an event or something like that
