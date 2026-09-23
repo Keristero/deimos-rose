@@ -26,3 +26,7 @@
 
 # Netflow enhancements (continued)
 - When transitioning between levels, desyncs are occuring, we need to ensure that transitions occur on the same tic for both cients by queing them as an event or something like that
+
+- related to the previous change, pressing escape should pause the game just like in single player
+- pausing in both singleplayer and multiplayer should present an option to return to the main menu
+- pausing will also need to be a synchronised event over netcode
