@@ -1,0 +1,72 @@
+name: Build
+
+# Native builds only -- one job per target OS, each building for itself.
+# Odin's own linker refuses to cross-link windows_amd64 from a linux_amd64
+# host (see src/docs/decisions.md D27), so there is no single-runner
+# shortcut here; a real windows-latest runner sidesteps that entirely since
+# it is not cross-compiling at all.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: raylib's Linux link-time dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev libgl1-mesa-dev
+
+      # Odin comes from mise's own plugin here, not Homebrew (see D28) --
+      # this local.toml is CI-only and gitignored, so it does not touch the
+      # brew-based setup this repo's own mise.toml documents for local dev.
+      - name: Pin Odin for this run only
+        run: printf '[tools]\nodin = "dev-2026-09"\n' > mise.local.toml
+
+      - uses: jdx/mise-action@v2
+        with:
+          working_directory: src
+
+      - run: odin version
+      - run: mise run ci
+      - run: mise run build:linux
+      - run: mise run rng:determinism
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deimos-linux-amd64
+          path: src/build/deimos
+
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: src
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pin Odin for this run only
+        run: printf '[tools]\nodin = "dev-2026-09"\n' > mise.local.toml
+
+      - uses: jdx/mise-action@v2
+        with:
+          working_directory: src
+
+      - run: odin version
+      - run: mise run ci
+      - run: mise run build:windows
+      - run: mise run rng:determinism
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deimos-windows-amd64
+          path: src/build/deimos.exe
