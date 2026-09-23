@@ -39,6 +39,18 @@ packet_ping_and_pong_do_not_cross_decode :: proc(t: ^testing.T) {
 }
 
 @(test)
+packet_level_choice_round_trips :: proc(t: ^testing.T) {
+	buf: [64]byte
+	n := net.encode_level_choice(buf[:], 7)
+	kind, kok := net.peek_kind(buf[:n])
+	testing.expect(t, kok)
+	testing.expect_value(t, kind, net.Packet_Kind.Level_Choice)
+	level_index, ok := net.decode_level_choice(buf[:n])
+	testing.expect(t, ok)
+	testing.expect_value(t, level_index, u8(7))
+}
+
+@(test)
 packet_input_round_trips_a_full_window :: proc(t: ^testing.T) {
 	frames: [net.MAX_INPUT_FRAMES]sim.Buttons
 	for &f, i in frames {

@@ -358,7 +358,7 @@ flow_draw :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 		score_entry_draw(r, &fl.score_entry)
 		return
 	case .Netplay_Lobby:
-		netplay_lobby_draw(r, &fl.netplay)
+		netplay_lobby_draw(fl, r, &fl.netplay)
 		return
 	case .Playing, .Paused, .Game_Over, .Complete, .Attract:
 	}

@@ -225,7 +225,7 @@ are cross-cutting rather than implementation detail:
 - **Netplay always starts at level 1** (the host-picked `Start` packet's
   level field is always 0 for now). The wire format itself doesn't hard-code
   this — a level-select step for netplay is a natural, low-risk future
-  addition, not a redesign.
+  addition, not a redesign. **Superseded by D24**: Phase 8 stage 2 added it.
 - **No local-only pause during a netplay session**: Escape disconnects
   outright rather than pausing, since freezing only one machine's rendering
   can't stop input still arriving from the peer. The project owner's own
@@ -248,3 +248,19 @@ documents this in its header as the simplification it is, with the actual
 sliding-window upgrade path named in case a real session ever makes the
 stepping visibly distracting. See
 [phase-8-netcode-enhancements.md](phase-8-netcode-enhancements.md).
+
+### D24 — Netplay level select: host's own progress gates only the host
+
+`notes/netcode-enhancements.md` specifies the host picks a level from its own
+unlocked list and can't ready on a locked one, but says nothing about what a
+*guest* whose own single-player progress hasn't reached that level should do.
+Two options: block the guest's Ready too (needs a second Level_Choice-style
+exchange, this time guest progress -> host, and a new failure mode to explain
+to the host — "your guest can't play this level"), or leave the guest
+ungated, trusting the host's own choice. Chosen: **leave the guest
+ungated** — a guest playing a level ahead of its own local single-player
+save, in a co-op session the host already vouches for, isn't an integrity
+problem this port needs to solve (the original has no concept of a
+per-account server-enforced unlock either; `progress` is just a local file).
+Revisit if a real playtest finds it surprising. See
+[phase-8-netcode-enhancements.md](phase-8-netcode-enhancements.md)'s stage 2.

@@ -14,15 +14,16 @@ package netplay
 import "dr:sim"
 
 Packet_Kind :: enum u8 {
-	Hello    = 1, // "I'm here, this is my player slot" -- the reliable channel
-	Ready    = 2, // "start when you like" -- the reliable channel
-	Goodbye  = 3, // clean disconnect -- the reliable channel
-	Ping     = 4, // RTT probe, unreliable, sent on a timer
-	Pong     = 5, // Ping's reply, echoes the same nonce
-	Input    = 6, // a player's recent input history, unreliable and redundant
-	Ack      = 7, // acknowledges one Hello/Ready/Goodbye/Start by its seq
-	Checksum = 8, // one frame's sim.checksum(), for desync detection
-	Start    = 9, // host -> guest: "begin now", carries the session seed and level -- the reliable channel
+	Hello        = 1,  // "I'm here, this is my player slot" -- the reliable channel
+	Ready        = 2,  // "start when you like" -- the reliable channel
+	Goodbye      = 3,  // clean disconnect -- the reliable channel
+	Ping         = 4,  // RTT probe, unreliable, sent on a timer
+	Pong         = 5,  // Ping's reply, echoes the same nonce
+	Input        = 6,  // a player's recent input history, unreliable and redundant
+	Ack          = 7,  // acknowledges one Hello/Ready/Goodbye/Start by its seq
+	Checksum     = 8,  // one frame's sim.checksum(), for desync detection
+	Start        = 9,  // host -> guest: "begin now", carries the session seed and level -- the reliable channel
+	Level_Choice = 10, // host -> guest: the host's currently-selected level index, sent every lobby frame like Ping -- unreliable, so just resent rather than acked
 }
 
 // How many consecutive frames of input one packet can carry. Sized so a
@@ -38,7 +39,7 @@ peek_kind :: proc(buf: []byte) -> (kind: Packet_Kind, ok: bool) {
 	}
 	k := Packet_Kind(buf[0])
 	switch k {
-	case .Hello, .Ready, .Goodbye, .Ping, .Pong, .Input, .Ack, .Checksum, .Start:
+	case .Hello, .Ready, .Goodbye, .Ping, .Pong, .Input, .Ack, .Checksum, .Start, .Level_Choice:
 		return k, true
 	}
 	return {}, false
@@ -147,6 +148,26 @@ decode_start :: proc(buf: []byte) -> (seq: u8, seed: u32, level: u8, ok: bool) {
 		return 0, 0, 0, false
 	}
 	return buf[1], get_u32(buf[2:]), buf[6], true
+}
+
+// Level_Choice carries a 0-based index into Flow.defs.levels, not a
+// Level_Def id -- the guest mirrors it purely for display (Phase 8 stage 2's
+// read-only "HOST HAS CHOSEN..." line) and never looks it up itself, so no
+// resolution is needed on the wire. Unreliable and sent every lobby frame
+// the host has one picked, same redundancy-instead-of-acks reasoning as
+// Input: a dropped one is invisible since the next one due (a frame later)
+// repeats the same value.
+encode_level_choice :: proc(buf: []byte, level_index: u8) -> int {
+	buf[0] = u8(Packet_Kind.Level_Choice)
+	buf[1] = level_index
+	return 2
+}
+
+decode_level_choice :: proc(buf: []byte) -> (level_index: u8, ok: bool) {
+	if len(buf) < 2 || Packet_Kind(buf[0]) != .Level_Choice {
+		return 0, false
+	}
+	return buf[1], true
 }
 
 // Ping and Pong share a layout (a nonce to echo back); the kind byte is what

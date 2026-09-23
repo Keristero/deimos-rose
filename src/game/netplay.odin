@@ -37,6 +37,7 @@ import "core:time"
 import core_net "core:net"
 import rl "vendor:raylib"
 
+import "dr:data"
 import "dr:net"
 import "dr:sim"
 
@@ -92,9 +93,17 @@ Netplay :: struct {
 	start_seed:    u32,
 	start_level:   u8,
 
+	// Phase 8 stage 2: level_index is host-authoritative (the host's own
+	// nav buttons change it; the guest only ever receives it via inbound
+	// Level_Choice packets in netplay_poll) but lives in one shared field
+	// either way, since only one side at a time ever writes it.
+	level_index: int,
+
 	menu_host:  Text_Button,
 	menu_join:  Text_Button,
 	menu_back:  Text_Button,
+	level_prev: Text_Button,
+	level_next: Text_Button,
 	ready_btn:  Text_Button,
 	buttons_at: f32, // cy the above were last built for; rebuilt if it ever needs to change
 
@@ -125,7 +134,9 @@ netplay_build_buttons :: proc(nl: ^Netplay, r: ^Renderer) {
 	nl.menu_host = text_button_at(r, "HOST GAME", 220)
 	nl.menu_join = text_button_at(r, "JOIN GAME", 250)
 	nl.menu_back = text_button_at(r, "BACK", 300)
-	nl.ready_btn = text_button_at(r, "READY", 280)
+	nl.level_prev = text_button_at_x(r, "<", SCREEN_W / 2 - 110, 262)
+	nl.level_next = text_button_at_x(r, ">", SCREEN_W / 2 + 110, 262)
+	nl.ready_btn = text_button_at(r, "READY", 300)
 }
 
 // Called once per render frame from flow_handle_input's .Netplay_Lobby case.
@@ -142,7 +153,7 @@ netplay_lobby_update :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 	case .Connecting:
 		netplay_update_connecting(nl)
 	case .Connected:
-		netplay_update_connected(nl, r)
+		netplay_update_connected(fl, nl, r)
 	case .Starting:
 		netplay_update_starting(nl)
 	}
@@ -267,7 +278,7 @@ netplay_update_connecting :: proc(nl: ^Netplay) {
 }
 
 @(private = "file")
-netplay_update_connected :: proc(nl: ^Netplay, r: ^Renderer) {
+netplay_update_connected :: proc(fl: ^Flow, nl: ^Netplay, r: ^Renderer) {
 	if !net.reliable_tick(&nl.rc, &nl.sock) {
 		netplay_fail(nl, "connection timed out")
 		return
@@ -276,7 +287,34 @@ netplay_update_connected :: proc(nl: ^Netplay, r: ^Renderer) {
 
 	mouse := menu_mouse_pos()
 	dt := rl.GetFrameTime()
-	if !nl.local_ready && text_button_update(&nl.ready_btn, mouse, dt) {
+
+	// Host picks the level; the guest only ever mirrors nl.level_index via
+	// an inbound Level_Choice (netplay_poll). "Readying locks in any options
+	// the client has made" (notes/netcode-enhancements.md) -- once
+	// local_ready is set, the nav buttons stop responding.
+	if nl.role == .Host && !nl.local_ready {
+		n := len(fl.defs.levels)
+		if text_button_update(&nl.level_prev, mouse, dt) {
+			nl.level_index = (nl.level_index - 1 + n) % n
+		}
+		if text_button_update(&nl.level_next, mouse, dt) {
+			nl.level_index = (nl.level_index + 1) % n
+		}
+	}
+	if nl.role == .Host {
+		buf: [2]byte
+		lcn := net.encode_level_choice(buf[:], u8(nl.level_index))
+		net.send(&nl.sock, nl.peer, buf[:lcn])
+	}
+
+	// Host can't ready up on a level it hasn't unlocked (own local progress
+	// -- notes/netcode-enhancements.md). The guest is not gated by its own
+	// progress on the host's chosen level: the notes only specify the host
+	// side of this, and a guest playing ahead of its own single-player
+	// progress in a co-op session the host already vouches for is not a new
+	// problem this stage needs to solve.
+	host_locked := nl.role == .Host && nl.level_index >= fl.highest_reached
+	if !nl.local_ready && !host_locked && text_button_update(&nl.ready_btn, mouse, dt) {
 		nl.local_ready = true
 		net.send_ready(&nl.rc, &nl.sock)
 	}
@@ -289,8 +327,8 @@ netplay_update_connected :: proc(nl: ^Netplay, r: ^Renderer) {
 
 	if nl.role == .Host && nl.local_ready && nl.remote_ready && !nl.rc.pending {
 		seed := flow_random_seed()
-		nl.start_seed, nl.start_level = seed, 0 // stage 6's first cut: netplay always starts at level 1 -- see file header
-		net.send_start(&nl.rc, &nl.sock, seed, 0)
+		nl.start_seed, nl.start_level = seed, u8(nl.level_index)
+		net.send_start(&nl.rc, &nl.sock, seed, nl.start_level)
 		nl.phase = .Starting
 	}
 }
@@ -411,6 +449,10 @@ netplay_poll :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 				netplay_build_buttons(nl, r)
 			}
 			return
+		case .Level_Choice:
+			if idx, lok := net.decode_level_choice(buf[:n]); lok {
+				nl.level_index = int(idx)
+			}
 		case .Ping:
 			nonce, pok := net.decode_ping(buf[:n])
 			if !pok {
@@ -513,7 +555,7 @@ netplay_disconnect :: proc(nl: ^Netplay) {
 	netplay_reset(nl)
 }
 
-netplay_lobby_draw :: proc(r: ^Renderer, nl: ^Netplay) {
+netplay_lobby_draw :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 	menu_draw_background(r, "back") // no original screen to match; reused purely for visual consistency with the rest of this menu family
 	white := rl.Color{255, 255, 255, 255}
 	dim := rl.Color{190, 190, 190, 255}
@@ -550,14 +592,34 @@ netplay_lobby_draw :: proc(r: ^Renderer, nl: ^Netplay) {
 		if nl.ping_ms > 0 {
 			menu_draw_text(r, fmt.tprintf("PING %.0f MS", nl.ping_ms), SCREEN_W / 2, 245, dim, .Centre)
 		}
+
+		host_locked := nl.role == .Host && nl.level_index >= fl.highest_reached
+		level := fl.defs.levels[nl.level_index]
+		media := data.assets_level_media(&r.textures.assets, level.id)
+		level_name := media != nil ? media.name : "?"
+		level_label: string
+		switch {
+		case host_locked:
+			level_label = "LEVEL: NO ACCESS"
+		case nl.role == .Host:
+			level_label = fmt.tprintf("LEVEL: %s", level_name)
+		case:
+			level_label = fmt.tprintf("HOST HAS CHOSEN: %s", level_name)
+		}
+		menu_draw_text(r, level_label, SCREEN_W / 2, 262, host_locked ? bad : white, .Centre)
+		if nl.role == .Host && !nl.local_ready {
+			text_button_draw(r, &nl.level_prev)
+			text_button_draw(r, &nl.level_next)
+		}
+
 		you := nl.local_ready ? "YOU: READY" : "YOU: NOT READY"
 		them := nl.remote_ready ? "OTHER PLAYER: READY" : "OTHER PLAYER: NOT READY"
-		menu_draw_text(r, you, SCREEN_W / 2, 320, nl.local_ready ? good : dim, .Centre)
-		menu_draw_text(r, them, SCREEN_W / 2, 340, nl.remote_ready ? good : dim, .Centre)
+		menu_draw_text(r, you, SCREEN_W / 2, 335, nl.local_ready ? good : dim, .Centre)
+		menu_draw_text(r, them, SCREEN_W / 2, 355, nl.remote_ready ? good : dim, .Centre)
 		if !nl.local_ready {
-			text_button_draw(r, &nl.ready_btn)
+			text_button_draw(r, &nl.ready_btn, !host_locked)
 		} else if nl.phase == .Starting {
-			menu_draw_text(r, "STARTING...", SCREEN_W / 2, 360, dim, .Centre)
+			menu_draw_text(r, "STARTING...", SCREEN_W / 2, 375, dim, .Centre)
 		}
 	}
 }

@@ -115,9 +115,16 @@ Text_Button :: struct {
 @(private = "file") TEXT_BUTTON_HEIGHT :: 20
 
 text_button_at :: proc(r: ^Renderer, label: string, cy: f32) -> Text_Button {
+	return text_button_at_x(r, label, SCREEN_W / 2, cy)
+}
+
+// Same as text_button_at, but centred on a given x rather than the screen's
+// midpoint -- for a row of more than one button sharing a y (Phase 8 stage
+// 2's level-select prev/next arrows either side of the level name).
+text_button_at_x :: proc(r: ^Renderer, label: string, cx, cy: f32) -> Text_Button {
 	w := text_width(r, label)
 	full := f32(w) + TEXT_BUTTON_PAD_X * 2
-	return Text_Button{label = label, rect = {(SCREEN_W - full) / 2, cy, full, TEXT_BUTTON_HEIGHT}}
+	return Text_Button{label = label, rect = {cx - full / 2, cy, full, TEXT_BUTTON_HEIGHT}}
 }
 
 text_button_update :: proc(b: ^Text_Button, mouse: rl.Vector2, dt: f32) -> (clicked: bool) {

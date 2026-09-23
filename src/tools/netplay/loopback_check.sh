@@ -56,15 +56,19 @@ grep -q "netplay: connected as Guest" "$WORK/b.log" || fail "guest never connect
 echo "handshake OK"
 
 # Both sides' Ready button (game/netplay.odin: text_button_at(r, "READY",
-# 280), WINDOW_SCALE=2 -- centre of the rect is logical (320, 290), device
-# (640, 580) on both displays since each instance's window is independently
-# 640x480 logical / 1280x960 device).
+# 300), WINDOW_SCALE=2 -- centre of the rect is logical (320, 310), device
+# (640, 620) on both displays since each instance's window is independently
+# 640x480 logical / 1280x960 device). The host defaults to level_index 0,
+# which is always unlocked (progress_load's own "at least the first level"
+# floor, regardless of how far this machine's real progress file has
+# advanced), so this check never needs to touch the level-select arrows
+# above the button.
 click_ready() {
 	local disp=$1
 	local wid
 	wid=$(DISPLAY=$disp xdotool search --name "Deimos Rising" | head -1)
 	DISPLAY=$disp xdotool windowfocus --sync "$wid"
-	DISPLAY=$disp xdotool mousemove --window "$wid" --sync 640 580
+	DISPLAY=$disp xdotool mousemove --window "$wid" --sync 640 620
 	DISPLAY=$disp xdotool mousedown --window "$wid" 1
 	sleep 0.15
 	DISPLAY=$disp xdotool mouseup --window "$wid" 1

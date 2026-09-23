@@ -70,3 +70,41 @@ Phase 7 stage 6 lobby shots) via `mise run netplay:lobby-shots` →
 `work/shots/menus/diagnostics/ours.png`, viewed directly: all three lines
 readable in the bottom-right corner, no clipping against the panel edge, no
 overlap with the lobby UI above it.
+
+**Stage 2 is done.** The host's `.Connected` view (`game/netplay.odin`) grew
+a level row above the Ready button: `<`/`>` `Text_Button`s (a new
+`text_button_at_x`, `game/menu.odin`, centring on an arbitrary x instead of
+always the screen's midpoint, for the two side-by-side arrows) cycle
+`Netplay.level_index` through `Flow.defs.levels`, wrapping circularly like
+Level Select's own carousel. `LEVEL: <name>` turns into red `LEVEL: NO
+ACCESS` and the Ready button greys out (`text_button_draw`'s existing
+`enabled` param) once `level_index >= Flow.highest_reached` — the same
+unlocked check Level Select itself uses (`ls.center < fl.highest_reached`,
+`game/menu_level_select.odin`), so a level unlocked in single-player is
+unlocked here too. Readying locks the choice in: the arrows stop responding
+to clicks once `local_ready` is set, matching the notes' "readying locks in
+any options that have been made". The guest never gets arrows — it only
+ever mirrors `level_index` from an inbound `Level_Choice` packet
+(`net/packet.odin`: kind 10, unreliable, one byte, resent every lobby frame
+the same way Input packets are redundant against loss rather than acked)
+and shows a read-only `HOST HAS CHOSEN: <name>` line instead. Readying is
+never guest-gated by the guest's own progress on the host's chosen level —
+see D24 for why.
+
+`Start`'s level field (already present on the wire since Phase 6 stage 5,
+always sent as 0 until now) carries the host's real `level_index`, so
+`netplay_begin_session` needed no change at all — it already took whatever
+level index `Start` decoded to.
+
+Verified by `mise run ci` (86 tests — `tests/net_test.odin` grew
+`packet_level_choice_round_trips`) and `mise run netplay:loopback` (still
+passes; `tools/netplay/loopback_check.sh`'s hardcoded Ready-button click
+coordinates moved with the button, see its own updated comment), plus by
+eye: `run_menu_shot` grew `"netplay_lobby_connected_host"` (arrows, level
+name, enabled Ready) and `"netplay_lobby_connected_host_locked"`
+(`highest_reached` forced below `level_index` — red NO ACCESS, greyed
+Ready) alongside the existing guest-side `"netplay_lobby_connected"`
+(now showing `HOST HAS CHOSEN: ...`), all three viewed directly via
+`mise run netplay:lobby-shots`: no overlap between the new level row and
+either the ping line above or the Ready button below, in any of the three
+states.

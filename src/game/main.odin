@@ -253,12 +253,13 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 	case "netplay_lobby":
 		// New content, no original to compare against (see game/netplay.odin's
 		// file header) -- this is a visual smoke check of the lobby's own
-		// menu screens, not an oracle:menu-shot comparison. The four cases
-		// below cover Netplay_Phase's visually distinct states; none open a
-		// real socket (netplay_lobby_init's netplay_reset already zeroed
-		// nl.have_sock) -- the fields netplay_lobby_draw actually reads are
-		// set directly instead, since this only ever draws once and never
-		// polls.
+		// menu screens, not an oracle:menu-shot comparison. The cases below
+		// cover Netplay_Phase's visually distinct states, plus (Phase 8
+		// stage 2) the host's and guest's differing views of .Connected once
+		// level select is in the mix; none open a real socket
+		// (netplay_lobby_init's netplay_reset already zeroed nl.have_sock)
+		// -- the fields netplay_lobby_draw actually reads are set directly
+		// instead, since this only ever draws once and never polls.
 		flow.mode = .Netplay_Lobby
 		netplay_lobby_init(&flow.netplay, r)
 	case "netplay_lobby_join":
@@ -278,6 +279,28 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		flow.netplay.phase = .Connected
 		flow.netplay.ping_ms = 42 // sample value -- ping_ms is only ever set from a real Pong in netplay_tick_ping
 		flow.netplay.remote_ready = true // local not ready yet, so the Ready button still draws alongside "OTHER PLAYER: READY"
+	case "netplay_lobby_connected_host":
+		// Phase 8 stage 2: the host's own view -- level-select arrows above
+		// an enabled Ready (highest_reached forced high enough that
+		// level_index 0 reads as unlocked regardless of this machine's real
+		// save file).
+		flow.mode = .Netplay_Lobby
+		netplay_lobby_init(&flow.netplay, r)
+		flow.netplay.role = .Host
+		flow.netplay.phase = .Connected
+		flow.netplay.ping_ms = 17
+		flow.highest_reached = 12
+	case "netplay_lobby_connected_host_locked":
+		// Same, but level_index parked on a level past highest_reached --
+		// "NO ACCESS" in red, Ready greyed out, matching Level Select's own
+		// locked-slot language (game/menu_level_select.odin).
+		flow.mode = .Netplay_Lobby
+		netplay_lobby_init(&flow.netplay, r)
+		flow.netplay.role = .Host
+		flow.netplay.phase = .Connected
+		flow.netplay.ping_ms = 17
+		flow.highest_reached = 1
+		flow.netplay.level_index = 3
 	case "diagnostics":
 		flow.mode = .Netplay_Lobby
 		netplay_lobby_init(&flow.netplay, r)
