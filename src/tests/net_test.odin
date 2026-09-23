@@ -137,9 +137,6 @@ packet_kind_rejects_garbage :: proc(t: ^testing.T) {
 	testing.expect(t, !ok2)
 }
 
-// The one test that touches a real socket: two UDP sockets bound to
-// loopback, each on an OS-assigned ephemeral port, exchanging an Input
-// packet exactly as two peers would.
 // The join box's parsing, all without touching the network: IP literals
 // never reach the resolver, and malformed input is refused before it would.
 // Hostname lookup itself is not tested here -- it depends on the machine's
@@ -151,10 +148,10 @@ resolve_accepts_ip4_literals_with_and_without_a_port :: proc(t: ^testing.T) {
 	testing.expect_value(t, ep.address, core_net.Address(core_net.IP4_Address{192, 168, 1, 20}))
 	testing.expect_value(t, ep.port, 0)
 
-	ep, err = net.resolve("10.0.0.5:54217")
+	ep, err = net.resolve("10.0.0.5:60902")
 	testing.expect_value(t, err, net.Resolve_Error.None)
 	testing.expect_value(t, ep.address, core_net.Address(core_net.IP4_Address{10, 0, 0, 5}))
-	testing.expect_value(t, ep.port, 54217)
+	testing.expect_value(t, ep.port, 60902)
 }
 
 @(test)
@@ -168,7 +165,7 @@ resolve_refuses_what_it_cannot_send_to :: proc(t: ^testing.T) {
 		{"10.0.0.5:99999", .Bad_Address}, // port out of range
 		{"10.0.0.5:port", .Bad_Address},
 		{"::1", .No_IP4},                 // the socket is bound IPv4-only
-		{"[::1]:54217", .No_IP4},
+		{"[::1]:60902", .No_IP4},
 	}
 	for c in cases {
 		_, err := net.resolve(c.text)
@@ -176,6 +173,9 @@ resolve_refuses_what_it_cannot_send_to :: proc(t: ^testing.T) {
 	}
 }
 
+// The one test that touches a real socket: two UDP sockets bound to
+// loopback, each on an OS-assigned ephemeral port, exchanging an Input
+// packet exactly as two peers would.
 @(test)
 socket_sends_and_receives_on_loopback :: proc(t: ^testing.T) {
 	a, aok := net.open(0)

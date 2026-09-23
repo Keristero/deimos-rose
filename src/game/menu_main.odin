@@ -15,9 +15,10 @@ package game
 //
 // Register/Activate (frame 7, shown only when unregistered) and the exit-time
 // ad are excluded per D21. High Scores opens its own screen (stage 4,
-// game/menu_high_scores.odin). Preferences opens the netplay lobby (stage 6,
-// game/netplay.odin) unless -classic is set, in which case it stays inert --
-// see main_menu_activate.
+// game/menu_high_scores.odin), Preferences this port's own Preferences screen
+// (game/menu_preferences.odin). Netplay (game/netplay.odin), which once sat
+// behind Preferences, is a separate text item below the original six --
+// hidden under classic mode, since the original has no such entry (D30).
 
 import rl "vendor:raylib"
 
@@ -39,6 +40,9 @@ BTN_GAP :: 30 // Interface_Btn_VerticalGap -- the row-to-row spacing matches thi
 // this port's own MEBU frame-to-label offset) rather than re-deriving
 // StartYLoc's exact original semantics.
 BTN_FIRST_ROW_Y :: 186
+// Netplay takes the seventh row -- where the excluded Register button sat --
+// its 20px Text_Button centred on that row's measured label centre (378).
+NETPLAY_ROW_Y :: BTN_FIRST_ROW_Y + 6 * BTN_GAP + 2
 // Measured the same way (column-brightness scan of a real screenshot vs.
 // ours): the globe's bright limb starts at y=47 in the original, y=40 at the
 // value this used to have -- moved down 7px accordingly.
@@ -68,6 +72,7 @@ Main_Menu :: struct {
 	buttons:      [6]Menu_Button,
 	website:      Text_Link,
 	copyright:    Text_Link,
+	netplay:      Text_Button, // new content: not drawn or clickable under classic mode
 	// "Visit the Deimos Rising Website Now?" (stli/inte.json #20) -- the
 	// original gates U_App_LaunchURL behind a confirm dialog; reproduced as
 	// a minimal text prompt rather than a native dialog.
@@ -88,6 +93,7 @@ main_menu_update :: proc(fl: ^Flow, r: ^Renderer, m: ^Main_Menu) {
 	if m.website.rect.width == 0 {
 		m.website = text_link_at(r, "WWW.DEIMOSRISING.COM", 426)
 		m.copyright = text_link_at(r, "COPYRIGHT 2001-2002 SWOOP SOFTWARE & AMBROSIA SOFTWARE, INC.", 447)
+		m.netplay = text_button_at(r, "NETPLAY", NETPLAY_ROW_Y)
 	}
 
 	dt := rl.GetFrameTime()
@@ -104,9 +110,13 @@ main_menu_update :: proc(fl: ^Flow, r: ^Renderer, m: ^Main_Menu) {
 	}
 
 	for slot in Main_Menu_Slot {
-		if menu_button_update(&m.buttons[slot], mouse, dt) {
+		if menu_button_update(r, &m.buttons[slot], mouse, dt) {
 			main_menu_activate(fl, r, slot)
 		}
+	}
+	if !r.classic && text_button_update(r, &m.netplay, mouse, dt) {
+		fl.mode = .Netplay_Lobby
+		netplay_lobby_init(&fl.netplay, r)
 	}
 	if text_link_update(&m.website, mouse, dt) {
 		m.confirm_website = true
@@ -138,20 +148,17 @@ main_menu_activate :: proc(fl: ^Flow, r: ^Renderer, slot: Main_Menu_Slot) {
 		fl.quit = true
 	case .Preferences:
 		// The original's own Preferences is a native Win32 dialog with no
-		// bespoke art to port. Stage 6: this project's replacement is the
-		// netplay lobby (game/netplay.odin) -- new, non-original content,
-		// so per mise.toml's --classic flag / D21 it only opens when
-		// !r.classic. Under -classic, Preferences stays inert, matching
-		// this button's pre-stage-6 behaviour (the closest a -classic run
-		// can get to "an OS dialog with nothing to port").
-		if !r.classic {
-			fl.mode = .Netplay_Lobby
-			netplay_lobby_init(&fl.netplay, r)
-		}
+		// bespoke art to port; this opens the port's replacement in every
+		// mode, classic included -- it is where classic mode is turned
+		// back off (D30).
+		fl.mode = .Preferences
+		preferences_init(&fl.preferences)
 	}
 }
 
 main_menu_draw :: proc(r: ^Renderer, m: ^Main_Menu) {
+	// Links and the Netplay item are built on the first update; a frame
+	// drawn before then (a menu capture) just omits them.
 	menu_draw_background(r, "back")
 	if tex, src, ok := frame_rect(&r.textures, GALO, 0); ok {
 		dst := rl.Rectangle {
@@ -165,6 +172,9 @@ main_menu_draw :: proc(r: ^Renderer, m: ^Main_Menu) {
 	}
 	text_link_draw(r, &m.website)
 	text_link_draw(r, &m.copyright)
+	if !r.classic && m.netplay.rect.width > 0 {
+		text_button_draw(r, &m.netplay)
+	}
 
 	if m.confirm_website {
 		menu_draw_text(r, "VISIT THE DEIMOS RISING WEBSITE NOW?", SCREEN_W / 2, SCREEN_H / 2 - 10,

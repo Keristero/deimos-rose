@@ -271,7 +271,7 @@ Three design questions came up implementing pause-on-disconnect + reconnect
 (stages 3/4, `game/netplay.odin`):
 
 **Where does a reconnecting client aim?** The survivor always rebinds to the
-well-known `NETPLAY_PORT` (54217) on losing its peer, regardless of whether it
+well-known `NETPLAY_PORT` (60902) on losing its peer, regardless of whether it
 was originally Host or Guest. The alternative — the survivor keeping its
 original ephemeral port and somehow publishing it — needs a side channel that
 doesn't exist. Fixed-port rebind means a reconnecting client just uses the
@@ -439,3 +439,38 @@ that the data would be redistributed. The raw installer and install (`orig/`,
 Verified in CI on both runners: 92 tests pass, and `rng:determinism` prints
 `0071e4eb5e5f0743` on Windows as well as Linux — the first confirmation of
 sim/'s RNG on two real operating systems, not just codegen variants (D27).
+
+### D30 — Preferences is its own screen; Netplay moves to its own menu item
+
+The main menu's Preferences button used to open the netplay lobby (Phase 7
+stage 6), because the original's Preferences was a native Win32 dialog with
+nothing to port. The project owner asked for a real Preferences screen —
+per-player key bindings, sound and music volume, fullscreen, the diagnostics
+overlay and classic mode — and for Netplay to be a separate item below the
+original six.
+
+- **Netplay** is a Text_Button on the seventh row, where the excluded
+  Register button sat. It is new content, so classic mode hides it (D21).
+- **Preferences** (`game/menu_preferences.odin`) opens in every mode,
+  classic included: it is the only in-game way to turn classic mode back
+  off. Every change saves immediately; there is no apply/cancel step.
+- **Settings live in `dr:prefs`**, a raylib-free package, so the save
+  format and rebinding rules are unit-tested (`tests/prefs_test.odin`). Key
+  codes are stored as raylib's values; `game/prefs.odin` `#assert`s them.
+  Saved to `user_data_path("preferences")`, beside progress and high scores.
+- **Launch flags switch a setting on for one run** without saving it.
+  Changing that setting in Preferences drops the flag and saves the choice,
+  so the screen always shows and controls what is live.
+- **Player 2 now has keys.** Local 2 Player previously fed player 2 an empty
+  input every step. Player 1's defaults are exactly the old hard-coded
+  keys; player 2's (IJKL, U/O/P) are new. Binding a key takes it off any
+  other action, for either player. Every button is now read as held,
+  including Change Weapon — the sim edge-detects it itself
+  (`weapons_process`), and the old one-frame `IsKeyPressed` could drop a
+  press that landed on a render frame with no sim step.
+- **Fullscreen** is a borderless window covering the monitor
+  (`ToggleBorderlessWindowed`), not a video-mode change. To make it — and a
+  resized window — show the whole game, the interactive loop now draws each
+  frame into a fixed 1280x960 canvas and scales it to fit, letterboxed, with
+  raylib's mouse offset/scale mapping clicks back to canvas pixels. At the
+  ordinary 1280x960 window the scale is 1 and the output is unchanged.

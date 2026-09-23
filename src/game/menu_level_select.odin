@@ -53,9 +53,8 @@ LS_ICON_POS := [3]rl.Vector2{{128, 228}, {320, 228}, {511, 228}}
 @(private = "file") LS_FRAME_NEXT :: 13
 
 // LevSel_Acceptance/Failure_ScalingRate/MaxScale (perm floats 0x2c-0x2f).
-// Rates are per original 30Hz tick, converted to per-second the same way
-// HILITE_DELAY (menu.odin) does, for the same reason: menu screens run at
-// render rate, not the sim's fixed step.
+// Rates are per original 30Hz tick, converted to per-second because menu
+// screens run at render rate, not the sim's fixed step.
 @(private = "file") LS_ACCEPT_RATE :: 0.18 * 30
 @(private = "file") LS_ACCEPT_MAX_SCALE :: 2.0
 @(private = "file") LS_FAIL_RATE :: 0.25 * 30

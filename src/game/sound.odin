@@ -34,7 +34,7 @@ sounds_step :: proc(t: ^Textures, s: ^sim.State) {
 		v := clip.next
 		clip.next = (clip.next + 1) % SOUND_VOICES
 		snd := clip.voices[v]
-		rl.SetSoundVolume(snd, f32(ev.volume) / 100.0)
+		rl.SetSoundVolume(snd, f32(ev.volume) / 100.0 * t.sfx_volume)
 		rl.SetSoundPitch(snd, ev.pitch)
 		rl.PlaySound(snd)
 	}

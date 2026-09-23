@@ -13,11 +13,21 @@ import "dr:sim"
 MEBU :: sim.Res_ID{'m', 'e', 'b', 'u'} // button plate, not hovered
 MEBH :: sim.Res_ID{'m', 'e', 'b', 'h'} // button plate, hovered/"hilited"
 
-// Interface_Btn_HiliteDelay (perm float 0x?? -- 10 ticks at the original's
-// fixed 30Hz). Converted to seconds since menu screens run at render rate,
-// not sim rate, so a hover held across a slow or fast monitor still takes
-// the same real time to register.
-HILITE_DELAY :: 10.0 / 30.0
+// A button hilites the moment the pointer is over it. This once waited
+// Interface_Btn_HiliteDelay (perm float 0x3d, 10 ticks) first, reading the
+// name as "delay before hiliting" -- but the original hilites at once
+// (observed by the project owner), so that reading was wrong. What 0x3d
+// does is untraced (no decomp corpus in reach when this was changed); a
+// minimum gap between rollover sounds is one candidate. Unused until then.
+
+// InterfaceMenuButtonRollover (perm sound 0xb, idli/gaso.json) as the
+// pointer arrives on a button, and InterfaceClick (perm sound 2) when one
+// is pressed. Provisional on the click: ButtonClick (perm sound 0, "clic")
+// is the other candidate, but Credits and High Scores both close on
+// InterfaceClick and Score Entry uses ButtonClick for typed characters, so
+// InterfaceClick is the better-evidenced guess for a menu press.
+MENU_ROLLOVER_SOUND :: sim.Res_ID{'m', 'b', 'r', 'o'}
+MENU_CLICK_SOUND :: sim.Res_ID{'i', 'n', 'c', 'l'}
 
 // A hoverable, clickable rectangle in logical (640x480) space -- the mouse
 // position menu_mouse_pos returns is in the same space, so hit-testing needs
@@ -55,16 +65,30 @@ menu_button_at :: proc(t: ^Textures, frame: i32, cy: f32) -> Menu_Button {
 	return Menu_Button{frame = frame, rect = {(SCREEN_W - src.width) / 2, cy, src.width, src.height}}
 }
 
-menu_button_update :: proc(b: ^Menu_Button, mouse: rl.Vector2, dt: f32) -> (clicked: bool) {
-	return update_hover_click(b.rect, &b.hover_time, mouse, dt)
+menu_button_update :: proc(r: ^Renderer, b: ^Menu_Button, mouse: rl.Vector2, dt: f32) -> (clicked: bool) {
+	return update_hover_click_sounds(r, b.rect, &b.hover_time, mouse, dt)
 }
 
-// Draws the hilited plate once hover has been held past HILITE_DELAY, the
-// normal one otherwise -- both frames are drawn at the normal frame's own
-// position, since MEBH's frames run a few pixels larger (a highlight border
-// growing outward, not a resized button).
+// update_hover_click, plus the menu's rollover and click sounds. hover_time
+// is at least dt while hovered, so "was zero, now not" is the arrival.
+update_hover_click_sounds :: proc(r: ^Renderer, rect: rl.Rectangle, hover_time: ^f32, mouse: rl.Vector2, dt: f32) -> (clicked: bool) {
+	was_hovered := hover_time^ > 0
+	clicked = update_hover_click(rect, hover_time, mouse, max(dt, 1e-6))
+	if !was_hovered && hover_time^ > 0 {
+		menu_play_sound(r, MENU_ROLLOVER_SOUND)
+	}
+	if clicked {
+		menu_play_sound(r, MENU_CLICK_SOUND)
+	}
+	return
+}
+
+// Draws the hilited plate while hovered, the normal one otherwise -- both
+// frames are drawn at the normal frame's own position, since MEBH's frames
+// run a few pixels larger (a highlight border growing outward, not a
+// resized button).
 menu_button_draw :: proc(r: ^Renderer, b: ^Menu_Button) {
-	plate := b.hover_time >= HILITE_DELAY ? MEBH : MEBU
+	plate := b.hover_time > 0 ? MEBH : MEBU
 	tex, src, ok := frame_rect(&r.textures, plate, b.frame)
 	if !ok {
 		return
@@ -127,8 +151,16 @@ text_button_at_x :: proc(r: ^Renderer, label: string, cx, cy: f32) -> Text_Butto
 	return Text_Button{label = label, rect = {cx - full / 2, cy, full, TEXT_BUTTON_HEIGHT}}
 }
 
-text_button_update :: proc(b: ^Text_Button, mouse: rl.Vector2, dt: f32) -> (clicked: bool) {
-	return update_hover_click(b.rect, &b.hover_time, mouse, dt)
+// Re-centres a Text_Button on a new label, keeping its hover state -- for
+// buttons whose label is a live value (Preferences' key names and volumes).
+text_button_relabel :: proc(r: ^Renderer, b: ^Text_Button, label: string, cx, cy: f32) {
+	hover := b.hover_time
+	b^ = text_button_at_x(r, label, cx, cy)
+	b.hover_time = hover
+}
+
+text_button_update :: proc(r: ^Renderer, b: ^Text_Button, mouse: rl.Vector2, dt: f32) -> (clicked: bool) {
+	return update_hover_click_sounds(r, b.rect, &b.hover_time, mouse, dt)
 }
 
 text_button_draw :: proc(r: ^Renderer, b: ^Text_Button, enabled := true) {
@@ -136,7 +168,7 @@ text_button_draw :: proc(r: ^Renderer, b: ^Text_Button, enabled := true) {
 	switch {
 	case !enabled:
 		color = rl.Color{110, 110, 110, 255}
-	case b.hover_time >= HILITE_DELAY:
+	case b.hover_time > 0:
 		color = rl.Color{255, 255, 255, 255}
 	case:
 		color = rl.Color{190, 190, 190, 255}
@@ -189,7 +221,7 @@ menu_play_sound :: proc(r: ^Renderer, id: sim.Res_ID) {
 	v := clip.next
 	clip.next = (clip.next + 1) % SOUND_VOICES
 	snd := clip.voices[v]
-	rl.SetSoundVolume(snd, 1.0)
+	rl.SetSoundVolume(snd, r.textures.sfx_volume)
 	rl.SetSoundPitch(snd, 1.0)
 	rl.PlaySound(snd)
 }

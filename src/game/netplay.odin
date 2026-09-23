@@ -7,8 +7,8 @@ package game
 // so it borrows that language (Text_Button, menu_draw_text, the shared
 // "back" background) without claiming to reproduce any specific original
 // screen. New content only, per D21/mise.toml's --classic flag: reached
-// from Main Menu's Preferences button, and only when !r.classic (see
-// menu_main.odin).
+// from Main Menu's own Netplay item, shown only when !r.classic (see
+// menu_main.odin, D30).
 //
 // Handshake: net/reliable.odin's stop-and-wait channel already carries
 // Hello/Ready/Goodbye; this adds a fourth reliable message, Start (host ->
@@ -46,7 +46,7 @@ import "dr:sim"
 // Chosen from IANA's dynamic/private port range (49152-65535) to avoid
 // colliding with a registered service; both peers just need to agree on the
 // same number, which "both compiled from the same source" already gives us.
-NETPLAY_PORT :: 54217
+NETPLAY_PORT :: 60902
 
 NETPLAY_PING_INTERVAL :: 1.0 // seconds between RTT probes once connected
 NETPLAY_INPUT_WINDOW :: 8    // matches tests/rollback_session_test.odin's own WINDOW
@@ -255,15 +255,15 @@ netplay_lobby_update :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 netplay_update_menu :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 	mouse := menu_mouse_pos()
 	dt := rl.GetFrameTime()
-	if text_button_update(&nl.menu_host, mouse, dt) {
+	if text_button_update(r, &nl.menu_host, mouse, dt) {
 		netplay_start_hosting(nl)
 	}
-	if text_button_update(&nl.menu_join, mouse, dt) {
+	if text_button_update(r, &nl.menu_join, mouse, dt) {
 		nl.phase = .Enter_Address
 		nl.addr_len = copy(nl.addr_buf[:], "127.0.0.1") // loopback default -- the only peer this port can verify without a second machine
 		nl.addr_default = true
 	}
-	if text_button_update(&nl.menu_back, mouse, dt) || rl.IsKeyPressed(.ESCAPE) {
+	if text_button_update(r, &nl.menu_back, mouse, dt) || rl.IsKeyPressed(.ESCAPE) {
 		fl.mode = .Title
 	}
 }
@@ -439,10 +439,10 @@ netplay_update_connected :: proc(fl: ^Flow, nl: ^Netplay, r: ^Renderer) {
 	// local_ready is set, the nav buttons stop responding.
 	if nl.role == .Host && !nl.local_ready {
 		n := len(fl.defs.levels)
-		if text_button_update(&nl.level_prev, mouse, dt) {
+		if text_button_update(r, &nl.level_prev, mouse, dt) {
 			nl.level_index = (nl.level_index - 1 + n) % n
 		}
-		if text_button_update(&nl.level_next, mouse, dt) {
+		if text_button_update(r, &nl.level_next, mouse, dt) {
 			nl.level_index = (nl.level_index + 1) % n
 		}
 	}
@@ -459,7 +459,7 @@ netplay_update_connected :: proc(fl: ^Flow, nl: ^Netplay, r: ^Renderer) {
 	// progress in a co-op session the host already vouches for is not a new
 	// problem this stage needs to solve.
 	host_locked := nl.role == .Host && nl.level_index >= fl.highest_reached
-	if !nl.local_ready && !host_locked && text_button_update(&nl.ready_btn, mouse, dt) {
+	if !nl.local_ready && !host_locked && text_button_update(r, &nl.ready_btn, mouse, dt) {
 		nl.local_ready = true
 		net.send_ready(&nl.rc, &nl.sock)
 	}
@@ -938,7 +938,7 @@ netplay_playing_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blu
 		return
 	}
 
-	local := gather_input()
+	local := gather_input(&fl.prefs.saved.bindings[0]) // this machine's player, whichever slot it plays
 	net.rollback_session_advance(&nl.rs, local)
 	particles_step(particles, fl.state)
 	blurs_step(blurs, fl.state)

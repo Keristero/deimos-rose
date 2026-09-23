@@ -8,6 +8,7 @@ import "core:strings"
 import rl "vendor:raylib"
 
 import "dr:data"
+import "dr:prefs"
 import "dr:sim"
 
 // The original presents a 416x480 play-field inside a 640x480 screen; the
@@ -29,6 +30,10 @@ MAX_STEPS_PER_FRAME :: 4
 
 main :: proc() {
 	settings := settings_parse(os.args)
+	// Saved preferences, with this run's launch flags layered on top.
+	// Headless captures use the defaults instead, so a player's own
+	// settings can never change what a comparison shot shows.
+	ps := Prefs_State{saved = prefs.defaults(), launch = settings}
 
 	// Everything comes out of the extracted assets tree. The original
 	// install is needed only to produce it, and by the oracle tooling.
@@ -50,7 +55,18 @@ main :: proc() {
 	headless := os.get_env("DR_SHOT", context.temp_allocator) != "" ||
 		os.get_env("DR_MENU_SHOT", context.temp_allocator) != ""
 
-	rl.SetConfigFlags({.VSYNC_HINT, .WINDOW_RESIZABLE})
+	menu_shot_name := os.get_env("DR_MENU_SHOT", context.temp_allocator)
+	if !headless {
+		ps = prefs_state_load(settings)
+	}
+
+	// A menu capture draws into its own render texture (run_menu_shot), so
+	// its window never needs to be seen.
+	flags := rl.ConfigFlags{.VSYNC_HINT, .WINDOW_RESIZABLE}
+	if menu_shot_name != "" {
+		flags += {.WINDOW_HIDDEN}
+	}
+	rl.SetConfigFlags(flags)
 	rl.InitWindow(SCREEN_W * WINDOW_SCALE, SCREEN_H * WINDOW_SCALE, "Deimos Rising")
 	defer rl.CloseWindow()
 
@@ -75,7 +91,7 @@ main :: proc() {
 	}
 
 	renderer: Renderer
-	renderer_init(&renderer, root, settings.classic, !headless)
+	renderer_init(&renderer, root, prefs_classic(&ps), !headless)
 	defer renderer_destroy(&renderer)
 
 	particles: Particles
@@ -95,8 +111,8 @@ main :: proc() {
 	// PNG to DR_SHOT, then exits -- the menu equivalent of DR_SHOT below, for
 	// tools/oracle/menu_compare.sh. A menu has no simulation to step, so
 	// there is exactly one frame to capture, not a series of them.
-	if menu_shot := os.get_env("DR_MENU_SHOT", context.temp_allocator); menu_shot != "" {
-		run_menu_shot(&renderer, &defs, state, root, menu_shot, os.get_env("DR_SHOT", context.temp_allocator))
+	if menu_shot_name != "" {
+		run_menu_shot(&renderer, &defs, state, root, menu_shot_name, os.get_env("DR_SHOT", context.temp_allocator), &ps)
 		return
 	}
 
@@ -126,12 +142,6 @@ main :: proc() {
 		sim.init(state, sim.Session{seed = 0x1234_5678, level_id = level, game_type = .Single}, &defs)
 	}
 
-	if !headless && state.level != nil {
-		if music, ok := music_track(&renderer.textures, state.level.id); ok {
-			rl.PlayMusicStream(music)
-		}
-	}
-
 	// DR_SHOT=<path> renders DR_SHOT_AT steps (comma-separated) and writes a
 	// PNG of each, then exits. Running the real thing is the only way to see
 	// whether the compositing is right, and this makes that reviewable
@@ -146,8 +156,13 @@ main :: proc() {
 	// the player starts one, then Playing/Paused/Game_Over/Complete/Attract),
 	// so state stays zeroed until flow_start_session or flow_load_demo runs.
 	flow: Flow
-	flow_init(&flow, root, &defs, state, &renderer)
+	flow_init(&flow, root, &defs, state, &renderer, &ps)
 	defer flow_destroy(&flow)
+
+	// Every frame is drawn into this fixed 1280x960 canvas, then scaled to
+	// fit the window, letterboxed -- which is what lets fullscreen (and a
+	// resized window) show the whole game rather than its top-left corner.
+	renderer.canvas = rl.LoadRenderTexture(SCREEN_W * WINDOW_SCALE, SCREEN_H * WINDOW_SCALE)
 
 	// DR_NETPLAY=host or DR_NETPLAY=join:<address> jumps straight into the
 	// netplay lobby already hosting/joining -- see
@@ -165,7 +180,6 @@ main :: proc() {
 	rl.SetExitKey(.KEY_NULL)
 
 	diagnostics: Diagnostics
-	diagnostics.enabled = settings.diagnostics
 
 	// Fixed-step: the simulation advances in slices of step_dt regardless of
 	// how often the frame is actually presented, so -highrefreshrate (or a
@@ -175,6 +189,20 @@ main :: proc() {
 	accumulator: f64 = 0
 	show_debug := false
 	for !rl.WindowShouldClose() && !flow.quit {
+		// Preferences edits ps in place; apply whatever it holds now.
+		renderer.classic = prefs_classic(&ps)
+		diagnostics.enabled = prefs_diagnostics(&ps)
+		renderer.textures.sfx_volume = f32(ps.saved.sfx_volume) / 100
+		renderer.textures.music_volume = f32(ps.saved.music_volume) / 100
+		if prefs_fullscreen(&ps) != rl.IsWindowState({.BORDERLESS_WINDOWED_MODE}) {
+			rl.ToggleBorderlessWindowed()
+		}
+		dst := canvas_fit(renderer.canvas)
+		// Mouse positions come back in canvas pixels, so every menu's
+		// hit-testing (menu_mouse_pos) is unaffected by the scaling.
+		rl.SetMouseOffset(-i32(dst.x), -i32(dst.y))
+		rl.SetMouseScale(f32(renderer.canvas.texture.width) / dst.width, f32(renderer.canvas.texture.height) / dst.height)
+
 		if rl.IsKeyPressed(.F1) {
 			show_debug = !show_debug
 		}
@@ -191,22 +219,44 @@ main :: proc() {
 			}
 			accumulator -= step_dt
 		}
-		if state.level != nil {
-			if music, ok := music_track(&renderer.textures, state.level.id); ok {
-				rl.UpdateMusicStream(music)
-			}
-		}
+		flow_music_update(&flow, &renderer)
 		diagnostics_tick(&diagnostics, rl.GetFrameTime(), flow.netplay_active ? flow.netplay.rs.rollback_count : 0)
 
-		rl.BeginDrawing()
+		rl.BeginTextureMode(renderer.canvas)
 		rl.ClearBackground(rl.Color{0, 0, 0, 255})
 		flow_draw(&flow, &renderer, &particles, &blurs, &notices, WINDOW_SCALE)
 		if show_debug && state.level != nil {
 			draw_debug(state, &report)
 		}
 		diagnostics_draw(&diagnostics, flow.netplay_active, flow.netplay.ping_ms)
+		rl.EndTextureMode()
+
+		rl.BeginDrawing()
+		rl.ClearBackground(rl.Color{0, 0, 0, 255})
+		// Nearest-neighbour at a whole-number scale keeps the pixels exact
+		// (the ordinary 1280x960 window is 1:1); anything else is smoothed
+		// rather than drawn with uneven pixel widths.
+		whole := dst.width == f32(i32(dst.width / f32(renderer.canvas.texture.width))) * f32(renderer.canvas.texture.width)
+		rl.SetTextureFilter(renderer.canvas.texture, whole ? .POINT : .BILINEAR)
+		src := rl.Rectangle{0, 0, f32(renderer.canvas.texture.width), -f32(renderer.canvas.texture.height)} // render textures are bottom-up
+		// Premultiplied: the canvas's colour is already composited, but
+		// blending left its alpha below 255 under anything translucent, and
+		// ordinary alpha blending would darken those pixels a second time.
+		rl.BeginBlendMode(.ALPHA_PREMULTIPLY)
+		rl.DrawTexturePro(renderer.canvas.texture, src, dst, {0, 0}, 0, rl.WHITE)
+		rl.EndBlendMode()
 		rl.EndDrawing()
 	}
+}
+
+// Where the canvas goes in the window: as large as fits without cropping,
+// centred, keeping the 4:3 shape.
+canvas_fit :: proc(canvas: rl.RenderTexture2D) -> rl.Rectangle {
+	cw, ch := f32(canvas.texture.width), f32(canvas.texture.height)
+	sw, sh := f32(rl.GetScreenWidth()), f32(rl.GetScreenHeight())
+	scale := min(sw / cw, sh / ch)
+	w, h := cw * scale, ch * scale
+	return {f32(i32((sw - w) / 2)), f32(i32((sh - h) / 2)), w, h}
 }
 
 // One named menu screen, drawn once and exported to <path>.png. See
@@ -215,9 +265,9 @@ main :: proc() {
 // against the original. Flow's Title branch (the only menu mode so far)
 // returns before touching particles/blurs/notices, so nil is safe here; add
 // a case as each later stage (Level Select, Credits, High Scores) lands.
-run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, name, path: string) {
+run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, name, path: string, ps: ^Prefs_State) {
 	flow: Flow
-	flow_init(&flow, root, defs, state, r)
+	flow_init(&flow, root, defs, state, r, ps)
 	switch name {
 	case "main":
 		flow.mode = .Title
@@ -225,6 +275,17 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		flow.pending_game_type = .Single
 		flow.mode = .Level_Select
 		level_select_init(&flow.level_select)
+	case "main_netplay":
+		// The main menu once its first update has built the links and the
+		// Netplay item -- "main" above is kept exactly as the oracle
+		// comparison has always seen it.
+		flow.mode = .Title
+		main_menu_update(&flow, r, &flow.main_menu)
+	case "preferences":
+		// New content, no original to compare against: a visual check.
+		flow.mode = .Preferences
+		preferences_init(&flow.preferences)
+		preferences_update(&flow, r, &flow.preferences) // lays the buttons out
 	case "credits":
 		flow.mode = .Credits
 		credits_init(&flow.credits)
@@ -325,12 +386,21 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		diag.rollbacks_per_sec = 1.2
 		flow.netplay_active = true
 	}
-	rl.BeginDrawing()
+	// Drawn into a render texture rather than read back from the window,
+	// which is hidden (main) -- a hidden window's back buffer is not
+	// guaranteed to hold anything. r.canvas lets build_frame's terrain
+	// drawing return to it (resume_canvas); renderer_destroy unloads it.
+	r.canvas = rl.LoadRenderTexture(SCREEN_W * WINDOW_SCALE, SCREEN_H * WINDOW_SCALE)
+	rl.BeginTextureMode(r.canvas)
 	rl.ClearBackground(rl.Color{0, 0, 0, 255})
 	flow_draw(&flow, r, nil, nil, nil, WINDOW_SCALE)
 	diagnostics_draw(&diag, flow.netplay_active, flow.netplay.ping_ms)
-	rl.EndDrawing()
-	img := rl.LoadImageFromScreen()
+	rl.EndTextureMode()
+	img := rl.LoadImageFromTexture(r.canvas.texture)
+	rl.ImageFlipVertical(&img) // render textures are bottom-up
+	// Blending leaves the texture's alpha below 255 wherever something
+	// translucent was drawn; its colour is already composited, so drop it.
+	rl.ImageFormat(&img, .UNCOMPRESSED_R8G8B8)
 	out := fmt.ctprintf("%s.png", path)
 	rl.ExportImage(img, out)
 	rl.UnloadImage(img)
@@ -402,35 +472,4 @@ draw_debug :: proc(s: ^sim.State, report: ^data.Defs_Report) {
 	rl.DrawRectangleLines((b.left + VIEW_X) * WINDOW_SCALE, b.top * WINDOW_SCALE,
 		(b.right - b.left) * WINDOW_SCALE, (b.bottom - b.top) * WINDOW_SCALE,
 		rl.Color{120, 200, 255, 160})
-}
-
-// Presentation-side input capture. The simulation never reads a device.
-// Returns just the local player's buttons -- single-player wraps this into
-// a Frame_Input with player 2 empty (flow.odin's .Playing case); netplay
-// feeds the same buttons into Rollback_Session instead, which fills the
-// second slot from the network (game/netplay.odin).
-gather_input :: proc() -> sim.Buttons {
-	b: sim.Buttons
-	if rl.IsKeyDown(.LEFT) || rl.IsKeyDown(.A) {
-		b += {.Left}
-	}
-	if rl.IsKeyDown(.RIGHT) || rl.IsKeyDown(.D) {
-		b += {.Right}
-	}
-	if rl.IsKeyDown(.UP) || rl.IsKeyDown(.W) {
-		b += {.Up}
-	}
-	if rl.IsKeyDown(.DOWN) || rl.IsKeyDown(.S) {
-		b += {.Down}
-	}
-	if rl.IsKeyDown(.SPACE) {
-		b += {.Fire_Air}
-	}
-	if rl.IsKeyDown(.LEFT_CONTROL) {
-		b += {.Fire_Ground}
-	}
-	if rl.IsKeyPressed(.LEFT_SHIFT) {
-		b += {.Change_Air}
-	}
-	return b
 }

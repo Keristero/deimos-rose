@@ -7,9 +7,12 @@ Settings :: struct {
 	// -classic: prefer matching the original's look exactly over a nicer
 	// alternative, wherever the two are ever in tension. Off by default: a
 	// choice that makes the game look better without changing what it does
-	// is worth keeping (D16). Nothing reads this yet -- it exists so Stage 3
-	// onward has somewhere to put a fidelity decision as one comes up,
-	// rather than that decision only ever getting the one answer.
+	// is worth keeping (D16). Today it hides the main menu's Netplay item
+	// (D21, D30).
+	//
+	// -classic, -diagnostics and -fullscreen each switch their setting on
+	// for one run; Preferences shows and changes the same settings, and
+	// saves them (game/prefs.odin's Prefs_State).
 	classic: bool,
 	// -highrefreshrate: present at the monitor's native refresh rate instead
 	// of the original's fixed 30 FPS. The simulation still steps at a fixed
@@ -21,6 +24,9 @@ Settings :: struct {
 	// ping, rollbacks/sec and updates/sec. New content, no original
 	// equivalent -- notes/netcode-enhancements.md asked for it.
 	diagnostics: bool,
+	// -fullscreen: start in a borderless window covering the monitor, the
+	// game scaled to fit (main.odin's canvas). Also in Preferences.
+	fullscreen: bool,
 }
 
 settings_parse :: proc(args: []string) -> (s: Settings) {
@@ -32,6 +38,8 @@ settings_parse :: proc(args: []string) -> (s: Settings) {
 			s.high_refresh_rate = true
 		case "-diagnostics":
 			s.diagnostics = true
+		case "-fullscreen":
+			s.fullscreen = true
 		}
 	}
 	return

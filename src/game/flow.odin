@@ -21,6 +21,7 @@ Flow_Mode :: enum {
 	Credits,
 	High_Scores,
 	Score_Entry,
+	Preferences,
 	Netplay_Lobby,
 	Playing,
 	Paused,
@@ -50,7 +51,8 @@ Flow :: struct {
 	has_film:   bool,
 	sim_film:   sim.Film,     // aliases film.frames; what sim.step actually reads
 	end_timer:  i32,          // steps spent on the current Game_Over/Complete screen
-	last_level: sim.Level_ID, // the level music_track was last started for
+	music_key:  sim.Res_ID,   // what flow_music_update last started: a level id, or MENU_MUSIC_KEY
+	music:      rl.Music,     // the stream it started (zero if none)
 	main_menu:  Main_Menu,    // Phase 7: the faithfully-recreated title screen
 
 	// Phase 7 stage 2: Level Select. pending_game_type is stashed by
@@ -83,7 +85,7 @@ Flow :: struct {
 	score_entry: Score_Entry,
 
 	// Phase 7 stage 6 / Phase 6 stage 5: the netplay lobby
-	// (game/netplay.odin, reached from Main Menu's Preferences button when
+	// (game/netplay.odin, reached from Main Menu's Netplay item when
 	// !r.classic -- see menu_main.odin and mise.toml's --classic flag).
 	// netplay_active distinguishes a netplay .Playing session (stepped via
 	// netplay_playing_step, net.Rollback_Session-driven) from the ordinary
@@ -91,10 +93,16 @@ Flow :: struct {
 	// Flow_Mode.
 	netplay:        Netplay,
 	netplay_active: bool,
+
+	// Saved preferences plus this run's launch flags (game/prefs.odin),
+	// owned by main.odin; the Preferences screen edits them in place.
+	prefs:       ^Prefs_State,
+	preferences: Preferences,
 }
 
-flow_init :: proc(fl: ^Flow, root: string, defs: ^sim.Defs, state: ^sim.State, r: ^Renderer) {
+flow_init :: proc(fl: ^Flow, root: string, defs: ^sim.Defs, state: ^sim.State, r: ^Renderer, ps: ^Prefs_State) {
 	fl.root = root
+	fl.prefs = ps
 	fl.defs = defs
 	fl.state = state
 	fl.mode = .Title
@@ -128,6 +136,8 @@ flow_handle_input :: proc(fl: ^Flow, r: ^Renderer) {
 		high_scores_view_update(fl, r, &fl.high_scores)
 	case .Score_Entry:
 		score_entry_update(fl, r, &fl.score_entry)
+	case .Preferences:
+		preferences_update(fl, r, &fl.preferences)
 	case .Netplay_Lobby:
 		netplay_lobby_update(fl, r, &fl.netplay)
 	case .Playing:
@@ -143,11 +153,10 @@ flow_handle_input :: proc(fl: ^Flow, r: ^Renderer) {
 				// Phase 8 stage 3: "F5 to continue alone"
 				// (notes/netcode-enhancements.md), only while frozen waiting
 				// on a peer. Dropping netplay_active is the entire change
-				// needed -- flow_step's non-netplay branch below already
-				// only ever fills player 0's input (gather_input()) and
-				// leaves player 1's at {} every tick, same as ordinary local
-				// single-player, so the vacated player just sits idle
-				// rather than vanishing.
+				// needed -- flow_step's non-netplay branch below fills
+				// player 1's input from this machine's player 2 keys, so the
+				// vacated player sits idle rather than vanishing (or is
+				// flown locally, if someone here takes those keys).
 				netplay_reset(&fl.netplay)
 				fl.netplay_active = false
 			}
@@ -236,7 +245,7 @@ flow_set_music_paused :: proc(fl: ^Flow, r: ^Renderer, paused: bool) {
 // than only after (and if) the level happens to finish scrolling.
 flow_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs, notices: ^Notices) {
 	switch fl.mode {
-	case .Title, .Level_Select, .Credits, .High_Scores, .Score_Entry, .Netplay_Lobby, .Paused:
+	case .Title, .Level_Select, .Credits, .High_Scores, .Score_Entry, .Preferences, .Netplay_Lobby, .Paused:
 	// nothing to step
 	case .Playing:
 		if fl.netplay_active {
@@ -247,7 +256,14 @@ flow_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 				netplay_playing_step(fl, r, particles, blurs, notices, &fl.netplay)
 			}
 		} else {
-			flow_sim_step(fl, r, particles, blurs, notices, sim.Frame_Input{gather_input(), {}}, nil)
+			// Player 2 is only in play in a local 2 Player session
+			// (player_setup: `game_type != .Single || number == 0`), and
+			// had no keys at all until Preferences gave them bindings.
+			input := sim.Frame_Input{gather_input(&fl.prefs.saved.bindings[0]), {}}
+			if fl.state.players[1].active {
+				input[1] = gather_input(&fl.prefs.saved.bindings[1])
+			}
+			flow_sim_step(fl, r, particles, blurs, notices, input, nil)
 		}
 		switch sim.level_transition(fl.state) {
 		case .None:
@@ -276,21 +292,44 @@ flow_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 			flow_finish_session(fl)
 		}
 	}
-	flow_sync_music(fl, r)
 }
 
-// A session start, level_advance or demo load can all change fl.state.level;
-// rather than call rl.PlayMusicStream at each of those sites, just notice the
-// level id changing here and (re)start whatever track it names. A no-op
-// every other step, since the id then stays the same until the next change.
 @(private = "file")
-flow_sync_music :: proc(fl: ^Flow, r: ^Renderer) {
-	if fl.state.level == nil || fl.state.level.id == fl.last_level {
-		return
+MENU_MUSIC_KEY :: sim.Res_ID{'i', 'n', 'm', 'u'}
+
+// Once per render frame (main.odin): menus play the interface music loop,
+// a session (or demo) its level's track. A session start, level_advance or
+// demo load can all change the level, and any menu can hand over to a
+// session, so rather than start music at each of those sites this notices
+// what *should* be playing change and restarts from the top -- stopping the
+// old stream first, so a level's track no longer carries on under the title
+// screen after a game.
+flow_music_update :: proc(fl: ^Flow, r: ^Renderer) {
+	key: sim.Res_ID
+	want: rl.Music
+	ok: bool
+	switch fl.mode {
+	case .Title, .Level_Select, .Credits, .High_Scores, .Score_Entry, .Preferences, .Netplay_Lobby:
+		key = MENU_MUSIC_KEY
+		want, ok = music_load(&r.textures, MENU_MUSIC)
+	case .Playing, .Paused, .Game_Over, .Complete, .Attract:
+		if fl.state.level != nil {
+			key = fl.state.level.id
+			want, ok = music_track(&r.textures, key)
+		}
 	}
-	fl.last_level = fl.state.level.id
-	if music, ok := music_track(&r.textures, fl.state.level.id); ok {
-		rl.PlayMusicStream(music)
+	if key != fl.music_key {
+		if fl.music.frameCount != 0 {
+			rl.StopMusicStream(fl.music)
+		}
+		fl.music_key, fl.music = key, {}
+		if ok {
+			fl.music = want
+			rl.PlayMusicStream(want)
+		}
+	}
+	if fl.music.frameCount != 0 {
+		rl.UpdateMusicStream(fl.music)
 	}
 }
 
@@ -373,6 +412,9 @@ flow_draw :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 	case .Score_Entry:
 		score_entry_draw(r, &fl.score_entry)
 		return
+	case .Preferences:
+		preferences_draw(r, &fl.preferences, fl.prefs)
+		return
 	case .Netplay_Lobby:
 		netplay_lobby_draw(fl, r, &fl.netplay)
 		return
@@ -402,7 +444,7 @@ flow_draw :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 				draw_banner(title, sub)
 			}
 		}
-	case .Title, .Level_Select, .Credits, .High_Scores, .Score_Entry, .Netplay_Lobby:
+	case .Title, .Level_Select, .Credits, .High_Scores, .Score_Entry, .Preferences, .Netplay_Lobby:
 	}
 }
 

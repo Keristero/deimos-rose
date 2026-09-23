@@ -41,6 +41,12 @@ Textures :: struct {
 	images:  map[string]rl.Texture2D, // by im16 image id -- menu backgrounds, not level-tied
 	sounds:  map[sim.Res_ID]Sound_Clip,
 	music:   map[string]rl.Music, // by the level's own music id, e.g. "mu03"
+
+	// Preferences' volumes as 0..1, applied at each play (sounds_step,
+	// menu_play_sound) and each music_track lookup -- main.odin copies them
+	// in every frame, so a change takes effect at once.
+	sfx_volume:   f32,
+	music_volume: f32,
 }
 
 // `audio` is false for a headless run (DR_SHOT): main.odin skips
@@ -50,6 +56,7 @@ Textures :: struct {
 // sounds_step and music_track, which no-op cleanly when these maps stay empty.
 textures_load :: proc(t: ^Textures, root: string, audio: bool = true) {
 	t.root = strings.clone(root)
+	t.sfx_volume, t.music_volume = 1, 1
 	t.assets = data.assets_open(root)
 	t.plates = make(map[sim.Res_ID]Plate, len(t.assets.sprites))
 	t.terrain = make(map[string]rl.Texture2D)
@@ -116,15 +123,26 @@ music_track :: proc(t: ^Textures, level: sim.Res_ID) -> (rl.Music, bool) {
 	if media == nil || media.music == "" || media.music == "none" {
 		return {}, false
 	}
-	if m, ok := t.music[media.music]; ok {
+	return music_load(t, media.music)
+}
+
+// "Interface Music Loop" (inmu, Music.pak -- the name is the one
+// assets/manifest.json records for it): the menus' music, ~60s, looped.
+MENU_MUSIC :: "inmu"
+
+// Any track by its audio id, loaded on first use; volume follows
+// Preferences' music setting on every call.
+music_load :: proc(t: ^Textures, id: string) -> (rl.Music, bool) {
+	if m, ok := t.music[id]; ok {
+		rl.SetMusicVolume(m, t.music_volume)
 		return m, true
 	}
-	path := fmt.ctprintf("%s/audio/%s.wav", t.root, media.music)
-	m := rl.LoadMusicStream(path)
+	m := rl.LoadMusicStream(fmt.ctprintf("%s/audio/%s.wav", t.root, id))
 	if m.frameCount == 0 {
 		return {}, false
 	}
-	t.music[media.music] = m
+	t.music[id] = m
+	rl.SetMusicVolume(m, t.music_volume)
 	return m, true
 }
 

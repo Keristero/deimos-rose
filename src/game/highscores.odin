@@ -62,24 +62,6 @@ high_scores_default_last_name :: proc(player: int) -> string {
 	return fmt.tprintf("Player %d", player + 1)
 }
 
-@(private = "file")
-highscores_path :: proc(allocator := context.allocator) -> string {
-	if dir := os.get_env("XDG_DATA_HOME", allocator); dir != "" {
-		return strings.concatenate({dir, "/deimos-rising/highscores"}, allocator)
-	}
-	// Windows has no HOME, so without this nothing persisted there at all.
-	when ODIN_OS == .Windows {
-		if dir := os.get_env("APPDATA", allocator); dir != "" {
-			return strings.concatenate({dir, "/deimos-rising/highscores"}, allocator)
-		}
-	}
-	home := os.get_env("HOME", allocator)
-	if home == "" {
-		return ""
-	}
-	return strings.concatenate({home, "/.local/share/deimos-rising/highscores"}, allocator)
-}
-
 // File format: one line per field, 15 entries (score, name, sector) followed
 // by the two last-entered-name cache lines -- plain and line-oriented like
 // progress.odin's save file, not the original's binary U_Prefs layout, since
@@ -94,7 +76,7 @@ high_scores_load :: proc() -> High_Scores_Save {
 		table            = high_scores_default(),
 		last_name_player = {high_scores_default_last_name(0), high_scores_default_last_name(1)},
 	}
-	path := highscores_path(context.temp_allocator)
+	path := user_data_path("highscores", context.temp_allocator)
 	if path == "" {
 		return fallback
 	}
@@ -120,18 +102,12 @@ high_scores_load :: proc() -> High_Scores_Save {
 }
 
 high_scores_save :: proc(save: ^High_Scores_Save) {
-	path := highscores_path(context.temp_allocator)
-	if path == "" {
-		return
-	}
-	dir := path[:strings.last_index(path, "/")]
-	os.make_directory_all(dir)
 	sb := strings.builder_make(context.temp_allocator)
 	for e in save.table {
 		fmt.sbprintf(&sb, "%d\n%s\n%s\n", e.score, e.name, e.sector)
 	}
 	fmt.sbprintf(&sb, "%s\n%s\n", save.last_name_player[0], save.last_name_player[1])
-	_ = os.write_entire_file(path, transmute([]byte)strings.to_string(sb))
+	user_data_write("highscores", strings.to_string(sb))
 }
 
 // G_Scores_IsAHighScore_03b360.c (read in full): `local_22cf < param_1`,

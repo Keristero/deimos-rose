@@ -98,7 +98,7 @@ echo "disconnect detected OK"
 
 # A fresh instance reconnects exactly like any ordinary guest join -- no
 # special flag or foreknowledge beyond the survivor's address, which is
-# always 127.0.0.1:54217 here (see netplay_enter_waiting_reconnect's comment
+# always 127.0.0.1:60902 here (see netplay_enter_waiting_reconnect's comment
 # on always rebinding to the well-known NETPLAY_PORT).
 DISPLAY=:99 DR_NETPLAY=join:127.0.0.1 "$BIN" >"$WORK/c.log" 2>&1 &
 PID_C=$!

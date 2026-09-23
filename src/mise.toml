@@ -84,6 +84,7 @@ usage = '''
 flag "--classic" help="Reproduce -classic mode: hide the new (non-original) menu items such as the netplay lobby"
 flag "--highrefreshrate" help="Reproduce -highrefreshrate mode: uncap the frame rate above the original's fixed step"
 flag "--diagnostics" help="Show a rolling FPS/ping/rollback-rate overlay in the bottom-right corner"
+flag "--fullscreen" help="Start fullscreen (a borderless window covering the monitor), the game scaled to fit"
 '''
 run = '''
 #!/usr/bin/env bash
@@ -92,6 +93,7 @@ args=()
 [ "${usage_classic:-false}" = "true" ] && args+=(-classic)
 [ "${usage_highrefreshrate:-false}" = "true" ] && args+=(-highrefreshrate)
 [ "${usage_diagnostics:-false}" = "true" ] && args+=(-diagnostics)
+[ "${usage_fullscreen:-false}" = "true" ] && args+=(-fullscreen)
 exec "$DR_BUILD/deimos$DR_EXT" "${args[@]}"
 '''
 
@@ -103,6 +105,7 @@ run = [
   "odin check sim  $DR_COLL -vet -strict-style -no-entry-point",
   "odin check data $DR_COLL -vet -strict-style -no-entry-point",
   "odin check net  $DR_COLL -vet -strict-style -no-entry-point",
+  "odin check prefs $DR_COLL -vet -strict-style -no-entry-point",
   "odin check oracle $DR_COLL -vet -strict-style -no-entry-point",
   "odin check tools/extract $DR_COLL -vet -strict-style",
   "odin check tools/verify  $DR_COLL -vet -strict-style",

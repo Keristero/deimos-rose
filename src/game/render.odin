@@ -100,8 +100,13 @@ Renderer :: struct {
 	// Set by DR_DUMP: print every sprite of the next frame, which is how a
 	// misplaced or mis-scaled draw gets identified.
 	dump:     bool,
-	// -classic (Settings.classic): unused so far -- see settings.odin.
+	// -classic / Preferences' Classic Mode, copied in each frame by
+	// main.odin -- see settings.odin.
 	classic:  bool,
+	// The fixed 1280x960 frame the interactive loop draws into before
+	// scaling it to the window (main.odin). Zero for the headless capture
+	// paths, which draw straight to the window as before.
+	canvas:   rl.RenderTexture2D,
 }
 
 renderer_init :: proc(r: ^Renderer, root: string, classic: bool = false, audio: bool = true) {
@@ -120,6 +125,9 @@ renderer_destroy :: proc(r: ^Renderer) {
 	}
 	if r.terrain.id != 0 {
 		rl.UnloadRenderTexture(r.terrain)
+	}
+	if r.canvas.id != 0 {
+		rl.UnloadRenderTexture(r.canvas)
 	}
 	textures_unload(&r.textures)
 	for &l in r.layers {
@@ -319,6 +327,17 @@ terrain_prepare :: proc(r: ^Renderer, s: ^sim.State) {
 	// later read flips back.
 	rl.DrawTextureRec(tex, {0, 0, f32(tex.width), -f32(tex.height)}, {0, 0}, rl.WHITE)
 	rl.EndTextureMode()
+	resume_canvas(r)
+}
+
+// raylib's render targets do not nest: EndTextureMode goes back to the
+// window, not to whatever target was bound before. The terrain buffer is
+// drawn into mid-frame (build_frame), so once it is done the frame's own
+// target has to be bound again or the rest of the frame lands on the window.
+resume_canvas :: proc(r: ^Renderer) {
+	if r.canvas.id != 0 {
+		rl.BeginTextureMode(r.canvas)
+	}
 }
 
 // Applies this step's marks. `loc` is where the object was on screen, so the
@@ -345,6 +364,7 @@ terrain_stamp :: proc(r: ^Renderer, s: ^sim.State) {
 		rl.DrawTexturePro(tex, flipped, dst, {0, 0}, 0, {255, 255, 255, alpha})
 	}
 	rl.EndTextureMode()
+	resume_canvas(r)
 }
 
 // G_Bgnd_CopyToFrontBuffer: the visible window of the level's map, straight to
