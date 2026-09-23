@@ -71,11 +71,15 @@ jobs:
           working_directory: src
           install_args: odin
 
-      # mise-action's shims fall back to .cmd files here (it cannot find
-      # mise-shim.exe), which Git Bash will not run as `odin`. Tasks under
-      # `mise run` get the real path anyway; this is for bare steps.
+      # The Windows release zip nests everything under dist/, which mise does
+      # not recognise as the bin directory ("No executable found for
+      # configured tool: odin"), and its shims fall back to .cmd files Git
+      # Bash will not run anyway. Find odin.exe ourselves.
       - name: Put Odin itself on PATH
-        run: dirname "$(mise which odin)" >> "$GITHUB_PATH"
+        run: |
+          exe=$(find "$(cygpath -u "$(mise where odin)")" -name odin.exe | head -1)
+          [ -n "$exe" ] || { echo "odin.exe not found under $(mise where odin)" >&2; exit 1; }
+          cygpath -w "$(dirname "$exe")" >> "$GITHUB_PATH"
 
       - run: odin version
       - run: mise run ci
