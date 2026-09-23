@@ -290,5 +290,65 @@ MENU=level_select` against a real screenshot of the original: AE 24641.7 of
 difference is mostly the VIGR scanline pattern's sub-tile phase (see above),
 not a structural gap.
 
-Stages 3-4 (Credits, High Scores) and 6 (`-classic` gating, which Phase 6's
-lobby is waiting on) are unstarted.
+**Stage 3 — done.** `game/menu_credits.odin`: reached from Main Menu's
+copyright text link (`menu_main.odin`'s `Text_Link` case, previously inert).
+Traced from `G_Credits_Display_0120e0.c` and the `G_Text_FadeListIn/Out` fade
+helpers it calls (all read in full) into a page-by-page state machine —
+`Fading_In` → `Holding` (the only state that polls input) → `Fading_Out` →
+`Waiting` (a 1s settle pause) → next page — driven off real elapsed time each
+render frame rather than transliterating the original's own nested blocking
+loops. `U_App_GetTickCount` (read in full) turned out to derive a ~60Hz tick
+from Win32 `GetTickCount()`, distinct from the simulation's fixed 30Hz step;
+the `<page NNN>` markers in `cred.json` and the fade animation's fixed
+32-frame ramp are both counted in that timebase (`CREDITS_TICK_HZ :: 60.0`).
+Any keypress or click ends Credits outright (there is no "advance to next
+page" input at all) — confirmed by reading `G_Credits_Display`'s event
+handling directly: both the `N`/non-`N` branches jump to the same exit path,
+`N` only additionally starting a new 1-player game instead of returning to
+Title. The credits text itself (`assets/data/stli/cred.json`) is
+hand-transcribed into `CREDITS_PAGES` rather than read at runtime, matching
+this port's existing convention for `.stli` tables (nothing in
+`data/assets.odin`'s runtime loader reads `.stli` JSON at all).
+
+Two things found during this stage's research pass:
+
+- **Perm floats recovered but perm text-setting colours/positions were not**:
+  `Credits_TitleYLoc` (130.0) and `Credits_VerticalGap` (16.0) came straight
+  out of `gafl.json`, but `G_Text_GetPermTextSetting`'s preset table (8 for
+  the title line, 9 for body lines) is a raw binary struct array in the
+  executable's data section with no decompiled semantics — colour, X
+  position and alignment couldn't be read out of the corpus. Recovered
+  instead by column-brightness/colour-sampling a real Wine capture
+  (`mise run oracle:menu-shot MENU=credits`), the same method Stage 1 used
+  for `BTN_FIRST_ROW_Y`/`LOGO_Y`: left-aligned (not centred) at `CREDITS_X ::
+  121`, title in a solid teal `(0, 255, 189)`, body lines plain white.
+- **Blank `.stli` lines are significant and were silently dropped**:
+  `tagged_parse` (`data/tagged_text.odin`) skips blank lines while decoding a
+  resource into records, correct for every `#key value` format, but the
+  original's raw "cred" resource turns out to *use* blank `.stli` lines as
+  vertical spacing within a page — lost from the already-decoded
+  `cred.json`. Found by comparing the first render against a real
+  screenshot: the gap after a page's title, and before its trailing website
+  URL (when it has one), measured 32px (two `VerticalGap` steps) rather than
+  the expected uniform 16px. Confirmed live against three pages for the
+  after-title gap (Swoop Software, Additional Unit Art, Geek Support) and two
+  for the before-URL gap (the two pages that end in one); reproduced as a
+  fixed extra gap after every title plus a hand-placed `""` entry in
+  `Credits_Page.lines` before each of the two confirmed trailing URLs — not
+  individually reverified page by page for the other seven.
+
+Verified via `mise run menu-shot MENU=credits` (visual sanity check — the
+static single-frame case fast-forwards past the initial pause/fade-in
+straight to a settled `.Holding` state on page 0, since `run_menu_shot` draws
+exactly one frame) and `mise run menu-shots:compare MENU=credits` against a
+real screenshot of the original (`tools/oracle/menu_shot.sh`'s new `credits`
+click-through case, clicking the copyright link then waiting 2.5s to land
+inside page 0's hold): AE 19351.7 of 307200 (6.30%), a closer match than
+Stage 2's Level Select — `side.png` shows matching position, colour and line
+spacing, with the residual difference being background noise/antialiasing,
+not a structural gap.
+
+`mise run check`, `mise run purity`, `mise run test` (85 tests) all green.
+
+Stage 4 (High Scores) and 6 (`-classic` gating, which Phase 6's lobby is
+waiting on) are unstarted.

@@ -33,6 +33,20 @@ sleep 0.2
 xdotool mouseup --window "$wid" 1
 sleep 1
 ' ;;
+    # Click through Main Menu's copyright text link (centred, y=447 -- see
+    # game/menu_main.odin's text_link_at) to reach Credits. Credits pays a 1s
+    # settle pause before page 0 even starts, then a 0.53s fade-in (32 ticks
+    # at Interface_FadeRate) -- sleep 2.5 to land well inside page 0's hold
+    # (200 ticks =~ 3.3s), same margin the level_select case leaves.
+    credits) reach='
+wid=$(xdotool search --name "Deimos Rising" | head -1)
+xdotool windowfocus --sync "$wid"
+xdotool mousemove --window "$wid" --sync 320 451
+xdotool mousedown --window "$wid" 1
+sleep 0.2
+xdotool mouseup --window "$wid" 1
+sleep 2.5
+' ;;
     *) echo "unknown MENU '$MENU' -- add its click-through to menu_shot.sh" >&2; exit 1 ;;
 esac
 

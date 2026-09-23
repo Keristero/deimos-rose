@@ -18,6 +18,7 @@ import "dr:sim"
 Flow_Mode :: enum {
 	Title,
 	Level_Select,
+	Credits,
 	Playing,
 	Paused,
 	Game_Over,
@@ -65,6 +66,10 @@ Flow :: struct {
 	session_start_pos: int,
 	highest_reached:   int,
 	level_select:      Level_Select,
+
+	// Phase 7 stage 3: Credits (game/menu_credits.odin), reached from Main
+	// Menu's copyright link.
+	credits: Credits,
 }
 
 flow_init :: proc(fl: ^Flow, root: string, defs: ^sim.Defs, state: ^sim.State, r: ^Renderer) {
@@ -95,6 +100,8 @@ flow_handle_input :: proc(fl: ^Flow, r: ^Renderer) {
 		main_menu_update(fl, r, &fl.main_menu)
 	case .Level_Select:
 		level_select_update(fl, r, &fl.level_select)
+	case .Credits:
+		credits_update(fl, r, &fl.credits)
 	case .Playing:
 		if rl.IsKeyPressed(.ESCAPE) || rl.IsKeyPressed(.P) {
 			fl.mode = .Paused
@@ -145,7 +152,7 @@ flow_set_music_paused :: proc(fl: ^Flow, r: ^Renderer, paused: bool) {
 // than only after (and if) the level happens to finish scrolling.
 flow_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs, notices: ^Notices) {
 	switch fl.mode {
-	case .Title, .Level_Select, .Paused:
+	case .Title, .Level_Select, .Credits, .Paused:
 	// nothing to step
 	case .Playing:
 		flow_sim_step(fl, r, particles, blurs, notices, gather_input(), nil)
@@ -264,6 +271,9 @@ flow_draw :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 	case .Level_Select:
 		level_select_draw(r, fl, &fl.level_select)
 		return
+	case .Credits:
+		credits_draw(r, &fl.credits)
+		return
 	case .Playing, .Paused, .Game_Over, .Complete, .Attract:
 	}
 	build_frame(r, fl.state, blurs, notices)
@@ -281,7 +291,7 @@ flow_draw :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 	case .Attract:
 		rl.DrawText("DEMO -- press any key for the title screen",
 			16, SCREEN_H * WINDOW_SCALE - 28, 18, rl.Color{200, 200, 200, 200})
-	case .Title, .Level_Select, .Playing:
+	case .Title, .Level_Select, .Credits, .Playing:
 	}
 }
 

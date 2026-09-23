@@ -112,8 +112,9 @@ main_menu_update :: proc(fl: ^Flow, r: ^Renderer, m: ^Main_Menu) {
 		m.confirm_website = true
 	}
 	if text_link_update(&m.copyright, mouse, dt) {
-		// FUN_004287f0 -- opens Credits. Stage 3 builds Credits; until then
-		// this link is inert, like High Scores/Preferences below.
+		// FUN_004287f0 -- opens Credits (game/menu_credits.odin).
+		fl.mode = .Credits
+		credits_init(&fl.credits)
 	}
 }
 

@@ -206,6 +206,14 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		flow.pending_game_type = .Single
 		flow.mode = .Level_Select
 		level_select_init(&flow.level_select)
+	case "credits":
+		flow.mode = .Credits
+		credits_init(&flow.credits)
+		// Skip the initial 1s settle pause and page 0's own fade-in --
+		// run_menu_shot draws exactly one static frame, so start already
+		// settled on page 0 at full opacity rather than a blank background.
+		flow.credits.page = 0
+		flow.credits.state = .Holding
 	case:
 		fmt.eprintfln("unknown menu %v (see run_menu_shot)", name)
 		os.exit(1)
