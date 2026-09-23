@@ -94,9 +94,11 @@ silently. `G_Film::GetRandomSeed` shows the original made the same choice.
 Integration checks against `game/` are fine but must skip cleanly when absent,
 so CI runs for someone without a copy of the game.
 
-**Never commit game content.** `orig/`, `game/`, `src/assets/`, `src/build/`
-and `src/.deps/` are ignored. Tooling, derived symbol listings, manifests and
-notes are tracked. Everything regenerates from a local installer copy.
+**Never commit the original game itself.** `orig/`, `game/`, `src/build/`
+and `src/.deps/` are ignored. The one exception is `src/assets/` — the
+extracted, converted data the game loads — which the project owner chose to
+commit so CI can ship playable release zips (decisions.md D29). Keep it
+regenerable from a local installer copy with `mise run assets:all`.
 
 **Do not push to any remote.** Standing instruction from the project owner.
 Commit locally; that is all.

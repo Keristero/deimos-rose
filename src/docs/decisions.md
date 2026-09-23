@@ -419,3 +419,23 @@ compilation for this platform is not yet supported" message — brew's bundled
 `lld` does not change this, since the failure is Odin's linker *driver*
 refusing to invoke any external linker for this target pair at all, not a
 missing-linker problem. D27 stands as written.
+
+### D29 — CI publishes a release per push, bundled with `src/assets/`
+
+The project owner asked for a GitHub release on every push to `main`, with a
+Linux and a Windows zip that are playable as downloaded. Each OS builds on its
+own native runner (sidestepping D27's cross-link block) and zips `deimos` /
+`deimos.exe` beside `assets/`; the game finds `assets/` relative to its
+working directory (`game/main.odin`), so it runs when launched from the
+unzipped folder.
+
+That requires the runners to have the assets, so `src/assets/` (146 MB, 1,222
+files, extracted from the original PAKs) is now committed. This reverses the
+earlier "never commit game content" rule for that one directory, and it was
+the owner's explicit decision after being told the repository is public and
+that the data would be redistributed. The raw installer and install (`orig/`,
+`game/`) remain ignored.
+
+Verified in CI on both runners: 92 tests pass, and `rng:determinism` prints
+`0071e4eb5e5f0743` on Windows as well as Linux — the first confirmation of
+sim/'s RNG on two real operating systems, not just codegen variants (D27).

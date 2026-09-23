@@ -46,7 +46,11 @@ jobs:
       - run: mise run rng:determinism
 
       # Zipped here rather than by upload-artifact, which drops the exec bit.
-      - run: cd build && zip -9 ../deimos-linux-amd64.zip deimos
+      # The game loads assets/ relative to its working directory (D29).
+      - name: Zip the binary with its assets
+        run: |
+          mkdir -p dist/deimos && cp build/deimos dist/deimos/ && cp -r assets dist/deimos/
+          cd dist && zip -9qr ../deimos-linux-amd64.zip deimos
 
       - uses: actions/upload-artifact@v4
         with:
@@ -96,8 +100,11 @@ jobs:
       - run: mise run rng:determinism
 
       # raylib links statically on Windows (vendor:raylib's default), so the
-      # exe is the whole program.
-      - run: cd build && 7z a ../deimos-windows-amd64.zip deimos.exe
+      # exe plus assets/ is the whole program.
+      - name: Zip the binary with its assets
+        run: |
+          mkdir -p dist/deimos && cp build/deimos.exe dist/deimos/ && cp -r assets dist/deimos/
+          cd dist && 7z a -bso0 ../deimos-windows-amd64.zip deimos
 
       - uses: actions/upload-artifact@v4
         with:
@@ -125,14 +132,13 @@ jobs:
         run: |
           tag="build-${GITHUB_SHA::7}"
           ls -l dist
-          # Create, upload, then check. build-e3cab80 came out of a single
-          # `gh release create ... dist/*.zip` with a zero exit status and no
-          # files attached, so trust the API's asset list, not the exit code.
+          # Create, then upload, so a re-run of the same commit re-attaches
+          # files instead of failing on the existing tag. The API's asset
+          # listing can lag the upload by minutes (seen on build-e3cab80), so
+          # it is not used as a check here.
           gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" \
             --target "$GITHUB_SHA" \
             --title "Build ${GITHUB_SHA::7}" \
-            --notes "Automated build of ${GITHUB_SHA} (run ${GITHUB_RUN_ID})." \
+            --notes "Automated build of ${GITHUB_SHA} (run ${GITHUB_RUN_ID}). Unzip and run deimos (Linux) or deimos.exe (Windows) from inside the unzipped folder." \
             --prerelease
           gh release upload "$tag" dist/*.zip --clobber
-          gh release view "$tag" --json assets -q '.assets[].name' | sort | tee attached.txt
-          ls dist | sort | diff - attached.txt
