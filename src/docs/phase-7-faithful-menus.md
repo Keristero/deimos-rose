@@ -491,5 +491,109 @@ rather than a pixel comparison.
 `mise run ci` (check, purity, test) and `mise run oracle:diff` (all four
 demos still matching the original call for call) both green.
 
-Stage 6 (`-classic` gating, which Phase 6's lobby is waiting on) is
-unstarted.
+## Stage 6 — done.
+
+`-classic` gating plus Phase 6's deferred stage 5, built together since the
+lobby is the only thing the flag actually gates. Reached from Main Menu's
+Preferences button (`menu_main.odin`'s `main_menu_activate`) whenever
+`!r.classic`; unchanged (still inert, matching the original's absence of a
+bespoke Preferences screen — see D21) when `-classic` is passed. The project
+owner, asked how far this stage should go (lobby UI + handshake only, vs.
+wiring `net/` into a genuinely live synced session, vs. just the flag), chose
+**full live integration**: Ready-up actually starts a real two-player game
+over UDP, not a stub.
+
+`game/netplay.odin` (new) is the lobby state machine and the glue into
+`Flow`: a new `Text_Button` widget (`game/menu.odin`, an outlined-rectangle
+hover/click button reusing `menu_draw_text`) for this screen's Host/Join/
+Ready/Back buttons, since none of them have an original plate-art frame to
+reuse the way every other Phase 7 screen's buttons do. `Flow` gained a
+`Netplay_Lobby` mode and a `netplay_active` flag distinguishing a netplay
+`.Playing` session from a local one, since the two need different per-tick
+and per-frame handling (`flow.odin`).
+
+- **A fourth reliable message, `Start`** (`net/packet.odin`, `net/reliable.odin`):
+  Hello/Ready/Goodbye already existed (Phase 6 stage 2); this adds host →
+  guest "begin now", carrying the session seed and level index. Without it,
+  either side could start simulating before agreeing what to simulate. The
+  host picks a random seed (`flow_random_seed()`) and level 0 (this stage's
+  first cut — netplay always starts at level 1; nothing about the wire format
+  hard-codes that), sends `Start`, and **waits for that Start's own Ack**
+  (`Reliable_Channel.pending` going false) before beginning its own
+  simulation. That bounds host/guest start-time skew to a frame or two — well
+  inside `NETPLAY_INPUT_WINDOW`'s (8 frames) redundancy margin, so the
+  asymmetric start never unrecoverably drops a genuine early input frame.
+- **The presentation-side-effect question, resolved by reading what Phase 6
+  already built rather than by adding anything new**: a naive per-tick
+  wiring would replay sounds/particles on every rollback resimulation, since
+  a misprediction resimulates the same frame more than once. `net/session.odin`'s
+  `Rollback_Session` already separates these — its private `rollback_to`
+  helper (silent resimulation) only ever calls `sim.step`/`snapshot_save`,
+  never a presentation function, and `rollback_session_advance` is the one
+  call per real tick that reaches a new "current" frame. `netplay_playing_step`
+  calls `particles_step`/`blurs_step`/`notices_step`/`sounds_step` exactly
+  once, immediately after `rollback_session_advance`, mirroring the
+  single-player path in `flow_step` exactly. A misprediction's already-played
+  sound/particles are never retroactively undone — the standard rollback-netcode
+  trade-off (GGPO does the same); only simulation state itself is corrected.
+- **`netplay_poll` drains the socket unconditionally, regardless of lobby
+  phase**: a Ready or Start the peer sends the instant *it* reaches the
+  matching phase can arrive before this side has reached it — `net/reliable.odin`'s
+  stop-and-wait channel already retries until it's handled, so this isn't a
+  correctness bug either way, but polling unconditionally (rather than only
+  while `nl.phase` matches) avoids relying on that retry margin at all.
+- **Host is always player 0, guest always player 1** — fixed by who opened
+  the listening socket vs. who resolved an address and sent the first Hello,
+  not carried on the wire (the peer's own Hello does carry a player index,
+  but it isn't needed for anything — `netplay_poll`'s `.Hello` case discards
+  it).
+- **No local-only pause in a netplay session**: Escape during `.Playing`
+  disconnects (sends `Goodbye`, returns to Title) instead of pausing —
+  freezing only one machine's rendering would not stop input still arriving
+  from the peer, so there is nothing a local pause could actually mean here.
+  A documented simplification, not an oversight; `notes/netcode-enhancements.md`
+  (the project owner's own pre-existing design notes, not part of this
+  reimplementation of the original) sketches an eventual pause-on-disconnect
+  behaviour for the *other* case — a peer dropping unexpectedly — which this
+  stage does not attempt.
+- **`DR_NETPLAY=host` / `DR_NETPLAY=join:<address>`** (`game/main.odin`): a
+  test-only env var that jumps straight into hosting/joining, bypassing the
+  Menu/Enter_Address UI phases. Added because a scripted two-instance test
+  otherwise has to blindly guess Main Menu button pixel coordinates for both
+  instances at once; with the flag, only each side's own Ready button needs
+  driving.
+
+**Verification.** `tools/netplay/loopback_check.sh` (new; `mise run
+netplay:loopback`) is a genuine two-process, two-`Xvfb`-display, `xdotool`-driven
+test over real loopback UDP sockets — not a static oracle comparison, since
+there is no original screen or behaviour to compare against (this is entirely
+new content). It launches one instance under `DR_NETPLAY=host` and one under
+`DR_NETPLAY=join:127.0.0.1`, clicks each side's real Ready button, and greps
+stderr for `game/netplay.odin`'s diagnostic lines confirming the handshake
+completed and the session started with matching seed/level on both sides,
+then confirms `net/desync.odin`'s monitor never fired. Passed: `handshake OK`,
+`session start OK`, `PASS` (no desync) — both sides agreed on the same seed
+and level 0, and zero desyncs were detected over roughly 240 simulated frames
+(~8s) of live paired simulation on two independent processes talking over a
+real (if local) UDP socket, not the in-process fake network Phase 6 stage 3's
+unit test uses. Additionally hand-verified that the real Main-Menu-click path
+(Preferences → Host, not the `DR_NETPLAY` bypass) reaches the same "connected"
+diagnostic, confirming the button wiring itself and not just the underlying
+state machine.
+
+`-classic`'s gating itself (`if !r.classic { ... }` in `main_menu_activate`)
+was verified by code review and the type checker rather than a live capture:
+this host has no `xwd` outside the project's Wine podman container (used for
+comparing against the *original*, not for screenshotting our own live
+interactive window), and `DR_MENU_SHOT` only captures a single static frame,
+not a live interactive session — building a new live-capture mechanism for
+one three-line conditional was judged not worth it. Documented as a real,
+if minor, gap rather than silently claimed as verified.
+
+`mise run ci` (check, purity, 85 tests) and `mise run oracle:diff` (all four
+demos still matching the original call for call, unaffected by `gather_input`
+moving from an implicit single-player wrap to an explicit call site) both
+green.
+
+Phase 7 is now complete: all six stages (Main Menu, Level Select, Credits,
+High Scores, minimal Pause, `-classic`/netplay-lobby gating) done.

@@ -15,9 +15,9 @@ package game
 //
 // Register/Activate (frame 7, shown only when unregistered) and the exit-time
 // ad are excluded per D21. High Scores opens its own screen (stage 4,
-// game/menu_high_scores.odin). Preferences is still wired to a button that
-// exists but does nothing yet -- becomes a fresh `-classic`-aware settings
-// screen in stage 6.
+// game/menu_high_scores.odin). Preferences opens the netplay lobby (stage 6,
+// game/netplay.odin) unless -classic is set, in which case it stays inert --
+// see main_menu_activate.
 
 import rl "vendor:raylib"
 
@@ -105,7 +105,7 @@ main_menu_update :: proc(fl: ^Flow, r: ^Renderer, m: ^Main_Menu) {
 
 	for slot in Main_Menu_Slot {
 		if menu_button_update(&m.buttons[slot], mouse, dt) {
-			main_menu_activate(fl, slot)
+			main_menu_activate(fl, r, slot)
 		}
 	}
 	if text_link_update(&m.website, mouse, dt) {
@@ -119,7 +119,7 @@ main_menu_update :: proc(fl: ^Flow, r: ^Renderer, m: ^Main_Menu) {
 }
 
 @(private = "file")
-main_menu_activate :: proc(fl: ^Flow, slot: Main_Menu_Slot) {
+main_menu_activate :: proc(fl: ^Flow, r: ^Renderer, slot: Main_Menu_Slot) {
 	switch slot {
 	case .One_Player:
 		fl.pending_game_type = .Single
@@ -137,9 +137,17 @@ main_menu_activate :: proc(fl: ^Flow, slot: Main_Menu_Slot) {
 	case .Quit:
 		fl.quit = true
 	case .Preferences:
-	// Inert until stage 6 -- a fresh -classic-aware settings screen; the
-	// original's own Preferences is a native Win32 dialog with no bespoke
-	// art to port.
+		// The original's own Preferences is a native Win32 dialog with no
+		// bespoke art to port. Stage 6: this project's replacement is the
+		// netplay lobby (game/netplay.odin) -- new, non-original content,
+		// so per mise.toml's --classic flag / D21 it only opens when
+		// !r.classic. Under -classic, Preferences stays inert, matching
+		// this button's pre-stage-6 behaviour (the closest a -classic run
+		// can get to "an OS dialog with nothing to port").
+		if !r.classic {
+			fl.mode = .Netplay_Lobby
+			netplay_lobby_init(&fl.netplay, r)
+		}
 	}
 }
 

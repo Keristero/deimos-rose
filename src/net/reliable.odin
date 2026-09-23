@@ -1,10 +1,10 @@
 package netplay
 
 // The "small reliable channel for control messages" from the plan: only
-// Hello, Ready and Goodbye ever need it, and a two-player handshake never
-// has more than one of those in flight at once, so stop-and-wait (send,
-// retry on a timer until acked, give up after enough retries) is enough --
-// no window, no per-message ordering beyond "one at a time".
+// Hello, Ready, Start and Goodbye ever need it, and a two-player handshake
+// never has more than one of those in flight at once, so stop-and-wait
+// (send, retry on a timer until acked, give up after enough retries) is
+// enough -- no window, no per-message ordering beyond "one at a time".
 
 import core_net "core:net"
 import "core:time"
@@ -58,6 +58,12 @@ send_ready :: proc(rc: ^Reliable_Channel, sock: ^Socket) {
 send_goodbye :: proc(rc: ^Reliable_Channel, sock: ^Socket) {
 	seq := reliable_begin(rc)
 	rc.length = encode_goodbye(rc.buf[:], seq)
+	send(sock, rc.to, rc.buf[:rc.length])
+}
+
+send_start :: proc(rc: ^Reliable_Channel, sock: ^Socket, seed: u32, level: u8) {
+	seq := reliable_begin(rc)
+	rc.length = encode_start(rc.buf[:], seq, seed, level)
 	send(sock, rc.to, rc.buf[:rc.length])
 }
 

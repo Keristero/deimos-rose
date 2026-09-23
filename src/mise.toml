@@ -204,6 +204,11 @@ DISPLAY= xvfb-run -s "-screen 0 1280x1024x24" env \
 description = "Compare the simulation's random calls with the original's trace, per demo film"
 run = "odin run tools/diff $DR_COLL -out:$DR_BUILD/oracle-diff --"
 
+[tasks."netplay:loopback"]
+description = "Two-instance loopback smoke test for the netplay lobby and live rollback session (Phase 7 stage 6 / Phase 6 stage 5)"
+depends = ["build"]
+run = "bash tools/netplay/loopback_check.sh"
+
 [tasks."assets:extract"]
 description = "Extract original PAKs into modern formats (PNG/WAV/JSON)"
 depends = ["setup"]

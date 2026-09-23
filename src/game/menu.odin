@@ -98,6 +98,49 @@ text_link_draw :: proc(r: ^Renderer, l: ^Text_Link) {
 	menu_draw_text(r, l.label, i32(l.rect.x), i32(l.rect.y), color)
 }
 
+// A clickable button drawn as centred text rather than a plate frame --
+// Menu_Button only knows the original's baked MEBU/MEBH labels, so screens
+// with no original art of their own (Phase 7 stage 6's netplay lobby/
+// settings screen, which has no original counterpart to trace) use this
+// instead. Same hover/click behaviour as Menu_Button, same colour-shift-on-
+// hover language as Text_Link, so it reads as part of the same menu family
+// without claiming to be a pixel-accurate recreation of anything.
+Text_Button :: struct {
+	label:      string,
+	rect:       rl.Rectangle,
+	hover_time: f32,
+}
+
+@(private = "file") TEXT_BUTTON_PAD_X :: 14
+@(private = "file") TEXT_BUTTON_HEIGHT :: 20
+
+text_button_at :: proc(r: ^Renderer, label: string, cy: f32) -> Text_Button {
+	w := text_width(r, label)
+	full := f32(w) + TEXT_BUTTON_PAD_X * 2
+	return Text_Button{label = label, rect = {(SCREEN_W - full) / 2, cy, full, TEXT_BUTTON_HEIGHT}}
+}
+
+text_button_update :: proc(b: ^Text_Button, mouse: rl.Vector2, dt: f32) -> (clicked: bool) {
+	return update_hover_click(b.rect, &b.hover_time, mouse, dt)
+}
+
+text_button_draw :: proc(r: ^Renderer, b: ^Text_Button, enabled := true) {
+	color: rl.Color
+	switch {
+	case !enabled:
+		color = rl.Color{110, 110, 110, 255}
+	case b.hover_time >= HILITE_DELAY:
+		color = rl.Color{255, 255, 255, 255}
+	case:
+		color = rl.Color{190, 190, 190, 255}
+	}
+	rl.DrawRectangleLinesEx(
+		{b.rect.x * WINDOW_SCALE, b.rect.y * WINDOW_SCALE, b.rect.width * WINDOW_SCALE, b.rect.height * WINDOW_SCALE},
+		1, color,
+	)
+	menu_draw_text(r, b.label, i32(b.rect.x + TEXT_BUTTON_PAD_X), i32(b.rect.y + 5), color)
+}
+
 // draw_text (game/text.odin) pushes into the Renderer's layer list, only
 // ever flushed by present() -- which menu screens never call, since they
 // draw outside build_frame/present entirely (see flow_draw). This draws the

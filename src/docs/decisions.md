@@ -201,3 +201,35 @@ with new (netplay) menu items added in the same style but hidden under
 
 Full inventory, function-by-function, in
 [phase-7-faithful-menus.md](phase-7-faithful-menus.md).
+
+### D22 — Netplay lobby: full live integration, always level 1, no local pause
+
+Phase 7 stage 6 (the netplay lobby, folding in Phase 6's deferred stage 5) had
+an open question this project couldn't resolve alone: a lobby needs more than
+UI to actually be useful — starting a real game means wiring `net/` into
+`game/`'s live loop, which raises a presentation-side-effect problem (sounds/
+particles would replay on every rollback resimulation if wired naively).
+Asked how far to take it, the project owner chose **full live integration**
+over a UI-only/handshake-only cut: Ready-up genuinely starts a synced
+two-player session over UDP, not a stub. The side-effect problem turned out
+to already be solved by Phase 6 stage 3's `Rollback_Session` design (its
+private `rollback_to` never calls a presentation function, only
+`rollback_session_advance` does) — no new architecture, just correct
+sequencing in the new glue code. See
+[phase-7-faithful-menus.md](phase-7-faithful-menus.md#stage-6--done) for the
+full design.
+
+Two scope simplifications made in the same stage, recorded here since they
+are cross-cutting rather than implementation detail:
+
+- **Netplay always starts at level 1** (the host-picked `Start` packet's
+  level field is always 0 for now). The wire format itself doesn't hard-code
+  this — a level-select step for netplay is a natural, low-risk future
+  addition, not a redesign.
+- **No local-only pause during a netplay session**: Escape disconnects
+  outright rather than pausing, since freezing only one machine's rendering
+  can't stop input still arriving from the peer. The project owner's own
+  pre-existing design notes (`notes/netcode-enhancements.md`, not part of
+  this reimplementation) sketch a future pause-on-*disconnect* behaviour for
+  the unplanned-drop case, which is a different feature from this and was not
+  attempted here.

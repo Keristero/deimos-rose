@@ -192,7 +192,22 @@ fake network already proven to converge, and asserts neither monitor ever
 false-positives -- the two peers really do agree the whole way through, not
 just at the final checksum. `mise run ci` is green (85 tests).
 
-Stages 5-6 (lobby, two-machine playtest) are unstarted; stage 5 is deferred
-until Phase 7 (faithful menu recreation) delivers the button/plate system the
-lobby will be built on, per the project owner's direction that old and new
-menus share one visual style.
+**Stage 5 is done**, built as Phase 7 stage 6 once that phase's button/plate
+visual language existed to build it in (`game/netplay.odin`, `game/menu.odin`'s
+new `Text_Button`) — see
+[phase-7-faithful-menus.md](phase-7-faithful-menus.md#stage-6--done) for the
+full write-up: host/join by address, ready-up, ping display, and (going
+beyond a lobby-only cut, by the project owner's explicit choice of "full live
+integration" when asked how far to take it) a real fourth reliable message
+(`Start`) synchronizing session seed/level between host and guest, and live
+wiring into `Rollback_Session` so Ready-up starts a genuinely synced
+two-player game over UDP. Verified over real loopback UDP sockets (not the
+in-process fake network stage 3's unit test uses) via
+`tools/netplay/loopback_check.sh` (`mise run netplay:loopback`): matching
+seed/level on both sides, zero desyncs over ~240 simulated frames.
+
+**Stage 6 (a genuine two-machine playtest, this phase's actual exit
+criterion) is still unstarted** — distinct from the loopback smoke test above,
+which proves the protocol and rollback integration work over a real socket on
+one machine, but not over a real network path with real latency/loss between
+two physical machines. Needs a second machine to run.

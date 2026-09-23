@@ -149,6 +149,16 @@ main :: proc() {
 	flow_init(&flow, root, &defs, state, &renderer)
 	defer flow_destroy(&flow)
 
+	// DR_NETPLAY=host or DR_NETPLAY=join:<address> jumps straight into the
+	// netplay lobby already hosting/joining -- see
+	// netplay_lobby_start_from_flag's comment for why (a scripted test
+	// driving two instances at once, tools/netplay/loopback_check.sh).
+	if netplay_flag := os.get_env("DR_NETPLAY", context.temp_allocator); netplay_flag != "" {
+		netplay_lobby_init(&flow.netplay, &renderer)
+		flow.mode = .Netplay_Lobby
+		netplay_lobby_start_from_flag(&flow.netplay, netplay_flag)
+	}
+
 	// Escape means pause/resume/back everywhere in Flow, not an instant quit
 	// (raylib's own default exit key is Escape); flow.quit below is the only
 	// path left that closes the window on Escape, from the title screen.
@@ -231,6 +241,12 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		score_entry_start(&flow.score_entry, {99999, 0}, {true, false}, "Lucena")
 		flow.mode = .Score_Entry
 		flow.score_entry.state = .Editing
+	case "netplay_lobby":
+		// New content, no original to compare against (see game/netplay.odin's
+		// file header) -- this is a visual smoke check of the lobby's own
+		// menu screen, not an oracle:menu-shot comparison.
+		flow.mode = .Netplay_Lobby
+		netplay_lobby_init(&flow.netplay, r)
 	case:
 		fmt.eprintfln("unknown menu %v (see run_menu_shot)", name)
 		os.exit(1)
@@ -314,7 +330,11 @@ draw_debug :: proc(s: ^sim.State, report: ^data.Defs_Report) {
 }
 
 // Presentation-side input capture. The simulation never reads a device.
-gather_input :: proc() -> sim.Frame_Input {
+// Returns just the local player's buttons -- single-player wraps this into
+// a Frame_Input with player 2 empty (flow.odin's .Playing case); netplay
+// feeds the same buttons into Rollback_Session instead, which fills the
+// second slot from the network (game/netplay.odin).
+gather_input :: proc() -> sim.Buttons {
 	b: sim.Buttons
 	if rl.IsKeyDown(.LEFT) || rl.IsKeyDown(.A) {
 		b += {.Left}
@@ -337,5 +357,5 @@ gather_input :: proc() -> sim.Frame_Input {
 	if rl.IsKeyPressed(.LEFT_SHIFT) {
 		b += {.Change_Air}
 	}
-	return sim.Frame_Input{b, {}}
+	return b
 }

@@ -21,6 +21,7 @@ Flow_Mode :: enum {
 	Credits,
 	High_Scores,
 	Score_Entry,
+	Netplay_Lobby,
 	Playing,
 	Paused,
 	Game_Over,
@@ -80,6 +81,16 @@ Flow :: struct {
 	// flow_finish_session).
 	high_scores: High_Scores,
 	score_entry: Score_Entry,
+
+	// Phase 7 stage 6 / Phase 6 stage 5: the netplay lobby
+	// (game/netplay.odin, reached from Main Menu's Preferences button when
+	// !r.classic -- see menu_main.odin and mise.toml's --classic flag).
+	// netplay_active distinguishes a netplay .Playing session (stepped via
+	// netplay_playing_step, net.Rollback_Session-driven) from the ordinary
+	// local one (flow_sim_step, gather_input()) -- both share every other
+	// Flow_Mode.
+	netplay:        Netplay,
+	netplay_active: bool,
 }
 
 flow_init :: proc(fl: ^Flow, root: string, defs: ^sim.Defs, state: ^sim.State, r: ^Renderer) {
@@ -96,6 +107,7 @@ flow_destroy :: proc(fl: ^Flow) {
 		data.film_destroy(&fl.film)
 		fl.has_film = false
 	}
+	netplay_reset(&fl.netplay) // no-op if no socket was ever opened
 }
 
 // Once per render frame, ahead of the fixed-step loop below: discrete key
@@ -116,8 +128,19 @@ flow_handle_input :: proc(fl: ^Flow, r: ^Renderer) {
 		high_scores_view_update(fl, r, &fl.high_scores)
 	case .Score_Entry:
 		score_entry_update(fl, r, &fl.score_entry)
+	case .Netplay_Lobby:
+		netplay_lobby_update(fl, r, &fl.netplay)
 	case .Playing:
-		if rl.IsKeyPressed(.ESCAPE) || rl.IsKeyPressed(.P) {
+		if fl.netplay_active {
+			netplay_playing_poll(fl, r, &fl.netplay)
+			// No local-only pause in netplay -- see netplay_disconnect's
+			// comment. Escape quits back to Title instead.
+			if rl.IsKeyPressed(.ESCAPE) {
+				netplay_disconnect(&fl.netplay)
+				fl.netplay_active = false
+				fl.mode = .Title
+			}
+		} else if rl.IsKeyPressed(.ESCAPE) || rl.IsKeyPressed(.P) {
 			fl.mode = .Paused
 			flow_set_music_paused(fl, r, true)
 		}
@@ -148,6 +171,14 @@ flow_handle_input :: proc(fl: ^Flow, r: ^Renderer) {
 // menu.
 @(private = "file")
 flow_finish_session :: proc(fl: ^Flow) {
+	if fl.netplay_active {
+		// A netplay match ending normally (not a mid-game disconnect, which
+		// netplay_poll's Goodbye handling already clears this on) -- close
+		// the socket so a later single-player session doesn't find
+		// netplay_active still set and try to step through a dead one.
+		netplay_reset(&fl.netplay)
+		fl.netplay_active = false
+	}
 	scores := [sim.MAX_PLAYERS]int{}
 	active := [sim.MAX_PLAYERS]bool{}
 	sector := ""
@@ -194,10 +225,14 @@ flow_set_music_paused :: proc(fl: ^Flow, r: ^Renderer, paused: bool) {
 // than only after (and if) the level happens to finish scrolling.
 flow_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs, notices: ^Notices) {
 	switch fl.mode {
-	case .Title, .Level_Select, .Credits, .High_Scores, .Score_Entry, .Paused:
+	case .Title, .Level_Select, .Credits, .High_Scores, .Score_Entry, .Netplay_Lobby, .Paused:
 	// nothing to step
 	case .Playing:
-		flow_sim_step(fl, r, particles, blurs, notices, gather_input(), nil)
+		if fl.netplay_active {
+			netplay_playing_step(fl, r, particles, blurs, notices, &fl.netplay)
+		} else {
+			flow_sim_step(fl, r, particles, blurs, notices, sim.Frame_Input{gather_input(), {}}, nil)
+		}
 		if fl.state.game_over {
 			fl.mode, fl.end_timer = .Game_Over, 0
 		} else if fl.state.level_end.complete {
@@ -322,6 +357,9 @@ flow_draw :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 	case .Score_Entry:
 		score_entry_draw(r, &fl.score_entry)
 		return
+	case .Netplay_Lobby:
+		netplay_lobby_draw(r, &fl.netplay)
+		return
 	case .Playing, .Paused, .Game_Over, .Complete, .Attract:
 	}
 	build_frame(r, fl.state, blurs, notices)
@@ -339,7 +377,7 @@ flow_draw :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 	case .Attract:
 		rl.DrawText("DEMO -- press any key for the title screen",
 			16, SCREEN_H * WINDOW_SCALE - 28, 18, rl.Color{200, 200, 200, 200})
-	case .Title, .Level_Select, .Credits, .High_Scores, .Score_Entry, .Playing:
+	case .Title, .Level_Select, .Credits, .High_Scores, .Score_Entry, .Netplay_Lobby, .Playing:
 	}
 }
 

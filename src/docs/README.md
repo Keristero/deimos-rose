@@ -12,8 +12,8 @@ do, and which decisions are still open.
 | 3 — Definition & data layer | **complete** | [phase-3-data.md](phase-3-data.md) |
 | 4 — Deterministic simulation | **complete** — all four shipped demos replay call for call (42,446 / 81,184 / 112,286 / 95,085 random calls) | [phase-4-sim.md](phase-4-sim.md) |
 | 5 — Presentation | **complete** — playable title screen to end of last level, `oracle:diff` still exact | [phase-5-presentation.md](phase-5-presentation.md) |
-| 6 — Netplay | in progress — stages 1-4 done (snapshot ring, UDP transport, rollback, desync detection); stage 5 (lobby) deferred until Phase 7 lands | [phase-6-netplay.md](phase-6-netplay.md) |
-| 7 — Faithful menus | in progress — stages 1 (Main Menu), 2 (Level Select), 3 (Credits), 4 (High Scores) and 5 (minimal Pause) done; 6 (`-classic` gating) unstarted | [phase-7-faithful-menus.md](phase-7-faithful-menus.md) |
+| 6 — Netplay | in progress — stages 1-5 done (snapshot ring, UDP transport, rollback, desync detection, lobby + live synced session); stage 6 (two-machine playtest) still needs a second physical machine | [phase-6-netplay.md](phase-6-netplay.md) |
+| 7 — Faithful menus | **complete** — all six stages done (Main Menu, Level Select, Credits, High Scores, minimal Pause, `-classic`/netplay-lobby gating) | [phase-7-faithful-menus.md](phase-7-faithful-menus.md) |
 | Bonus — Developer tools | not started — dev/cheat console, level editor; deferred, no exit criterion set yet | — |
 
 The overall plan lives in [../../notes/odin-rewrite-plan.md](../../notes/odin-rewrite-plan.md).
