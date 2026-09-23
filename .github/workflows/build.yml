@@ -45,10 +45,13 @@ jobs:
       - run: mise run build:linux
       - run: mise run rng:determinism
 
+      # Zipped here rather than by upload-artifact, which drops the exec bit.
+      - run: cd build && zip -9 ../deimos-linux-amd64.zip deimos
+
       - uses: actions/upload-artifact@v4
         with:
           name: deimos-linux-amd64
-          path: src/build/deimos
+          path: src/deimos-linux-amd64.zip
 
   build-windows:
     runs-on: windows-latest
@@ -92,7 +95,38 @@ jobs:
       - run: mise run build:windows
       - run: mise run rng:determinism
 
+      # raylib links statically on Windows (vendor:raylib's default), so the
+      # exe is the whole program.
+      - run: cd build && 7z a ../deimos-windows-amd64.zip deimos.exe
+
       - uses: actions/upload-artifact@v4
         with:
           name: deimos-windows-amd64
-          path: src/build/deimos.exe
+          path: src/deimos-windows-amd64.zip
+
+  # One prerelease per push to main, carrying both platforms' zips. Tagged by
+  # commit so re-running a workflow cannot collide with a different build.
+  release:
+    needs: [build-linux, build-windows]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tag="build-${GITHUB_SHA::7}"
+          ls -l dist
+          gh release create "$tag" dist/*.zip \
+            --target "$GITHUB_SHA" \
+            --title "Build ${GITHUB_SHA::7}" \
+            --notes "Automated build of ${GITHUB_SHA} (run ${GITHUB_RUN_ID}). Game data is not included: extract it from your own copy with \`mise run assets:all\`." \
+            --prerelease
