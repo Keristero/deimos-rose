@@ -180,6 +180,29 @@ level_advance :: proc(s: ^State) -> bool {
 	return true
 }
 
+Level_Transition :: enum u8 {
+	None,         // still playing this level
+	Game_Over,    // the last player left play
+	Advanced,     // this level was counted; the next one has started
+	All_Complete, // the last level of the list was counted
+}
+
+// What the session does after a step: the one place game/flow.odin decides
+// between carrying on, game over, the next level and the end of the list.
+// Kept here, not in flow.odin, so tests can drive the exact decision the game
+// makes across whole sessions -- the chained level skip (complete surviving
+// level_advance) lived in this seam and a test of level_advance alone did not
+// cover how its caller used it. game_over wins over complete, see flow_step.
+level_transition :: proc(s: ^State) -> Level_Transition {
+	if s.game_over {
+		return .Game_Over
+	}
+	if !s.level_end.complete {
+		return .None
+	}
+	return level_advance(s) ? .Advanced : .All_Complete
+}
+
 // One game step: FUN_00420280, then the game-time advance in G_Game_Play.
 // `input` drives live play; with a film, players read the film instead,
 // one frame per step they spend in play.

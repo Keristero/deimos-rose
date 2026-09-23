@@ -249,21 +249,21 @@ flow_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 		} else {
 			flow_sim_step(fl, r, particles, blurs, notices, sim.Frame_Input{gather_input(), {}}, nil)
 		}
-		if fl.state.game_over {
+		switch sim.level_transition(fl.state) {
+		case .None:
+		case .Game_Over:
 			fl.mode, fl.end_timer = .Game_Over, 0
-		} else if fl.state.level_end.complete {
-			if sim.level_advance(fl.state) {
-				// G_LevelSelect only ever raises U_Prefs slot 3 (highest
-				// reached) for a session that started at level 1 -- jumping
-				// into the middle via Level Select never advances it, even
-				// past the levels played along the way.
-				if fl.session_start_pos == 1 && int(fl.state.level_number) > fl.highest_reached {
-					fl.highest_reached = int(fl.state.level_number)
-					progress_save(fl.highest_reached)
-				}
-			} else {
-				fl.mode, fl.end_timer = .Complete, 0
+		case .Advanced:
+			// G_LevelSelect only ever raises U_Prefs slot 3 (highest
+			// reached) for a session that started at level 1 -- jumping
+			// into the middle via Level Select never advances it, even
+			// past the levels played along the way.
+			if fl.session_start_pos == 1 && int(fl.state.level_number) > fl.highest_reached {
+				fl.highest_reached = int(fl.state.level_number)
+				progress_save(fl.highest_reached)
 			}
+		case .All_Complete:
+			fl.mode, fl.end_timer = .Complete, 0
 		}
 	case .Attract:
 		flow_sim_step(fl, r, particles, blurs, notices, {}, &fl.sim_film)
