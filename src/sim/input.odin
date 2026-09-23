@@ -14,6 +14,12 @@ Button :: enum u8 {
 	Fire_Air,     // held to charge, released to fire
 	Fire_Ground,  // plasma bombs against ground targets
 	Change_Air,   // cycle available air-to-air weapons
+	// Not an original control: toggles a netplay pause (session_step). An
+	// input bit rather than a network message, so it reaches the peer and
+	// is replayed on rollback exactly like every other button, and both
+	// sides pause on the same frame. No film can set it -- data/film.odin
+	// maps the original's seven bits through an explicit table.
+	Pause,
 }
 
 Buttons :: bit_set[Button; u16]

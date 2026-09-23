@@ -60,6 +60,11 @@ State :: struct {
 	game_over:    bool,         // DAT_004e4826: no player left in the game
 	game_over_notice: bool,     // FUN_00420280's third argument: the game-over banner has been spawned
 	level_end:    Level_End,
+	// Netplay pause (session_step): new content, not the original's
+	// G_Interface_PauseGame, which lives outside the simulation entirely
+	// (game/flow.odin's .Paused, still what single-player uses).
+	paused:       bool,
+	pause_held:   [MAX_PLAYERS]bool, // each player's Pause bit last step, for edge detection
 	// The first original function reached that is not ported yet, by
 	// address; 0 while the port covers everything run so far. `gaps` keeps
 	// each distinct site with the film step it was first reached at.
@@ -187,12 +192,8 @@ Level_Transition :: enum u8 {
 	All_Complete, // the last level of the list was counted
 }
 
-// What the session does after a step: the one place game/flow.odin decides
-// between carrying on, game over, the next level and the end of the list.
-// Kept here, not in flow.odin, so tests can drive the exact decision the game
-// makes across whole sessions -- the chained level skip (complete surviving
-// level_advance) lived in this seam and a test of level_advance alone did not
-// cover how its caller used it. game_over wins over complete, see flow_step.
+// What the session does after a step: carry on, game over, the next level or
+// the end of the list. game_over wins over complete, see flow_step.
 level_transition :: proc(s: ^State) -> Level_Transition {
 	if s.game_over {
 		return .Game_Over
@@ -203,15 +204,65 @@ level_transition :: proc(s: ^State) -> Level_Transition {
 	return level_advance(s) ? .Advanced : .All_Complete
 }
 
-// One game step: FUN_00420280, then the game-time advance in G_Game_Play.
-// `input` drives live play; with a film, players read the film instead,
-// one frame per step they spend in play.
-step :: proc(s: ^State, input: Frame_Input, film: ^Film = nil) {
+// One step of a played session -- live, local or netplay -- as opposed to
+// step alone, which films and the oracle tools replay. Adds the two things a
+// session needs that FUN_00420280 does not do: the netplay pause, and the
+// move to the next level.
+//
+// The level change has to happen *inside* whatever the rollback session
+// steps and snapshots. It used to be applied by game/flow.odin after
+// rollback_session_advance returned: the snapshot for that frame held the
+// finished old level, and any rollback reaching back past the change
+// resimulated the old level without ever moving on, then flow advanced it a
+// second time at whatever frame it happened to notice -- so the two peers
+// changed level on different frames and desynced. Here, it is a pure
+// function of the state and inputs like the rest of the step, and a
+// resimulation reproduces it on the same frame.
+//
+// While paused, only the frame count advances (the rollback ring is keyed
+// on it, and inputs keep flowing so either player can unpause); game time,
+// the RNG and every entity stand still.
+session_step :: proc(s: ^State, input: Frame_Input, film: ^Film = nil) -> Level_Transition {
+	toggle := false
+	for i in 0 ..< MAX_PLAYERS {
+		held := .Pause in input[i]
+		if held && !s.pause_held[i] {
+			toggle = true // both pressing on the same frame still toggles once
+		}
+		s.pause_held[i] = held
+	}
+	if toggle {
+		s.paused = !s.paused
+	}
+	if s.paused {
+		clear_step_events(s) // nothing happened this step; do not replay last step's
+		s.frame += 1
+		return .None
+	}
+	game_input := input
+	for &b in game_input {
+		b -= {.Pause}
+	}
+	step(s, game_input, film)
+	return level_transition(s)
+}
+
+// This step's presentation events start empty; step and a paused
+// session_step both begin here.
+@(private = "file")
+clear_step_events :: proc "contextless" (s: ^State) {
 	s.sounds.count = 0
 	s.particles.count = 0
 	s.stamps.count = 0
 	s.blurs.count = 0
 	s.notices.count = 0
+}
+
+// One game step: FUN_00420280, then the game-time advance in G_Game_Play.
+// `input` drives live play; with a film, players read the film instead,
+// one frame per step they spend in play.
+step :: proc(s: ^State, input: Frame_Input, film: ^Film = nil) {
+	clear_step_events(s)
 	if !s.player1_seen_playing && s.players[0].state == .Playing {
 		s.player1_seen_playing = true
 	}
@@ -284,6 +335,10 @@ checksum :: proc "contextless" (s: ^State) -> u64 {
 	}
 	mix(&h, u64(s.time))
 	mix(&h, u64(s.rng.next))
+	// Which level, and whether it has ended or play is paused: two peers on
+	// different levels at the same time value must not hash alike.
+	mix(&h, u64(s.level_number))
+	mix(&h, u64(s.level_end.complete ? 1 : 0) | u64(s.paused ? 2 : 0))
 	for &p in s.players {
 		mix(&h, u64(p.active ? 1 : 0))
 		mix(&h, u64(p.state))

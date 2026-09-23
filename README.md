@@ -11,10 +11,12 @@ There are builds for windows and linux.
 
 #### Enhancements:
 - Online netplay with rollback and reconnect functionality. (port 60902)
+- High refresh rate mode, drawing smoothly between game updates (Preferences)
 
 #### Upcoming enhancements:
-- High refresh rate interpolated rendering
 - Classic mode which simply aims to be as faithful as possible to the original
+- Easy mode which gives the player a powerup after each stage they complete
+- Infinite procedural roguelike mode
 
 #### Known issues
 - Some sounds use the wrong sound effects, eg weapons are swapped etc.
@@ -27,10 +29,8 @@ There are builds for windows and linux.
    - Smoke looks weird
    - Score ticker at end of level missing
    - First Air to Air weapon is missing some small impact particle effects
-- No button to return to main menu in pause screen
 
 #### Known enhancement issues:
-- Pressing escape in netplay quits instantly rather than pausing
 - Sometimes when players reconnect they might see the wrong level background loaded
 
 #### Other details:

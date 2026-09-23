@@ -98,6 +98,64 @@ Flow :: struct {
 	// owned by main.odin; the Preferences screen edits them in place.
 	prefs:       ^Prefs_State,
 	preferences: Preferences,
+
+	pause_menu:   Pause_Menu,
+	music_paused: bool, // whether flow_music_update last left fl.music paused
+}
+
+// Resume / Main Menu, shown while paused -- new content: the original's
+// G_Interface_PauseGame draws no text at all (D21), so classic mode keeps
+// that and shows neither. The same menu serves a netplay pause, which is a
+// state inside the simulation both peers share (sim.session_step), not
+// .Paused.
+Pause_Menu :: struct {
+	resume:    Text_Button,
+	main_menu: Text_Button,
+}
+
+@(private = "file") PAUSE_TITLE_Y :: 200
+@(private = "file") PAUSE_RESUME_Y :: 232
+@(private = "file") PAUSE_MAIN_MENU_Y :: 262
+
+// Returns which button was clicked this frame, if any.
+@(private = "file")
+pause_menu_update :: proc(r: ^Renderer, m: ^Pause_Menu) -> (resume, main_menu: bool) {
+	if m.resume.rect.width == 0 {
+		m.resume = text_button_at(r, "RESUME", PAUSE_RESUME_Y)
+		m.main_menu = text_button_at(r, "MAIN MENU", PAUSE_MAIN_MENU_Y)
+	}
+	mouse := menu_mouse_pos()
+	dt := rl.GetFrameTime()
+	resume = text_button_update(r, &m.resume, mouse, dt)
+	main_menu = text_button_update(r, &m.main_menu, mouse, dt)
+	return
+}
+
+@(private = "file")
+pause_menu_draw :: proc(r: ^Renderer, m: ^Pause_Menu, note: string) {
+	if m.resume.rect.width == 0 {
+		return // not built until the first update
+	}
+	rl.DrawRectangle(0, (PAUSE_TITLE_Y - 14) * WINDOW_SCALE, SCREEN_W * WINDOW_SCALE, 116 * WINDOW_SCALE, rl.Color{0, 0, 0, 170})
+	menu_draw_text(r, "PAUSED", SCREEN_W / 2, PAUSE_TITLE_Y, rl.Color{255, 255, 255, 255}, .Centre)
+	text_button_draw(r, &m.resume)
+	text_button_draw(r, &m.main_menu)
+	if note != "" {
+		menu_draw_text(r, note, SCREEN_W / 2, PAUSE_MAIN_MENU_Y + 30, rl.Color{190, 190, 190, 255}, .Centre)
+	}
+}
+
+// Escape always pauses (it cannot be bound); so does each player's own
+// Pause binding (Preferences; P for player 1 by default). Player 2's only
+// counts while they are in the game -- a local 2 Player session. Netplay's
+// held Pause bit comes from gather_input's bindings plus Escape
+// (netplay_playing_step).
+@(private = "file")
+pause_key_pressed :: proc(fl: ^Flow) -> bool {
+	if rl.IsKeyPressed(.ESCAPE) || binding_pressed(&fl.prefs.saved.bindings[0], .Pause) {
+		return true
+	}
+	return fl.state.players[1].active && binding_pressed(&fl.prefs.saved.bindings[1], .Pause)
 }
 
 flow_init :: proc(fl: ^Flow, root: string, defs: ^sim.Defs, state: ^sim.State, r: ^Renderer, ps: ^Prefs_State) {
@@ -143,12 +201,26 @@ flow_handle_input :: proc(fl: ^Flow, r: ^Renderer) {
 	case .Playing:
 		if fl.netplay_active {
 			netplay_playing_poll(fl, r, &fl.netplay)
-			// No local-only pause in netplay -- see netplay_disconnect's
-			// comment. Escape quits back to Title instead.
-			if rl.IsKeyPressed(.ESCAPE) {
+			// Escape/P pause through the simulation itself: netplay_
+			// playing_step turns them into the Pause input bit, so both
+			// peers pause on the same frame. The menu below appears once
+			// the (shared) state says paused, whoever pressed it.
+			if fl.state.paused {
+				resume, leave := pause_menu_update(r, &fl.pause_menu)
+				if resume {
+					fl.netplay.pause_pulse = NETPLAY_PAUSE_PULSE_TICKS
+				} else if leave {
+					// The peer sees a Goodbye and freezes, able to continue
+					// alone (F5) -- the same as any mid-game disconnect.
+					netplay_disconnect(&fl.netplay)
+					flow_finish_session(fl)
+				}
+			} else if fl.netplay.link_state != .Live && rl.IsKeyPressed(.ESCAPE) {
+				// Frozen on a lost peer (the banner's "ESC TO EXIT"). The
+				// sim is not stepping, so Escape cannot reach it as a
+				// Pause bit -- it leaves instead, as it always did here.
 				netplay_disconnect(&fl.netplay)
-				fl.netplay_active = false
-				fl.mode = .Title
+				flow_finish_session(fl)
 			} else if fl.netplay.link_state != .Live && rl.IsKeyPressed(.F5) {
 				// Phase 8 stage 3: "F5 to continue alone"
 				// (notes/netcode-enhancements.md), only while frozen waiting
@@ -160,14 +232,20 @@ flow_handle_input :: proc(fl: ^Flow, r: ^Renderer) {
 				netplay_reset(&fl.netplay)
 				fl.netplay_active = false
 			}
-		} else if rl.IsKeyPressed(.ESCAPE) || rl.IsKeyPressed(.P) {
+		} else if pause_key_pressed(fl) {
 			fl.mode = .Paused
-			flow_set_music_paused(fl, r, true)
 		}
 	case .Paused:
-		if rl.IsKeyPressed(.ESCAPE) || rl.IsKeyPressed(.P) {
+		resume, leave := false, false
+		if !r.classic {
+			resume, leave = pause_menu_update(r, &fl.pause_menu)
+		}
+		if resume || pause_key_pressed(fl) {
 			fl.mode = .Playing
-			flow_set_music_paused(fl, r, false)
+		} else if leave {
+			// Through the usual end of a session, so a score good enough
+			// for the table still gets its name entered.
+			flow_finish_session(fl)
 		}
 	case .Attract:
 		if rl.IsKeyPressed(.ESCAPE) || rl.IsKeyPressed(.SPACE) || rl.IsKeyPressed(.ENTER) {
@@ -216,21 +294,6 @@ flow_finish_session :: proc(fl: ^Flow) {
 	}
 }
 
-@(private = "file")
-flow_set_music_paused :: proc(fl: ^Flow, r: ^Renderer, paused: bool) {
-	if fl.state.level == nil {
-		return
-	}
-	music, ok := music_track(&r.textures, fl.state.level.id)
-	if !ok {
-		return
-	}
-	if paused {
-		rl.PauseMusicStream(music)
-	} else {
-		rl.ResumeMusicStream(music)
-	}
-}
 
 // Inside the fixed-step accumulator loop: steps the simulation when the mode
 // calls for it, and reacts to what that step produced.
@@ -263,26 +326,34 @@ flow_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 			if fl.state.players[1].active {
 				input[1] = gather_input(&fl.prefs.saved.bindings[1])
 			}
-			flow_sim_step(fl, r, particles, blurs, notices, input, nil)
+			// A local session pauses through flow (.Paused, the original's
+			// kind of pause), never the sim's netplay pause.
+			input[0] -= {.Pause}
+			input[1] -= {.Pause}
+			flow_sim_step(fl, r, particles, blurs, notices, input, nil, true)
 		}
-		switch sim.level_transition(fl.state) {
-		case .None:
-		case .Game_Over:
+		// The step itself moved to the next level if there was one
+		// (sim.session_step), so complete still being set means the list
+		// is finished. Flow only reads the state here, never changes it:
+		// in netplay, the state is the rollback session's to change.
+		switch {
+		case fl.state.game_over:
 			fl.mode, fl.end_timer = .Game_Over, 0
-		case .Advanced:
-			// G_LevelSelect only ever raises U_Prefs slot 3 (highest
-			// reached) for a session that started at level 1 -- jumping
-			// into the middle via Level Select never advances it, even
-			// past the levels played along the way.
-			if fl.session_start_pos == 1 && int(fl.state.level_number) > fl.highest_reached {
-				fl.highest_reached = int(fl.state.level_number)
-				progress_save(fl.highest_reached)
-			}
-		case .All_Complete:
+		case fl.state.level_end.complete:
 			fl.mode, fl.end_timer = .Complete, 0
 		}
+		// G_LevelSelect only ever raises U_Prefs slot 3 (highest reached)
+		// for a session that started at level 1 -- jumping into the middle
+		// via Level Select never advances it, even past the levels played
+		// along the way.
+		if fl.session_start_pos == 1 && int(fl.state.level_number) > fl.highest_reached {
+			fl.highest_reached = int(fl.state.level_number)
+			progress_save(fl.highest_reached)
+		}
 	case .Attract:
-		flow_sim_step(fl, r, particles, blurs, notices, {}, &fl.sim_film)
+		// Plain sim.step: a demo that finishes its level moves on to the
+		// next demo (below), not to the next level.
+		flow_sim_step(fl, r, particles, blurs, notices, {}, &fl.sim_film, false)
 		if fl.state.game_over || fl.state.level_end.complete || sim.film_finished(fl.state, &fl.sim_film) {
 			flow_load_demo(fl, (fl.demo_index + 1) % DEMO_COUNT)
 		}
@@ -329,13 +400,27 @@ flow_music_update :: proc(fl: ^Flow, r: ^Renderer) {
 		}
 	}
 	if fl.music.frameCount != 0 {
+		// Either pause: local (.Paused) or a netplay pause in the state.
+		paused := fl.mode == .Paused || (fl.mode == .Playing && fl.state.paused)
+		if paused != fl.music_paused {
+			if paused {
+				rl.PauseMusicStream(fl.music)
+			} else {
+				rl.ResumeMusicStream(fl.music)
+			}
+		}
 		rl.UpdateMusicStream(fl.music)
 	}
+	fl.music_paused = fl.music.frameCount != 0 && (fl.mode == .Paused || (fl.mode == .Playing && fl.state.paused))
 }
 
 @(private = "file")
-flow_sim_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs, notices: ^Notices, input: sim.Frame_Input, film: ^sim.Film) {
-	sim.step(fl.state, input, film)
+flow_sim_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs, notices: ^Notices, input: sim.Frame_Input, film: ^sim.Film, session: bool) {
+	if session {
+		_ = sim.session_step(fl.state, input, film)
+	} else {
+		sim.step(fl.state, input, film)
+	}
 	particles_step(particles, fl.state)
 	blurs_step(blurs, fl.state)
 	notices_step(notices, fl.state)
@@ -426,8 +511,12 @@ flow_draw :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 	case .Paused:
 		// G_Interface_PauseGame (read in full) draws no on-screen text at
 		// all -- stop sound, pause music, darken the borders, idle. D21:
-		// matched exactly rather than adding a label the original never had.
+		// classic mode matches that exactly; otherwise the pause menu sits
+		// on top, since without it there was no way back to the title.
 		draw_paused_borders()
+		if !r.classic {
+			pause_menu_draw(r, &fl.pause_menu, "")
+		}
 	case .Game_Over:
 		draw_banner("GAME OVER", "")
 	case .Complete:
@@ -442,6 +531,9 @@ flow_draw :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 		if fl.netplay_active {
 			if title, sub := netplay_disconnect_banner(&fl.netplay); title != "" {
 				draw_banner(title, sub)
+			} else if fl.state.paused {
+				draw_paused_borders()
+				pause_menu_draw(r, &fl.pause_menu, "PAUSED FOR BOTH PLAYERS -- EITHER CAN RESUME")
 			}
 		}
 	case .Title, .Level_Select, .Credits, .High_Scores, .Score_Entry, .Preferences, .Netplay_Lobby:

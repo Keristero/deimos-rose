@@ -25,6 +25,7 @@ KEY_I :: 73
 KEY_J :: 74
 KEY_K :: 75
 KEY_L :: 76
+KEY_SEMICOLON :: 59
 KEY_O :: 79
 KEY_P :: 80
 KEY_S :: 83
@@ -38,6 +39,8 @@ KEY_LEFT_SHIFT :: 340
 KEY_LEFT_CONTROL :: 341
 
 // Two keys per action: player 1 has always had both the arrows and WASD.
+// Pause is an action like the rest; Escape also always pauses, for every
+// player, and cannot be bound -- it has to stay free to cancel a rebind.
 BINDING_SLOTS :: 2
 Bindings :: [sim.Button][BINDING_SLOTS]i32
 
@@ -48,6 +51,9 @@ Prefs :: struct {
 	sfx_volume:   int, // percent, 0..100
 	music_volume: int, // percent, 0..100
 	fullscreen:   bool,
+	// Draw at the monitor's refresh rate, interpolating between sim steps
+	// (game/render.odin). The simulation still steps at a fixed 30 Hz.
+	high_refresh_rate: bool,
 	diagnostics:  bool,
 	classic:      bool,
 }
@@ -56,7 +62,9 @@ Prefs :: struct {
 // existed (game/main.odin's old gather_input), so an existing player finds
 // nothing moved. Player 2 had no keys at all -- local co-op fed it an empty
 // input every step -- so theirs are new: IJKL on the right of the keyboard,
-// clear of player 1's arrows/WASD/Space/Ctrl/Shift, with U/O/P beside them.
+// clear of player 1's arrows/WASD/Space/Ctrl/Shift, with U/O and ; beside
+// them. P is player 1's Pause, as it was before Pause could be rebound;
+// player 2 has none by default (Escape pauses for both).
 defaults :: proc() -> Prefs {
 	p := Prefs {
 		sfx_volume   = 100,
@@ -70,6 +78,7 @@ defaults :: proc() -> Prefs {
 		.Fire_Air    = {KEY_SPACE, KEY_NONE},
 		.Fire_Ground = {KEY_LEFT_CONTROL, KEY_NONE},
 		.Change_Air  = {KEY_LEFT_SHIFT, KEY_NONE},
+		.Pause       = {KEY_P, KEY_NONE},
 	}
 	p.bindings[1] = {
 		.Up          = {KEY_I, KEY_NONE},
@@ -78,7 +87,8 @@ defaults :: proc() -> Prefs {
 		.Right       = {KEY_L, KEY_NONE},
 		.Fire_Air    = {KEY_U, KEY_NONE},
 		.Fire_Ground = {KEY_O, KEY_NONE},
-		.Change_Air  = {KEY_P, KEY_NONE},
+		.Change_Air  = {KEY_SEMICOLON, KEY_NONE},
+		.Pause       = {KEY_NONE, KEY_NONE},
 	}
 	return p
 }
@@ -116,6 +126,7 @@ BUTTON_KEYS := [sim.Button]string {
 	.Fire_Air    = "fire_air",
 	.Fire_Ground = "fire_ground",
 	.Change_Air  = "change_weapon",
+	.Pause       = "pause",
 }
 
 // One `name=value` per line, like progress.odin's and highscores.odin's
@@ -125,6 +136,7 @@ format :: proc(p: ^Prefs, allocator := context.allocator) -> string {
 	fmt.sbprintf(&sb, "sfx_volume=%d\n", p.sfx_volume)
 	fmt.sbprintf(&sb, "music_volume=%d\n", p.music_volume)
 	fmt.sbprintf(&sb, "fullscreen=%d\n", p.fullscreen ? 1 : 0)
+	fmt.sbprintf(&sb, "high_refresh_rate=%d\n", p.high_refresh_rate ? 1 : 0)
 	fmt.sbprintf(&sb, "diagnostics=%d\n", p.diagnostics ? 1 : 0)
 	fmt.sbprintf(&sb, "classic=%d\n", p.classic ? 1 : 0)
 	for b, player in p.bindings {
@@ -138,8 +150,14 @@ format :: proc(p: ^Prefs, allocator := context.allocator) -> string {
 // Starts from defaults() and applies whatever lines it understands, so a
 // missing file, an older file without some setting, or a hand-edited typo
 // each fall back per setting rather than losing the lot.
+//
+// A default can collide with a key the file already uses: a file from
+// before Pause was bindable has player 2's Change Weapon on P, which is now
+// player 1's default Pause. What the player chose wins; the default gives
+// way, so one key never ends up doing two things.
 parse :: proc(text: string) -> Prefs {
 	p := defaults()
+	from_file: [sim.MAX_PLAYERS]sim.Buttons
 	rest := text
 	for line in strings.split_lines_iterator(&rest) {
 		eq := strings.index_byte(line, '=')
@@ -155,14 +173,19 @@ parse :: proc(text: string) -> Prefs {
 			parse_volume(value, &p.music_volume)
 		case "fullscreen":
 			parse_flag(value, &p.fullscreen)
+		case "high_refresh_rate":
+			parse_flag(value, &p.high_refresh_rate)
 		case "diagnostics":
 			parse_flag(value, &p.diagnostics)
 		case "classic":
 			parse_flag(value, &p.classic)
 		case:
-			parse_binding(name, value, &p)
+			if player, button, ok := parse_binding(name, value, &p); ok {
+				from_file[player] += {button}
+			}
 		}
 	}
+	drop_colliding_defaults(&p, from_file)
 	return p
 }
 
@@ -184,15 +207,14 @@ parse_flag :: proc(value: string, out: ^bool) {
 }
 
 @(private = "file")
-parse_binding :: proc(name, value: string, p: ^Prefs) {
+parse_binding :: proc(name, value: string, p: ^Prefs) -> (player: int, button: sim.Button, ok: bool) {
 	if len(name) < 4 || name[0] != 'p' || name[2] != '.' {
 		return
 	}
-	player := int(name[1] - '1')
+	player = int(name[1] - '1')
 	if player < 0 || player >= sim.MAX_PLAYERS {
 		return
 	}
-	button: sim.Button
 	found := false
 	for key, b in BUTTON_KEYS {
 		if key == name[3:] {
@@ -209,4 +231,32 @@ parse_binding :: proc(name, value: string, p: ^Prefs) {
 		return
 	}
 	p.bindings[player][button] = {i32(k0), i32(k1)}
+	return player, button, true
+}
+
+@(private = "file")
+drop_colliding_defaults :: proc(p: ^Prefs, from_file: [sim.MAX_PLAYERS]sim.Buttons) {
+	chosen: map[i32]bool
+	defer delete(chosen)
+	for b, player in p.bindings {
+		for keys, button in b {
+			if button in from_file[player] {
+				for k in keys {
+					chosen[k] = true
+				}
+			}
+		}
+	}
+	for &b, player in p.bindings {
+		for &keys, button in b {
+			if button in from_file[player] {
+				continue
+			}
+			for &k in keys {
+				if k != KEY_NONE && chosen[k] {
+					k = KEY_NONE
+				}
+			}
+		}
+	}
 }

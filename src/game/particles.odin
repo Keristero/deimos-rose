@@ -18,6 +18,7 @@ import "dr:sim"
 
 Particle :: struct {
 	loc:      sim.Vec,
+	prev:     sim.Vec, // loc a step ago, for high refresh rate interpolation
 	vel:      sim.Vec,
 	color:    rl.Color,
 	life:     f32,
@@ -48,6 +49,7 @@ particles_step :: proc(p: ^Particles, s: ^sim.State) {
 	n := 0
 	for pt in p.live {
 		pt := pt
+		pt.prev = pt.loc
 		if pt.ground {
 			pt.loc.y += scroll
 		}
@@ -76,6 +78,7 @@ spawn_burst :: proc(p: ^Particles, ev: sim.Particle_Event) {
 		life := rand.float32_range(14, 26)
 		append(&p.live, Particle {
 			loc      = ev.loc,
+			prev     = ev.loc,
 			vel      = {math.cos(angle) * speed, math.sin(angle) * speed},
 			color    = i % 2 == 0 ? bright : dark,
 			life     = life,
@@ -86,14 +89,19 @@ spawn_burst :: proc(p: ^Particles, ev: sim.Particle_Event) {
 }
 
 // G_Particle_Draw: a small filled square per particle, fading with age.
-particles_draw :: proc(p: ^Particles, scale: f32) {
+// `t` is the renderer's interpolation fraction, 1 when off.
+particles_draw :: proc(p: ^Particles, scale: f32, t: f32 = 1) {
 	for pt in p.live {
 		alpha := clamp(pt.life / pt.max_life, 0, 1)
 		c := pt.color
 		c.a = u8(alpha * 255)
 		size: f32 = 2 * scale
+		loc := pt.loc
+		if t < 1 {
+			loc = {interp(pt.prev.x, pt.loc.x, t), interp(pt.prev.y, pt.loc.y, t)}
+		}
 		rl.DrawRectangleV(
-			{(pt.loc.x + VIEW_X) * scale - size / 2, pt.loc.y * scale - size / 2},
+			{(loc.x + VIEW_X) * scale - size / 2, loc.y * scale - size / 2},
 			{size, size},
 			c,
 		)

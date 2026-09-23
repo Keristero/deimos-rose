@@ -51,6 +51,10 @@ NETPLAY_PORT :: 60902
 NETPLAY_PING_INTERVAL :: 1.0 // seconds between RTT probes once connected
 NETPLAY_INPUT_WINDOW :: 8    // matches tests/rollback_session_test.odin's own WINDOW
 NETPLAY_CHECKSUM_LAG :: 20   // frames behind "now" a checksum is reported at; matches the test, comfortably under ROLLBACK_DEPTH (64)
+// A pause-menu Resume click holds the Pause bit for this many ticks, then
+// releases it: one press, as the sim's edge detection sees it.
+NETPLAY_PAUSE_PULSE_TICKS :: 2
+
 NETPLAY_ADDR_MAX :: 260 // a 253-character hostname plus ":65535"
 
 // Phase 8 stage 3/4: pause on disconnect + reconnect.
@@ -123,6 +127,7 @@ Netplay :: struct {
 	ping_sent_at:  time.Time,
 	ping_ms:       f32,
 
+	pause_pulse:   int,  // ticks left of a Resume click's Pause bit (NETPLAY_PAUSE_PULSE_TICKS)
 	pending_start: bool, // set by netplay_poll on an accepted Start; consumed once per frame
 	start_seed:    u32,
 	start_level:   u8,
@@ -229,7 +234,7 @@ netplay_lobby_update :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 		nl.phase = .Enter_Address // where a failed join leaves the player
 		netplay_join(nl, string(nl.addr_buf[:nl.addr_len]))
 	case .Connecting:
-		netplay_update_connecting(nl)
+		netplay_update_connecting(nl, r)
 	case .Connected:
 		netplay_update_connected(fl, nl, r)
 	case .Starting:
@@ -408,7 +413,16 @@ netplay_join :: proc(nl: ^Netplay, text: string) {
 }
 
 @(private = "file")
-netplay_update_connecting :: proc(nl: ^Netplay) {
+netplay_update_connecting :: proc(nl: ^Netplay, r: ^Renderer) {
+	// Cancels hosting (still waiting for anyone) or joining, back to the
+	// lobby menu -- the screen has always said "ESC TO CANCEL", but nothing
+	// read it. Same exit as the Connected screen's Escape; the Goodbye only
+	// goes out if there is a peer to tell.
+	if rl.IsKeyPressed(.ESCAPE) {
+		netplay_disconnect(nl)
+		netplay_build_buttons(nl, r)
+		return
+	}
 	if nl.have_peer {
 		if !net.reliable_tick(&nl.rc, &nl.sock) {
 			netplay_fail(nl, "connection timed out")
@@ -939,10 +953,20 @@ netplay_playing_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blu
 	}
 
 	local := gather_input(&fl.prefs.saved.bindings[0]) // this machine's player, whichever slot it plays
+	// Pause is an input bit (sim.session_step), so it reaches the peer
+	// like any button and both sides pause on the same frame. Held while
+	// the key is, or for a Resume click's short pulse.
+	if rl.IsKeyDown(.ESCAPE) || nl.pause_pulse > 0 { // plus the Pause binding, via gather_input
+		local += {.Pause}
+	}
+	nl.pause_pulse = max(nl.pause_pulse - 1, 0)
 	net.rollback_session_advance(&nl.rs, local)
-	particles_step(particles, fl.state)
-	blurs_step(blurs, fl.state)
-	notices_step(notices, fl.state)
+	// While paused nothing moves; existing particles and ghosts freeze too.
+	if !fl.state.paused {
+		particles_step(particles, fl.state)
+		blurs_step(blurs, fl.state)
+		notices_step(notices, fl.state)
+	}
 	sounds_step(&r.textures, fl.state)
 
 	win: [NETPLAY_INPUT_WINDOW]sim.Buttons

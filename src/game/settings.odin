@@ -15,9 +15,9 @@ Settings :: struct {
 	// saves them (game/prefs.odin's Prefs_State).
 	classic: bool,
 	// -highrefreshrate: present at the monitor's native refresh rate instead
-	// of the original's fixed 30 FPS. The simulation still steps at a fixed
-	// 30 Hz regardless (D17) -- this only changes how often an already-built
-	// frame gets redrawn.
+	// of the original's fixed 30 FPS, drawing each frame interpolated
+	// between the last two sim steps (D33). The simulation still steps at a
+	// fixed 30 Hz regardless (D17). Also in Preferences.
 	high_refresh_rate: bool,
 	// -diagnostics: a small rolling-stats overlay in the bottom-right corner
 	// (game/diagnostics.odin) -- FPS always, plus (in a netplay session)

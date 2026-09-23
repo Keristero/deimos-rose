@@ -463,7 +463,9 @@ original six.
   so the screen always shows and controls what is live.
 - **Player 2 now has keys.** Local 2 Player previously fed player 2 an empty
   input every step. Player 1's defaults are exactly the old hard-coded
-  keys; player 2's (IJKL, U/O/P) are new. Binding a key takes it off any
+  keys; player 2's (IJKL, U/O and ;) are new. Pause became bindable later
+  (D32): P, player 1's default Pause, was player 2's Change Weapon at
+  first; loading a file saved before then lets the default give way. Binding a key takes it off any
   other action, for either player. Every button is now read as held,
   including Change Weapon — the sim edge-detects it itself
   (`weapons_process`), and the old one-frame `IsKeyPressed` could drop a
@@ -493,3 +495,57 @@ the commit message (format in AGENTS.md). The release job collects the
 blocks of every commit since the previous `v*`/`build-*` tag
 (`tools/version/release_notes.sh`). The old `build-*` tags remain; the
 first versioned release's notes start from the last of them.
+
+### D32 — Level changes and the netplay pause happen inside the step
+
+Two peers could end up on different levels. `game/flow.odin` applied the
+level change after `rollback_session_advance` returned — outside the
+snapshot and outside any resimulation — so a rollback reaching back past it
+replayed the finished level without moving on, and each peer changed level
+on whichever frame it happened to notice.
+`rollback_session_converges_across_level_changes_and_pauses` reproduces it:
+with the old wiring the peers finish on levels 2 and 1.
+
+`sim.session_step` is now what every played session steps (local and the
+rollback session): `step`, then the level change, so resimulation
+reproduces it on the same frame. Flow only reads the result. Films, demos
+and the oracle tools keep plain `step`, which is unchanged.
+
+The netplay pause (Escape, the bindable Pause key, or the pause menu's
+Resume) is a `Pause` input
+bit, not a network message: it reaches the peer and is replayed on rollback
+like any button, so both sides pause on the same frame, and either can
+resume. While paused only `frame` advances (the rollback ring's key); game
+time, the RNG and entities stand still. It is new content — the original's
+pause is outside the simulation — so single-player keeps flow's `.Paused`.
+Both show a Resume / Main Menu menu, except in classic mode, which keeps
+the original's text-free pause (D21). Leaving a netplay game from it sends
+Goodbye; the peer freezes and can continue alone (F5).
+
+`sim.checksum` now includes the level number, the level-complete flag and
+the pause, so peers on different levels are reported as desynced rather
+than hashing alike.
+
+### D33 — High refresh rate interpolation is presentation-only
+
+With the high refresh rate setting on (Preferences, or `-highrefreshrate`),
+frames are drawn at the monitor's rate while the simulation still steps at
+30 Hz (D17). Each frame is drawn interpolated between the state before the
+latest step and the state after it, by how far the render loop is towards
+the next step. It never extrapolates: nothing is guessed, at the cost of
+drawing up to one step (~33 ms) behind the newest state.
+
+It lives entirely outside `sim/`. The main loop copies the state before
+each step (only while the setting is on); the renderer blends positions
+from that copy — entities matched by slot *and* unique entity number,
+players, the vertical and sideways scroll, and particles (which keep their
+own previous position). Anything that moved more than 48 px in one step
+jumped rather than moved and is drawn where it is; a level change skips
+interpolation for that frame. Nothing reads the copy back into the
+simulation, so gameplay, films, netplay and checksums cannot change.
+
+With the setting off, interpolation is not just skipped but exact: every
+position is the same whole number the renderer always used. A game-frame
+capture before and after this change is pixel-identical. The
+`interpolated` menu capture (`DR_INTERP_ALPHA`) checks the on path: the
+terrain shifts 1 canvas pixel at 0.5 and 2 at 1, its scroll speed.

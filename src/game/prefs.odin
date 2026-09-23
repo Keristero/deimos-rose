@@ -57,7 +57,7 @@ user_data_write :: proc(name: string, contents: string) {
 }
 
 // What was saved, plus this run's launch flags. A flag (-classic,
-// -diagnostics, -fullscreen) switches its setting on for the run without
+// -diagnostics, -fullscreen, -highrefreshrate) switches its setting on for the run without
 // saving it; changing that setting in Preferences then drops the flag and
 // saves the new value, so the menu always shows and controls what is live.
 Prefs_State :: struct {
@@ -84,6 +84,7 @@ prefs_state_save :: proc(ps: ^Prefs_State) {
 prefs_classic :: proc(ps: ^Prefs_State) -> bool {return ps.saved.classic || ps.launch.classic}
 prefs_diagnostics :: proc(ps: ^Prefs_State) -> bool {return ps.saved.diagnostics || ps.launch.diagnostics}
 prefs_fullscreen :: proc(ps: ^Prefs_State) -> bool {return ps.saved.fullscreen || ps.launch.fullscreen}
+prefs_high_refresh_rate :: proc(ps: ^Prefs_State) -> bool {return ps.saved.high_refresh_rate || ps.launch.high_refresh_rate}
 
 prefs_set_classic :: proc(ps: ^Prefs_State, on: bool) {
 	ps.saved.classic, ps.launch.classic = on, false
@@ -95,9 +96,24 @@ prefs_set_diagnostics :: proc(ps: ^Prefs_State, on: bool) {
 	prefs_state_save(ps)
 }
 
+prefs_set_high_refresh_rate :: proc(ps: ^Prefs_State, on: bool) {
+	ps.saved.high_refresh_rate, ps.launch.high_refresh_rate = on, false
+	prefs_state_save(ps)
+}
+
 prefs_set_fullscreen :: proc(ps: ^Prefs_State, on: bool) {
 	ps.saved.fullscreen, ps.launch.fullscreen = on, false
 	prefs_state_save(ps)
+}
+
+// Whether a key bound to `button` went down this frame.
+binding_pressed :: proc(b: ^prefs.Bindings, button: sim.Button) -> bool {
+	for k in b[button] {
+		if k != prefs.KEY_NONE && rl.IsKeyPressed(rl.KeyboardKey(k)) {
+			return true
+		}
+	}
+	return false
 }
 
 // Presentation-side input capture: the simulation never reads a device.

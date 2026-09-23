@@ -278,3 +278,111 @@ rollback_session_should_stall_throttles_only_once_over_threshold :: proc(t: ^tes
 	net.rollback_session_advance(&rs, {}) // state.frame -> 12
 	testing.expect(t, net.rollback_session_should_stall(&rs, THRESHOLD, MIN_EVERY))
 }
+
+// The desync behind notes/netcode-enhancements.md's "transitions between
+// levels desync": game/flow.odin used to apply the level change after
+// rollback_session_advance returned -- outside the snapshots and outside any
+// resimulation -- so a rollback reaching back past it replayed the finished
+// level without moving on, and each peer then changed level on whichever
+// frame it happened to notice. Two peers here play through several short
+// levels under latency and loss, pausing and unpausing along the way (the
+// pause is a sim input too, and must converge the same way). After each
+// advance they apply sim.level_transition exactly as the old flow did: with
+// the level change inside session_step that is a no-op, and without it this
+// test fails.
+@(test)
+rollback_session_converges_across_level_changes_and_pauses :: proc(t: ^testing.T) {
+	defs := synthetic_defs()
+	levels := make([]sim.Level_Def, 3, context.temp_allocator)
+	for &l, i in levels {
+		l = defs.levels[0]
+		l.number = i32(i + 1)
+		l.background.bottom = 700 // a ~220-step scroll per level
+	}
+	defs.levels = levels
+	session := sim.Session{seed = 0xC0FFEE, level_id = levels[0].id, game_type = .Co_Op}
+
+	FRAMES :: 1100
+	LATENCY :: 6
+	WINDOW :: 8
+	inputs := [2][]sim.Buttons{make([]sim.Buttons, FRAMES, context.temp_allocator), make([]sim.Buttons, FRAMES, context.temp_allocator)}
+	r := sim.rand_init(77)
+	for i in 0 ..< FRAMES {
+		for p in 0 ..< 2 {
+			b: sim.Buttons
+			if sim.random_int(&r, 0, 2, 0) == 0 { b += {p == 0 ? .Left : .Right} }
+			if sim.random_int(&r, 0, 3, 0) == 0 { b += {.Fire_Air} }
+			inputs[p][i] = b
+		}
+	}
+	// Each player pauses and unpauses once: a short hold, some frames apart,
+	// placed in the middle of levels and across a level end.
+	hold :: proc(b: []sim.Buttons, at: int) {
+		for f in at ..< at + 3 { b[f] += {.Pause} }
+	}
+	hold(inputs[0][:], 150)
+	hold(inputs[1][:], 190) // player 2 unpauses what player 1 paused
+	hold(inputs[1][:], 520)
+	hold(inputs[0][:], 560)
+
+	states := [2]^sim.State{new(sim.State, context.temp_allocator), new(sim.State, context.temp_allocator)}
+	rs: [2]net.Rollback_Session
+	for p in 0 ..< 2 {
+		sim.init(states[p], session, defs)
+		net.rollback_session_init(&rs[p], states[p], p, context.temp_allocator)
+	}
+	defer for p in 0 ..< 2 { net.rollback_session_destroy(&rs[p], context.temp_allocator) }
+
+	Delivery :: struct {
+		deliver_at: int,
+		pkt:        net.Input_Packet,
+	}
+	queues := [2][dynamic]Delivery{make([dynamic]Delivery, context.temp_allocator), make([dynamic]Delivery, context.temp_allocator)}
+	paused_frames := 0
+	max_level: i32 = 0
+
+	for i in 0 ..< FRAMES + LATENCY + 1 {
+		for p in 0 ..< 2 {
+			w := 0
+			for d in queues[p] {
+				if d.deliver_at <= i {
+					net.rollback_session_receive(&rs[p], d.pkt)
+				} else {
+					queues[p][w] = d
+					w += 1
+				}
+			}
+			resize(&queues[p], w)
+		}
+		if i >= FRAMES {
+			continue // just draining what is still in flight
+		}
+		for p in 0 ..< 2 {
+			net.rollback_session_advance(&rs[p], inputs[p][i])
+			_ = sim.level_transition(states[p]) // what game/flow.odin used to do here
+			if i % 5 == 4 {
+				continue // lose this tick's packet
+			}
+			win: [WINDOW]sim.Buttons
+			start, count := net.rollback_session_local_window(&rs[p], WINDOW, win[:])
+			if count > 0 {
+				buf: [64]byte
+				n := net.encode_input(buf[:], u8(p), start, win[:count])
+				pkt, _ := net.decode_input(buf[:n])
+				append(&queues[1 - p], Delivery{i + LATENCY, pkt})
+			}
+		}
+		if states[0].paused {
+			paused_frames += 1
+		}
+		max_level = max(max_level, states[0].level_number)
+	}
+
+	testing.expect(t, rs[0].rollback_count > 0 && rs[1].rollback_count > 0, "test never exercised a rollback")
+	testing.expect(t, max_level >= 3, "test never reached the third level")
+	testing.expect(t, paused_frames > 0, "test never paused")
+	testing.expect_value(t, states[0].level_number, states[1].level_number)
+	testing.expect_value(t, states[0].time, states[1].time)
+	testing.expect_value(t, states[0].paused, states[1].paused)
+	testing.expect_value(t, sim.checksum(states[0]), sim.checksum(states[1]))
+}

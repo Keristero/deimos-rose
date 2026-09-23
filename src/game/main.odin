@@ -83,12 +83,7 @@ main :: proc() {
 	// 30 FPS, not 60 -- an unconditional SetTargetFPS(60) here previously
 	// ran the whole simulation at double speed.
 	step_hz := defs.perm_floats[0x20]
-	if settings.high_refresh_rate {
-		rate := rl.GetMonitorRefreshRate(rl.GetCurrentMonitor())
-		rl.SetTargetFPS(rate > 0 ? rate : 60)
-	} else {
-		rl.SetTargetFPS(i32(step_hz))
-	}
+	rl.SetTargetFPS(i32(step_hz)) // the interactive loop retargets per the high refresh rate setting
 
 	renderer: Renderer
 	renderer_init(&renderer, root, prefs_classic(&ps), !headless)
@@ -188,6 +183,16 @@ main :: proc() {
 	step_dt := 1.0 / f64(step_hz)
 	accumulator: f64 = 0
 	show_debug := false
+
+	// High refresh rate: the state as it was before the latest step, which
+	// the renderer draws each frame interpolated towards the current one
+	// (render.odin's interp). Copied only while the setting is on. Purely
+	// presentation: nothing ever reads it back into the simulation, so it
+	// cannot change gameplay, films, netplay or a checksum -- at the cost of
+	// drawing up to one step (~33 ms) behind the newest state.
+	interp_prev := new(sim.State)
+	defer free(interp_prev)
+	fps_high: Maybe(bool)
 	for !rl.WindowShouldClose() && !flow.quit {
 		// Preferences edits ps in place; apply whatever it holds now.
 		renderer.classic = prefs_classic(&ps)
@@ -196,6 +201,16 @@ main :: proc() {
 		renderer.textures.music_volume = f32(ps.saved.music_volume) / 100
 		if prefs_fullscreen(&ps) != rl.IsWindowState({.BORDERLESS_WINDOWED_MODE}) {
 			rl.ToggleBorderlessWindowed()
+		}
+		high := prefs_high_refresh_rate(&ps)
+		if applied, ok := fps_high.?; !ok || applied != high {
+			fps := i32(step_hz)
+			if high {
+				rate := rl.GetMonitorRefreshRate(rl.GetCurrentMonitor())
+				fps = rate > 0 ? rate : 60
+			}
+			rl.SetTargetFPS(fps)
+			fps_high = high
 		}
 		dst := canvas_fit(renderer.canvas)
 		// Mouse positions come back in canvas pixels, so every menu's
@@ -213,6 +228,9 @@ main :: proc() {
 		accumulator += f64(rl.GetFrameTime())
 		for steps := 0; accumulator >= step_dt && steps < MAX_STEPS_PER_FRAME; steps += 1 {
 			was_playing := flow.mode == .Playing
+			if high {
+				interp_prev^ = state^ // before this step; a step that changes nothing leaves them equal
+			}
 			flow_step(&flow, &renderer, &particles, &blurs, &notices)
 			if was_playing {
 				diagnostics_note_update(&diagnostics)
@@ -220,6 +238,9 @@ main :: proc() {
 			accumulator -= step_dt
 		}
 		flow_music_update(&flow, &renderer)
+		// How far the render is between the last step and the next.
+		renderer.interp_prev = high ? interp_prev : nil
+		renderer.interp_alpha = high ? f32(clamp(accumulator / step_dt, 0, 1)) : 1
 		diagnostics_tick(&diagnostics, rl.GetFrameTime(), flow.netplay_active ? flow.netplay.rs.rollback_count : 0)
 
 		rl.BeginTextureMode(renderer.canvas)
@@ -268,6 +289,15 @@ canvas_fit :: proc(canvas: rl.RenderTexture2D) -> rl.Rectangle {
 run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, name, path: string, ps: ^Prefs_State) {
 	flow: Flow
 	flow_init(&flow, root, defs, state, r, ps)
+	// Real (empty) presentation buffers, for the cases that draw a game
+	// frame behind the menu.
+	particles: Particles
+	particles_init(&particles)
+	defer particles_destroy(&particles)
+	blurs: Blurs
+	blurs_init(&blurs)
+	defer blurs_destroy(&blurs)
+	notices: Notices
 	switch name {
 	case "main":
 		flow.mode = .Title
@@ -286,6 +316,32 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		flow.mode = .Preferences
 		preferences_init(&flow.preferences)
 		preferences_update(&flow, r, &flow.preferences) // lays the buttons out
+	case "paused":
+		// Single-player pause menu over a level a couple of seconds in.
+		flow_start_session(&flow, 0x1234_5678, .Single, 0)
+		for _ in 0 ..< 60 {
+			_ = sim.session_step(state, {})
+		}
+		flow.mode = .Paused
+		flow_handle_input(&flow, r) // builds the pause menu's buttons
+	case "interpolated":
+		// High refresh rate interpolation's own check: a level a few
+		// seconds in, drawn DR_INTERP_ALPHA (default 0.5) of the way from
+		// one step to the next. 0 should match the step before, 1 the step
+		// after; anything between, lie between them.
+		flow_start_session(&flow, 0x1234_5678, .Single, 0)
+		for _ in 0 ..< 90 {
+			_ = sim.session_step(state, {})
+		}
+		prev := new(sim.State, context.temp_allocator)
+		prev^ = state^
+		_ = sim.session_step(state, {})
+		flow.mode = .Playing
+		r.interp_prev = prev
+		r.interp_alpha = 0.5
+		if a, ok := strconv.parse_f32(os.get_env("DR_INTERP_ALPHA", context.temp_allocator)); ok {
+			r.interp_alpha = a
+		}
 	case "credits":
 		flow.mode = .Credits
 		credits_init(&flow.credits)
@@ -393,7 +449,7 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 	r.canvas = rl.LoadRenderTexture(SCREEN_W * WINDOW_SCALE, SCREEN_H * WINDOW_SCALE)
 	rl.BeginTextureMode(r.canvas)
 	rl.ClearBackground(rl.Color{0, 0, 0, 255})
-	flow_draw(&flow, r, nil, nil, nil, WINDOW_SCALE)
+	flow_draw(&flow, r, &particles, &blurs, &notices, WINDOW_SCALE)
 	diagnostics_draw(&diag, flow.netplay_active, flow.netplay.ping_ms)
 	rl.EndTextureMode()
 	img := rl.LoadImageFromTexture(r.canvas.texture)

@@ -9,7 +9,7 @@ import "dr:sim"
 prefs_round_trip_through_the_save_format :: proc(t: ^testing.T) {
 	p := prefs.defaults()
 	p.sfx_volume, p.music_volume = 30, 0
-	p.fullscreen, p.classic = true, true
+	p.fullscreen, p.classic, p.high_refresh_rate = true, true, true
 	prefs.bind(&p, 1, .Fire_Air, 1, prefs.KEY_SPACE) // moves Space off player 1
 	text := prefs.format(&p, context.temp_allocator)
 	got := prefs.parse(text)
@@ -24,6 +24,8 @@ prefs_parse_keeps_defaults_for_what_it_does_not_understand :: proc(t: ^testing.T
 	want := prefs.defaults()
 	want.music_volume = 40
 	want.bindings[1][.Left] = {prefs.KEY_A, prefs.KEY_NONE}
+	// A was also player 1's default second Left key; the file's choice wins.
+	want.bindings[0][.Left] = {prefs.KEY_LEFT, prefs.KEY_NONE}
 	testing.expect_value(t, got, want)
 
 	testing.expect_value(t, prefs.parse(""), prefs.defaults())
@@ -65,7 +67,10 @@ prefs_defaults_give_each_player_distinct_keys :: proc(t: ^testing.T) {
 	defer delete(seen)
 	for b, player in p.bindings {
 		for keys, button in b {
-			testing.expectf(t, keys[0] != prefs.KEY_NONE, "player %d %v has no key", player + 1, button)
+			// Player 2 has no Pause key by default; Escape pauses for both.
+			if !(player == 1 && button == .Pause) {
+				testing.expectf(t, keys[0] != prefs.KEY_NONE, "player %d %v has no key", player + 1, button)
+			}
 			for k in keys {
 				if k == prefs.KEY_NONE {
 					continue
@@ -91,4 +96,21 @@ prefs_volume_steps_stay_in_range :: proc(t: ^testing.T) {
 	v = 50
 	prefs.step_volume(&v, -1)
 	testing.expect_value(t, v, 50 - prefs.VOLUME_STEP)
+}
+
+@(test)
+prefs_parse_gives_way_to_keys_an_older_file_chose :: proc(t: ^testing.T) {
+	// Before Pause was bindable, player 2's Change Weapon defaulted to P and
+	// files have no pause lines. P is now player 1's default Pause; loading
+	// such a file must not leave P doing both.
+	old := "p2.change_weapon=80,0\n"
+	got := prefs.parse(old)
+	testing.expect_value(t, got.bindings[1][.Change_Air], [prefs.BINDING_SLOTS]i32{prefs.KEY_P, prefs.KEY_NONE})
+	testing.expect_value(t, got.bindings[0][.Pause], [prefs.BINDING_SLOTS]i32{prefs.KEY_NONE, prefs.KEY_NONE})
+
+	// And a file that does set Pause keeps it, round trip included.
+	p := prefs.defaults()
+	prefs.bind(&p, 1, .Pause, 0, prefs.KEY_O) // takes O off player 2's Fire Ground
+	testing.expect_value(t, p.bindings[1][.Fire_Ground][0], i32(prefs.KEY_NONE))
+	testing.expect_value(t, prefs.parse(prefs.format(&p, context.temp_allocator)), p)
 }

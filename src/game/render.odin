@@ -107,6 +107,33 @@ Renderer :: struct {
 	// scaling it to the window (main.odin). Zero for the headless capture
 	// paths, which draw straight to the window as before.
 	canvas:   rl.RenderTexture2D,
+
+	// High refresh rate interpolation, presentation only: the state as it
+	// was before the latest step, and how far the render is between that
+	// step and the next (0..1). main.odin sets both each frame; interp_prev
+	// nil means off, and every position is drawn exactly as the state has
+	// it. The simulation never sees any of this.
+	interp_prev:  ^sim.State,
+	interp_alpha: f32,
+	// The scroll this frame is drawn at: build_frame's (possibly
+	// interpolated) view_top and side_scroll, read by draw_object and
+	// draw_terrain.
+	view_top:    f32,
+	side_scroll: f32,
+}
+
+// Past this many pixels in one step, something jumped (a respawn, a new
+// level, a reused entity slot) rather than moved: draw it where it is.
+@(private = "file") INTERP_MAX_JUMP :: 48
+
+// Between the previous step's value and this one's, `alpha` of the way.
+// alpha 1 (interpolation off, or caught up) returns `now` exactly, so the
+// ordinary 30 FPS path draws the very same pixels it always has.
+interp :: proc "contextless" (before, now, alpha: f32) -> f32 {
+	if alpha >= 1 || abs(now - before) > INTERP_MAX_JUMP {
+		return now
+	}
+	return before + (now - before) * alpha
 }
 
 renderer_init :: proc(r: ^Renderer, root: string, classic: bool = false, audio: bool = true) {
@@ -169,7 +196,10 @@ tint_color :: proc "contextless" (c: u16, amount: i32) -> rl.Color {
 // G_GameObject::Priv_Draw draws up to three passes -- the sprite, a tint while
 // `tint` is above zero, and a glow while glowing -- and Priv_DrawShadow adds a
 // silhouette underneath. Nothing draws while the object is fully invisible.
-draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shadow: bool) {
+//
+// `prev` is the same object as it was a step ago, when interpolating and it
+// existed then; nil draws it exactly where it is.
+draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shadow: bool, prev: ^sim.Game_Object = nil) {
 	tex, src, ok := frame_rect(&r.textures, o.sprite, o.frame)
 	if r.dump && (!ok || o.visibility <= 0) {
 		id := o.sprite
@@ -180,21 +210,28 @@ draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shad
 	if o.visibility <= 0 || o.sprite == sim.NONE || !ok {
 		return
 	}
-	b := &s.bgnd
-	x := sim.trunc_i32(o.loc.x)
-	y := sim.trunc_i32(o.loc.y)
+	// Whole pixels, as the original draws -- unless interpolating, where
+	// the in-between position is the point, and the 2x canvas shows it.
+	x, y: f32
+	if prev != nil && r.interp_alpha < 1 {
+		x = interp(f32(sim.trunc_i32(prev.loc.x)), f32(sim.trunc_i32(o.loc.x)), r.interp_alpha)
+		y = interp(f32(sim.trunc_i32(prev.loc.y)), f32(sim.trunc_i32(o.loc.y)), r.interp_alpha)
+	} else {
+		x = f32(sim.trunc_i32(o.loc.x))
+		y = f32(sim.trunc_i32(o.loc.y))
+	}
 	if o.draw_to_terrain {
 		x += 32
-		y += b.view_top
+		y += r.view_top
 	} else if o.scrolls_sideways {
-		x -= b.side_scroll
+		x -= r.side_scroll
 	}
 	// U_Sprite_Draw centres the frame on the point, halving as the
 	// simulation does.
-	place :: proc(x, y: i32, src: rl.Rectangle, scale: f32) -> rl.Rectangle {
+	place :: proc(x, y: f32, src: rl.Rectangle, scale: f32) -> rl.Rectangle {
 		w := i32(src.width * scale)
 		h := i32(src.height * scale)
-		return {f32(x - sim.halve(w)), f32(y - sim.halve(h)), f32(w), f32(h)}
+		return {x - f32(sim.halve(w)), y - f32(sim.halve(h)), f32(w), f32(h)}
 	}
 	dst := place(x, y, src, o.scale)
 	// G_GameObject::Priv_Draw: draw_to_terrain objects skip the drawLayer_ID
@@ -226,7 +263,7 @@ draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shad
 			ox, oy = pf[0x32] * o.scale, pf[0x33] * o.scale
 		}
 		blend := max(i32(32 - o.visibility * 32 / 100), 20)
-		sh := place(x + sim.trunc_i32(ox), y + sim.trunc_i32(oy), src, sscale)
+		sh := place(x + f32(sim.trunc_i32(ox)), y + f32(sim.trunc_i32(oy)), src, sscale)
 		push_item(r, shadow_layer_of(o.draw_layer, o.is_air), Item {
 			texture = tex,
 			src     = src,
@@ -265,17 +302,36 @@ build_frame :: proc(r: ^Renderer, s: ^sim.State, blurs: ^Blurs, notices: ^Notice
 	}
 	terrain_prepare(r, s)
 	terrain_stamp(r, s)
+	pv := r.interp_prev
+	if pv != nil && pv.level != s.level {
+		pv = nil // a different level: nothing on screen was there a step ago
+	}
+	r.view_top, r.side_scroll = f32(s.bgnd.view_top), f32(s.bgnd.side_scroll)
+	if pv != nil {
+		r.view_top = interp(f32(pv.bgnd.view_top), r.view_top, r.interp_alpha)
+		r.side_scroll = interp(f32(pv.bgnd.side_scroll), r.side_scroll, r.interp_alpha)
+	}
 	w := &s.world
 	for g := w.active.head; g != sim.NO_LINK; g = w.group_links[g].next {
 		for i := w.groups[g].entities.head; i != sim.NO_LINK; i = w.entity_links[i].next {
 			e := &w.entities[i]
 			u := &s.defs.units[e.unit]
-			draw_object(r, s, &e.obj, u.casts_shadows)
+			// The same slot holding the same entity a step ago (numbers are
+			// unique, so a reused slot does not match).
+			before: ^sim.Game_Object
+			if pv != nil && pv.world.entity_used[i] && pv.world.entities[i].number == e.number {
+				before = &pv.world.entities[i].obj
+			}
+			draw_object(r, s, &e.obj, u.casts_shadows, before)
 		}
 	}
-	for &p in s.players {
+	for &p, k in s.players {
 		if p.active && p.state == .Playing {
-			draw_object(r, s, &p.obj, true)
+			before: ^sim.Game_Object
+			if pv != nil && pv.players[k].active && pv.players[k].state == .Playing {
+				before = &pv.players[k].obj
+			}
+			draw_object(r, s, &p.obj, true, before)
 		}
 	}
 	for &o in blurs.live {
@@ -301,7 +357,7 @@ present :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, scale: f32) 
 	run(r, 0, 1, scale)
 	draw_terrain(r, s, scale)
 	run(r, 2, 5, scale)
-	particles_draw(particles, scale)
+	particles_draw(particles, scale, r.interp_prev != nil ? r.interp_alpha : 1)
 	run(r, 6, 15, scale)
 	scorebar_draw(r, s, scale)
 }
@@ -377,10 +433,10 @@ draw_terrain :: proc(r: ^Renderer, s: ^sim.State, scale: f32) {
 	}
 	w := f32(sim.view_width(s.defs))
 	h := f32(sim.view_height(s.defs))
-	left := max(s.bgnd.side_scroll + 32, 0)
+	left := max(r.side_scroll + 32, 0)
 	// The map went into the buffer flipped, so it reads like any other
-	// texture from here on.
-	src := rl.Rectangle{f32(left), f32(s.bgnd.view_top), w, h}
+	// texture from here on. r.view_top is fractional when interpolating.
+	src := rl.Rectangle{left, r.view_top, w, h}
 	dst := rl.Rectangle{VIEW_X * scale, 0, w * scale, h * scale}
 	rl.DrawTexturePro(r.terrain.texture, src, dst, {0, 0}, 0, rl.WHITE)
 }

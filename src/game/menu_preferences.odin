@@ -24,10 +24,10 @@ import "dr:sim"
 @(private = "file") PREFS_PLAYER_Y :: 64
 @(private = "file") PREFS_KEYS_Y :: 92
 @(private = "file") PREFS_ROW :: 22
-@(private = "file") PREFS_RESET_Y :: 250
-@(private = "file") PREFS_OPTIONS_Y :: 288
-@(private = "file") PREFS_BACK_Y :: 412
-@(private = "file") PREFS_STATUS_Y :: 446
+@(private = "file") PREFS_RESET_Y :: 270
+@(private = "file") PREFS_OPTIONS_Y :: 300
+@(private = "file") PREFS_BACK_Y :: 436
+@(private = "file") PREFS_STATUS_Y :: 462
 
 @(private = "file") PREFS_LABEL_X :: 130  // left edge of each row's name
 @(private = "file") PREFS_VALUE_X :: 410  // centre of each row's value
@@ -43,6 +43,7 @@ BUTTON_NAMES := [sim.Button]string {
 	.Fire_Air    = "FIRE AIR",
 	.Fire_Ground = "FIRE GROUND",
 	.Change_Air  = "CHANGE WEAPON",
+	.Pause       = "PAUSE",
 }
 
 @(private = "file")
@@ -50,6 +51,7 @@ Option :: enum {
 	Sound,
 	Music,
 	Display,
+	High_Refresh,
 	Diagnostics,
 	Classic,
 }
@@ -59,6 +61,7 @@ OPTION_NAMES := [Option]string {
 	.Sound       = "SOUND VOLUME",
 	.Music       = "MUSIC VOLUME",
 	.Display     = "DISPLAY",
+	.High_Refresh = "HIGH REFRESH RATE",
 	.Diagnostics = "DIAGNOSTICS",
 	.Classic     = "CLASSIC MODE",
 }
@@ -98,6 +101,8 @@ option_value :: proc(ps: ^Prefs_State, o: Option) -> string {
 		return fmt.tprintf("%d%%", ps.saved.music_volume)
 	case .Display:
 		return prefs_fullscreen(ps) ? "FULLSCREEN" : "WINDOWED"
+	case .High_Refresh:
+		return on_off(prefs_high_refresh_rate(ps))
 	case .Diagnostics:
 		return on_off(prefs_diagnostics(ps))
 	case .Classic:
@@ -189,6 +194,10 @@ preferences_update :: proc(fl: ^Flow, r: ^Renderer, p: ^Preferences) {
 			if text_button_update(r, &p.toggle[o], mouse, dt) {
 				prefs_set_fullscreen(ps, !prefs_fullscreen(ps))
 			}
+		case .High_Refresh:
+			if text_button_update(r, &p.toggle[o], mouse, dt) {
+				prefs_set_high_refresh_rate(ps, !prefs_high_refresh_rate(ps))
+			}
 		case .Diagnostics:
 			if text_button_update(r, &p.toggle[o], mouse, dt) {
 				prefs_set_diagnostics(ps, !prefs_diagnostics(ps))
@@ -268,9 +277,9 @@ preferences_draw :: proc(r: ^Renderer, p: ^Preferences, ps: ^Prefs_State) {
 		status = fmt.tprintf("PLAYER %d %s: PRESS A KEY -- BACKSPACE CLEARS, ESC CANCELS",
 			p.player + 1, BUTTON_NAMES[p.capture_button])
 	case p.player == 1:
-		status = "PLAYER 2'S KEYS ARE USED IN LOCAL 2 PLAYER GAMES"
+		status = "PLAYER 2'S KEYS ARE USED IN LOCAL 2 PLAYER GAMES -- ESC ALWAYS PAUSES"
 	case:
-		status = "PLAYER 1'S KEYS ARE ALSO YOURS IN NETPLAY"
+		status = "PLAYER 1'S KEYS ARE ALSO YOURS IN NETPLAY -- ESC ALWAYS PAUSES"
 	}
 	menu_draw_text(r, status, SCREEN_W / 2, PREFS_STATUS_Y, dim, .Centre)
 }

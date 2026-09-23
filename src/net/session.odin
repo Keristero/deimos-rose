@@ -108,7 +108,9 @@ rollback_session_advance :: proc(rs: ^Rollback_Session, local_input: sim.Buttons
 	input: sim.Frame_Input
 	input[rs.local_player] = local_input
 	input[rs.remote_player] = remote_input
-	sim.step(rs.state, input)
+	// session_step, not step: the level change and the pause are part of
+	// what a rollback must replay (see its comment).
+	_ = sim.session_step(rs.state, input)
 	sim.snapshot_save(&rs.ring, rs.state)
 }
 
@@ -193,7 +195,7 @@ rollback_to :: proc(rs: ^Rollback_Session, frame: u32) {
 		input: sim.Frame_Input
 		input[rs.local_player] = local
 		input[rs.remote_player] = remote
-		sim.step(rs.state, input)
+		_ = sim.session_step(rs.state, input)
 		sim.snapshot_save(&rs.ring, rs.state)
 	}
 }
