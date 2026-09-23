@@ -394,3 +394,28 @@ and exits nonzero with a pointer to this entry if it's missing — a task that
 reports success while producing nothing would be worse than no task at all.
 This is build tooling, not a gameplay feature, so it has no phase doc of its
 own — tracked here and in `mise.toml`'s own task description instead.
+
+### D28 — Odin installed via Homebrew, not mise's own plugin
+
+Dropped `odin = "dev-2026-09"` from `mise.toml`'s `[tools]` and installed it
+with `brew install odin` instead (also removed the equivalent global pin from
+`~/.config/mise.toml`, which was silently reinstalling the mise-managed copy
+on top of brew's). Reasons:
+
+- Homebrew's `odin` formula pulls in a matching `raylib`, plus `lld`/`llvm`,
+  as real dependencies. mise's plugin installs only the Odin release archive
+  and expects the system to already have everything else — the exact gap
+  behind D27's missing `vendor:raylib` Windows libs.
+- One less tool manager for a single language toolchain; `java` stays on
+  mise since Ghidra's `decomp:*` tasks are the only thing that needs it and
+  a JDK has no equivalent brew-vs-mise tradeoff here.
+
+Checked, not assumed: `mise run ci` (92 tests, green), `build`, `build:linux`
+and `rng:determinism` (still `0071e4eb5e5f0743` — same digest as the
+mise-built Odin, now also confirmed across two independently-built Odin
+compilers, not just codegen flags) all pass unchanged under brew's Odin.
+`build:windows` still fails with the identical "Linking for cross
+compilation for this platform is not yet supported" message — brew's bundled
+`lld` does not change this, since the failure is Odin's linker *driver*
+refusing to invoke any external linker for this target pair at all, not a
+missing-linker problem. D27 stands as written.

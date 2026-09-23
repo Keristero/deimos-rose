@@ -2,7 +2,9 @@
 # Every script, tool and build task for the Odin rewrite lives here.
 
 [tools]
-odin = "dev-2026-09"
+# Odin is installed via Homebrew (`brew install odin`), not mise -- its
+# formula bundles a matching raylib, plus lld/llvm, which mise's plugin does
+# not provide. See docs/decisions.md D28.
 # Ghidra 12 needs JDK 21+. Only used by the decomp:* tasks.
 java = "temurin-21"
 
