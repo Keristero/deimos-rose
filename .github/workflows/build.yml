@@ -125,8 +125,14 @@ jobs:
         run: |
           tag="build-${GITHUB_SHA::7}"
           ls -l dist
-          gh release create "$tag" dist/*.zip \
+          # Create, upload, then check. build-e3cab80 came out of a single
+          # `gh release create ... dist/*.zip` with a zero exit status and no
+          # files attached, so trust the API's asset list, not the exit code.
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" \
             --target "$GITHUB_SHA" \
             --title "Build ${GITHUB_SHA::7}" \
-            --notes "Automated build of ${GITHUB_SHA} (run ${GITHUB_RUN_ID}). Game data is not included: extract it from your own copy with \`mise run assets:all\`." \
+            --notes "Automated build of ${GITHUB_SHA} (run ${GITHUB_RUN_ID})." \
             --prerelease
+          gh release upload "$tag" dist/*.zip --clobber
+          gh release view "$tag" --json assets -q '.assets[].name' | sort | tee attached.txt
+          ls dist | sort | diff - attached.txt
