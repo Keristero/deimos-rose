@@ -1,0 +1,239 @@
+{
+    "id": "pl02",
+    "type": "plde",
+    "name": "Player 2",
+    "family": "",
+    "states": [
+
+    ],
+    "header": [
+        {
+            "key": "name_STR",
+            "value": "Player 2"
+        },
+        {
+            "key": "spriteHighScore_ID",
+            "value": "play"
+        },
+        {
+            "key": "spriteHighScoreFrame_INT",
+            "value": "1"
+        },
+        {
+            "key": "spriteScoreBar_ID",
+            "value": "play"
+        },
+        {
+            "key": "spriteScoreBarFrame_INT",
+            "value": "1"
+        },
+        {
+            "key": "spriteScoreBarPower_ID",
+            "value": "shme"
+        },
+        {
+            "key": "spriteScoreBarPowerFrame_INT",
+            "value": "1"
+        },
+        {
+            "key": "spriteScoreBarShield_ID",
+            "value": "shme"
+        },
+        {
+            "key": "spriteScoreBarShieldFrame_INT",
+            "value": "0"
+        },
+        {
+            "key": "defaultShieldPercentage_INT",
+            "value": "100.000000"
+        },
+        {
+            "key": "shieldWarningPercentage_INT",
+            "value": "15.000000"
+        },
+        {
+            "key": "shieldBaseHitPercentage_INT",
+            "value": "15.000000"
+        },
+        {
+            "key": "shieldHitDelay_INT",
+            "value": "1"
+        },
+        {
+            "key": "hitGlowColor_COLOR",
+            "value": "F8F8F8"
+        },
+        {
+            "key": "hitGlowSpeed_INT",
+            "value": "6"
+        },
+        {
+            "key": "life_MaxNum_INT",
+            "value": "10"
+        },
+        {
+            "key": "life_NumInitial_INT",
+            "value": "3"
+        },
+        {
+            "key": "life_InitialRequiredScore_INT",
+            "value": "10000"
+        },
+        {
+            "key": "life_AdditionalRequiredScore_INT",
+            "value": "30000"
+        },
+        {
+            "key": "life_Spawn_ID",
+            "value": "noel"
+        },
+        {
+            "key": "waitingTime_INT",
+            "value": "60"
+        },
+        {
+            "key": "filmIntroTime_INT",
+            "value": "60"
+        },
+        {
+            "key": "introTime_INT",
+            "value": "56"
+        },
+        {
+            "key": "gameOverTime_INT",
+            "value": "20"
+        },
+        {
+            "key": "dyingTime_INT",
+            "value": "80"
+        },
+        {
+            "key": "finalDyingTime_INT",
+            "value": "40"
+        },
+        {
+            "key": "entry_soloStartX_INT",
+            "value": "208"
+        },
+        {
+            "key": "entry_soloStartY_INT",
+            "value": "330"
+        },
+        {
+            "key": "entry_multiStartX_INT",
+            "value": "312"
+        },
+        {
+            "key": "entry_multiStartY_INT",
+            "value": "330"
+        },
+        {
+            "key": "entry_Spawn_ID",
+            "value": "plen"
+        },
+        {
+            "key": "entry_StartVelocityX_FLOAT",
+            "value": "0.000000"
+        },
+        {
+            "key": "entry_StartVelocityY_FLOAT",
+            "value": "-7.200000"
+        },
+        {
+            "key": "entry_TargetVelocityX_FLOAT",
+            "value": "0.000000"
+        },
+        {
+            "key": "entry_TargetVelocityY_FLOAT",
+            "value": "0.000000"
+        },
+        {
+            "key": "entry_VelocityDelta_FLOAT",
+            "value": "0.050000"
+        },
+        {
+            "key": "entry_InitialDelay_INT",
+            "value": "55"
+        },
+        {
+            "key": "entry_InvulnerabilityTime_INT",
+            "value": "60"
+        },
+        {
+            "key": "death_Spawn_ID",
+            "value": "plde"
+        },
+        {
+            "key": "death_Duration_INT",
+            "value": "90"
+        },
+        {
+            "key": "active_MoneyCounterSpawn_ID",
+            "value": "p2mc"
+        },
+        {
+            "key": "active_SpawnOnHit_ID",
+            "value": "plsh"
+        },
+        {
+            "key": "active_ShieldWarningObject_ID",
+            "value": "nosw"
+        },
+        {
+            "key": "active_DefenceBonusObject_ID",
+            "value": "nodb"
+        },
+        {
+            "key": "active_DefaultMaxSpeed_FLOAT",
+            "value": "7.800000"
+        },
+        {
+            "key": "active_VelocityDelta_FLOAT",
+            "value": "1.600000"
+        },
+        {
+            "key": "powerupOverload_NumWarnings_INT",
+            "value": "8"
+        },
+        {
+            "key": "powerupOverload_InitialTimeBetweenWarnings_INT",
+            "value": "8"
+        },
+        {
+            "key": "powerupOverload_MinimumTimeBetweenWarnings_INT",
+            "value": "3"
+        },
+        {
+            "key": "powerupOverload_WarningFadePercent_FLOAT",
+            "value": "20.000000"
+        },
+        {
+            "key": "powerupOverload_Hilite_COLOR",
+            "value": "F8F8F8"
+        },
+        {
+            "key": "powerupOverloadSound_ID",
+            "value": "wewa"
+        },
+        {
+            "key": "powerupOverloadSound_MinVolume_INT",
+            "value": "100"
+        },
+        {
+            "key": "powerupOverloadSound_MaxVolume_INT",
+            "value": "100"
+        },
+        {
+            "key": "powerupOverloadSound_Priority_INT",
+            "value": "90"
+        },
+        {
+            "key": "powerupOverloadSound_MinPitch_FLOAT",
+            "value": "1.000000"
+        },
+        {
+            "key": "powerupOverloadSound_MaxPitch_FLOAT",
+            "value": "1.000000"
+        }
+    ]
+}

@@ -1,0 +1,407 @@
+{
+    "id": "le04",
+    "name": "Bellerephon",
+    "identifier": "Delos",
+    "description": "",
+    "copyright": "Map by Sheryn Wareing.",
+    "background": [
+        0,
+        0,
+        480,
+        3600
+    ],
+    "background_image": "cam3",
+    "preview_image": "cap3",
+    "music": "mu03",
+    "media_mask": "cat3",
+    "briefing": "none",
+    "placements": [
+        {
+            "unit": "blha",
+            "layer": "air ",
+            "x": 203,
+            "y": 589,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "blha",
+            "layer": "air ",
+            "x": 281,
+            "y": 1245,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "blha",
+            "layer": "air ",
+            "x": 257,
+            "y": 910,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "pola",
+            "layer": "grnd",
+            "x": 223,
+            "y": 129,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "blha",
+            "layer": "air ",
+            "x": 184,
+            "y": 1040,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "scre",
+            "layer": "air ",
+            "x": 255,
+            "y": 2760,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "scre",
+            "layer": "air ",
+            "x": 180,
+            "y": 2653,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "06s1",
+            "layer": "grnd",
+            "x": 238,
+            "y": 2496,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "jg02",
+            "layer": "grnd",
+            "x": 155,
+            "y": 2468,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bsgr",
+            "layer": "grnd",
+            "x": 407,
+            "y": 1501,
+            "heading_degrees": 345,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "scre",
+            "layer": "air ",
+            "x": 142,
+            "y": 2923,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "scre",
+            "layer": "air ",
+            "x": 292,
+            "y": 2509,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "tala",
+            "layer": "grnd",
+            "x": 0,
+            "y": 2146,
+            "heading_degrees": 135,
+            "is_stationary": false,
+            "terrain_effects": true
+        },
+        {
+            "unit": "tala",
+            "layer": "grnd",
+            "x": 129,
+            "y": 2268,
+            "heading_degrees": 135,
+            "is_stationary": false,
+            "terrain_effects": true
+        },
+        {
+            "unit": "flgu",
+            "layer": "grnd",
+            "x": 161,
+            "y": 1772,
+            "heading_degrees": 70,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "scre",
+            "layer": "air ",
+            "x": 248,
+            "y": 2189,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "scre",
+            "layer": "air ",
+            "x": 209,
+            "y": 1960,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bsde",
+            "layer": "grnd",
+            "x": 409,
+            "y": 1831,
+            "heading_degrees": 255,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bala",
+            "layer": "grnd",
+            "x": 414,
+            "y": 1110,
+            "heading_degrees": 330,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "sess",
+            "layer": "grnd",
+            "x": 139,
+            "y": 2623,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "06m1",
+            "layer": "grnd",
+            "x": 267,
+            "y": 1746,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "06e1",
+            "layer": "grnd",
+            "x": 86,
+            "y": 123,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "cair",
+            "layer": "grnd",
+            "x": 107,
+            "y": 1721,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "sels",
+            "layer": "grnd",
+            "x": 71,
+            "y": 1445,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "irsc",
+            "layer": "grnd",
+            "x": 322,
+            "y": 103,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "sess",
+            "layer": "grnd",
+            "x": 188,
+            "y": 491,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bala",
+            "layer": "grnd",
+            "x": 348,
+            "y": 2912,
+            "heading_degrees": 60,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "blha",
+            "layer": "air ",
+            "x": 288,
+            "y": 1341,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "blha",
+            "layer": "air ",
+            "x": 144,
+            "y": 1344,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "scre",
+            "layer": "air ",
+            "x": 237,
+            "y": 1801,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "scre",
+            "layer": "air ",
+            "x": 323,
+            "y": 1850,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "blha",
+            "layer": "air ",
+            "x": 149,
+            "y": 753,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "blha",
+            "layer": "air ",
+            "x": 308,
+            "y": 743,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "blha",
+            "layer": "air ",
+            "x": 303,
+            "y": 240,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "blha",
+            "layer": "air ",
+            "x": 162,
+            "y": 244,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "blha",
+            "layer": "air ",
+            "x": 291,
+            "y": 498,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "blha",
+            "layer": "air ",
+            "x": 239,
+            "y": 391,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bsde",
+            "layer": "grnd",
+            "x": 199,
+            "y": 1898,
+            "heading_degrees": 285,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bsde",
+            "layer": "grnd",
+            "x": 67,
+            "y": 3102,
+            "heading_degrees": 60,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "csdt",
+            "layer": "grnd",
+            "x": 319,
+            "y": 844,
+            "heading_degrees": 210,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bsde",
+            "layer": "grnd",
+            "x": 186,
+            "y": 1127,
+            "heading_degrees": 15,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bsde",
+            "layer": "grnd",
+            "x": 51,
+            "y": 494,
+            "heading_degrees": 240,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "cara",
+            "layer": "grnd",
+            "x": 163,
+            "y": 78,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        }
+    ]
+}

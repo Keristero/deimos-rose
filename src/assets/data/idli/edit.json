@@ -1,0 +1,10 @@
+{
+    "id": "edit",
+    "type": "idli",
+    "fields": [
+        {
+            "key": "Editor Buttons Sprite Group",
+            "value": "edbu"
+        }
+    ]
+}

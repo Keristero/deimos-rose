@@ -1,4 +1,4 @@
 build/
 .deps/
-assets/
 mise.local.toml
+dist/

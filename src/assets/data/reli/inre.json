@@ -1,0 +1,94 @@
+{
+    "id": "inre",
+    "type": "reli",
+    "fields": [
+        {
+            "key": "Scorebar Player 1 Score",
+            "value": "25, 81, 135, 95"
+        },
+        {
+            "key": "Scorebar Player 1 Life Symbol",
+            "value": "98, 22, 138, 62"
+        },
+        {
+            "key": "Scorebar Player 1 Life Count",
+            "value": "56, 19, 102, 63"
+        },
+        {
+            "key": "Scorebar Player 1 Weapon 1",
+            "value": "33, 181, 65, 216"
+        },
+        {
+            "key": "Scorebar Player 1 Weapon 2",
+            "value": "76, 188, 95, 210"
+        },
+        {
+            "key": "Scorebar Player 1 Weapon 3",
+            "value": "103, 188, 124, 210"
+        },
+        {
+            "key": "Scorebar Player 1 Shields",
+            "value": "31, 117, 127, 132"
+        },
+        {
+            "key": "Scorebar Player 1 Power",
+            "value": "31, 152, 127, 167"
+        },
+        {
+            "key": "Scorebar Player 2 Score",
+            "value": "25, 317, 135, 333"
+        },
+        {
+            "key": "Scorebar Player 2 Life Symbol",
+            "value": "98, 257, 138, 297"
+        },
+        {
+            "key": "Scorebar Player 2 Life Count",
+            "value": "56, 263, 102, 307"
+        },
+        {
+            "key": "Scorebar Player 2 Weapon 1",
+            "value": "33, 416, 65, 451"
+        },
+        {
+            "key": "Scorebar Player 2 Weapon 2",
+            "value": "76, 423, 95, 445"
+        },
+        {
+            "key": "Scorebar Player 2 Weapon 3",
+            "value": "103, 423, 124, 445"
+        },
+        {
+            "key": "Scorebar Player 2 Shields",
+            "value": "31, 353, 127, 368"
+        },
+        {
+            "key": "Scorebar Player 2 Power",
+            "value": "31, 388, 127, 403"
+        },
+        {
+            "key": "LevSel_Instructions",
+            "value": "305, 30, 334, 59"
+        },
+        {
+            "key": "LevSel_Description",
+            "value": "243, 408, 392, 431"
+        },
+        {
+            "key": "LevSel_Button_Previous",
+            "value": "55, 76, 200, 382"
+        },
+        {
+            "key": "LevSel_Button_Current",
+            "value": "246, 76, 392, 382"
+        },
+        {
+            "key": "LevSel_Button_Next",
+            "value": "438, 76, 583, 382"
+        },
+        {
+            "key": "Briefing_Instructions",
+            "value": "80, 86, 564, 394"
+        }
+    ]
+}

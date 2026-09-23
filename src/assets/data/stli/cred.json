@@ -1,0 +1,338 @@
+{
+    "id": "cred",
+    "type": "stli",
+    "fields": [
+        {
+            "key": "",
+            "value": "<title>Swoop Software"
+        },
+        {
+            "key": "",
+            "value": "Sheryn Wareing"
+        },
+        {
+            "key": "",
+            "value": "David Wareing"
+        },
+        {
+            "key": "",
+            "value": "www.swoopsoftware.com"
+        },
+        {
+            "key": "",
+            "value": "<page 200>"
+        },
+        {
+            "key": "",
+            "value": "<title>Additional Unit Art"
+        },
+        {
+            "key": "",
+            "value": "John Sledd,"
+        },
+        {
+            "key": "",
+            "value": "Sledd Studios"
+        },
+        {
+            "key": "",
+            "value": "www.sledd.com"
+        },
+        {
+            "key": "",
+            "value": "<page 210>"
+        },
+        {
+            "key": "",
+            "value": "<title>Music"
+        },
+        {
+            "key": "",
+            "value": "Ben \"Ferazels\" Spees"
+        },
+        {
+            "key": "",
+            "value": "<page 120>"
+        },
+        {
+            "key": "",
+            "value": "<title>Mac OS X Support"
+        },
+        {
+            "key": "",
+            "value": "Andrew Welch"
+        },
+        {
+            "key": "",
+            "value": "Matt Slot"
+        },
+        {
+            "key": "",
+            "value": "<page 120>"
+        },
+        {
+            "key": "",
+            "value": "<title>Geek Support"
+        },
+        {
+            "key": "",
+            "value": "Matt \"Pythos\" Barry"
+        },
+        {
+            "key": "",
+            "value": "Brooks Bell"
+        },
+        {
+            "key": "",
+            "value": "Hans \"Vodi\" Hvidsten Birkeland"
+        },
+        {
+            "key": "",
+            "value": "Matt \"EV\" Burch"
+        },
+        {
+            "key": "",
+            "value": "Paul \"Fisj\" Callender"
+        },
+        {
+            "key": "",
+            "value": "Liam \"Supercobra\" Doughty"
+        },
+        {
+            "key": "",
+            "value": "Bill Heineman"
+        },
+        {
+            "key": "",
+            "value": "Jeff \"Oneiros\" Hill"
+        },
+        {
+            "key": "",
+            "value": "Steve \"Dilvish\" Ramsey"
+        },
+        {
+            "key": "",
+            "value": "Matt Slot"
+        },
+        {
+            "key": "",
+            "value": "Ben \"Handsome Harry\" Spees"
+        },
+        {
+            "key": "",
+            "value": "Nate \"Lin\" Trost"
+        },
+        {
+            "key": "",
+            "value": "Andrew Welch"
+        },
+        {
+            "key": "",
+            "value": "Ed Wynne"
+        },
+        {
+            "key": "",
+            "value": "<page 420>"
+        },
+        {
+            "key": "",
+            "value": "<title>Ambrosia Software"
+        },
+        {
+            "key": "",
+            "value": "Bernard Cockhern - Money Man"
+        },
+        {
+            "key": "",
+            "value": "David Dunham - Technical Support"
+        },
+        {
+            "key": "",
+            "value": "Aaron Hunt - Operations"
+        },
+        {
+            "key": "",
+            "value": "Ed Ota - Operations"
+        },
+        {
+            "key": "",
+            "value": "Matt Slot - Bitwise Operator"
+        },
+        {
+            "key": "",
+            "value": "Andrew Welch - El Presidente"
+        },
+        {
+            "key": "",
+            "value": "www.ambrosiasw.com"
+        },
+        {
+            "key": "",
+            "value": "<page 300>"
+        },
+        {
+            "key": "",
+            "value": "<title>Special Thanks"
+        },
+        {
+            "key": "",
+            "value": "Andrea Martin"
+        },
+        {
+            "key": "",
+            "value": "Hugh Martin"
+        },
+        {
+            "key": "",
+            "value": "Alex Metcalf"
+        },
+        {
+            "key": "",
+            "value": "Jill Petersen"
+        },
+        {
+            "key": "",
+            "value": "John Petersen"
+        },
+        {
+            "key": "",
+            "value": "<page 240>"
+        },
+        {
+            "key": "",
+            "value": "<title>Chief Testers"
+        },
+        {
+            "key": "",
+            "value": "Liam \"Cobold\" Doughty"
+        },
+        {
+            "key": "",
+            "value": "Alex \"Blinky Needs a Gun\" Metcalf"
+        },
+        {
+            "key": "",
+            "value": "Steve \"Design Doc\" Ramsey"
+        },
+        {
+            "key": "",
+            "value": "<page 240>"
+        },
+        {
+            "key": "",
+            "value": "<title>Testers"
+        },
+        {
+            "key": "",
+            "value": "Siddhartha Bajracharya"
+        },
+        {
+            "key": "",
+            "value": "Michael \"Taz!\" Blasco"
+        },
+        {
+            "key": "",
+            "value": "Bruce Brejta"
+        },
+        {
+            "key": "",
+            "value": "Gordon \"Crawler\" Byrnes"
+        },
+        {
+            "key": "",
+            "value": "Captain Carnotaur"
+        },
+        {
+            "key": "",
+            "value": "Dan Daranciang"
+        },
+        {
+            "key": "",
+            "value": "Derek Dohler"
+        },
+        {
+            "key": "",
+            "value": "Robert \"forge\" Drejer"
+        },
+        {
+            "key": "",
+            "value": "Ty \"TIE187\" Hanna"
+        },
+        {
+            "key": "",
+            "value": "Phillip Hutchings"
+        },
+        {
+            "key": "",
+            "value": "Mark Johns"
+        },
+        {
+            "key": "",
+            "value": "Michael Judkins"
+        },
+        {
+            "key": "",
+            "value": "Tim Kunkel"
+        },
+        {
+            "key": "",
+            "value": "<page 420>"
+        },
+        {
+            "key": "",
+            "value": "<title>Testers"
+        },
+        {
+            "key": "",
+            "value": "Mark Longanbach"
+        },
+        {
+            "key": "",
+            "value": "Thomas Metcalf"
+        },
+        {
+            "key": "",
+            "value": "Jeff \"Merc\" Nouwen"
+        },
+        {
+            "key": "",
+            "value": "Ed O'Malley"
+        },
+        {
+            "key": "",
+            "value": "Rudy Richter"
+        },
+        {
+            "key": "",
+            "value": "Nicholas Robbins"
+        },
+        {
+            "key": "",
+            "value": "Matt Slot"
+        },
+        {
+            "key": "",
+            "value": "Stephan Somogyi"
+        },
+        {
+            "key": "",
+            "value": "Ralph Sutherland"
+        },
+        {
+            "key": "",
+            "value": "Tim \"ArcAngelCounterstrike\" Taylor"
+        },
+        {
+            "key": "",
+            "value": "Aj \"Slug\" Williams"
+        },
+        {
+            "key": "",
+            "value": "Stuart \"h'biki\" Willis"
+        },
+        {
+            "key": "",
+            "value": "<page 420>"
+        }
+    ]
+}

@@ -1,0 +1,102 @@
+{
+    "id": "gaso",
+    "type": "idli",
+    "fields": [
+        {
+            "key": "ButtonClick",
+            "value": "clic"
+        },
+        {
+            "key": "ConsoleActivate",
+            "value": "clic"
+        },
+        {
+            "key": "InterfaceClick",
+            "value": "incl"
+        },
+        {
+            "key": "InterfaceTransition",
+            "value": "tran"
+        },
+        {
+            "key": "CommandConfirmation",
+            "value": "incl"
+        },
+        {
+            "key": "CommandFailure",
+            "value": "lsna"
+        },
+        {
+            "key": "EndGameFinale",
+            "value": "leen"
+        },
+        {
+            "key": "GameInterfaceSoundChange",
+            "value": "incl"
+        },
+        {
+            "key": "Paused",
+            "value": "incl"
+        },
+        {
+            "key": "HighScoreAchieved",
+            "value": "none"
+        },
+        {
+            "key": "Registered",
+            "value": "leen"
+        },
+        {
+            "key": "InterfaceMenuButtonRollover",
+            "value": "mbro"
+        },
+        {
+            "key": "LevelSelectChoose",
+            "value": "lsse"
+        },
+        {
+            "key": "LevelSelectSelector",
+            "value": "lsch"
+        },
+        {
+            "key": "LevelSelectFailure",
+            "value": "lsna"
+        },
+        {
+            "key": "ScoreEntryFailure",
+            "value": "shwa"
+        },
+        {
+            "key": "HighScore",
+            "value": "cabo"
+        },
+        {
+            "key": "EditorAddObject",
+            "value": "none"
+        },
+        {
+            "key": "WepSelector_Switch",
+            "value": "wesw"
+        },
+        {
+            "key": "Briefing_Typing",
+            "value": "none"
+        },
+        {
+            "key": "MoneyCount",
+            "value": "moco"
+        },
+        {
+            "key": "MoneyCount_NoBonus",
+            "value": "nobo"
+        },
+        {
+            "key": "GroundAccuracyCount_MaxBonus",
+            "value": "acbo"
+        },
+        {
+            "key": "GroundAccuracyCount_MissionBonus",
+            "value": "miac"
+        }
+    ]
+}

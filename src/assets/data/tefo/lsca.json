@@ -1,0 +1,74 @@
+{
+    "id": "lsca",
+    "type": "tefo",
+    "fields": [
+        {
+            "key": "Loc_X_INT",
+            "value": "0"
+        },
+        {
+            "key": "Loc_Y_INT",
+            "value": "0"
+        },
+        {
+            "key": "Size_INT",
+            "value": "0"
+        },
+        {
+            "key": "Format_ID",
+            "value": "LEFT"
+        },
+        {
+            "key": "Monospaced_BOOL",
+            "value": "FALSE"
+        },
+        {
+            "key": "DrawShadows_BOOL",
+            "value": "FALSE"
+        },
+        {
+            "key": "BlendAmount_0To32_INT",
+            "value": "16"
+        },
+        {
+            "key": "SpaceBetweenChars_INT",
+            "value": "0"
+        },
+        {
+            "key": "Colorise_Do_BOOL",
+            "value": "TRUE"
+        },
+        {
+            "key": "ColoriseColor_RGB",
+            "value": "00ff00"
+        },
+        {
+            "key": "ColorStrip_Do_BOOL",
+            "value": "FALSE"
+        },
+        {
+            "key": "ColorStrip_HOffset_INT",
+            "value": "3"
+        },
+        {
+            "key": "ColorStrip_VOffset_INT",
+            "value": "3"
+        },
+        {
+            "key": "ColorStrip_BlendAmount_0To32_INT",
+            "value": "16"
+        },
+        {
+            "key": "ColorStrip_Color_RGB",
+            "value": "000000"
+        },
+        {
+            "key": "ColorStrip_MinWidth_INT",
+            "value": "0"
+        },
+        {
+            "key": "ColorStrip_MinHeight_INT",
+            "value": "0"
+        }
+    ]
+}

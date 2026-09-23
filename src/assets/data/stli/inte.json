@@ -1,0 +1,118 @@
+{
+    "id": "inte",
+    "type": "stli",
+    "fields": [
+        {
+            "key": "",
+            "value": "WWW.DEIMOSRISING.COM"
+        },
+        {
+            "key": "",
+            "value": "COPYRIGHT 2001-2002 SWOOP SOFTWARE & AMBROSIA SOFTWARE, INC."
+        },
+        {
+            "key": "",
+            "value": "This version has expired.  Contact Ambrosia Software for the latest version."
+        },
+        {
+            "key": "",
+            "value": "Copyright Notice"
+        },
+        {
+            "key": "",
+            "value": "Deimos Rising is Copyright 2001-2002 Swoop Software & Ambrosia Software.   This use is for testing purposes only.  Please do not distribute."
+        },
+        {
+            "key": "",
+            "value": "Loading Completed"
+        },
+        {
+            "key": "",
+            "value": "Loading Permanent Image:"
+        },
+        {
+            "key": "",
+            "value": "Loading Permanent Image:  Done"
+        },
+        {
+            "key": "",
+            "value": "Loading Permanent Sound:"
+        },
+        {
+            "key": "",
+            "value": "Loading Permanent Sound:  Done"
+        },
+        {
+            "key": "",
+            "value": "Loading Unit:"
+        },
+        {
+            "key": "",
+            "value": "Loading Unit:  Done"
+        },
+        {
+            "key": "",
+            "value": "Loading Weapon:"
+        },
+        {
+            "key": "",
+            "value": "Loading Weapon:  Done"
+        },
+        {
+            "key": "",
+            "value": "Loading Player:"
+        },
+        {
+            "key": "",
+            "value": "Loading Player:  Done"
+        },
+        {
+            "key": "",
+            "value": ">"
+        },
+        {
+            "key": "",
+            "value": "Display Error"
+        },
+        {
+            "key": "",
+            "value": "DrawSprocket failed.  Ensure that the file 'DrawSprocketLib' is located in your System Extensions folder."
+        },
+        {
+            "key": "",
+            "value": "www.deimosrising.com"
+        },
+        {
+            "key": "",
+            "value": "Visit the Deimos Rising Website Now?"
+        },
+        {
+            "key": "",
+            "value": "Choosing to visit the website now will launch your preferred World Wide Web browser.  Please ensure that you are connected to the Internet before proceeding."
+        },
+        {
+            "key": "",
+            "value": "Launch"
+        },
+        {
+            "key": "",
+            "value": "Cancel"
+        },
+        {
+            "key": "",
+            "value": "Erase High Scores"
+        },
+        {
+            "key": "",
+            "value": "Are you sure you wish to permanently clear the High Score list?"
+        },
+        {
+            "key": "",
+            "value": "Erase"
+        },
+        {
+            "key": "",
+            "value": "Cancel"
+        }
+    ]
+}

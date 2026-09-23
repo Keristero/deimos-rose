@@ -1,0 +1,222 @@
+{
+    "id": "gate",
+    "type": "idli",
+    "fields": [
+        {
+            "key": "Interface_Progress",
+            "value": "prog"
+        },
+        {
+            "key": "Interface_WebAddress",
+            "value": "inwe"
+        },
+        {
+            "key": "Interface_WebAddressHilited",
+            "value": "inwh"
+        },
+        {
+            "key": "Interface_Copyright",
+            "value": "inco"
+        },
+        {
+            "key": "Interface_CopyrightHilited",
+            "value": "inch"
+        },
+        {
+            "key": "Interface_ButtonsNormal",
+            "value": "inbn"
+        },
+        {
+            "key": "Interface_ButtonsHilited",
+            "value": "inbh"
+        },
+        {
+            "key": "Interface_GameLogo",
+            "value": "ingl"
+        },
+        {
+            "key": "Credits_Title",
+            "value": "crti"
+        },
+        {
+            "key": "Credits_Normal",
+            "value": "crno"
+        },
+        {
+            "key": "Scores_PlayerNameTitle",
+            "value": "scnt"
+        },
+        {
+            "key": "Scores_ScoreTitle",
+            "value": "scst"
+        },
+        {
+            "key": "Scores_SectorTitle",
+            "value": "sset"
+        },
+        {
+            "key": "Scores_PlayerName",
+            "value": "scpn"
+        },
+        {
+            "key": "Scores_PlayerNameHilited",
+            "value": "scph"
+        },
+        {
+            "key": "Scores_PlayerNameDim",
+            "value": "spnd"
+        },
+        {
+            "key": "Scores_Score",
+            "value": "scsc"
+        },
+        {
+            "key": "Scores_ScoreHilited",
+            "value": "scsh"
+        },
+        {
+            "key": "Scores_ScoreDim",
+            "value": "sscd"
+        },
+        {
+            "key": "Scores_Sector",
+            "value": "scse"
+        },
+        {
+            "key": "Scores_SectorHilited",
+            "value": "sseh"
+        },
+        {
+            "key": "Scores_SectorDim",
+            "value": "ssed"
+        },
+        {
+            "key": "LevSel_LevelNumber",
+            "value": "lsnu"
+        },
+        {
+            "key": "LevSel_LevelNumberNoAccess",
+            "value": "lsnn"
+        },
+        {
+            "key": "LevSel_NoAccess",
+            "value": "lsna"
+        },
+        {
+            "key": "LevSel_Description",
+            "value": "lsde"
+        },
+        {
+            "key": "LevSel_SelectionFailure",
+            "value": "lsfa"
+        },
+        {
+            "key": "LevSel_ColorStrip_Acceptance",
+            "value": "lsca"
+        },
+        {
+            "key": "LevSel_ColorStrip_Failure",
+            "value": "lscf"
+        },
+        {
+            "key": "LevSel_PreviewBorderHilite",
+            "value": "lsbo"
+        },
+        {
+            "key": "Player_MoneyCount",
+            "value": "plmc"
+        },
+        {
+            "key": "Wep_AmmoCounter",
+            "value": "weac"
+        },
+        {
+            "key": "Wep_AmmoCounterWarning",
+            "value": "weaw"
+        },
+        {
+            "key": "Console_Prompt",
+            "value": "copr"
+        },
+        {
+            "key": "Console_Text",
+            "value": "cote"
+        },
+        {
+            "key": "Message_Normal",
+            "value": "meno"
+        },
+        {
+            "key": "Message_Error",
+            "value": "meer"
+        },
+        {
+            "key": "Message_Status",
+            "value": "mest"
+        },
+        {
+            "key": "Game_Replay",
+            "value": "gare"
+        },
+        {
+            "key": "GameInterface_FrameRate",
+            "value": "gafr"
+        },
+        {
+            "key": "GameInterface_FrameRateSlow",
+            "value": "gfrs"
+        },
+        {
+            "key": "ScoreBar_ShieldMeter",
+            "value": "sbsh"
+        },
+        {
+            "key": "ScoreBar_PowerMeter",
+            "value": "sbpm"
+        },
+        {
+            "key": "ScoreBar_Score_Player1",
+            "value": "sbs1"
+        },
+        {
+            "key": "ScoreBar_Score_Player2",
+            "value": "sbs2"
+        },
+        {
+            "key": "ScoreBar_LivesCounter_Player1",
+            "value": "sbl1"
+        },
+        {
+            "key": "ScoreBar_LivesCounter_Player2",
+            "value": "sbl2"
+        },
+        {
+            "key": "ScoreBar_LivesCounterLastLife_Player1",
+            "value": "sll1"
+        },
+        {
+            "key": "ScoreBar_LivesCounterLastLife_Player2",
+            "value": "sll2"
+        },
+        {
+            "key": "Game_Notice",
+            "value": "gano"
+        },
+        {
+            "key": "Briefing_Title",
+            "value": "brti"
+        },
+        {
+            "key": "Briefing_Normal",
+            "value": "brno"
+        },
+        {
+            "key": "Briefing_Preview",
+            "value": "brpr"
+        },
+        {
+            "key": "GroundAccuracyCount",
+            "value": "gaco"
+        }
+    ]
+}

@@ -1,0 +1,886 @@
+{
+    "id": "gafl",
+    "type": "flli",
+    "fields": [
+        {
+            "key": "WepSelector_FadeOutRate",
+            "value": "2.0"
+        },
+        {
+            "key": "WepSelectorAppearanceTime",
+            "value": "60.0"
+        },
+        {
+            "key": "WepSelectorXLoc",
+            "value": "0.0"
+        },
+        {
+            "key": "WepSelectorYLoc",
+            "value": "-56.0"
+        },
+        {
+            "key": "WepSelectorPreviewXLoc",
+            "value": "0.0"
+        },
+        {
+            "key": "WepSelectorPreviewYLoc",
+            "value": "-64.0"
+        },
+        {
+            "key": "WepSelectorTimeBetweenSelections",
+            "value": "30.0"
+        },
+        {
+            "key": "WepSelector_ScoreBarDigitScale",
+            "value": "0.9"
+        },
+        {
+            "key": "WepSelector_SelectorDigitScale",
+            "value": "0.7"
+        },
+        {
+            "key": "WepSelector_MaxDisplayableAmmoCount",
+            "value": "9999.0"
+        },
+        {
+            "key": "WepSelector_InfinitySymbolFrame",
+            "value": "0.0"
+        },
+        {
+            "key": "WepSelector_InfinitySymbolYOffset",
+            "value": "17.0"
+        },
+        {
+            "key": "WepSelector_CancelFrame",
+            "value": "1.0"
+        },
+        {
+            "key": "Game_GameOverNoticeDuration",
+            "value": "110.0"
+        },
+        {
+            "key": "Game_EntityFleeNorthLocation",
+            "value": "-1000.0"
+        },
+        {
+            "key": "Game_EntityFleeSouthLocation",
+            "value": "2000.0"
+        },
+        {
+            "key": "Game_EntityFleeWestLocation",
+            "value": "-1000.0"
+        },
+        {
+            "key": "Game_EntityFleeEastLocation",
+            "value": "2000.0"
+        },
+        {
+            "key": "Game_NumFramesUntilGameAppears",
+            "value": "2.0"
+        },
+        {
+            "key": "Text_ShadowXAdjust",
+            "value": "-10.0"
+        },
+        {
+            "key": "Text_ShadowYAdjust",
+            "value": "10.0"
+        },
+        {
+            "key": "Text_ShadowBlendAmount",
+            "value": "17.0"
+        },
+        {
+            "key": "Console_ExpireTime",
+            "value": "120.0"
+        },
+        {
+            "key": "Console_FadeOutRate",
+            "value": "4.0"
+        },
+        {
+            "key": "Message_MaxNum",
+            "value": "20.0"
+        },
+        {
+            "key": "Message_Duration",
+            "value": "60.0"
+        },
+        {
+            "key": "Message_FadeOutRate",
+            "value": "1.0"
+        },
+        {
+            "key": "Message_VerticalGap",
+            "value": "20.0"
+        },
+        {
+            "key": "Briefing_EndCode",
+            "value": "6000.0"
+        },
+        {
+            "key": "Briefing_InitialWait",
+            "value": "120.0"
+        },
+        {
+            "key": "Briefing_DisplayTime",
+            "value": "3200.0"
+        },
+        {
+            "key": "Game_LevelNameAppearanceTime",
+            "value": "120.0"
+        },
+        {
+            "key": "FPS_MaxRate",
+            "value": "30.0"
+        },
+        {
+            "key": "FPS_Delay",
+            "value": "2.0"
+        },
+        {
+            "key": "FPS_DeficiencyLevel",
+            "value": "10.0"
+        },
+        {
+            "key": "GameStartNoticeTime",
+            "value": "15.0"
+        },
+        {
+            "key": "SoundSpoolFadeOutRate",
+            "value": "1000.0"
+        },
+        {
+            "key": "SoundSpoolBufferSize",
+            "value": "204800.0"
+        },
+        {
+            "key": "SoundNumChannels",
+            "value": "8.0"
+        },
+        {
+            "key": "LevSel_FirstPreviewXLoc",
+            "value": "55.0"
+        },
+        {
+            "key": "LevSel_FirstPreviewYLoc",
+            "value": "76.0"
+        },
+        {
+            "key": "LevSel_PreviewXSpacing",
+            "value": "191.0"
+        },
+        {
+            "key": "LevSel_PreviewYSpacing",
+            "value": "0.0"
+        },
+        {
+            "key": "LevSel_InfoFadeOutTime",
+            "value": "40.0"
+        },
+        {
+            "key": "LevSel_Acceptance_ScalingRate",
+            "value": "0.18"
+        },
+        {
+            "key": "LevSel_Acceptance_MaxScale",
+            "value": "2.0"
+        },
+        {
+            "key": "LevSel_Failure_ScalingRate",
+            "value": "0.25"
+        },
+        {
+            "key": "LevSel_Failure_MaxScale",
+            "value": "2.0"
+        },
+        {
+            "key": "Shadow_XOffset",
+            "value": "-48.0"
+        },
+        {
+            "key": "Shadow_YOffset",
+            "value": "104.0"
+        },
+        {
+            "key": "Shadow_GroundXOffset",
+            "value": "-6.0"
+        },
+        {
+            "key": "Shadow_GroundYOffset",
+            "value": "8.0"
+        },
+        {
+            "key": "MinScreenWidth",
+            "value": "640.0"
+        },
+        {
+            "key": "MinScreenHeight",
+            "value": "480.0"
+        },
+        {
+            "key": "VisibleGameWidth",
+            "value": "416.0"
+        },
+        {
+            "key": "VisibleGameHeight",
+            "value": "480.0"
+        },
+        {
+            "key": "ReqDisplayDepth",
+            "value": "16.0"
+        },
+        {
+            "key": "ScoreBarWidth",
+            "value": "160.0"
+        },
+        {
+            "key": "ScoreBarHeight",
+            "value": "480.0"
+        },
+        {
+            "key": "LeftBorderWidth",
+            "value": "32.0"
+        },
+        {
+            "key": "RightBorderWidth",
+            "value": "32.0"
+        },
+        {
+            "key": "Interface_Btn_HiliteDelay",
+            "value": "10.0"
+        },
+        {
+            "key": "Interface_Btn_StartYLoc",
+            "value": "168.0"
+        },
+        {
+            "key": "Interface_Btn_VerticalGap",
+            "value": "30.0"
+        },
+        {
+            "key": "Interface_Progress_VerticalGap",
+            "value": "20.0"
+        },
+        {
+            "key": "Interface_Progress_MinTimeBetweenBlocks",
+            "value": "30.0"
+        },
+        {
+            "key": "Interface_PublisherLogoDelay",
+            "value": "130.0"
+        },
+        {
+            "key": "Interface_AdvertismentDelay_Ticks",
+            "value": "240.0"
+        },
+        {
+            "key": "Interface_CopyrightFlipTime_Ticks",
+            "value": "240.0"
+        },
+        {
+            "key": "MoneyCounterAppearanceTime",
+            "value": "30.0"
+        },
+        {
+            "key": "Notice_StandardYLoc",
+            "value": "220.0"
+        },
+        {
+            "key": "Notice_AppearanceGameTime",
+            "value": "60.0"
+        },
+        {
+            "key": "Notice_FadeInAmount",
+            "value": "2.0"
+        },
+        {
+            "key": "Notice_FadeOutAmount",
+            "value": "4.0"
+        },
+        {
+            "key": "Credits_TitleYLoc",
+            "value": "130.0"
+        },
+        {
+            "key": "Credits_VerticalGap",
+            "value": "16.0"
+        },
+        {
+            "key": "Scores_VerticalGap",
+            "value": "19.0"
+        },
+        {
+            "key": "Scores_YLoc",
+            "value": "107.0"
+        },
+        {
+            "key": "Scores_Duration",
+            "value": "600.0"
+        },
+        {
+            "key": "Scores_DurationBetweenPlayers",
+            "value": "25.0"
+        },
+        {
+            "key": "Scores_SymbolXLoc",
+            "value": "73.0"
+        },
+        {
+            "key": "Scores_SymbolYLoc",
+            "value": "7.0"
+        },
+        {
+            "key": "Scores_PromptFlashDelayAfterKeyHit",
+            "value": "30.0"
+        },
+        {
+            "key": "Scores_PromptDelayBetweenFlashes",
+            "value": "10.0"
+        },
+        {
+            "key": "VideoGrid_NormalFrame",
+            "value": "0"
+        },
+        {
+            "key": "VideoGrid_DarkFrame",
+            "value": "1"
+        },
+        {
+            "key": "LevelSelect_Instruction_FadeInStateTime",
+            "value": "16.0"
+        },
+        {
+            "key": "LevelSelect_Instruction_FadeOutStateTime",
+            "value": "16.0"
+        },
+        {
+            "key": "LevelSelect_Instruction_BlendFadeRate",
+            "value": "3.0"
+        },
+        {
+            "key": "LevelSelect_Instruction_NormalStateTime",
+            "value": "50.0"
+        },
+        {
+            "key": "LevelSelect_Notice_Previous_X",
+            "value": "128.0"
+        },
+        {
+            "key": "LevelSelect_Notice_Previous_Y",
+            "value": "228.0"
+        },
+        {
+            "key": "LevelSelect_Notice_Start_X",
+            "value": "320.0"
+        },
+        {
+            "key": "LevelSelect_Notice_Start_Y",
+            "value": "228.0"
+        },
+        {
+            "key": "LevelSelect_Notice_Next_X",
+            "value": "511.0"
+        },
+        {
+            "key": "LevelSelect_Notice_Next_Y",
+            "value": "228.0"
+        },
+        {
+            "key": "LevelSelect_SpriteFrame_Previous",
+            "value": "12.0"
+        },
+        {
+            "key": "LevelSelect_SpriteFrame_Start",
+            "value": "10.0"
+        },
+        {
+            "key": "LevelSelect_SpriteFrame_NoAccess",
+            "value": "11.0"
+        },
+        {
+            "key": "LevelSelect_SpriteFrame_Next",
+            "value": "13.0"
+        },
+        {
+            "key": "LevelSelect_HilitedButtonScale",
+            "value": "1.1"
+        },
+        {
+            "key": "BC_VerticalPlayerSpacing",
+            "value": "70.0"
+        },
+        {
+            "key": "BC_ScoreIncrement",
+            "value": "10.0"
+        },
+        {
+            "key": "BC_BaseVerticalLoc",
+            "value": "298.0"
+        },
+        {
+            "key": "BC_BaseObjectVerticalLoc",
+            "value": "305.0"
+        },
+        {
+            "key": "BC_SoloGameOffset",
+            "value": "23.0"
+        },
+        {
+            "key": "BC_CoinXOffset",
+            "value": "-18.0"
+        },
+        {
+            "key": "BC_PlayerXOffset",
+            "value": "-54.0"
+        },
+        {
+            "key": "BC_WaitingTime",
+            "value": "40.0"
+        },
+        {
+            "key": "BC_AppearanceTime",
+            "value": "45.0"
+        },
+        {
+            "key": "BC_FinalWaitingTime",
+            "value": "60.0"
+        },
+        {
+            "key": "ScoreBar_ScoreSpacing",
+            "value": "13.0"
+        },
+        {
+            "key": "ScoreBar_P1LivesSymbol_XLoc",
+            "value": "534.0"
+        },
+        {
+            "key": "ScoreBar_P1LivesSymbol_YLoc",
+            "value": "41.0"
+        },
+        {
+            "key": "ScoreBar_P2LivesSymbol_XLoc",
+            "value": "534.0"
+        },
+        {
+            "key": "ScoreBar_P2LivesSymbol_YLoc",
+            "value": "276.0"
+        },
+        {
+            "key": "ScoreBar_P1ShieldMeter_XLoc",
+            "value": "495.0"
+        },
+        {
+            "key": "ScoreBar_P1ShieldMeter_YLoc",
+            "value": "124.0"
+        },
+        {
+            "key": "ScoreBar_P2ShieldMeter_XLoc",
+            "value": "495.0"
+        },
+        {
+            "key": "ScoreBar_P2ShieldMeter_YLoc",
+            "value": "359.0"
+        },
+        {
+            "key": "ScoreBar_ShieldMeterIncreaseRate",
+            "value": "2.0"
+        },
+        {
+            "key": "ScoreBar_ShieldMeterDecreaseRate",
+            "value": "3.0"
+        },
+        {
+            "key": "ScoreBar_P1PowerMeter_XLoc",
+            "value": "495.0"
+        },
+        {
+            "key": "ScoreBar_P1PowerMeter_YLoc",
+            "value": "159.0"
+        },
+        {
+            "key": "ScoreBar_P2PowerMeter_XLoc",
+            "value": "495.0"
+        },
+        {
+            "key": "ScoreBar_P2PowerMeter_YLoc",
+            "value": "394.0"
+        },
+        {
+            "key": "ScoreBar_PowerMeterIncreaseRate",
+            "value": "2.0"
+        },
+        {
+            "key": "ScoreBar_PowerMeterDecreaseRate",
+            "value": "4.0"
+        },
+        {
+            "key": "ScoreBar_P1Weapons_1_XLoc",
+            "value": "467.0"
+        },
+        {
+            "key": "ScoreBar_P1Weapons_1_YLoc",
+            "value": "199.0"
+        },
+        {
+            "key": "ScoreBar_P1Weapons_2_XLoc",
+            "value": "502.0"
+        },
+        {
+            "key": "ScoreBar_P1Weapons_2_YLoc",
+            "value": "199.0"
+        },
+        {
+            "key": "ScoreBar_P1Weapons_3_XLoc",
+            "value": "530.0"
+        },
+        {
+            "key": "ScoreBar_P1Weapons_3_YLoc",
+            "value": "199.0"
+        },
+        {
+            "key": "ScoreBar_P2Weapons_1_XLoc",
+            "value": "467.0"
+        },
+        {
+            "key": "ScoreBar_P2Weapons_1_YLoc",
+            "value": "434.0"
+        },
+        {
+            "key": "ScoreBar_P2Weapons_2_XLoc",
+            "value": "502.0"
+        },
+        {
+            "key": "ScoreBar_P2Weapons_2_YLoc",
+            "value": "434.0"
+        },
+        {
+            "key": "ScoreBar_P2Weapons_3_XLoc",
+            "value": "530.0"
+        },
+        {
+            "key": "ScoreBar_P2Weapons_3_YLoc",
+            "value": "434.0"
+        },
+        {
+            "key": "ScoreBar_Weapons_BlendAmount_NonSelected",
+            "value": "16.0"
+        },
+        {
+            "key": "ScoreBar_Weapons_BlendAmount_Selected",
+            "value": "6.0"
+        },
+        {
+            "key": "ScoreBar_Weapons_NonSelectedScaleFactor",
+            "value": "0.7"
+        },
+        {
+            "key": "ScoreBar_Lives_MaxNumDisplayed",
+            "value": "9.0"
+        },
+        {
+            "key": "Particle_Gravity",
+            "value": "0.96"
+        },
+        {
+            "key": "Particle_ColorVariationAdjust",
+            "value": "0.12"
+        },
+        {
+            "key": "Particle_FringeColorAdjust",
+            "value": "0.6"
+        },
+        {
+            "key": "Particle_BlendAmountRate_Short",
+            "value": "3.0"
+        },
+        {
+            "key": "Particle_BlendAmountRate_Long",
+            "value": "1.0"
+        },
+        {
+            "key": "Crosshair_FadeInPercentageRate",
+            "value": "6.0"
+        },
+        {
+            "key": "Crosshair_FadeOutPercentageRate",
+            "value": "6.0"
+        },
+        {
+            "key": "WepHandler_DefaultNumBombs",
+            "value": "1.0"
+        },
+        {
+            "key": "WepHandler_MaxNumBombs",
+            "value": "8.0"
+        },
+        {
+            "key": "Background_MediaDrawPercentage",
+            "value": "10.0"
+        },
+        {
+            "key": "Briefing_ExitDuration",
+            "value": "15.0"
+        },
+        {
+            "key": "Briefing_TitleYLoc",
+            "value": "124.0"
+        },
+        {
+            "key": "Briefing_VerticalGap",
+            "value": "16.0"
+        },
+        {
+            "key": "Briefing_GapDelay",
+            "value": "15.0"
+        },
+        {
+            "key": "Briefing_TypingSoundDelay",
+            "value": "1.0"
+        },
+        {
+            "key": "Briefing_FadeDelay",
+            "value": "2.0"
+        },
+        {
+            "key": "Interface_FadeRate",
+            "value": "1.0"
+        },
+        {
+            "key": "Player_ImpactDamageToEntities",
+            "value": "100.0"
+        },
+        {
+            "key": "Player_DelayBetweenHitSpawns",
+            "value": "10.0"
+        },
+        {
+            "key": "Player_Appears_Initial",
+            "value": "0.0"
+        },
+        {
+            "key": "Player_Appears_Required",
+            "value": "100.0"
+        },
+        {
+            "key": "Player_Appears_Delta",
+            "value": "2.0"
+        },
+        {
+            "key": "Player_TimeBetweenFrameChanges",
+            "value": "1.0"
+        },
+        {
+            "key": "Entity_HitDelay",
+            "value": "1.0"
+        },
+        {
+            "key": "EditorUtilities_SpriteOffsetPlacerFrame",
+            "value": "1.0"
+        },
+        {
+            "key": "EditorUtilities_SpriteOffsetPlacerDefaultSpriteFrame",
+            "value": "2.0"
+        },
+        {
+            "key": "Player_MoneyCounter_AdjustBonusFactorForLevel",
+            "value": "0.0"
+        },
+        {
+            "key": "Player_MoneyCounter_BonusFactorPerCoinHeld",
+            "value": "100.0"
+        },
+        {
+            "key": "Player_MoneyCounter_WaitingToAppear",
+            "value": "10.0"
+        },
+        {
+            "key": "Player_MoneyCounter_Appearing",
+            "value": "20.0"
+        },
+        {
+            "key": "Player_MoneyCounter_WaitingToFinish",
+            "value": "30.0"
+        },
+        {
+            "key": "Player_MoneyCounter_Finished",
+            "value": "20.0"
+        },
+        {
+            "key": "Player_MoneyCounter_Delay",
+            "value": "2.0"
+        },
+        {
+            "key": "Player_MoneyCounter_FadeInRate",
+            "value": "3.0"
+        },
+        {
+            "key": "Player_MoneyCounter_FadeOutRate",
+            "value": "3.0"
+        },
+        {
+            "key": "Player_MoneyCounter_IconXLoc",
+            "value": "105.0"
+        },
+        {
+            "key": "Player_MoneyCounter_IconYLoc",
+            "value": "248.0"
+        },
+        {
+            "key": "Player_MoneyCounter_VerticalDistanceBetweenPlayers",
+            "value": "70.0"
+        },
+        {
+            "key": "Player_ExtraLifeScoreAdjustment",
+            "value": "10000.0"
+        },
+        {
+            "key": "Player_TopGameAreaLimit",
+            "value": "13.0"
+        },
+        {
+            "key": "Player_DefenceBonusBaseAmount",
+            "value": "2000.0"
+        },
+        {
+            "key": "Crosshair_DownSpeed",
+            "value": "3.0"
+        },
+        {
+            "key": "Crosshair_UpSpeed",
+            "value": "-4.0"
+        },
+        {
+            "key": "Crosshair_MaxAdjustment",
+            "value": "80.0"
+        },
+        {
+            "key": "Game_GroundAccuracyCount_TierPercentageGap",
+            "value": "5.0"
+        },
+        {
+            "key": "Game_GroundAccuracyCount_TierValue_1",
+            "value": "5000.0"
+        },
+        {
+            "key": "Game_GroundAccuracyCount_TierValue_2",
+            "value": "2000.0"
+        },
+        {
+            "key": "Game_GroundAccuracyCount_TierValue_3",
+            "value": "1000.0"
+        },
+        {
+            "key": "Game_GroundAccuracyCount_TierValue_4",
+            "value": "500.0"
+        },
+        {
+            "key": "Game_GroundAccuracyCount_TierValue_5",
+            "value": "250.0"
+        },
+        {
+            "key": "Game_GroundAccuracyCount_TierValue_6",
+            "value": "0.0"
+        },
+        {
+            "key": "Game_GroundAccuracyCount_WaitingToAppear",
+            "value": "60.0"
+        },
+        {
+            "key": "Game_GroundAccuracyCount_WaitingToAppearAllLevelsCompleted",
+            "value": "1200.0"
+        },
+        {
+            "key": "Game_GroundAccuracyCount_Appearing",
+            "value": "20.0"
+        },
+        {
+            "key": "Game_GroundAccuracyCount_CountDelay",
+            "value": "2.0"
+        },
+        {
+            "key": "Game_GroundAccuracyCount_Countdown_MinScoreAdjustment",
+            "value": "100.0"
+        },
+        {
+            "key": "Game_GroundAccuracyCount_Countdown_AdjustmentPercentage",
+            "value": "0.02"
+        },
+        {
+            "key": "Game_GroundAccuracyCount_WaitingToFinish",
+            "value": "20.0"
+        },
+        {
+            "key": "Game_GroundAccuracyCount_Finished",
+            "value": "20.0"
+        },
+        {
+            "key": "Game_GroundAccuracyCount_FadeInRate",
+            "value": "3.0"
+        },
+        {
+            "key": "Game_GroundAccuracyCount_FadeOutRate",
+            "value": "3.0"
+        },
+        {
+            "key": "Game_GroundAccuracyCount_MissionBonus",
+            "value": "100000.0"
+        },
+        {
+            "key": "Game_GroundAccuracyCount_FlashOnTime",
+            "value": "4"
+        },
+        {
+            "key": "Game_GroundAccuracyCount_FlashOffTime",
+            "value": "3"
+        },
+        {
+            "key": "Game_GroundAccuracyCount_MissionBonusNumFlashes",
+            "value": "10"
+        },
+        {
+            "key": "Game_RandomBonusPercent_1",
+            "value": "70.0"
+        },
+        {
+            "key": "Game_RandomBonusPercent_2",
+            "value": "78.0"
+        },
+        {
+            "key": "Game_RandomBonusPercent_3",
+            "value": "82.0"
+        },
+        {
+            "key": "Game_RandomBonusPercent_4",
+            "value": "84.0"
+        },
+        {
+            "key": "Game_RandomBonusPercent_5",
+            "value": "87.0"
+        },
+        {
+            "key": "Game_RandomBonusPercent_6",
+            "value": "91.0"
+        },
+        {
+            "key": "Game_RandomBonusPercent_7",
+            "value": "95.0"
+        },
+        {
+            "key": "Game_RandomBonusPercent_8",
+            "value": "98.0"
+        },
+        {
+            "key": "Game_RandomBonusPercent_9",
+            "value": "100.0"
+        },
+        {
+            "key": "Game_RandomBonusPercent_GroundAccuracyReward",
+            "value": "10.0"
+        },
+        {
+            "key": "Game_MinimumLevelForHighestRandomBonus",
+            "value": "3.0"
+        }
+    ]
+}

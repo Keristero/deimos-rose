@@ -1,0 +1,154 @@
+{
+    "id": "pgsl",
+    "type": "stli",
+    "fields": [
+        {
+            "key": "",
+            "value": "Press Caps Lock"
+        },
+        {
+            "key": "",
+            "value": "Choose a starting Sector with the direction controls"
+        },
+        {
+            "key": "",
+            "value": "Press any button to start"
+        },
+        {
+            "key": "",
+            "value": "-  Starting Bonus $"
+        },
+        {
+            "key": "",
+            "value": "Sector Not Reached"
+        },
+        {
+            "key": "",
+            "value": "Registration Required"
+        },
+        {
+            "key": "",
+            "value": "-  No Starting Bonus"
+        },
+        {
+            "key": "",
+            "value": "_"
+        },
+        {
+            "key": "",
+            "value": "PLAYING FILM:"
+        },
+        {
+            "key": "",
+            "value": "REPLAY"
+        },
+        {
+            "key": "",
+            "value": "All Mission Targets Destroyed!!!"
+        },
+        {
+            "key": "",
+            "value": "Ground Accuracy:"
+        },
+        {
+            "key": "",
+            "value": "Bonus:"
+        },
+        {
+            "key": "",
+            "value": "None!"
+        },
+        {
+            "key": "",
+            "value": "Coin Bonus:"
+        },
+        {
+            "key": "",
+            "value": "x"
+        },
+        {
+            "key": "",
+            "value": "="
+        },
+        {
+            "key": "",
+            "value": "Interlacing      ON"
+        },
+        {
+            "key": "",
+            "value": "Interlacing      OFF"
+        },
+        {
+            "key": "",
+            "value": "Auto Interlacing ON"
+        },
+        {
+            "key": "",
+            "value": "Auto Interlacing OFF"
+        },
+        {
+            "key": "",
+            "value": "Sound Volume     OFF"
+        },
+        {
+            "key": "",
+            "value": "Sound Volume"
+        },
+        {
+            "key": "",
+            "value": "%"
+        },
+        {
+            "key": "",
+            "value": "Game Speed       Normal"
+        },
+        {
+            "key": "",
+            "value": "Game Speed       Half"
+        },
+        {
+            "key": "",
+            "value": "Game Speed       1/4th"
+        },
+        {
+            "key": "",
+            "value": "Game Speed       1/8th"
+        },
+        {
+            "key": "",
+            "value": "Game Speed       1/16th"
+        },
+        {
+            "key": "",
+            "value": "Game Speed       1/32th"
+        },
+        {
+            "key": "",
+            "value": "Game Speed       Stopped"
+        },
+        {
+            "key": "",
+            "value": "Key Already Assigned"
+        },
+        {
+            "key": "",
+            "value": "That key is already used for another control, please choose another."
+        },
+        {
+            "key": "",
+            "value": "THIS COPY IS UNREGISTERED"
+        },
+        {
+            "key": "",
+            "value": "REGISTERED TO %s  [%i COPIES]"
+        },
+        {
+            "key": "",
+            "value": "THIS COPY IS REGISTERED TO %s"
+        },
+        {
+            "key": "",
+            "value": "PLEASE DO NOT DISTRIBUTE THIS COPY"
+        }
+    ]
+}

@@ -1,0 +1,38 @@
+{
+    "id": "gasp",
+    "type": "idli",
+    "fields": [
+        {
+            "key": "Video Grid",
+            "value": "vigr"
+        },
+        {
+            "key": "Editor Utilities",
+            "value": "edut"
+        },
+        {
+            "key": "WeaponEditor_PlayerImage",
+            "value": "pl1o"
+        },
+        {
+            "key": "Interface_Buttons_Normal",
+            "value": "mebu"
+        },
+        {
+            "key": "Interface_Buttons_Hilited",
+            "value": "mebh"
+        },
+        {
+            "key": "Interface_GameLogo",
+            "value": "galo"
+        },
+        {
+            "key": "Level Selection Normal",
+            "value": "mebu"
+        },
+        {
+            "key": "Level Selection Hilited",
+            "value": "mebh"
+        }
+    ]
+}

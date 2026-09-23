@@ -1,0 +1,166 @@
+{
+    "id": "gaob",
+    "type": "idli",
+    "fields": [
+        {
+            "key": "Player 1",
+            "value": "pl01"
+        },
+        {
+            "key": "Player 2",
+            "value": "pl02"
+        },
+        {
+            "key": "MoneyUnit_50",
+            "value": "calg"
+        },
+        {
+            "key": "MoneyUnit_10",
+            "value": "cals"
+        },
+        {
+            "key": "MoneyUnit_5",
+            "value": "casg"
+        },
+        {
+            "key": "MoneyUnit_1",
+            "value": "cass"
+        },
+        {
+            "key": "MediaImpact_Water_Tiny",
+            "value": "spti"
+        },
+        {
+            "key": "MediaImpact_Water_Small",
+            "value": "spsm"
+        },
+        {
+            "key": "MediaImpact_Water_Medium",
+            "value": "spme"
+        },
+        {
+            "key": "MediaImpact_Water_Large",
+            "value": "spla"
+        },
+        {
+            "key": "Notice_Level_01",
+            "value": "no01"
+        },
+        {
+            "key": "Notice_Level_02",
+            "value": "no02"
+        },
+        {
+            "key": "Notice_Level_03",
+            "value": "no03"
+        },
+        {
+            "key": "Notice_Level_04",
+            "value": "no04"
+        },
+        {
+            "key": "Notice_Level_05",
+            "value": "no05"
+        },
+        {
+            "key": "Notice_Level_06",
+            "value": "no06"
+        },
+        {
+            "key": "Notice_Level_07",
+            "value": "no07"
+        },
+        {
+            "key": "Notice_Level_08",
+            "value": "no08"
+        },
+        {
+            "key": "Notice_Level_09",
+            "value": "no09"
+        },
+        {
+            "key": "Notice_Level_10",
+            "value": "no10"
+        },
+        {
+            "key": "Notice_Level_11",
+            "value": "no11"
+        },
+        {
+            "key": "Notice_Level_12",
+            "value": "no12"
+        },
+        {
+            "key": "Notice_LevelEnd",
+            "value": "nole"
+        },
+        {
+            "key": "Notice_AllLevelsCompleted",
+            "value": "noal"
+        },
+        {
+            "key": "Notice_GameOver",
+            "value": "nogo"
+        },
+        {
+            "key": "RandomBonus_1",
+            "value": "rb01"
+        },
+        {
+            "key": "RandomBonus_2",
+            "value": "rb02"
+        },
+        {
+            "key": "RandomBonus_3",
+            "value": "rb03"
+        },
+        {
+            "key": "RandomBonus_4",
+            "value": "rb04"
+        },
+        {
+            "key": "RandomBonus_5",
+            "value": "rb05"
+        },
+        {
+            "key": "RandomBonus_6",
+            "value": "rb06"
+        },
+        {
+            "key": "RandomBonus_7",
+            "value": "rb07"
+        },
+        {
+            "key": "RandomBonus_8",
+            "value": "rb08"
+        },
+        {
+            "key": "RandomBonus_9",
+            "value": "rb09"
+        },
+        {
+            "key": "RandomBonus_10",
+            "value": "rb10"
+        },
+        {
+            "key": "UnitDef_Multiplier_X2",
+            "value": "mux2"
+        },
+        {
+            "key": "UnitDef_Multiplier_X3",
+            "value": "mux3"
+        },
+        {
+            "key": "UnitDef_Multiplier_X4",
+            "value": "mux4"
+        },
+        {
+            "key": "UnitDef_Multiplier_X5",
+            "value": "mux5"
+        },
+        {
+            "key": "UnitDef_Multiplier_X10",
+            "value": "muxx"
+        }
+    ]
+}

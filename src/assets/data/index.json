@@ -1,0 +1,16 @@
+{
+    "generator": "tools/records",
+    "counts": {
+        "stli": 5,
+        "tefo": 54,
+        "coli": 1,
+        "wede": 5,
+        "leve": 12,
+        "idli": 6,
+        "plde": 2,
+        "unde": 386,
+        "flli": 1,
+        "reli": 1
+    },
+    "total_placements": 565
+}

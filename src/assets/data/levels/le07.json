@@ -1,0 +1,362 @@
+{
+    "id": "le07",
+    "name": "Mariner Valley",
+    "identifier": "Lucena",
+    "description": "Jungle combat over the Mariner Valley forestation project.",
+    "copyright": "Map by Sheryn Wareing.",
+    "background": [
+        0,
+        0,
+        480,
+        3600
+    ],
+    "background_image": "jum2",
+    "preview_image": "jup2",
+    "music": "mu03",
+    "media_mask": "jut2",
+    "briefing": "none",
+    "placements": [
+        {
+            "unit": "plla",
+            "layer": "grnd",
+            "x": 126,
+            "y": 2563,
+            "heading_degrees": 330,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "plla",
+            "layer": "grnd",
+            "x": 185,
+            "y": 1799,
+            "heading_degrees": 120,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bu01",
+            "layer": "air ",
+            "x": 326,
+            "y": 2751,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bu01",
+            "layer": "air ",
+            "x": 305,
+            "y": 2616,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bu01",
+            "layer": "air ",
+            "x": 158,
+            "y": 2122,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bu01",
+            "layer": "air ",
+            "x": 148,
+            "y": 2871,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bu01",
+            "layer": "air ",
+            "x": 249,
+            "y": 1777,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bu01",
+            "layer": "air ",
+            "x": 294,
+            "y": 1593,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bu01",
+            "layer": "air ",
+            "x": 309,
+            "y": 1129,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bu01",
+            "layer": "air ",
+            "x": 243,
+            "y": 1087,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bu01",
+            "layer": "air ",
+            "x": 192,
+            "y": 982,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bu01",
+            "layer": "air ",
+            "x": 207,
+            "y": 1408,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bu01",
+            "layer": "air ",
+            "x": 158,
+            "y": 2418,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bu01",
+            "layer": "air ",
+            "x": 135,
+            "y": 2266,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bu01",
+            "layer": "air ",
+            "x": 100,
+            "y": 1554,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bu01",
+            "layer": "air ",
+            "x": 142,
+            "y": 1491,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bu01",
+            "layer": "air ",
+            "x": 369,
+            "y": 1263,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bu01",
+            "layer": "air ",
+            "x": 133,
+            "y": 1264,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bu01",
+            "layer": "air ",
+            "x": 323,
+            "y": 2185,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "01m1",
+            "layer": "grnd",
+            "x": 166,
+            "y": 1395,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "01b1",
+            "layer": "grnd",
+            "x": 195,
+            "y": 512,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bu01",
+            "layer": "air ",
+            "x": 201,
+            "y": 377,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bu01",
+            "layer": "air ",
+            "x": 287,
+            "y": 343,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bu01",
+            "layer": "air ",
+            "x": 230,
+            "y": 204,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bu01",
+            "layer": "air ",
+            "x": 369,
+            "y": 149,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bsgr",
+            "layer": "grnd",
+            "x": 403,
+            "y": 2978,
+            "heading_degrees": 345,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bsgr",
+            "layer": "grnd",
+            "x": 162,
+            "y": 1428,
+            "heading_degrees": 345,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bsgr",
+            "layer": "grnd",
+            "x": 269,
+            "y": 1441,
+            "heading_degrees": 240,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "geys",
+            "layer": "grnd",
+            "x": 417,
+            "y": 2660,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "plla",
+            "layer": "grnd",
+            "x": 362,
+            "y": 948,
+            "heading_degrees": 240,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bsat",
+            "layer": "grnd",
+            "x": 87,
+            "y": 1003,
+            "heading_degrees": 75,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "geys",
+            "layer": "grnd",
+            "x": 264,
+            "y": 443,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "gebd",
+            "layer": "grnd",
+            "x": 262,
+            "y": 443,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "plla",
+            "layer": "grnd",
+            "x": 370,
+            "y": 531,
+            "heading_degrees": 105,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "bsat",
+            "layer": "grnd",
+            "x": 357,
+            "y": 2020,
+            "heading_degrees": 240,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "grob",
+            "layer": "grnd",
+            "x": 84,
+            "y": 564,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "sels",
+            "layer": "grnd",
+            "x": 97,
+            "y": 2354,
+            "heading_degrees": 0,
+            "is_stationary": false,
+            "terrain_effects": false
+        },
+        {
+            "unit": "tapu",
+            "layer": "grnd",
+            "x": 465,
+            "y": 665,
+            "heading_degrees": 285,
+            "is_stationary": false,
+            "terrain_effects": true
+        }
+    ]
+}
