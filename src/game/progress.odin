@@ -29,6 +29,12 @@ progress_path :: proc(allocator := context.allocator) -> string {
 	if dir := os.get_env("XDG_DATA_HOME", allocator); dir != "" {
 		return strings.concatenate({dir, "/deimos-rising/progress"}, allocator)
 	}
+	// Windows has no HOME, so without this nothing persisted there at all.
+	when ODIN_OS == .Windows {
+		if dir := os.get_env("APPDATA", allocator); dir != "" {
+			return strings.concatenate({dir, "/deimos-rising/progress"}, allocator)
+		}
+	}
 	home := os.get_env("HOME", allocator)
 	if home == "" {
 		return ""

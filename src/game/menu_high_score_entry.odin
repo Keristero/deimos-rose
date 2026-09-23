@@ -106,16 +106,18 @@ score_entry_start :: proc(se: ^Score_Entry, player_scores: [sim.MAX_PLAYERS]int,
 
 @(private = "file")
 score_entry_advance :: proc(se: ^Score_Entry) {
-	for {
-		se.player_i += 1
-		if se.player_i >= sim.MAX_PLAYERS {
-			se.done = true
-			return
-		}
-		if se.ranks[se.player_i] >= 0 {
-			break
-		}
+	// player_i only moves once a next qualifying player is found: it indexes
+	// ranks[] in score_entry_draw, which runs the same frame, so stepping it
+	// past the end (as this once did) panicked on every committed score.
+	next := se.player_i + 1
+	for next < sim.MAX_PLAYERS && se.ranks[next] < 0 {
+		next += 1
 	}
+	if next >= sim.MAX_PLAYERS {
+		se.done = true
+		return
+	}
+	se.player_i = next
 	name := se.last_name[se.player_i]
 	if len(name) > HSE_NAME_MAX {
 		name = name[:HSE_NAME_MAX]
@@ -176,10 +178,11 @@ score_entry_update :: proc(fl: ^Flow, r: ^Renderer, se: ^Score_Entry) {
 
 	case .Fading_Out:
 		if se.t >= HSE_FADE_SECONDS {
+			if !se.done {
+				score_entry_advance(se)
+			}
 			if se.done {
 				fl.mode = .Title
-			} else {
-				score_entry_advance(se)
 			}
 		}
 	}
@@ -226,6 +229,10 @@ score_entry_commit :: proc(se: ^Score_Entry) {
 		final = "Jar Jar Must Die"
 	}
 
+	// Cloned: typed is a view of name_buf, which the next queued player's
+	// prefill overwrites -- held by reference, player 1's committed row
+	// turned into whatever player 2 typed.
+	final = strings.clone(final)
 	rank := se.ranks[se.player_i]
 	se.table[rank].name = final
 	se.last_name[se.player_i] = final
