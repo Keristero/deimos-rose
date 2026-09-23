@@ -549,3 +549,17 @@ position is the same whole number the renderer always used. A game-frame
 capture before and after this change is pixel-identical. The
 `interpolated` menu capture (`DR_INTERP_ALPHA`) checks the on path: the
 terrain shifts 1 canvas pixel at 0.5 and 2 at 1, its scroll speed.
+
+### D34 — Rose menu backgrounds outside classic mode
+
+Outside classic mode, the menu backgrounds (`back`, and Level Select's
+`lese`) are recoloured to rose, fitting the project's name: each pixel's
+luminance is carried onto a rose hue (`game/assets.odin`'s
+`menu_image_rose`), so the art's detail and lighting survive. Built once
+per image at first use. Classic mode draws the original colours.
+
+The oracle comparisons (`tools/oracle/menu_compare.sh`, `compare.sh`) now
+run our side with `-classic`, since this port restyles some things the
+original has outside classic mode and a comparison is only meaningful
+without them. `mise run menu-shot` stays non-classic: it is for looking at
+this port's own screens, which classic hides.

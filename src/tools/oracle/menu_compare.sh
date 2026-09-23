@@ -7,6 +7,10 @@
 # (game/main.odin's run_menu_shot). Both are the full 640x480 logical screen
 # -- menus have no score-bar inset to crop, unlike gameplay's compare.sh.
 #
+# Ours runs with -classic: outside classic mode this port restyles some
+# things the original has (the menus' rose backgrounds, the pause menu), and
+# a comparison against the original is only meaningful without them.
+#
 # The AE (absolute error) count is printed as a quick regression signal, but
 # per AGENTS.md ("Look at the output"), side.png is the actual check --
 # open it.
@@ -18,7 +22,7 @@ out="$WORK/shots/menus/$MENU"; mkdir -p "$out"
 
 DISPLAY= xvfb-run -s "-screen 0 1280x1024x24" env \
     DR_ASSETS="$SRC/assets" DR_MENU_SHOT="$MENU" DR_SHOT="$out/ours" \
-    "$SRC/build/deimos" 2>&1 | grep -E "^wrote|^cannot" || true
+    "$SRC/build/deimos" -classic 2>&1 | grep -E "^wrote|^cannot" || true
 
 orig="$WORK/wine/menus/$MENU/orig.png"
 ours="$out/ours.png"

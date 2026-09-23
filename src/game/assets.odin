@@ -168,6 +168,40 @@ terrain_texture :: proc(t: ^Textures, level: sim.Res_ID) -> (rl.Texture2D, bool)
 // A full-screen im16 image not tied to any level (menu backgrounds: "back",
 // "lese", …), loaded once and cached by name -- the same lazy-load pattern
 // terrain_texture uses, minus the per-level media indirection.
+// This port's own look for the menu backgrounds (outside classic mode): the
+// original's teal recoloured to rose -- each pixel's luminance carried onto
+// a rose hue, so the art's detail and brightness survive. ROSE is scaled so
+// its own luminance is 1 (0.299*1.40 + 0.587*0.78 + 0.114*1.0 = 1.0).
+@(private = "file") ROSE :: [3]f32{1.40, 0.78, 1.0}
+
+// A menu background tinted rose, built from the im16 image the first time
+// it is asked for and cached beside the original under "<id>@rose".
+menu_image_rose :: proc(t: ^Textures, id: string) -> (rl.Texture2D, bool) {
+	key := fmt.tprintf("%s@rose", id)
+	if tex, ok := t.images[key]; ok {
+		return tex, true
+	}
+	img := rl.LoadImage(fmt.ctprintf("%s/images/im16/%s.png", t.root, id))
+	if img.data == nil {
+		return {}, false
+	}
+	defer rl.UnloadImage(img)
+	rl.ImageFormat(&img, .UNCOMPRESSED_R8G8B8A8)
+	pixels := ([^]rl.Color)(img.data)[:img.width * img.height]
+	for &c in pixels {
+		l := 0.299 * f32(c.r) + 0.587 * f32(c.g) + 0.114 * f32(c.b)
+		c.r = u8(min(l * ROSE[0], 255))
+		c.g = u8(min(l * ROSE[1], 255))
+		c.b = u8(min(l * ROSE[2], 255))
+	}
+	tex := rl.LoadTextureFromImage(img)
+	if tex.id == 0 {
+		return {}, false
+	}
+	t.images[strings.clone(key)] = tex
+	return tex, true
+}
+
 menu_image :: proc(t: ^Textures, id: string) -> (rl.Texture2D, bool) {
 	if tex, ok := t.images[id]; ok {
 		return tex, true

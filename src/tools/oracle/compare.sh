@@ -18,7 +18,7 @@ mkdir -p "$WORK/shots/cmp"
 DISPLAY= xvfb-run -s "-screen 0 1280x1024x24" env \
     DR_ASSETS="$SRC/assets" DR_FILM="$FILM" \
     DR_SHOT="$WORK/shots/cmp/$FILM" DR_SHOT_AT="$STEPS" \
-    "$SRC/build/deimos" 2>&1 | grep -E "^wrote|^cannot" || true
+    "$SRC/build/deimos" -classic 2>&1 | grep -E "^wrote|^cannot" || true
 
 for step in ${STEPS//,/ }; do
     printf -v padded "%05d" "$step"

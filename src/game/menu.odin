@@ -235,8 +235,18 @@ menu_mouse_pos :: proc() -> rl.Vector2 {
 
 // A full-screen im16 background at logical (640x480) size, scaled to the
 // window -- Main Menu, Credits and High Scores all reuse "back".
+//
+// Rose-tinted (menu_image_rose) unless classic mode is on, which keeps the
+// original's colours -- and is what the oracle's menu comparison captures
+// (tools/oracle/menu_compare.sh passes -classic).
 menu_draw_background :: proc(r: ^Renderer, id: string) {
-	tex, ok := menu_image(&r.textures, id)
+	tex: rl.Texture2D
+	ok: bool
+	if r.classic {
+		tex, ok = menu_image(&r.textures, id)
+	} else {
+		tex, ok = menu_image_rose(&r.textures, id)
+	}
 	if !ok {
 		return
 	}
