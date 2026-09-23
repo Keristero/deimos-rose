@@ -33,6 +33,9 @@ DR_SYMS   = "{{config_root}}/../symbols/functions.csv"
 # Kept separate because `odin check` rejects linker flags.
 DR_COLL   = "-collection:dr={{config_root}}"
 DR_LINK   = "-extra-linker-flags:-L{{config_root}}/.deps/lib"
+# Executable suffix for every -out: path. Odin on Windows refuses an output
+# path without one ("must have an appropriate extension"), seen in CI.
+DR_EXT    = "{% if os() == 'windows' %}.exe{% endif %}"
 
 [tasks.setup]
 description = "Create local dev symlinks for X11/GL so raylib links on immutable hosts"
@@ -41,7 +44,7 @@ run = "bash tools/setupdeps/setup.sh"
 [tasks.build]
 description = "Build the game binary"
 depends = ["setup"]
-run = "odin build game -out:$DR_BUILD/deimos $DR_COLL $DR_LINK -o:speed"
+run = "odin build game -out:$DR_BUILD/deimos$DR_EXT $DR_COLL $DR_LINK -o:speed"
 
 [tasks."build:linux"]
 description = "Build the game binary for Linux (x86-64) -- alias for `build`, named explicitly for symmetry with build:windows"
@@ -66,7 +69,7 @@ fi
 [tasks.dev]
 description = "Build unoptimised with debug info"
 depends = ["setup"]
-run = "odin build game -out:$DR_BUILD/deimos-dev $DR_COLL $DR_LINK -debug"
+run = "odin build game -out:$DR_BUILD/deimos-dev$DR_EXT $DR_COLL $DR_LINK -debug"
 
 [tasks.run]
 description = "Build and run the game"
@@ -88,7 +91,7 @@ args=()
 [ "${usage_classic:-false}" = "true" ] && args+=(-classic)
 [ "${usage_highrefreshrate:-false}" = "true" ] && args+=(-highrefreshrate)
 [ "${usage_diagnostics:-false}" = "true" ] && args+=(-diagnostics)
-exec "$DR_BUILD/deimos" "${args[@]}"
+exec "$DR_BUILD/deimos$DR_EXT" "${args[@]}"
 '''
 
 [tasks.check]
@@ -110,7 +113,7 @@ run = [
 [tasks.test]
 description = "Run the Odin test suite"
 depends = ["setup"]
-run = "odin test tests $DR_COLL $DR_LINK -out:$DR_BUILD/tests"
+run = "odin test tests $DR_COLL $DR_LINK -out:$DR_BUILD/tests$DR_EXT"
 
 [tasks.purity]
 description = "Enforce: sim/ imports no raylib and performs no I/O"
@@ -230,7 +233,7 @@ DISPLAY= xvfb-run -s "-screen 0 1280x1024x24" env \
 
 [tasks."oracle:diff"]
 description = "Compare the simulation's random calls with the original's trace, per demo film"
-run = "odin run tools/diff $DR_COLL -out:$DR_BUILD/oracle-diff --"
+run = "odin run tools/diff $DR_COLL -out:$DR_BUILD/oracle-diff$DR_EXT --"
 
 [tasks."rng:determinism"]
 description = "Build tools/rngcheck under several codegen configs (-o:none/-speed, -microarch:native, explicit -target-features:fma) and confirm they all print the same RNG digest -- the practical stand-in, on a host with no working Windows cross-link and no second OS to test against, for 'does sim/'s RNG produce the same bits on every platform' (see docs/decisions.md D27 and tests/rand_test.odin's rand_sequence_digest_is_codegen_stable)"
@@ -266,12 +269,12 @@ done
 [tasks."assets:extract"]
 description = "Extract original PAKs into modern formats (PNG/WAV/JSON)"
 depends = ["setup"]
-run = "odin run tools/extract $DR_COLL $DR_LINK -out:$DR_BUILD/extract -- $DR_ORIG $DR_ASSETS"
+run = "odin run tools/extract $DR_COLL $DR_LINK -out:$DR_BUILD/extract$DR_EXT -- $DR_ORIG $DR_ASSETS"
 
 [tasks."assets:records"]
 description = "Decode the tagged-text resources into JSON under assets/data/"
 depends = ["setup"]
-run = "odin run tools/records $DR_COLL $DR_LINK -out:$DR_BUILD/records -- $DR_ASSETS"
+run = "odin run tools/records $DR_COLL $DR_LINK -out:$DR_BUILD/records$DR_EXT -- $DR_ASSETS"
 
 [tasks."assets:all"]
 description = "Extract media and decode records"
@@ -280,7 +283,7 @@ depends = ["assets:extract", "assets:records"]
 [tasks."assets:verify"]
 description = "Verify extracted assets against the manifest and the original PAKs"
 depends = ["setup"]
-run = "odin run tools/verify $DR_COLL $DR_LINK -out:$DR_BUILD/verify -- $DR_ORIG $DR_ASSETS"
+run = "odin run tools/verify $DR_COLL $DR_LINK -out:$DR_BUILD/verify$DR_EXT -- $DR_ORIG $DR_ASSETS"
 
 [tasks.ci]
 description = "Everything CI runs"

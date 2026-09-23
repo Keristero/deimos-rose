@@ -22,8 +22,8 @@ mkdir -p "$(dirname "$BIN")"
 declare -A digests
 build_and_run() {
 	local name="$1"; shift
-	odin build tools/rngcheck "$DR_COLL" -out:"$BIN-$name" "$@" >&2
-	digests[$name]=$("$BIN-$name")
+	odin build tools/rngcheck "$DR_COLL" -out:"$BIN-$name${DR_EXT:-}" "$@" >&2
+	digests[$name]=$("$BIN-$name${DR_EXT:-}")
 	echo "$name: ${digests[$name]}"
 }
 
