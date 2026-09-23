@@ -54,6 +54,7 @@ depends = ["build"]
 usage = '''
 flag "--classic" help="Reproduce -classic mode: hide the new (non-original) menu items such as the netplay lobby"
 flag "--highrefreshrate" help="Reproduce -highrefreshrate mode: uncap the frame rate above the original's fixed step"
+flag "--diagnostics" help="Show a rolling FPS/ping/rollback-rate overlay in the bottom-right corner"
 '''
 run = '''
 #!/usr/bin/env bash
@@ -61,6 +62,7 @@ set -euo pipefail
 args=()
 [ "${usage_classic:-false}" = "true" ] && args+=(-classic)
 [ "${usage_highrefreshrate:-false}" = "true" ] && args+=(-highrefreshrate)
+[ "${usage_diagnostics:-false}" = "true" ] && args+=(-diagnostics)
 exec "$DR_BUILD/deimos" "${args[@]}"
 '''
 
@@ -210,15 +212,17 @@ depends = ["build"]
 run = "bash tools/netplay/loopback_check.sh"
 
 [tasks."netplay:lobby-shots"]
-description = "Screenshot every visually distinct netplay lobby state, no comparison (there is no original to compare against) -- just for a quick look"
+description = "Screenshot every visually distinct netplay lobby state plus the diagnostics overlay, no comparison (there is no original to compare against) -- just for a quick look"
 depends = ["build"]
 # Same one-frame-no-comparison idea as `menu-shot`, just looped over every
 # Netplay_Phase case run_menu_shot knows about (game/main.odin), since the
 # lobby has no original screen for menu-shots:compare to check it against.
+# "diagnostics" piggybacks on the same connected-lobby screen to also check
+# game/diagnostics.odin's overlay (notes/netcode-enhancements.md).
 run = '''
 #!/usr/bin/env bash
 set -euo pipefail
-for MENU in netplay_lobby netplay_lobby_join netplay_lobby_connecting netplay_lobby_connected; do
+for MENU in netplay_lobby netplay_lobby_join netplay_lobby_connecting netplay_lobby_connected diagnostics; do
   MENU="$MENU" mise run menu-shot
 done
 '''

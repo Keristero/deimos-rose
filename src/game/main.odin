@@ -164,6 +164,9 @@ main :: proc() {
 	// path left that closes the window on Escape, from the title screen.
 	rl.SetExitKey(.KEY_NULL)
 
+	diagnostics: Diagnostics
+	diagnostics.enabled = settings.diagnostics
+
 	// Fixed-step: the simulation advances in slices of step_dt regardless of
 	// how often the frame is actually presented, so -highrefreshrate (or a
 	// slow/fast monitor, or a stall) changes how smoothly the game is shown,
@@ -181,7 +184,11 @@ main :: proc() {
 		flow_handle_input(&flow, &renderer)
 		accumulator += f64(rl.GetFrameTime())
 		for steps := 0; accumulator >= step_dt && steps < MAX_STEPS_PER_FRAME; steps += 1 {
+			was_playing := flow.mode == .Playing
 			flow_step(&flow, &renderer, &particles, &blurs, &notices)
+			if was_playing {
+				diagnostics_note_update(&diagnostics)
+			}
 			accumulator -= step_dt
 		}
 		if state.level != nil {
@@ -189,6 +196,7 @@ main :: proc() {
 				rl.UpdateMusicStream(music)
 			}
 		}
+		diagnostics_tick(&diagnostics, rl.GetFrameTime(), flow.netplay_active ? flow.netplay.rs.rollback_count : 0)
 
 		rl.BeginDrawing()
 		rl.ClearBackground(rl.Color{0, 0, 0, 255})
@@ -196,6 +204,7 @@ main :: proc() {
 		if show_debug && state.level != nil {
 			draw_debug(state, &report)
 		}
+		diagnostics_draw(&diagnostics, flow.netplay_active, flow.netplay.ping_ms)
 		rl.EndDrawing()
 	}
 }
@@ -269,13 +278,33 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		flow.netplay.phase = .Connected
 		flow.netplay.ping_ms = 42 // sample value -- ping_ms is only ever set from a real Pong in netplay_tick_ping
 		flow.netplay.remote_ready = true // local not ready yet, so the Ready button still draws alongside "OTHER PLAYER: READY"
+	case "diagnostics":
+		flow.mode = .Netplay_Lobby
+		netplay_lobby_init(&flow.netplay, r)
+		flow.netplay.role = .Guest
+		flow.netplay.phase = .Connected
+		flow.netplay.ping_ms = 42
 	case:
 		fmt.eprintfln("unknown menu %v (see run_menu_shot)", name)
 		os.exit(1)
 	}
+	// game/diagnostics.odin's overlay: this menu name doubles as its visual
+	// smoke check (there's no baseline to compare against, just a look --
+	// same idea as netplay_lobby_connected above). Piggybacks on the
+	// connected-lobby screen since that's the one case with a ping to show;
+	// run_menu_shot draws one static frame, so the numbers are hand-set, not
+	// measured by diagnostics_tick.
+	diag: Diagnostics
+	if name == "diagnostics" {
+		diag.enabled = true
+		diag.updates_per_sec = 30.0
+		diag.rollbacks_per_sec = 1.2
+		flow.netplay_active = true
+	}
 	rl.BeginDrawing()
 	rl.ClearBackground(rl.Color{0, 0, 0, 255})
 	flow_draw(&flow, r, nil, nil, nil, WINDOW_SCALE)
+	diagnostics_draw(&diag, flow.netplay_active, flow.netplay.ping_ms)
 	rl.EndDrawing()
 	img := rl.LoadImageFromScreen()
 	out := fmt.ctprintf("%s.png", path)

@@ -233,3 +233,18 @@ are cross-cutting rather than implementation detail:
   this reimplementation) sketch a future pause-on-*disconnect* behaviour for
   the unplanned-drop case, which is a different feature from this and was not
   attempted here.
+
+### D23 — Diagnostics overlay: tumbling window, not a sliding one
+
+`notes/netcode-enhancements.md` asks for "rolling average" ping/rollback/
+update stats. A true sliding window (a ring buffer of per-frame samples,
+averaged over the trailing N seconds) updates smoothly every frame but costs
+memory and bookkeeping proportional to the window length. A 1-second tumbling
+window — count events, divide by elapsed time, reset, repeat — is one counter
+and one timer, and for a debug overlay a reader glances at rather than reads
+continuously, the visible cost (the numbers hold steady for a second, then
+jump) is not worth paying a real ring buffer to avoid. `game/diagnostics.odin`
+documents this in its header as the simplification it is, with the actual
+sliding-window upgrade path named in case a real session ever makes the
+stepping visibly distracting. See
+[phase-8-netcode-enhancements.md](phase-8-netcode-enhancements.md).

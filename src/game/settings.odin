@@ -16,6 +16,11 @@ Settings :: struct {
 	// 30 Hz regardless (D17) -- this only changes how often an already-built
 	// frame gets redrawn.
 	high_refresh_rate: bool,
+	// -diagnostics: a small rolling-stats overlay in the bottom-right corner
+	// (game/diagnostics.odin) -- FPS always, plus (in a netplay session)
+	// ping, rollbacks/sec and updates/sec. New content, no original
+	// equivalent -- notes/netcode-enhancements.md asked for it.
+	diagnostics: bool,
 }
 
 settings_parse :: proc(args: []string) -> (s: Settings) {
@@ -25,6 +30,8 @@ settings_parse :: proc(args: []string) -> (s: Settings) {
 			s.classic = true
 		case "-highrefreshrate":
 			s.high_refresh_rate = true
+		case "-diagnostics":
+			s.diagnostics = true
 		}
 	}
 	return
