@@ -71,6 +71,12 @@ jobs:
           working_directory: src
           install_args: odin
 
+      # mise-action's shims fall back to .cmd files here (it cannot find
+      # mise-shim.exe), which Git Bash will not run as `odin`. Tasks under
+      # `mise run` get the real path anyway; this is for bare steps.
+      - name: Put Odin itself on PATH
+        run: dirname "$(mise which odin)" >> "$GITHUB_PATH"
+
       - run: odin version
       - run: mise run ci
       - run: mise run build:windows
