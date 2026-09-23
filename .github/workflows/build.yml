@@ -11,6 +11,11 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# java in mise.toml is only for Ghidra's decomp:* tasks; without this,
+# `mise run` auto-installs a 200 MB JDK on every job.
+env:
+  MISE_DISABLE_TOOLS: java
+
 jobs:
   build-linux:
     runs-on: ubuntu-latest
@@ -31,11 +36,9 @@ jobs:
       - name: Pin Odin for this run only
         run: printf '[tools]\nodin = "dev-2026-09"\n' > mise.local.toml
 
-      # Only Odin: java in mise.toml is for Ghidra's decomp:* tasks alone.
       - uses: jdx/mise-action@v2
         with:
           working_directory: src
-          install_args: odin
 
       - run: odin version
       - run: mise run ci
@@ -65,21 +68,24 @@ jobs:
       - name: Pin Odin for this run only
         run: printf '[tools]\nodin = "dev-2026-09"\n' > mise.local.toml
 
-      # Only Odin: java in mise.toml is for Ghidra's decomp:* tasks alone.
       - uses: jdx/mise-action@v2
         with:
           working_directory: src
-          install_args: odin
 
       # The Windows release zip nests everything under dist/, which mise does
       # not recognise as the bin directory ("No executable found for
       # configured tool: odin"), and its shims fall back to .cmd files Git
-      # Bash will not run anyway. Find odin.exe ourselves.
+      # Bash will not run anyway. Find odin.exe ourselves, and put it on PATH
+      # both for bare steps and, via _.path, for the tasks mise spawns (which
+      # do not inherit the $GITHUB_PATH entry).
       - name: Put Odin itself on PATH
         run: |
           exe=$(find "$(cygpath -u "$(mise where odin)")" -name odin.exe | head -1)
           [ -n "$exe" ] || { echo "odin.exe not found under $(mise where odin)" >&2; exit 1; }
-          cygpath -w "$(dirname "$exe")" >> "$GITHUB_PATH"
+          dir=$(cygpath -m "$(dirname "$exe")")
+          echo "$dir" >> "$GITHUB_PATH"
+          printf '[env]\n_.path = ["%s"]\n' "$dir" >> mise.local.toml
+          cat mise.local.toml
 
       - run: odin version
       - run: mise run ci
