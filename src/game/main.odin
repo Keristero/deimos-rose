@@ -244,9 +244,31 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 	case "netplay_lobby":
 		// New content, no original to compare against (see game/netplay.odin's
 		// file header) -- this is a visual smoke check of the lobby's own
-		// menu screen, not an oracle:menu-shot comparison.
+		// menu screens, not an oracle:menu-shot comparison. The four cases
+		// below cover Netplay_Phase's visually distinct states; none open a
+		// real socket (netplay_lobby_init's netplay_reset already zeroed
+		// nl.have_sock) -- the fields netplay_lobby_draw actually reads are
+		// set directly instead, since this only ever draws once and never
+		// polls.
 		flow.mode = .Netplay_Lobby
 		netplay_lobby_init(&flow.netplay, r)
+	case "netplay_lobby_join":
+		flow.mode = .Netplay_Lobby
+		netplay_lobby_init(&flow.netplay, r)
+		flow.netplay.phase = .Enter_Address
+		flow.netplay.addr_len = copy(flow.netplay.addr_buf[:], "127.0.0.1")
+	case "netplay_lobby_connecting":
+		flow.mode = .Netplay_Lobby
+		netplay_lobby_init(&flow.netplay, r)
+		flow.netplay.role = .Host
+		flow.netplay.phase = .Connecting
+	case "netplay_lobby_connected":
+		flow.mode = .Netplay_Lobby
+		netplay_lobby_init(&flow.netplay, r)
+		flow.netplay.role = .Guest
+		flow.netplay.phase = .Connected
+		flow.netplay.ping_ms = 42 // sample value -- ping_ms is only ever set from a real Pong in netplay_tick_ping
+		flow.netplay.remote_ready = true // local not ready yet, so the Ready button still draws alongside "OTHER PLAYER: READY"
 	case:
 		fmt.eprintfln("unknown menu %v (see run_menu_shot)", name)
 		os.exit(1)

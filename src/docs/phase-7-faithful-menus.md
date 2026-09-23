@@ -590,6 +590,20 @@ not a live interactive session — building a new live-capture mechanism for
 one three-line conditional was judged not worth it. Documented as a real,
 if minor, gap rather than silently claimed as verified.
 
+`run_menu_shot` (`game/main.odin`) grew four lobby cases — `netplay_lobby`
+(the Host/Join/Back menu), `netplay_lobby_join` (address entry),
+`netplay_lobby_connecting` (host's "waiting for a player" state) and
+`netplay_lobby_connected` (ready-up, with a sample ping and the remote-ready
+flag set so both the Ready button and the "OTHER PLAYER: READY" text draw at
+once) — none open a real socket, since a static single-frame capture never
+polls one; the fields `netplay_lobby_draw` reads are just set directly after
+`netplay_lobby_init`. `mise run netplay:lobby-shots` (new task) renders all
+four in one pass to `work/shots/menus/netplay_lobby*/ours.png`. Like
+`menu-shot`, this is a look-and-see smoke check, not an oracle comparison —
+there is nothing original to diff against — but all four were inspected
+directly: text and buttons align with no overlap or clipping, and the ready/
+not-ready colour coding (green/dim) reads correctly.
+
 `mise run ci` (check, purity, 85 tests) and `mise run oracle:diff` (all four
 demos still matching the original call for call, unaffected by `gather_input`
 moving from an implicit single-player wrap to an explicit call site) both

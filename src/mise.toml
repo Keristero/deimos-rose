@@ -209,6 +209,20 @@ description = "Two-instance loopback smoke test for the netplay lobby and live r
 depends = ["build"]
 run = "bash tools/netplay/loopback_check.sh"
 
+[tasks."netplay:lobby-shots"]
+description = "Screenshot every visually distinct netplay lobby state, no comparison (there is no original to compare against) -- just for a quick look"
+depends = ["build"]
+# Same one-frame-no-comparison idea as `menu-shot`, just looped over every
+# Netplay_Phase case run_menu_shot knows about (game/main.odin), since the
+# lobby has no original screen for menu-shots:compare to check it against.
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+for MENU in netplay_lobby netplay_lobby_join netplay_lobby_connecting netplay_lobby_connected; do
+  MENU="$MENU" mise run menu-shot
+done
+'''
+
 [tasks."assets:extract"]
 description = "Extract original PAKs into modern formats (PNG/WAV/JSON)"
 depends = ["setup"]
