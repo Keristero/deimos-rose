@@ -32,6 +32,7 @@ package game
 // only the simulation state itself is ever corrected.
 
 import "core:fmt"
+import "core:mem"
 import "core:time"
 
 import core_net "core:net"
@@ -51,6 +52,11 @@ NETPLAY_INPUT_WINDOW :: 8    // matches tests/rollback_session_test.odin's own W
 NETPLAY_CHECKSUM_LAG :: 20   // frames behind "now" a checksum is reported at; matches the test, comfortably under ROLLBACK_DEPTH (64)
 NETPLAY_ADDR_MAX :: 63
 
+// Phase 8 stage 3/4: pause on disconnect + reconnect.
+NETPLAY_LIVE_TIMEOUT :: 3 * time.Second  // silence from a known peer during .Playing before freezing
+STATE_CHUNK_BURST :: 64                  // chunks (<= 64KB) sent per frame while transferring -- loopback/LAN handles this trivially; unacked ones just get resent next frame, so this is a sliding window with "one render frame" as its retry granularity, not a per-chunk timer
+STATE_RESYNC_TIMEOUT :: 10 * time.Second // give up if a transfer makes no further progress at all for this long (not a per-chunk retry count -- see STATE_CHUNK_BURST)
+
 Netplay_Phase :: enum {
 	Menu,          // choose Host or Join
 	Enter_Address, // guest only: typing "host" or "host:port"
@@ -62,6 +68,23 @@ Netplay_Phase :: enum {
 Netplay_Role :: enum {
 	Host,
 	Guest,
+}
+
+// Phase 8 stage 3/4. Live is the ordinary state a session is in for its
+// entire duration up through Phase 6/7 -- it is also the zero value, so a
+// freshly-started session needs no explicit initialisation to be considered
+// live. The other three only ever apply once fl.mode == .Playing has already
+// been reached once and a peer is then lost:
+//
+//   Live -> (peer goes quiet for NETPLAY_LIVE_TIMEOUT) -> Waiting_Reconnect
+//   Waiting_Reconnect -> (fresh Hello arrives) -> Resync_Sending (survivor)
+//                                              -> Resync_Receiving (rejoiner, via its ordinary Join flow)
+//   Resync_Sending / Resync_Receiving -> (transfer completes) -> Live
+Link_State :: enum {
+	Live,
+	Waiting_Reconnect,
+	Resync_Sending,
+	Resync_Receiving,
 }
 
 Netplay :: struct {
@@ -111,6 +134,41 @@ Netplay :: struct {
 	rs:            net.Rollback_Session,
 	desync:        net.Desync_Monitor,
 	warned_desync: bool,
+
+	// Phase 8 stage 3/4: pause on disconnect + reconnect.
+	link_state:     Link_State,
+	last_peer_seen: time.Time, // last packet accepted from nl.peer while link_state == .Live
+
+	// Resync sender (the survivor). resync_buf is a one-off heap copy of
+	// fl.state, made only for the duration of the transfer -- embedding a
+	// permanent size_of(sim.State) array in Netplay would bloat every Flow
+	// for a buffer almost never in use. resync_acked is a per-chunk bitmap
+	// (bool per chunk, not literal bits -- 655 chunks costs 655 bytes, not
+	// worth a bit_set): netplay_resync_send_tick (re)sends every unacked
+	// chunk up to STATE_CHUNK_BURST per frame rather than waiting for one
+	// chunk's ack before sending the next, so the transfer isn't bottlenecked
+	// on one network round trip per chunk.
+	resync_peer:          core_net.Endpoint,
+	resync_buf:           []byte,
+	resync_total:         int,
+	resync_chunks:        int, // ceil(resync_total / STATE_CHUNK_SIZE)
+	resync_acked:         []bool,
+	resync_acked_count:   int,
+	resync_last_progress: time.Time,
+
+	// Resync receiver (the reconnecting client). recv_got mirrors
+	// resync_acked's shape -- chunks can arrive out of order since the
+	// sender now bursts several per frame instead of one at a time.
+	recv_buf:              []byte,
+	recv_total:            int,
+	recv_chunks:           int,
+	recv_got:              []bool,
+	recv_got_count:        int,
+	recv_assigned_player:  u8,
+	recv_last_progress:    time.Time,
+	pending_resync_start:  bool, // set by netplay_poll on an accepted Resync_Start; consumed once per frame, mirrors pending_start
+	resync_incoming_total:  u32, // stashed from the Resync_Start until pending_resync_start is consumed
+	resync_incoming_player: u8,
 }
 
 // Closes the socket (if any) and zeroes every other field. Package-visible
@@ -121,6 +179,10 @@ netplay_reset :: proc(nl: ^Netplay) {
 	if nl.have_sock {
 		net.close(&nl.sock)
 	}
+	delete(nl.resync_buf) // no-op for any that were never allocated (nil slice)
+	delete(nl.resync_acked)
+	delete(nl.recv_buf)
+	delete(nl.recv_got)
 	nl^ = {}
 }
 
@@ -164,6 +226,12 @@ netplay_lobby_update :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 	if nl.pending_start {
 		nl.pending_start = false
 		netplay_begin_session(fl, nl, nl.start_seed, int(nl.start_level))
+	}
+	// Same reasoning as pending_start above, for a reconnecting client's
+	// inbound Resync_Start (Phase 8 stage 4).
+	if nl.pending_resync_start {
+		nl.pending_resync_start = false
+		netplay_begin_resync_receive(nl)
 	}
 }
 
@@ -381,7 +449,10 @@ netplay_fail :: proc(nl: ^Netplay, msg: string) {
 // is unconditional).
 @(private = "file")
 netplay_poll :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
-	buf: [256]byte
+	// Sized for the biggest packet on the wire, State_Chunk's 3-byte header
+	// plus a full STATE_CHUNK_SIZE payload (Phase 8 stage 4) -- everything
+	// else fits in a fraction of this.
+	buf: [net.STATE_CHUNK_SIZE + 16]byte
 	for {
 		n, from, ok := net.poll_recv(&nl.sock, buf[:])
 		if !ok {
@@ -390,19 +461,25 @@ netplay_poll :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 		if nl.have_peer && from != nl.peer {
 			continue // a stray packet from anyone but our one peer
 		}
+		if nl.have_peer {
+			nl.last_peer_seen = time.now() // Phase 8 stage 3: any packet at all counts as proof of life
+		}
 		kind, kok := net.peek_kind(buf[:n])
 		if !kok {
 			continue
 		}
 		switch kind {
 		case .Hello:
-			seq, _, hok := net.decode_hello(buf[:n]) // the peer's player index isn't needed: role/local_player are fixed by who hosted vs. joined
+			seq, _, hok := net.decode_hello(buf[:n]) // the peer's player index isn't needed: role/local_player are fixed by who hosted vs. joined, or -- reconnecting -- by Resync_Start's assigned_player
 			if !hok {
 				continue
 			}
+			// Phase 8 stage 4: a Hello arriving while Waiting_Reconnect is a
+			// fresh peer reconnecting, exactly like the very first Hello a
+			// listening host ever sees -- same have_peer/reliable_init setup,
+			// just possibly later in the program's life.
+			reconnecting := nl.link_state == .Waiting_Reconnect
 			if !nl.have_peer {
-				// Only a listening host reaches this: the first Hello it
-				// ever sees names its peer's address and player slot.
 				nl.peer, nl.have_peer = from, true
 				net.reliable_init(&nl.rc, from)
 			}
@@ -410,9 +487,12 @@ netplay_poll :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 			if is_new {
 				nl.got_peer_hello = true
 			}
-			if nl.role == .Host && !nl.sent_own_hello {
-				net.send_hello(&nl.rc, &nl.sock, 0) // host is always player 0
+			if (nl.role == .Host || reconnecting) && !nl.sent_own_hello {
+				net.send_hello(&nl.rc, &nl.sock, 0) // unused by the receiver either way -- see the comment above
 				nl.sent_own_hello = true
+			}
+			if reconnecting && is_new {
+				netplay_begin_resync_send(fl, nl)
 			}
 		case .Ack:
 			net.reliable_handle_ack(&nl.rc, buf[:n])
@@ -439,19 +519,78 @@ netplay_poll :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 				continue
 			}
 			_ = net.reliable_accept(&nl.rc, &nl.sock, nl.peer, seq)
-			was_playing := fl.netplay_active
+			// Phase 8 stage 3: a clean Goodbye mid-session (peer chose to
+			// leave, rather than just going quiet) freezes exactly like a
+			// timeout would -- same "pause on disconnect", just noticed
+			// immediately instead of after NETPLAY_LIVE_TIMEOUT. A Goodbye
+			// from the lobby (never reached .Playing) is unchanged: still a
+			// full reset back to the lobby menu.
+			if fl.netplay_active {
+				netplay_enter_waiting_reconnect(nl)
+				nl.error = "peer disconnected"
+				return
+			}
 			netplay_reset(nl)
 			nl.error = "peer disconnected"
-			if was_playing {
-				fl.netplay_active = false
-				fl.mode = .Title
-			} else {
-				netplay_build_buttons(nl, r)
-			}
+			netplay_build_buttons(nl, r)
 			return
 		case .Level_Choice:
 			if idx, lok := net.decode_level_choice(buf[:n]); lok {
 				nl.level_index = int(idx)
+			}
+		case .Resync_Start:
+			seq, assigned, total, rok := net.decode_resync_start(buf[:n])
+			if !rok || !nl.have_peer {
+				continue
+			}
+			if net.reliable_accept(&nl.rc, &nl.sock, nl.peer, seq) {
+				nl.resync_incoming_total = total
+				nl.resync_incoming_player = assigned
+				nl.pending_resync_start = true
+			}
+		case .State_Chunk:
+			if nl.link_state != .Resync_Receiving {
+				continue
+			}
+			pkt, cok := net.decode_state_chunk(buf[:n])
+			if !cok || int(pkt.chunk_index) >= nl.recv_chunks {
+				continue
+			}
+			// Chunks can arrive out of order now that the sender bursts
+			// several per frame instead of waiting on one ack at a time
+			// (see netplay_resync_send_tick) -- accept any not-yet-applied
+			// index rather than only the next in-sequence one.
+			if !nl.recv_got[pkt.chunk_index] {
+				off := int(pkt.chunk_index) * net.STATE_CHUNK_SIZE
+				copy(nl.recv_buf[off:], pkt.payload[:pkt.length])
+				nl.recv_got[pkt.chunk_index] = true
+				nl.recv_got_count += 1
+				nl.recv_last_progress = time.now()
+			}
+			// Ack regardless of whether this was new or a resend of a chunk
+			// already applied -- the sender only clears a chunk from its
+			// unacked set once, so a duplicate ack is simply a no-op there.
+			ackbuf: [3]byte
+			an := net.encode_state_chunk_ack(ackbuf[:], pkt.chunk_index)
+			net.send(&nl.sock, from, ackbuf[:an])
+			if nl.recv_got_count >= nl.recv_chunks {
+				netplay_finish_resync_receive(fl, nl)
+			}
+		case .State_Chunk_Ack:
+			if nl.link_state != .Resync_Sending {
+				continue
+			}
+			idx, aok := net.decode_state_chunk_ack(buf[:n])
+			if !aok || int(idx) >= nl.resync_chunks {
+				continue
+			}
+			if !nl.resync_acked[idx] {
+				nl.resync_acked[idx] = true
+				nl.resync_acked_count += 1
+				nl.resync_last_progress = time.now()
+			}
+			if nl.resync_acked_count >= nl.resync_chunks {
+				netplay_finish_resync_send(nl)
 			}
 		case .Ping:
 			nonce, pok := net.decode_ping(buf[:n])
@@ -500,10 +639,173 @@ netplay_begin_session :: proc(fl: ^Flow, nl: ^Netplay, seed: u32, level_index: i
 	net.rollback_session_init(&nl.rs, fl.state, local_player)
 	nl.desync = {}
 	nl.warned_desync = false
+	nl.link_state = .Live
+	nl.last_peer_seen = time.now()
 	fl.session_start_pos = level_index + 1
 	fl.netplay_active = true
 	fl.mode = .Playing
 	fmt.eprintfln("netplay: session started as player %d, seed %d, level %d", local_player, seed, level_index) // tools/netplay/loopback_check.sh greps for this
+}
+
+// Phase 8 stage 3: the peer has gone quiet mid-session. Rather than tearing
+// the session down, rebind to the well-known NETPLAY_PORT (regardless of
+// whether this side was originally Host or Guest -- see docs/decisions.md)
+// so a reconnecting client can always just use the ordinary "Join Game" flow
+// against this machine's address, with no special foreknowledge of who
+// survived. The Rollback_Session and fl.state are left completely alone:
+// net/session.odin operates purely in terms of state.frame, so simulation
+// can resume exactly where it was once a peer reappears, with no rewind.
+@(private = "file")
+netplay_enter_waiting_reconnect :: proc(nl: ^Netplay) {
+	if nl.have_sock {
+		net.close(&nl.sock)
+	}
+	nl.have_sock = false
+	if sock, ok := net.open(NETPLAY_PORT); ok {
+		nl.sock, nl.have_sock = sock, true
+	}
+	nl.have_peer = false
+	nl.got_peer_hello = false
+	nl.sent_own_hello = false
+	nl.rc = {}
+	nl.link_state = .Waiting_Reconnect
+	fmt.eprintfln("netplay: peer lost, waiting for a reconnect on port %d", NETPLAY_PORT)
+}
+
+// Phase 8 stage 4, survivor side: a fresh Hello arrived while
+// Waiting_Reconnect. Snapshots fl.state as raw bytes (its pointer fields --
+// defs, level, events -- travel as garbage and are fixed up on the other end
+// from values that do survive the copy, session.level_id chief among them;
+// see netplay_finish_resync_receive) and starts streaming it over as
+// State_Chunk packets.
+@(private = "file")
+netplay_begin_resync_send :: proc(fl: ^Flow, nl: ^Netplay) {
+	nl.resync_peer = nl.peer
+	assigned := u8(1 - nl.rs.local_player)
+	nl.resync_total = size_of(sim.State)
+	nl.resync_buf = make([]byte, nl.resync_total)
+	mem.copy(raw_data(nl.resync_buf), fl.state, nl.resync_total)
+	nl.resync_chunks = (nl.resync_total + net.STATE_CHUNK_SIZE - 1) / net.STATE_CHUNK_SIZE
+	nl.resync_acked = make([]bool, nl.resync_chunks)
+	nl.resync_acked_count = 0
+	nl.resync_last_progress = time.now()
+	nl.link_state = .Resync_Sending
+	net.send_resync_start(&nl.rc, &nl.sock, assigned, u32(nl.resync_total))
+	// The first burst goes out right away rather than waiting for
+	// netplay_playing_poll's next call -- see netplay_resync_send_tick.
+	netplay_resync_send_tick(nl)
+}
+
+@(private = "file")
+netplay_send_chunk :: proc(nl: ^Netplay, index: int) {
+	start := index * net.STATE_CHUNK_SIZE
+	end := min(start + net.STATE_CHUNK_SIZE, nl.resync_total)
+	buf: [3 + net.STATE_CHUNK_SIZE]byte
+	n := net.encode_state_chunk(buf[:], u16(index), nl.resync_buf[start:end])
+	net.send(&nl.sock, nl.resync_peer, buf[:n])
+}
+
+// Called every render frame while link_state == .Resync_Sending
+// (netplay_playing_poll). Rather than one chunk per round trip (which
+// bottlenecks a 655-chunk transfer on the frame rate, taking tens of
+// seconds even on loopback -- measured during this stage's own smoke test),
+// resends every still-unacked chunk, capped at STATE_CHUNK_BURST per call:
+// a lost or slow-to-ack chunk just gets included again next frame, so "one
+// render frame" is this scheme's retry interval rather than a per-chunk
+// timer. Redundant sends for a chunk whose ack simply hasn't arrived yet are
+// harmless -- the receiver already has that byte range and just re-acks it.
+@(private = "file")
+netplay_resync_send_tick :: proc(nl: ^Netplay) {
+	if time.since(nl.resync_last_progress) > STATE_RESYNC_TIMEOUT {
+		// No ack at all in a long time -- the rejoining client vanished too;
+		// give up this attempt and keep waiting for another.
+		netplay_enter_waiting_reconnect(nl)
+		return
+	}
+	sent := 0
+	for i in 0 ..< nl.resync_chunks {
+		if nl.resync_acked[i] {
+			continue
+		}
+		netplay_send_chunk(nl, i)
+		sent += 1
+		if sent >= STATE_CHUNK_BURST {
+			break
+		}
+	}
+}
+
+@(private = "file")
+netplay_finish_resync_send :: proc(nl: ^Netplay) {
+	delete(nl.resync_buf)
+	nl.resync_buf = nil
+	delete(nl.resync_acked)
+	nl.resync_acked = nil
+	nl.peer = nl.resync_peer
+	nl.have_peer = true
+	nl.link_state = .Live
+	nl.last_peer_seen = time.now()
+	fmt.eprintfln("netplay: resync sent, resuming as player %d", nl.rs.local_player)
+}
+
+// Phase 8 stage 4, reconnecting side: a Resync_Start was accepted
+// (netplay_poll), consumed here from netplay_lobby_update the same way
+// pending_start is. fl.mode stays .Netplay_Lobby -- see netplay_lobby_draw's
+// Resync_Receiving status line -- until the transfer completes.
+@(private = "file")
+netplay_begin_resync_receive :: proc(nl: ^Netplay) {
+	nl.link_state = .Resync_Receiving
+	nl.recv_total = int(nl.resync_incoming_total)
+	nl.recv_chunks = (nl.recv_total + net.STATE_CHUNK_SIZE - 1) / net.STATE_CHUNK_SIZE
+	nl.recv_got = make([]bool, nl.recv_chunks)
+	nl.recv_got_count = 0
+	nl.recv_assigned_player = nl.resync_incoming_player
+	nl.recv_buf = make([]byte, nl.recv_total)
+	nl.recv_last_progress = time.now()
+}
+
+// Raw byte-for-byte restore of fl.state, then the pointer fixup: defs is
+// this process's own (never sent), level is re-resolved from the
+// session.level_id value that *did* survive the copy (sim.level_by_id --
+// the same lookup sim.init itself uses), and events (debug-only, always nil
+// in normal play) is force-nilled rather than trusted as a live pointer from
+// the sender's address space.
+@(private = "file")
+netplay_finish_resync_receive :: proc(fl: ^Flow, nl: ^Netplay) {
+	mem.copy(fl.state, raw_data(nl.recv_buf), nl.recv_total)
+	fl.state.defs = fl.defs
+	fl.state.level = sim.level_by_id(fl.defs, fl.state.session.level_id)
+	fl.state.events = nil
+	delete(nl.recv_buf)
+	nl.recv_buf = nil
+	delete(nl.recv_got)
+	nl.recv_got = nil
+
+	net.rollback_session_init(&nl.rs, fl.state, int(nl.recv_assigned_player))
+	nl.desync = {}
+	nl.warned_desync = false
+	fl.netplay_active = true
+	fl.mode = .Playing
+	nl.link_state = .Live
+	nl.last_peer_seen = time.now()
+	fmt.eprintfln("netplay: reconnected as player %d at frame %d", nl.recv_assigned_player, fl.state.frame) // tools/netplay/loopback_check.sh-style marker for a future reconnect smoke check
+}
+
+// Phase 8 stage 3: bottom-right/banner text for a frozen .Playing session --
+// title == "" means link_state == .Live and the caller should draw nothing.
+// Kept here rather than in flow.odin so flow.odin does not need to import
+// dr:net purely to read a progress percentage.
+netplay_disconnect_banner :: proc(nl: ^Netplay) -> (title, sub: cstring) {
+	switch nl.link_state {
+	case .Live, .Resync_Receiving: // Resync_Receiving never applies to a .Playing session -- see netplay_begin_resync_receive
+		return "", ""
+	case .Waiting_Reconnect:
+		return "DISCONNECTED", "WAITING FOR CONNECTIONS -- ESC TO EXIT, F5 TO CONTINUE ALONE"
+	case .Resync_Sending:
+		pct := nl.resync_chunks > 0 ? nl.resync_acked_count * 100 / nl.resync_chunks : 0
+		return "RECONNECTING PEER", fmt.ctprintf("SENDING GAME STATE... %d%% -- ESC TO EXIT, F5 TO CONTINUE ALONE", pct)
+	}
+	return "", ""
 }
 
 // Called from flow_handle_input's .Playing case, every render frame,
@@ -512,6 +814,28 @@ netplay_begin_session :: proc(fl: ^Flow, nl: ^Netplay, seed: u32, level_index: i
 // steps flow_step runs this frame.
 netplay_playing_poll :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 	netplay_poll(fl, r, nl)
+	switch nl.link_state {
+	case .Live:
+		// Phase 8 stage 3: no packet (Input, Checksum, Ping/Pong, ...) from
+		// the peer in NETPLAY_LIVE_TIMEOUT means it's gone -- freeze rather
+		// than let rollback's prediction window run out and desync forward.
+		if time.since(nl.last_peer_seen) > NETPLAY_LIVE_TIMEOUT {
+			netplay_enter_waiting_reconnect(nl)
+		}
+	case .Waiting_Reconnect:
+	// Nothing to drive here -- reliable_tick only matters once a fresh
+	// Hello has set up a Resync_Start to retry (Resync_Sending, below).
+	case .Resync_Sending:
+		if !net.reliable_tick(&nl.rc, &nl.sock) {
+			// Resync_Start itself never got acked -- this reconnect attempt
+			// is dead too; keep waiting for another.
+			netplay_enter_waiting_reconnect(nl)
+		} else {
+			netplay_resync_send_tick(nl)
+		}
+	case .Resync_Receiving:
+	// Never reached here -- see netplay_begin_resync_receive's comment.
+	}
 }
 
 // Called from flow.odin's .Playing branch of flow_step, once per fixed sim
@@ -563,6 +887,16 @@ netplay_lobby_draw :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 	good := rl.Color{110, 220, 140, 255}
 
 	menu_draw_text(r, "NETPLAY", SCREEN_W / 2, 130, white, .Centre)
+
+	// Phase 8 stage 4: a reconnecting client's chunk transfer runs while
+	// nl.phase is still whatever the ordinary handshake left it at
+	// (typically .Connected) -- shown here instead of the phase switch below
+	// so it overrides that screen rather than drawing underneath it.
+	if nl.link_state == .Resync_Receiving {
+		pct := nl.recv_chunks > 0 ? nl.recv_got_count * 100 / nl.recv_chunks : 0
+		menu_draw_text(r, fmt.tprintf("RECONNECTING -- RECEIVING GAME STATE... %d%%", pct), SCREEN_W / 2, 220, white, .Centre)
+		return
+	}
 
 	switch nl.phase {
 	case .Menu:

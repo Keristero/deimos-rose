@@ -51,6 +51,58 @@ packet_level_choice_round_trips :: proc(t: ^testing.T) {
 }
 
 @(test)
+packet_resync_start_round_trips :: proc(t: ^testing.T) {
+	buf: [64]byte
+	n := net.encode_resync_start(buf[:], 9, 1, 670120)
+	kind, kok := net.peek_kind(buf[:n])
+	testing.expect(t, kok)
+	testing.expect_value(t, kind, net.Packet_Kind.Resync_Start)
+	seq, assigned, total, ok := net.decode_resync_start(buf[:n])
+	testing.expect(t, ok)
+	testing.expect_value(t, seq, u8(9))
+	testing.expect_value(t, assigned, u8(1))
+	testing.expect_value(t, total, u32(670120))
+}
+
+@(test)
+packet_state_chunk_round_trips_a_full_and_partial_chunk :: proc(t: ^testing.T) {
+	payload: [net.STATE_CHUNK_SIZE]byte
+	for &b, i in payload {
+		b = u8(i)
+	}
+	buf: [net.STATE_CHUNK_SIZE + 16]byte
+
+	n := net.encode_state_chunk(buf[:], 654, payload[:])
+	kind, kok := net.peek_kind(buf[:n])
+	testing.expect(t, kok)
+	testing.expect_value(t, kind, net.Packet_Kind.State_Chunk)
+	full, fok := net.decode_state_chunk(buf[:n])
+	testing.expect(t, fok)
+	testing.expect_value(t, full.chunk_index, u16(654))
+	testing.expect_value(t, full.length, net.STATE_CHUNK_SIZE)
+	testing.expect_value(t, full.payload[0], u8(0))
+	testing.expect_value(t, full.payload[net.STATE_CHUNK_SIZE - 1], u8(255))
+
+	m := net.encode_state_chunk(buf[:], 655, payload[:424]) // sim.State's actual tail chunk length (670120 % 1024)
+	partial, pok := net.decode_state_chunk(buf[:m])
+	testing.expect(t, pok)
+	testing.expect_value(t, partial.chunk_index, u16(655))
+	testing.expect_value(t, partial.length, 424)
+}
+
+@(test)
+packet_state_chunk_ack_round_trips :: proc(t: ^testing.T) {
+	buf: [64]byte
+	n := net.encode_state_chunk_ack(buf[:], 654)
+	kind, kok := net.peek_kind(buf[:n])
+	testing.expect(t, kok)
+	testing.expect_value(t, kind, net.Packet_Kind.State_Chunk_Ack)
+	idx, ok := net.decode_state_chunk_ack(buf[:n])
+	testing.expect(t, ok)
+	testing.expect_value(t, idx, u16(654))
+}
+
+@(test)
 packet_input_round_trips_a_full_window :: proc(t: ^testing.T) {
 	frames: [net.MAX_INPUT_FRAMES]sim.Buttons
 	for &f, i in frames {

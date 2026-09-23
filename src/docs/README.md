@@ -14,7 +14,7 @@ do, and which decisions are still open.
 | 5 — Presentation | **complete** — playable title screen to end of last level, `oracle:diff` still exact | [phase-5-presentation.md](phase-5-presentation.md) |
 | 6 — Netplay | in progress — stages 1-5 done (snapshot ring, UDP transport, rollback, desync detection, lobby + live synced session); stage 6 (two-machine playtest) still needs a second physical machine | [phase-6-netplay.md](phase-6-netplay.md) |
 | 7 — Faithful menus | **complete** — all six stages done (Main Menu, Level Select, Credits, High Scores, minimal Pause, `-classic`/netplay-lobby gating) | [phase-7-faithful-menus.md](phase-7-faithful-menus.md) |
-| 8 — Netcode enhancements | in progress — stages 1-2 (diagnostics overlay, netplay level select) done; pause-on-disconnect, reconnect, synchronised pausing still open | [phase-8-netcode-enhancements.md](phase-8-netcode-enhancements.md) |
+| 8 — Netcode enhancements | in progress — stages 1-4 (diagnostics overlay, netplay level select, pause-on-disconnect, reconnect) done; synchronised pausing still open | [phase-8-netcode-enhancements.md](phase-8-netcode-enhancements.md) |
 | Bonus — Developer tools | not started — dev/cheat console, level editor; deferred, no exit criterion set yet | — |
 
 The overall plan lives in [../../notes/odin-rewrite-plan.md](../../notes/odin-rewrite-plan.md).

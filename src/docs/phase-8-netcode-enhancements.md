@@ -108,3 +108,68 @@ Ready) alongside the existing guest-side `"netplay_lobby_connected"`
 `mise run netplay:lobby-shots`: no overlap between the new level row and
 either the ping line above or the Ready button below, in any of the three
 states.
+
+**Stages 3 and 4 are done**, built together (`game/netplay.odin`,
+`net/packet.odin`, `net/reliable.odin`) since pause-on-disconnect and
+reconnect are two faces of the same failure. A new `Link_State` enum
+(`Live -> Waiting_Reconnect -> Resync_Sending`(survivor) /
+`Resync_Receiving`(rejoiner) `-> Live`) drives both whether
+`netplay_playing_step` advances the sim (only `.Live` does — this *is* the
+freeze) and what banner `flow_draw` shows.
+
+Losing a peer is detected by silence rather than only by a clean `Goodbye`:
+`Netplay.last_peer_seen` is stamped on every accepted packet while `.Live`,
+and `netplay_playing_poll` moves to `.Waiting_Reconnect` once
+`NETPLAY_LIVE_TIMEOUT` (3s) passes without one — this is what catches a
+SIGKILLed or network-dropped peer, not just one that says goodbye. On
+entering `.Waiting_Reconnect` the survivor closes and rebinds its socket to
+the well-known `NETPLAY_PORT`, so a reconnecting client always aims at the
+same address regardless of whether the survivor was originally Host or
+Guest (D25). `flow_handle_input` grew an F5 "continue alone" branch, active
+only while `link_state != .Live`: it needed zero new sim-side code, since
+the existing non-netplay path of `flow_step` already only ever fills player
+0's input and leaves player 1's at `{}` every tick — flipping
+`netplay_active` off is the entire fix, and the vacated player just sits
+idle from then on, same as ordinary single-player.
+
+A reconnecting client is just an ordinary `Join Game` — the survivor's
+`Hello` handler recognises it's in `.Waiting_Reconnect`, replies, and (once
+the handshake is new) starts sending its live `sim.State` via a `Resync_Start`
+packet (carrying the rejoining client's assigned player slot — no wire
+sentinel needed, `Hello`'s own player field was already unused, D25)
+followed by `State_Chunk` packets. The state is transferred as raw bytes in
+1 KiB chunks, sent in bursts of up to `STATE_CHUNK_BURST` unacked chunks per
+frame rather than one-at-a-time stop-and-wait (D25 has the throughput story:
+stop-and-wait measured at 25-30s for the ~655-chunk/670KB transfer, the burst
+scheme brings it to well under a second on loopback). The receiver applies
+chunks into a `[]bool` bitmap as they arrive (order not guaranteed, since the
+sender bursts several per frame) and finishes once every chunk is accounted
+for; a raw copy back into `fl.state` needs the same pointer fixup as any
+cross-process state transfer: `defs` re-pointed at this process's own (never
+sent), `level` re-resolved via `sim.level_by_id(defs, state.session.level_id)`
+(the same lookup `sim.init` itself uses), `events` force-nilled. Because
+`net/session.odin` operates purely on `state.frame`, resuming
+`rollback_session_init` at whatever frame the freeze happened on needed no
+special-casing at all.
+
+`netplay_disconnect_banner` (`game/netplay.odin`) supplies the frozen-session
+banner text — `"DISCONNECTED, WAITING FOR CONNECTIONS -- ESC TO EXIT, F5 TO
+CONTINUE ALONE"` while waiting, a live send-progress percentage while
+transferring — drawn by `flow_draw`'s new `.Playing` case. The mirror-image
+receive-progress percentage is drawn by `netplay_lobby_draw`, since the
+rejoining client sees this from inside `Netplay_Lobby` (`fl.mode` doesn't
+flip to `.Playing` until the transfer finishes).
+
+Verified by `mise run ci` (89 tests, green — `tests/net_test.odin` grew
+`packet_resync_start_round_trips`, `packet_state_chunk_round_trips_a_full_and_partial_chunk`,
+`packet_state_chunk_ack_round_trips`), `mise run netplay:loopback` (still
+green — stages 1/2/normal handshake unaffected), and the new
+`mise run netplay:reconnect` (`tools/netplay/reconnect_check.sh`): a
+three-real-process loopback test that starts a normal two-instance session,
+SIGKILLs the guest mid-session (not a clean `Goodbye` — this specifically
+exercises the silence-timeout path), confirms the survivor logs "peer lost,
+waiting for a reconnect", launches a third instance that joins exactly like
+any ordinary guest, and confirms both sides log the resync completing with
+no desync-monitor warning afterward. Passes in ~18s wall-clock total, almost
+all of it Xvfb/build/handshake overhead and the test's own scripted
+`sleep`s — the resync transfer itself is no longer the bottleneck.

@@ -139,6 +139,17 @@ flow_handle_input :: proc(fl: ^Flow, r: ^Renderer) {
 				netplay_disconnect(&fl.netplay)
 				fl.netplay_active = false
 				fl.mode = .Title
+			} else if fl.netplay.link_state != .Live && rl.IsKeyPressed(.F5) {
+				// Phase 8 stage 3: "F5 to continue alone"
+				// (notes/netcode-enhancements.md), only while frozen waiting
+				// on a peer. Dropping netplay_active is the entire change
+				// needed -- flow_step's non-netplay branch below already
+				// only ever fills player 0's input (gather_input()) and
+				// leaves player 1's at {} every tick, same as ordinary local
+				// single-player, so the vacated player just sits idle
+				// rather than vanishing.
+				netplay_reset(&fl.netplay)
+				fl.netplay_active = false
 			}
 		} else if rl.IsKeyPressed(.ESCAPE) || rl.IsKeyPressed(.P) {
 			fl.mode = .Paused
@@ -229,7 +240,12 @@ flow_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 	// nothing to step
 	case .Playing:
 		if fl.netplay_active {
-			netplay_playing_step(fl, r, particles, blurs, notices, &fl.netplay)
+			// Phase 8 stage 3: frozen (Waiting_Reconnect/Resync_Sending)
+			// means don't step -- matches .Paused above, which also still
+			// draws the last frame without advancing it.
+			if fl.netplay.link_state == .Live {
+				netplay_playing_step(fl, r, particles, blurs, notices, &fl.netplay)
+			}
 		} else {
 			flow_sim_step(fl, r, particles, blurs, notices, sim.Frame_Input{gather_input(), {}}, nil)
 		}
@@ -377,7 +393,16 @@ flow_draw :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 	case .Attract:
 		rl.DrawText("DEMO -- press any key for the title screen",
 			16, SCREEN_H * WINDOW_SCALE - 28, 18, rl.Color{200, 200, 200, 200})
-	case .Title, .Level_Select, .Credits, .High_Scores, .Score_Entry, .Netplay_Lobby, .Playing:
+	case .Playing:
+		// Phase 8 stage 3: frozen waiting on a peer -- title == "" (link_state
+		// == .Live) draws nothing, the ordinary case for every prior netplay
+		// session.
+		if fl.netplay_active {
+			if title, sub := netplay_disconnect_banner(&fl.netplay); title != "" {
+				draw_banner(title, sub)
+			}
+		}
+	case .Title, .Level_Select, .Credits, .High_Scores, .Score_Entry, .Netplay_Lobby:
 	}
 }
 

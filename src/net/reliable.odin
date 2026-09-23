@@ -67,6 +67,12 @@ send_start :: proc(rc: ^Reliable_Channel, sock: ^Socket, seed: u32, level: u8) {
 	send(sock, rc.to, rc.buf[:rc.length])
 }
 
+send_resync_start :: proc(rc: ^Reliable_Channel, sock: ^Socket, assigned_player: u8, total_size: u32) {
+	seq := reliable_begin(rc)
+	rc.length = encode_resync_start(rc.buf[:], seq, assigned_player, total_size)
+	send(sock, rc.to, rc.buf[:rc.length])
+}
+
 // Once per frame: resends the pending message if RELIABLE_RETRY has elapsed
 // with no ack yet. False once RELIABLE_MAX_RETRIES is exceeded -- the peer
 // is presumed gone and the caller should stop waiting.

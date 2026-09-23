@@ -211,6 +211,11 @@ description = "Two-instance loopback smoke test for the netplay lobby and live r
 depends = ["build"]
 run = "bash tools/netplay/loopback_check.sh"
 
+[tasks."netplay:reconnect"]
+description = "Three-instance loopback smoke test for pause-on-disconnect + reconnect: kills the guest mid-session, waits for the host to notice and rebind, then joins a fresh instance and checks the resync completes (Phase 8 stage 3/4)"
+depends = ["build"]
+run = "bash tools/netplay/reconnect_check.sh"
+
 [tasks."netplay:lobby-shots"]
 description = "Screenshot every visually distinct netplay lobby state plus the diagnostics overlay, no comparison (there is no original to compare against) -- just for a quick look"
 depends = ["build"]

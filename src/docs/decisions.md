@@ -264,3 +264,60 @@ problem this port needs to solve (the original has no concept of a
 per-account server-enforced unlock either; `progress` is just a local file).
 Revisit if a real playtest finds it surprising. See
 [phase-8-netcode-enhancements.md](phase-8-netcode-enhancements.md)'s stage 2.
+
+### D25 — Reconnect: fixed-port rebind, no wire sentinel, burst chunk transfer
+
+Three design questions came up implementing pause-on-disconnect + reconnect
+(stages 3/4, `game/netplay.odin`):
+
+**Where does a reconnecting client aim?** The survivor always rebinds to the
+well-known `NETPLAY_PORT` (54217) on losing its peer, regardless of whether it
+was originally Host or Guest. The alternative — the survivor keeping its
+original ephemeral port and somehow publishing it — needs a side channel that
+doesn't exist. Fixed-port rebind means a reconnecting client just uses the
+ordinary "Join Game" flow with no foreknowledge beyond the survivor's address,
+which is already what a player would have.
+
+**How does the reconnecting client learn its assigned player slot?** No new
+wire-protocol sentinel was needed: `Hello`'s player field was already unused
+by the receiver (a pre-existing fact, confirmed by reading `net/packet.odin`
+before adding anything). The real assignment instead travels in the new
+`Resync_Start` packet's `assigned_player` field, computed by the survivor as
+`1 - local_player`. Simpler than teaching `Hello` a second meaning for its
+existing field.
+
+**How is the frozen `sim.State` transferred?** Sent as raw bytes in
+1 KiB (`STATE_CHUNK_SIZE`) chunks over new unreliable `State_Chunk` /
+`State_Chunk_Ack` packets, since `sim.State` is much larger than one UDP
+packet (~670 KB → ~655 chunks) and the reliable channel (`net/reliable.odin`)
+is built for single small messages, not a bulk transfer. The first attempt
+sent one chunk, waited for its specific ack, then sent the next — simple, but
+measured at roughly one chunk per render frame (one network round trip per
+frame), meaning a full transfer took 25-30 seconds even over loopback:
+unacceptable for a feature whose whole point is a *brief* freeze. Replaced
+with a burst/bitmap scheme: the sender resends every not-yet-acked chunk (up
+to `STATE_CHUNK_BURST` per frame) rather than waiting on one ack before
+sending the next; the receiver accepts chunks into a `[]bool` "got" bitmap
+since bursting means they can arrive out of order; the per-chunk retry count
+was replaced with a single "no progress at all for `STATE_RESYNC_TIMEOUT`"
+give-up check, since individual unacked chunks are just retried as part of
+the next burst rather than tracked separately. This brought the full transfer
+down to well under a second on loopback (`tools/netplay/reconnect_check.sh`).
+`sim/`'s frame-agnostic design (`net/session.odin` operates purely on
+`state.frame`) meant nothing in `sim/` or `net/session.odin` needed to change
+to resume at an arbitrary non-zero frame — only the transfer mechanism itself
+was the hard part.
+
+One bug worth recording since it slipped past the compiler: Odin's untyped
+float constants coerce silently to a `time.Duration`'s unit, which is
+nanoseconds. `NETPLAY_LIVE_TIMEOUT :: 3.0` compiled cleanly but meant "3
+nanoseconds", not three seconds, causing both sides of a session to
+spuriously self-trigger the disconnect path within microseconds of a normal
+session start. `odin check` does catch this for some constants (a narrower
+`STATE_CHUNK_RETRY :: 0.1` in this same stage was rejected as a truncation
+error) but not this one, since `Duration(3)` is an exact value with nothing
+to truncate. Fix: always declare a duration constant via explicit
+multiplication against a `time` unit (`3 * time.Second`), never a bare
+number, matching the pattern `net/reliable.odin`'s `RELIABLE_RETRY` already
+used. See [phase-8-netcode-enhancements.md](phase-8-netcode-enhancements.md)'s
+stage 3/4.

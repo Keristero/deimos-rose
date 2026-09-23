@@ -14,16 +14,19 @@ package netplay
 import "dr:sim"
 
 Packet_Kind :: enum u8 {
-	Hello        = 1,  // "I'm here, this is my player slot" -- the reliable channel
-	Ready        = 2,  // "start when you like" -- the reliable channel
-	Goodbye      = 3,  // clean disconnect -- the reliable channel
-	Ping         = 4,  // RTT probe, unreliable, sent on a timer
-	Pong         = 5,  // Ping's reply, echoes the same nonce
-	Input        = 6,  // a player's recent input history, unreliable and redundant
-	Ack          = 7,  // acknowledges one Hello/Ready/Goodbye/Start by its seq
-	Checksum     = 8,  // one frame's sim.checksum(), for desync detection
-	Start        = 9,  // host -> guest: "begin now", carries the session seed and level -- the reliable channel
-	Level_Choice = 10, // host -> guest: the host's currently-selected level index, sent every lobby frame like Ping -- unreliable, so just resent rather than acked
+	Hello           = 1,  // "I'm here, this is my player slot" -- the reliable channel
+	Ready           = 2,  // "start when you like" -- the reliable channel
+	Goodbye         = 3,  // clean disconnect -- the reliable channel
+	Ping            = 4,  // RTT probe, unreliable, sent on a timer
+	Pong            = 5,  // Ping's reply, echoes the same nonce
+	Input           = 6,  // a player's recent input history, unreliable and redundant
+	Ack             = 7,  // acknowledges one Hello/Ready/Goodbye/Start by its seq
+	Checksum        = 8,  // one frame's sim.checksum(), for desync detection
+	Start           = 9,  // host -> guest: "begin now", carries the session seed and level -- the reliable channel
+	Level_Choice    = 10, // host -> guest: the host's currently-selected level index, sent every lobby frame like Ping -- unreliable, so just resent rather than acked
+	Resync_Start    = 11, // survivor -> reconnecting peer: "here comes the game state", carries the assigned player slot and total byte count -- the reliable channel
+	State_Chunk     = 12, // survivor -> reconnecting peer: one piece of a raw sim.State dump -- its own stop-and-wait, not the reliable channel (too big for its 8-byte buf)
+	State_Chunk_Ack = 13, // reconnecting peer -> survivor: "got that chunk, send the next"
 }
 
 // How many consecutive frames of input one packet can carry. Sized so a
@@ -39,7 +42,8 @@ peek_kind :: proc(buf: []byte) -> (kind: Packet_Kind, ok: bool) {
 	}
 	k := Packet_Kind(buf[0])
 	switch k {
-	case .Hello, .Ready, .Goodbye, .Ping, .Pong, .Input, .Ack, .Checksum, .Start, .Level_Choice:
+	case .Hello, .Ready, .Goodbye, .Ping, .Pong, .Input, .Ack, .Checksum, .Start, .Level_Choice,
+	     .Resync_Start, .State_Chunk, .State_Chunk_Ack:
 		return k, true
 	}
 	return {}, false
@@ -168,6 +172,77 @@ decode_level_choice :: proc(buf: []byte) -> (level_index: u8, ok: bool) {
 		return 0, false
 	}
 	return buf[1], true
+}
+
+// Resync_Start (Phase 8 stage 3/4: pause on disconnect + reconnect) carries
+// which player slot the reconnecting peer should take over (whichever one
+// the survivor isn't -- the survivor already knows its own from
+// Rollback_Session.local_player) and how many bytes of raw sim.State the
+// State_Chunk stream that follows will add up to. Sent once, over the
+// reliable channel like Hello/Ready/Goodbye/Start -- its own 7 bytes fit
+// Reliable_Channel's buf easily.
+encode_resync_start :: proc(buf: []byte, seq: u8, assigned_player: u8, total_size: u32) -> int {
+	buf[0] = u8(Packet_Kind.Resync_Start)
+	buf[1] = seq
+	buf[2] = assigned_player
+	put_u32(buf[3:], total_size)
+	return 7
+}
+
+decode_resync_start :: proc(buf: []byte) -> (seq: u8, assigned_player: u8, total_size: u32, ok: bool) {
+	if len(buf) < 7 || Packet_Kind(buf[0]) != .Resync_Start {
+		return 0, 0, 0, false
+	}
+	return buf[1], buf[2], get_u32(buf[3:]), true
+}
+
+// State_Chunk carries one piece of a raw byte-for-byte sim.State dump --
+// pointer fields and all; the receiver overwrites those from its own local
+// state after the transfer completes (game/netplay.odin), the same way
+// sim.init resolves a level id into a pointer rather than trusting one sent
+// over the wire. Its own stop-and-wait (game/netplay.odin), not
+// net/reliable.odin's channel: STATE_CHUNK_SIZE payloads don't fit that
+// channel's 8-byte buf, sized for Hello/Ready/Goodbye/Start/Resync_Start and
+// nothing bigger by design.
+STATE_CHUNK_SIZE :: 1024
+
+encode_state_chunk :: proc(buf: []byte, chunk_index: u16, payload: []byte) -> int {
+	buf[0] = u8(Packet_Kind.State_Chunk)
+	buf[1] = u8(chunk_index); buf[2] = u8(chunk_index >> 8)
+	copy(buf[3:], payload)
+	return 3 + len(payload)
+}
+
+State_Chunk_Packet :: struct {
+	chunk_index: u16,
+	payload:     [STATE_CHUNK_SIZE]byte,
+	length:      int,
+}
+
+decode_state_chunk :: proc(buf: []byte) -> (p: State_Chunk_Packet, ok: bool) {
+	if len(buf) < 3 || Packet_Kind(buf[0]) != .State_Chunk {
+		return {}, false
+	}
+	p.chunk_index = u16(buf[1]) | u16(buf[2]) << 8
+	p.length = len(buf) - 3
+	if p.length > STATE_CHUNK_SIZE {
+		return {}, false
+	}
+	copy(p.payload[:p.length], buf[3:])
+	return p, true
+}
+
+encode_state_chunk_ack :: proc(buf: []byte, chunk_index: u16) -> int {
+	buf[0] = u8(Packet_Kind.State_Chunk_Ack)
+	buf[1] = u8(chunk_index); buf[2] = u8(chunk_index >> 8)
+	return 3
+}
+
+decode_state_chunk_ack :: proc(buf: []byte) -> (chunk_index: u16, ok: bool) {
+	if len(buf) < 3 || Packet_Kind(buf[0]) != .State_Chunk_Ack {
+		return 0, false
+	}
+	return u16(buf[1]) | u16(buf[2]) << 8, true
 }
 
 // Ping and Pong share a layout (a nonce to echo back); the kind byte is what
