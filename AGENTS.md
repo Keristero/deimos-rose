@@ -103,6 +103,40 @@ regenerable from a local installer copy with `mise run assets:all`.
 **Do not push to any remote.** Standing instruction from the project owner.
 Commit locally; that is all.
 
+## Commits and patch notes
+
+Every push to `main` becomes a release tagged `v<major.minor>.<commits>`
+(`src/VERSION` holds major.minor — bump it by hand for a milestone; the
+last number is the commit count, from `src/tools/version/version.sh`). The
+release notes are copied out of commit messages by
+`src/tools/version/release_notes.sh`, so **the commit message is where
+patch notes are written.**
+
+Any commit a player would notice carries a `Changelog:` block after the
+body and before the trailers:
+
+```
+Fix the level skip after finishing a level
+
+<the usual body: what, why, evidence>
+
+Changelog:
+- Finishing a level no longer skips straight to the end of the game.
+- Entering a high score no longer crashes.
+
+Co-Authored-By: ...
+```
+
+- The line is exactly `Changelog:`. Each entry is one `- ` bullet; an
+  entry that wraps continues on lines indented two spaces. The block ends at
+  the first line that is neither, so a blank line or a trailer closes it.
+- Write for players, not developers: what changed in the game, in plain
+  words. No file names, function names or phase numbers.
+- Commits with nothing player-facing (refactors, tests, docs, tooling)
+  leave the block out. Do not write "Changelog: none".
+- A release collects the blocks of every commit since the previous release,
+  oldest first. `mise run release:notes` previews what the next one says.
+
 ## Writing the code
 
 The goal is a codebase that is a pleasure to read.

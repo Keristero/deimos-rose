@@ -44,7 +44,7 @@ run = "bash tools/setupdeps/setup.sh"
 [tasks.build]
 description = "Build the game binary"
 depends = ["setup"]
-run = "odin build game -out:$DR_BUILD/deimos$DR_EXT $DR_COLL $DR_LINK -o:speed"
+run = "odin build game -out:$DR_BUILD/deimos$DR_EXT $DR_COLL $DR_LINK -o:speed -define:DR_VERSION=$(bash tools/version/version.sh)"
 
 [tasks."build:linux"]
 description = "Build the game binary for Linux (x86-64) -- alias for `build`, named explicitly for symmetry with build:windows"
@@ -56,7 +56,7 @@ run = '''
 #!/usr/bin/env bash
 set -euo pipefail
 mkdir -p "$DR_BUILD"
-odin build game -out:"$DR_BUILD/deimos.exe" -target:windows_amd64 $DR_COLL -o:speed
+odin build game -out:"$DR_BUILD/deimos.exe" -target:windows_amd64 $DR_COLL -o:speed -define:DR_VERSION="$(bash tools/version/version.sh)"
 # odin build exits 0 even when this particular cross-link failure occurs
 # (confirmed against this toolchain) and simply produces no binary, so a
 # missing output file has to be checked for explicitly rather than trusted
@@ -70,7 +70,7 @@ fi
 [tasks.dev]
 description = "Build unoptimised with debug info"
 depends = ["setup"]
-run = "odin build game -out:$DR_BUILD/deimos-dev$DR_EXT $DR_COLL $DR_LINK -debug"
+run = "odin build game -out:$DR_BUILD/deimos-dev$DR_EXT $DR_COLL $DR_LINK -debug -define:DR_VERSION=$(bash tools/version/version.sh)"
 
 [tasks.run]
 description = "Build and run the game"
@@ -96,6 +96,19 @@ args=()
 [ "${usage_fullscreen:-false}" = "true" ] && args+=(-fullscreen)
 exec "$DR_BUILD/deimos$DR_EXT" "${args[@]}"
 '''
+
+[tasks.version]
+description = "Print the version this commit builds as (v<VERSION>.<commit count>; -local outside CI)"
+run = "bash tools/version/version.sh"
+
+[tasks."release:notes"]
+description = "Preview the release notes CI would publish for HEAD: the Changelog: blocks since the last release (format in AGENTS.md)"
+run = "bash tools/version/release_notes.sh"
+
+[tasks."readme:screenshot"]
+description = "Regenerate docs/images/main-menu.png, the README's main menu screenshot (hidden window, offscreen render)"
+depends = ["build"]
+run = "DR_MENU_SHOT=main_netplay DR_SHOT=docs/images/main-menu $DR_BUILD/deimos$DR_EXT"
 
 [tasks.check]
 description = "Type-check and vet every package"

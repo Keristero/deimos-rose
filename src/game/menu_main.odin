@@ -39,6 +39,11 @@ BTN_GAP :: 30 // Interface_Btn_VerticalGap -- the row-to-row spacing matches thi
 // (btn 0's frame top, back-computed from its label's rendered centre using
 // this port's own MEBU frame-to-label offset) rather than re-deriving
 // StartYLoc's exact original semantics.
+// Baked in at build time by tools/version/version.sh via mise.toml's build
+// tasks (-define:DR_VERSION): the release tag, e.g. "v0.1.72", or with
+// "-local" for a build outside CI. "dev" when built without the task.
+GAME_VERSION :: #config(DR_VERSION, "dev")
+
 BTN_FIRST_ROW_Y :: 186
 // Netplay takes the seventh row -- where the excluded Register button sat --
 // its 20px Text_Button centred on that row's measured label centre (378).
@@ -175,6 +180,9 @@ main_menu_draw :: proc(r: ^Renderer, m: ^Main_Menu) {
 	if !r.classic && m.netplay.rect.width > 0 {
 		text_button_draw(r, &m.netplay)
 	}
+	// New content, but shown in classic mode too: it is what a bug report
+	// needs, and sits in the corner clear of every original element.
+	menu_draw_text(r, GAME_VERSION, SCREEN_W - 6, SCREEN_H - 14, rl.Color{120, 120, 120, 255}, .Right)
 
 	if m.confirm_website {
 		menu_draw_text(r, "VISIT THE DEIMOS RISING WEBSITE NOW?", SCREEN_W / 2, SCREEN_H / 2 - 10,

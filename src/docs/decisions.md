@@ -474,3 +474,22 @@ original six.
   frame into a fixed 1280x960 canvas and scales it to fit, letterboxed, with
   raylib's mouse offset/scale mapping clicks back to canvas pixels. At the
   ordinary 1280x960 window the scale is 1 and the output is unchanged.
+
+### D31 — Versioned releases, with patch notes from commit messages
+
+Releases were tagged `build-<sha>`, and the game had no version. Now each
+push to `main` is tagged `v<major.minor>.<commits>` (e.g. `v0.1.72`):
+`VERSION` holds major.minor and is bumped by hand; the last number is
+`git rev-list --count HEAD`. That needs no stored counter and no
+coordination — both build jobs and the release job each compute the same
+tag for the same commit, and a re-run reuses it. `tools/version/version.sh`
+is the one place it is computed; it refuses a shallow clone (which would
+count 1), and outside CI appends `-local`. The build bakes it in with
+`-define:DR_VERSION`, and the main menu draws it bottom-right, in classic
+mode too — it is what a bug report needs.
+
+Patch notes are written where the change is made: a `Changelog:` block in
+the commit message (format in AGENTS.md). The release job collects the
+blocks of every commit since the previous `v*`/`build-*` tag
+(`tools/version/release_notes.sh`). The old `build-*` tags remain; the
+first versioned release's notes start from the last of them.

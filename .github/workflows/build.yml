@@ -23,7 +23,11 @@ jobs:
       run:
         working-directory: src
     steps:
+      # Full history: tools/version/version.sh numbers the build by its
+      # commit count, and refuses a shallow clone rather than miscount.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: raylib's Linux link-time dependencies
         run: |
@@ -70,7 +74,11 @@ jobs:
         working-directory: src
         shell: bash
     steps:
+      # Full history: tools/version/version.sh numbers the build by its
+      # commit count, and refuses a shallow clone rather than miscount.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Pin Odin for this run only
         run: printf '[tools]\nodin = "dev-2026-09"\n' > mise.local.toml
@@ -111,8 +119,12 @@ jobs:
           name: deimos-windows-amd64
           path: src/deimos-windows-amd64.zip
 
-  # One prerelease per push to main, carrying both platforms' zips. Tagged by
-  # commit so re-running a workflow cannot collide with a different build.
+  # One prerelease per push to main, carrying both platforms' zips, tagged
+  # with the version both build jobs baked in (tools/version/version.sh --
+  # the same commit always computes the same tag, so a re-run re-attaches
+  # rather than minting a new one). The notes are the "Changelog:" blocks
+  # of every commit since the previous release (tools/version/
+  # release_notes.sh; format in AGENTS.md).
   release:
     needs: [build-linux, build-windows]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -120,6 +132,10 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -130,15 +146,23 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          tag="build-${GITHUB_SHA::7}"
+          tag=$(bash src/tools/version/version.sh)
           ls -l dist
+          # A tag already on a different commit means history was rewritten
+          # and the count repeated; publishing onto it would mislabel both.
+          if existing=$(git rev-parse -q --verify "refs/tags/$tag^{commit}"); then
+            [ "$existing" = "$GITHUB_SHA" ] || { echo "$tag already tags $existing, not $GITHUB_SHA" >&2; exit 1; }
+          fi
+          bash src/tools/version/release_notes.sh > notes.md
+          printf '\nUnzip and run deimos (Linux) or deimos.exe (Windows) from inside the unzipped folder. Built from %s (run %s).\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" >> notes.md
+          cat notes.md
           # Create, then upload, so a re-run of the same commit re-attaches
           # files instead of failing on the existing tag. The API's asset
           # listing can lag the upload by minutes (seen on build-e3cab80), so
           # it is not used as a check here.
           gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" \
             --target "$GITHUB_SHA" \
-            --title "Build ${GITHUB_SHA::7}" \
-            --notes "Automated build of ${GITHUB_SHA} (run ${GITHUB_RUN_ID}). Unzip and run deimos (Linux) or deimos.exe (Windows) from inside the unzipped folder." \
+            --title "Deimos Rose $tag" \
+            --notes-file notes.md \
             --prerelease
           gh release upload "$tag" dist/*.zip --clobber
