@@ -5,14 +5,29 @@ package sim
 //
 // Shields and money are stored plainly here; the original offsets them by
 // constants (shields by 0x4eca70's value, money by 0xb2cce, lives by
-// 0x1524dcef, score by 0x5532a3e) as light anti-tampering.
+// 0x1524dcef, score by 0x5532a3e) as light anti-tampering. The integer
+// offsets change nothing, but the shields one does: see shields_set.
+
+// The shields offset, the single-precision float at 0x4eca70.
+@(private = "file") SHIELDS_OFFSET: f32 : 1324366
+
+// G_Player::Shields_SetPercentage (0x431a30): `flds pct; fadds 0x4eca70;
+// fstps this+0x9e`. The stored value is a float near 1.3 million, whose
+// spacing is 1/8, so every percentage the original keeps is rounded to the
+// nearest eighth. Shields_GetPercentage (`fsubs 0x4eca70`) takes the offset
+// back off exactly. Whole numbers pass through unchanged; a hit's fractional
+// loss does not. Adding and subtracting in f32 rounds the sum once, as the
+// store does.
+shields_set :: proc "contextless" (p: ^Player, pct: f32) {
+	p.shields = (pct + SHIELDS_OFFSET) - SHIELDS_OFFSET
+}
 
 // G_Player::Shields_Reset.
 player_shields_reset :: proc "contextless" (s: ^State, p: ^Player, full: bool) {
 	if p.active && full {
-		p.shields = f32(player_def(s, p).default_shield_percentage)
+		shields_set(p, f32(player_def(s, p).default_shield_percentage))
 	} else if !p.active {
-		p.shields = 0
+		shields_set(p, 0)
 	}
 	p.hit_time = 0
 	p.hit_spawn_time = 0
@@ -30,7 +45,7 @@ player_shields_add :: proc "contextless" (s: ^State, p: ^Player, pct: f32) {
 	} else if v < 0 {
 		v = 0
 	}
-	p.shields = v
+	shields_set(p, v)
 }
 
 // G_Player::Hit.
@@ -45,7 +60,9 @@ player_hit :: proc(s: ^State, p: ^Player, damage: f32, time: i32) {
 		if loss > 0 {
 			p.defence_spawned = true // this[0xcc]: took damage this level
 		}
-		p.shields -= loss
+		// G_Player::Hit (0x431688): the loss and the new value are each
+		// stored as a float (fstps) before Shields_SetPercentage.
+		shields_set(p, p.shields - loss)
 	}
 	if p.shields < 0 {
 		player_destroy(s, p, time)

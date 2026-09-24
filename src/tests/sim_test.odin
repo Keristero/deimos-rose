@@ -330,3 +330,22 @@ multiplier_carries_into_the_next_level :: proc(t: ^testing.T) {
 	testing.expect(t, spawned, "entering level 2 at x3 must spawn the x3 icon")
 	testing.expect_value(t, p.multiplier, i32(3))
 }
+
+@(test)
+shields_round_to_eighths_as_the_originals_offset_store_does :: proc(t: ^testing.T) {
+	// The original keeps shields as pct + 1324366 in a single-precision
+	// float (0x431a30), whose spacing there is 1/8.
+	p: sim.Player
+	cases := [][2]f32{
+		{100, 100}, // whole numbers are exact
+		{96.7, 96.75}, // 773.6 eighths round up
+		{50.04, 50}, // 400.32 eighths round down
+		{0.07, 0.125},
+		{0.01, 0},
+		{-3.3, -3.25},
+	}
+	for c in cases {
+		sim.shields_set(&p, c[0])
+		testing.expectf(t, p.shields == c[1], "shields_set(%v) = %v, want %v", c[0], p.shields, c[1])
+	}
+}
