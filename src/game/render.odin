@@ -87,6 +87,7 @@ Item :: struct {
 	hue:     f32, // degrees, for effect != .None
 	sat:     f32, // minimum saturation, for effect != .None
 	lighten: f32, // 0..1 towards white after recolouring, for effect != .None
+	shine:   f32, // 0..1 of the saturation lost on highlights, for effect != .None
 }
 
 // Accents (Extras, never in classic mode): drawn through
@@ -103,9 +104,14 @@ Item_Effect :: enum u8 {
 // "pbhf", say) still reads clearly as the accent colour against the map.
 ACCENT_SATURATION :: 0.85
 // The ship's trim is shaded metal, recoloured from the silver of player 1's
-// ship: a little softer than the crosshair and shots, so it keeps some
-// sheen, but strong enough to read as the player's colour at a glance.
-TRIM_SATURATION :: 0.8
+// ship. Fitted to player 2's gold: over the 1,518 PL1B/PL2B pixels that are
+// grey on one and yellow on the other, gold is hue ~63, saturation ~0.55,
+// brightness equal to the silver's luminance, and paler on the highlights
+// (0.29 at full brightness). With these two constants and the slider at 63
+// the mean error is 16 per pixel (summed RGB), from 42 at the 0.8 used
+// before -- the slider's yellow-orange reproduces the original gold.
+TRIM_SATURATION :: 0.55
+TRIM_SHINE :: 0.3 // share of the saturation the brightest highlights lose
 // How far the unlocked crosshair is washed towards white: lighter and
 // paler than the locked frame's pure red, whatever the accent.
 CROSSHAIR_LIGHTEN :: 0.45
@@ -138,6 +144,7 @@ uniform float hue;     // 0..1
 uniform float minSat;
 uniform float flatten; // 1 for a silhouette
 uniform float lighten; // 0..1 towards white, after the hue is applied
+uniform float shine;   // 0..1 of the saturation highlights lose, like metal
 out vec4 finalColor;
 
 vec3 rgb2hsv(vec3 c) {
@@ -160,6 +167,7 @@ void main() {
 	vec3 hsv = rgb2hsv(t.rgb);
 	hsv.x = hue;
 	hsv.y = max(hsv.y, minSat);
+	hsv.y *= 1.0 - shine * smoothstep(0.85, 1.0, hsv.z);
 	if (flatten > 0.5) {
 		hsv.z = 1.0;
 	}
@@ -203,6 +211,7 @@ Renderer :: struct {
 	accent_sat_loc:   i32,
 	accent_flat_loc:  i32,
 	accent_light_loc: i32,
+	accent_shine_loc: i32,
 	// The units the ground weapons spawn -- their shots, which take their
 	// owner's accent. Found once from the definitions (build_frame).
 	ground_units:     [dynamic]sim.Res_ID,
@@ -249,6 +258,7 @@ renderer_init :: proc(r: ^Renderer, root: string, classic: bool = false, audio: 
 	r.accent_sat_loc = rl.GetShaderLocation(r.accent_shader, "minSat")
 	r.accent_flat_loc = rl.GetShaderLocation(r.accent_shader, "flatten")
 	r.accent_light_loc = rl.GetShaderLocation(r.accent_shader, "lighten")
+	r.accent_shine_loc = rl.GetShaderLocation(r.accent_shader, "shine")
 }
 
 renderer_destroy :: proc(r: ^Renderer) {
@@ -421,7 +431,7 @@ draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shad
 		if trim, tok := ship_trim(&r.textures, o.sprite); tok {
 			push_item(r, layer, Item {
 				texture = trim, src = src, dst = dst, tint = {255, 255, 255, alpha},
-				effect = .Recolour, hue = accent.hue, sat = TRIM_SATURATION,
+				effect = .Recolour, hue = accent.hue, sat = TRIM_SATURATION, shine = TRIM_SHINE,
 			})
 		}
 	}
@@ -588,6 +598,8 @@ draw_item :: proc(r: ^Renderer, it: Item, dst: rl.Rectangle) {
 	rl.SetShaderValue(r.accent_shader, r.accent_flat_loc, &flat, .FLOAT)
 	light := it.lighten
 	rl.SetShaderValue(r.accent_shader, r.accent_light_loc, &light, .FLOAT)
+	shine := it.shine
+	rl.SetShaderValue(r.accent_shader, r.accent_shine_loc, &shine, .FLOAT)
 	rl.DrawTexturePro(it.texture, it.src, dst, {0, 0}, 0, it.tint)
 	rl.EndShaderMode()
 }

@@ -196,6 +196,6 @@ preview_ship :: proc(r: ^Renderer, ps: ^Prefs_State, id: sim.Res_ID, x, y: f32) 
 	}
 	draw_item(r, {texture = tex, src = src, tint = white}, dst)
 	if trim, tok := ship_trim(&r.textures, id); on && tok {
-		draw_item(r, {texture = trim, src = src, tint = white, effect = .Recolour, hue = hue, sat = TRIM_SATURATION}, dst)
+		draw_item(r, {texture = trim, src = src, tint = white, effect = .Recolour, hue = hue, sat = TRIM_SATURATION, shine = TRIM_SHINE}, dst)
 	}
 }

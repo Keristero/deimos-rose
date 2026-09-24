@@ -392,7 +392,11 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		// previews show what they do.
 		flow.mode = .Preferences
 		flow.preferences.extras_open = true
+		// DR_SHOT_HUE picks the hue: 63 should match player 2's gold.
 		ps.saved.extras[.Accent_Hue] = 30
+		if hue, ok := strconv.parse_int(os.get_env("DR_SHOT_HUE", context.temp_allocator)); ok {
+			ps.saved.extras[.Accent_Hue] = prefs.hue_wrap(hue)
+		}
 		ps.saved.extras[.Self_Outline] = 1
 	case "netplay_lobby_name":
 		flow.mode = .Netplay_Lobby

@@ -229,9 +229,11 @@ frame_rect :: proc(t: ^Textures, sprite: sim.Res_ID, frame: i32) -> (rl.Texture2
 
 // A ship's trim, for the Accent Hue extra: the pixels where player 1's
 // ship ("pl1?", silver) and player 2's ("pl2?", gold) differ. Everything
-// else -- the weapon's colour on the wings and canopy, the dark shading --
-// is shared by the pair, so comparing them finds the trim with no
-// colour-range guessing. Each trim pixel keeps player 1's silver shading
+// else is shared by the pair except the weapon's colour on the wings and
+// canopy, which is blue on player 1's and teal on player 2's -- so a pixel
+// is trim where the pair differ *and* player 1's is grey, not blue (every
+// PL1B pixel of saturation 0.7 or more is weapon colour: its gold twin's
+// median hue is 195). Each trim pixel keeps player 1's silver shading
 // as a grey the accent shader can colour. The mask is soft: its alpha
 // ramps with how far the pair differ, then is feathered one pixel, so
 // the accent blends into the shared shading instead of stopping on a
@@ -258,6 +260,16 @@ ship_trim :: proc(t: ^Textures, sprite: sim.Res_ID) -> (rl.Texture2D, bool) {
 // above TRIM_HARD is certainly trim, and in between the mask ramps.
 @(private = "file") TRIM_SOFT :: 10
 @(private = "file") TRIM_HARD :: 48
+// Player 1's saturation: grey metal below TRIM_GREY, weapon colour above
+// TRIM_COLOUR, and a ramp between for the pixels where the two blend.
+@(private = "file") TRIM_GREY :: 0.25
+@(private = "file") TRIM_COLOUR :: 0.45
+
+@(private = "file")
+smooth :: proc(lo, hi, x: f32) -> f32 {
+	t := clamp((x - lo) / (hi - lo), 0, 1)
+	return t * t * (3 - 2 * t)
+}
 
 @(private = "file")
 ship_trim_build :: proc(t: ^Textures, silver, gold: sim.Res_ID) -> rl.Texture2D {
@@ -287,8 +299,9 @@ ship_trim_build :: proc(t: ^Textures, silver, gold: sim.Res_ID) -> rl.Texture2D 
 	defer delete(mask)
 	for c, i in pa {
 		d := f32(abs(int(c.r) - int(pb[i].r)) + abs(int(c.g) - int(pb[i].g)) + abs(int(c.b) - int(pb[i].b)))
-		x := clamp((d - TRIM_SOFT) / (TRIM_HARD - TRIM_SOFT), 0, 1)
-		mask[i] = x * x * (3 - 2 * x) // smoothstep
+		hi := f32(max(c.r, c.g, c.b))
+		sat := hi > 0 ? (hi - f32(min(c.r, c.g, c.b))) / hi : 0
+		mask[i] = smooth(TRIM_SOFT, TRIM_HARD, d) * (1 - smooth(TRIM_GREY, TRIM_COLOUR, sat))
 	}
 	// Feathered with a 3x3 tent, but never below the pixel's own value, so
 	// the trim itself stays solid and only its edge softens outwards.
