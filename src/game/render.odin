@@ -88,6 +88,9 @@ Item :: struct {
 	sat:     f32, // minimum saturation, for effect != .None
 	lighten: f32, // 0..1 towards white after recolouring, for effect != .None
 	shine:   f32, // 0..1 of the saturation lost on highlights, for effect != .None
+	// Paint the tint's colour flat in the sprite's shape (the original's
+	// colorised blit, U_PixelScale16_Colorised_Alpha) rather than multiply.
+	colorise: bool,
 }
 
 // Accents (Extras, never in classic mode): drawn through
@@ -146,6 +149,8 @@ uniform float minSat;
 uniform float flatten; // 1 for a silhouette
 uniform float lighten; // 0..1 towards white, after the hue is applied
 uniform float shine;   // 0..1 of the saturation highlights lose, like metal
+uniform float recolour; // 1: take the accent hue
+uniform float colorise; // 1: the tint colour, flat, in the sprite's shape
 out vec4 finalColor;
 
 vec3 rgb2hsv(vec3 c) {
@@ -164,15 +169,25 @@ vec3 hsv2rgb(vec3 c) {
 }
 
 void main() {
-	vec4 t = texture(texture0, fragTexCoord) * colDiffuse * fragColor;
-	vec3 hsv = rgb2hsv(t.rgb);
-	hsv.x = hue;
-	hsv.y = max(hsv.y, minSat);
-	hsv.y *= 1.0 - shine * smoothstep(0.85, 1.0, hsv.z);
-	if (flatten > 0.5) {
-		hsv.z = 1.0;
+	vec4 tx = texture(texture0, fragTexCoord);
+	vec4 tint = colDiffuse * fragColor;
+	// The original adds the sprite's alpha weight to the draw's blend
+	// (U_SpriteBlit_DrawTranslucent, U_PixelScale16_*_Alpha: weight + blend,
+	// capped at 32) rather than multiplying them, so a fading glow loses its
+	// faint halo first.
+	float a = clamp(tx.a - (1.0 - tint.a), 0.0, 1.0);
+	vec3 rgb = colorise > 0.5 ? tint.rgb : tx.rgb * tint.rgb;
+	if (recolour > 0.5) {
+		vec3 hsv = rgb2hsv(rgb);
+		hsv.x = hue;
+		hsv.y = max(hsv.y, minSat);
+		hsv.y *= 1.0 - shine * smoothstep(0.85, 1.0, hsv.z);
+		if (flatten > 0.5) {
+			hsv.z = 1.0;
+		}
+		rgb = mix(hsv2rgb(hsv), vec3(1.0), lighten);
 	}
-	finalColor = vec4(mix(hsv2rgb(hsv), vec3(1.0), lighten), t.a);
+	finalColor = vec4(rgb, a);
 }
 `
 
@@ -212,6 +227,8 @@ Renderer :: struct {
 	accent_flat_loc:  i32,
 	accent_light_loc: i32,
 	accent_shine_loc: i32,
+	accent_recolour_loc: i32,
+	accent_colorise_loc: i32,
 	// The units the ground weapons spawn -- their shots, which take their
 	// owner's accent. Found once from the definitions (build_frame).
 	ground_units:     [dynamic]sim.Res_ID,
@@ -259,6 +276,8 @@ renderer_init :: proc(r: ^Renderer, root: string, classic: bool = false, audio: 
 	r.accent_flat_loc = rl.GetShaderLocation(r.accent_shader, "flatten")
 	r.accent_light_loc = rl.GetShaderLocation(r.accent_shader, "lighten")
 	r.accent_shine_loc = rl.GetShaderLocation(r.accent_shader, "shine")
+	r.accent_recolour_loc = rl.GetShaderLocation(r.accent_shader, "recolour")
+	r.accent_colorise_loc = rl.GetShaderLocation(r.accent_shader, "colorise")
 }
 
 renderer_destroy :: proc(r: ^Renderer) {
@@ -437,18 +456,22 @@ draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shad
 	// weapon's glow trail "pbgl" is tinted 70% cyan, which would otherwise
 	// wash its accent back out.
 	over := accent.recolour ? Item_Effect.Recolour : .None
+	// Both are flat colour in the sprite's shape (Priv_Draw sets the
+	// colorised flag, 4). The tint's weight is tint% of 32, scaled by the
+	// sprite's own visibility; the glow's amount is the blit's destination
+	// weight, so 32 is invisible and 4 (its peak) nearly solid.
 	if o.tint > 0 {
 		push_item(r, layer, Item {
 			texture = tex, src = src, dst = dst,
-			tint = tint_color(o.tint_color, i32(o.tint * 32 / 100)),
-			effect = over, hue = accent.hue, sat = ACCENT_SATURATION,
+			tint = tint_color(o.tint_color, i32(o.tint * 32 / 100 * clamp(o.visibility, 0, 100) / 100)),
+			effect = over, hue = accent.hue, sat = ACCENT_SATURATION, colorise = true,
 		})
 	}
 	if o.glowing {
 		push_item(r, layer, Item {
 			texture = tex, src = src, dst = dst,
-			tint = tint_color(o.glow_color, o.glow_amount),
-			effect = over, hue = accent.hue, sat = ACCENT_SATURATION,
+			tint = tint_color(o.glow_color, 32 - o.glow_amount),
+			effect = over, hue = accent.hue, sat = ACCENT_SATURATION, colorise = true,
 		})
 	}
 }
@@ -583,10 +606,14 @@ build_frame :: proc(r: ^Renderer, s: ^sim.State, blurs: ^Blurs, notices: ^Notice
 // One item at its final screen rectangle, through ACCENT_SHADER when it
 // carries an effect. Also used directly by the Extras previews.
 draw_item :: proc(r: ^Renderer, it: Item, dst: rl.Rectangle) {
-	if it.effect == .None || r.accent_shader.id == 0 {
+	// An opaque plain draw blends the same either way; everything else goes
+	// through the shader for the original's alpha rule.
+	if (it.effect == .None && !it.colorise && it.tint.a == 255) || r.accent_shader.id == 0 {
 		rl.DrawTexturePro(it.texture, it.src, dst, {0, 0}, 0, it.tint)
 		return
 	}
+	recolour := f32(it.effect != .None ? 1 : 0)
+	colorise := f32(it.colorise ? 1 : 0)
 	hue := it.hue / 360
 	sat := it.sat
 	flat := f32(it.effect == .Silhouette ? 1 : 0)
@@ -598,6 +625,8 @@ draw_item :: proc(r: ^Renderer, it: Item, dst: rl.Rectangle) {
 	rl.SetShaderValue(r.accent_shader, r.accent_light_loc, &light, .FLOAT)
 	shine := it.shine
 	rl.SetShaderValue(r.accent_shader, r.accent_shine_loc, &shine, .FLOAT)
+	rl.SetShaderValue(r.accent_shader, r.accent_recolour_loc, &recolour, .FLOAT)
+	rl.SetShaderValue(r.accent_shader, r.accent_colorise_loc, &colorise, .FLOAT)
 	rl.DrawTexturePro(it.texture, it.src, dst, {0, 0}, 0, it.tint)
 	rl.EndShaderMode()
 }
@@ -619,7 +648,7 @@ present :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, scale: f32) 
 	run(r, 0, 1, scale)
 	draw_terrain(r, s, scale)
 	run(r, 2, 5, scale)
-	particles_draw(particles, scale, r.interp_prev != nil ? r.interp_alpha : 1)
+	particles_draw(particles, scale, r.side_scroll, r.interp_prev != nil ? r.interp_alpha : 1)
 	run(r, 6, 15, scale)
 	level_end_draw(r, s, scale) // layer 0xf text, over the sprites
 	scorebar_draw(r, s, scale)

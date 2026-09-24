@@ -150,7 +150,9 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 	glow_process(&e.obj)
 	if (st.use_owners_visibility || st.use_owners_scale || st.visually_reflect_owner_hits) &&
 	   ref_valid(s, e.owner) {
-		// FUN_0041b5d0: follow the owner's look (the hit glow is presentation).
+		// FUN_0041b5d0: follow the owner's look -- its visibility, scale,
+		// and (visuallyReflectOwnerHits) its hit glow, so a turret's dome
+		// flashes with its base.
 		o := entity_at(s, e.owner.index)
 		if st.use_owners_visibility {
 			e.visibility = o.visibility
@@ -159,6 +161,10 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 			e.dims_dirty = o.dims_dirty
 			e.scale, e.scale_target, e.scale_delta = o.scale, o.scale_target, o.scale_delta
 			calculate_dimensions(s, &e.obj)
+		}
+		if st.visually_reflect_owner_hits {
+			e.glowing, e.glow_falling = o.glowing, o.glow_falling
+			e.glow_amount, e.glow_speed, e.glow_color = o.glow_amount, o.glow_speed, o.glow_color
 		}
 	}
 

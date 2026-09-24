@@ -5,14 +5,18 @@ package sim
 
 // Particle bursts are presentation, but G_Particle_NewGroup draws a colour
 // for every particle from the gameplay RNG, so the burst is created here and
-// handed to the renderer as an event. The count is fixed by the size id; the
-// "ice" variants differ only in how they move.
+// handed to the renderer as an event, with each particle's draw (which of
+// the colour's five shades it takes). The count is fixed by the size id;
+// the "ice" variants differ only in how they move.
 Particle_Event :: struct {
 	loc:    Vec,
 	color:  Color,
 	size:   Res_ID,
 	ground: bool,
+	shades: [MAX_PARTICLES_PER_GROUP]u8,
 }
+
+MAX_PARTICLES_PER_GROUP :: 40 // the group's 0x28 slots
 
 MAX_PARTICLE_EVENTS :: 64
 
@@ -44,13 +48,14 @@ particle_burst :: proc "contextless" (s: ^State, loc: Vec, color: Color, size: R
 	if size == NONE || n == 0 {
 		return
 	}
-	for _ in 0 ..< n {
-		_ = random_int(&s.rng, 0, 4, 0x42ee00)
+	ev := Particle_Event{loc = loc, color = color, size = size, ground = ground}
+	for i in 0 ..< n {
+		ev.shades[i] = u8(random_int(&s.rng, 0, 4, 0x42ee00))
 	}
 	record_event(s, Event{kind = .Burst, unit = size, loc = loc})
 	q := &s.particles
 	if q.count < MAX_PARTICLE_EVENTS {
-		q.events[q.count] = {loc, color, size, ground}
+		q.events[q.count] = ev
 		q.count += 1
 	}
 }

@@ -220,7 +220,7 @@ player_collect :: proc(s: ^State, p: ^Player, e: ^Entity) -> bool {
 	case res_id("coin"):
 		if u.pickup_value != 0 {
 			p.money += u.pickup_value
-			p.glowing = true
+			glow_start(&p.obj, 0x7fff, 6, false) // a white flash (FUN_0041c1b0)
 		}
 	case res_id("mult"):
 		player_multiplier_advance(s, p)
