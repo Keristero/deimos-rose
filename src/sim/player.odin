@@ -165,8 +165,12 @@ player_appear :: proc(s: ^State, p: ^Player, time: i32) {
 		req.owner_player = p.number
 		eg_request_spawn(s, req)
 	}
-	// Priv_Multiplier_SpawnForCurrentMultiplier: nothing to spawn until a
-	// multiplier has been collected.
+	// Priv_Multiplier_SpawnForCurrentMultiplier, at the end of Priv_Appear
+	// (0x4351d0). Only a death (G_Player::Destroy) or a new game resets the
+	// multiplier, not ResetAtLevelStart, so a player entering a new level
+	// still holds the last one's x2..x10 and needs its icon back: eg_reset
+	// disposed it. After a death the multiplier is 1 and nothing spawns.
+	player_multiplier_spawn(s, p)
 	weapons_appear(s, &p.weapons, false)
 }
 

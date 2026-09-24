@@ -288,3 +288,45 @@ destruct_notice_never_draws_a_sound :: proc(t: ^testing.T) {
 	testing.expect_value(t, s.sounds.count, 0)
 	testing.expect(t, !s.notice.pending, "the slot releases once the hold ends")
 }
+
+// The multiplier survives the move to the next level (only a death or a new
+// game resets it), and Priv_Appear respawns its icon there: regression for
+// the icon, and so the bonus, vanishing at every level change.
+@(test)
+multiplier_carries_into_the_next_level :: proc(t: ^testing.T) {
+	defs := synthetic_defs()
+	levels := make([]sim.Level_Def, 2, context.temp_allocator)
+	for &l, i in levels {
+		l = defs.levels[0]
+		l.number = i32(i + 1)
+	}
+	defs.levels = levels
+	x3 := sim.res_id("mul3")
+	defs.perm_objects[0x24] = x3
+	events := sim.Event_Log{events = make([]sim.Event, 256, context.temp_allocator)}
+	s := new(sim.State)
+	defer free(s)
+	sim.init(s, sim.Session{seed = 3, level_id = sim.level_id("le01"), game_type = .Single}, defs, events = &events)
+	p := &s.players[0]
+	p.multiplier = 3
+
+	s.level_ending = true
+	s.level_end.complete = true
+	testing.expect(t, sim.level_advance(s))
+	testing.expect_value(t, s.level_number, i32(2))
+	testing.expect_value(t, p.multiplier, i32(3))
+
+	events.count = 0
+	for _ in 0 ..< 10 {
+		sim.step(s, {})
+	}
+	testing.expect_value(t, p.state, sim.Player_State.Playing)
+	spawned := false
+	for e in sim.event_log_entries(&events) {
+		if e.kind == .Spawn && e.unit == x3 {
+			spawned = true
+		}
+	}
+	testing.expect(t, spawned, "entering level 2 at x3 must spawn the x3 icon")
+	testing.expect_value(t, p.multiplier, i32(3))
+}

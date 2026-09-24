@@ -331,6 +331,17 @@ build_frame :: proc(r: ^Renderer, s: ^sim.State, blurs: ^Blurs, notices: ^Notice
 			if pv != nil && pv.players[k].active && pv.players[k].state == .Playing {
 				before = &pv.players[k].obj
 			}
+			// G_Player::BuildDrawList draws the ground weapon's crosshair
+			// first (G_WeaponHandler::BuildDrawList, 0x447ad0: only once
+			// crosshair_shown, +0x117), then the ship. No shadow: the
+			// handler's Process clears the crosshair's +0x38 every step.
+			if p.weapons.crosshair_shown {
+				cbefore: ^sim.Game_Object
+				if before != nil && pv.players[k].weapons.crosshair_shown {
+					cbefore = &pv.players[k].weapons.crosshair
+				}
+				draw_object(r, s, &p.weapons.crosshair, false, cbefore)
+			}
 			draw_object(r, s, &p.obj, true, before)
 		}
 	}
