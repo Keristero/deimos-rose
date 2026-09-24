@@ -598,21 +598,22 @@ draw_banner :: proc(line, sub: cstring) {
 // Who is drawn with an accent this frame (Extras; nothing in classic mode or
 // a demo). In netplay both players have one, each the colour its owner
 // picked, and the other player's crosshair is left out: it only helps
-// whoever is aiming with it. Otherwise it is this machine's colour on
-// player 1, the only player whose colour we know. Self Outline only ever
-// rings the ship of the player at this machine.
+// whoever is aiming with it. In a local game each player has the hue set
+// for them in Extras. Accent Colours turns the colours off; Self Outline
+// is separate, and only ever rings the ship of the player at this machine.
 @(private = "file")
 flow_set_accents :: proc(fl: ^Flow, r: ^Renderer) {
 	r.accents = {}
-	if fl.mode == .Attract || !extra_on(fl.prefs, .Accent_Hue) {
+	if fl.mode == .Attract || prefs_classic(fl.prefs) {
 		return
 	}
+	colours := extra_on(fl.prefs, .Accent_Colours)
 	outline := extra_on(fl.prefs, .Self_Outline)
 	if fl.session_named {
 		local := fl.netplay_active ? fl.netplay.rs.local_player : -1
 		for i in 0 ..< sim.MAX_PLAYERS {
 			r.accents[i] = {
-				on             = true,
+				on             = colours,
 				hue            = f32(fl.session_hues[i]),
 				outline        = outline && i == local,
 				hide_crosshair = fl.netplay_active && i != local,
@@ -620,5 +621,6 @@ flow_set_accents :: proc(fl: ^Flow, r: ^Renderer) {
 		}
 		return
 	}
-	r.accents[0] = {on = true, hue = f32(extra_value(fl.prefs, .Accent_Hue)), outline = outline}
+	r.accents[0] = {on = colours, hue = f32(extra_value(fl.prefs, .Accent_Hue)), outline = outline}
+	r.accents[1] = {on = colours, hue = f32(extra_value(fl.prefs, .Accent_Hue_P2))}
 }

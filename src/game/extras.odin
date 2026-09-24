@@ -13,7 +13,7 @@ import rl "vendor:raylib"
 import "dr:prefs"
 import "dr:sim"
 
-// Whether an extra is in effect. A hue is in effect whenever extras are.
+// Whether an extra is in effect. A hue is in effect with Accent Colours.
 extra_on :: proc(ps: ^Prefs_State, e: prefs.Extra) -> bool {
 	if prefs_classic(ps) {
 		return false
@@ -21,7 +21,10 @@ extra_on :: proc(ps: ^Prefs_State, e: prefs.Extra) -> bool {
 	if e == .High_Refresh_Rate && ps.launch.high_refresh_rate {
 		return true // -highrefreshrate, for this run only
 	}
-	return prefs.EXTRAS[e].kind == .Hue || ps.saved.extras[e] != 0
+	if prefs.EXTRAS[e].kind == .Hue {
+		return ps.saved.extras[.Accent_Colours] != 0
+	}
+	return ps.saved.extras[e] != 0
 }
 
 // The saved value, whether or not it is in effect (a hue for the lobby to
@@ -83,11 +86,12 @@ hue_slider_draw :: proc(hue: int, rect: rl.Rectangle, dim := false) {
 @(private = "file") EXTRAS_BACK_Y :: 436
 @(private = "file") EXTRAS_NOTE_Y :: 404
 
-// The preview: both players' ships as they would be drawn in play with
-// your accent and outline -- you fly either one in netplay, depending on
-// the slot you get. Off to the right of the rows rather than beside one,
-// since two of them (hue and outline) change it.
+// The preview: both players' ships as a local game draws them -- each
+// in its own hue, with Self Outline on player 1's, the ship this
+// machine's player flies. Off to the right of the rows rather than
+// beside one, since several of them change it.
 @(private = "file") PREVIEW_SHIPS :: [2]sim.Res_ID{{'p', 'l', '1', 'b'}, {'p', 'l', '2', 'b'}}
+@(private = "file") PREVIEW_HUES := [2]prefs.Extra{.Accent_Hue, .Accent_Hue_P2}
 @(private = "file") PREVIEW_X :: 540 // centre of the pair
 @(private = "file") PREVIEW_Y :: 150
 @(private = "file") PREVIEW_GAP :: 70
@@ -163,7 +167,7 @@ extras_page_draw :: proc(r: ^Renderer, x: ^Extras_Page, ps: ^Prefs_State) {
 	}
 	for id, i in PREVIEW_SHIPS {
 		x := PREVIEW_X + (f32(i) - 0.5) * PREVIEW_GAP
-		preview_ship(r, ps, id, x, PREVIEW_Y)
+		preview_ship(r, ps, id, PREVIEW_HUES[i], i == 0, x, PREVIEW_Y)
 		menu_draw_text(r, i == 0 ? "P1" : "P2", i32(x), PREVIEW_Y + 26, dim, .Centre)
 	}
 	note := classic ? "CLASSIC MODE IS ON: EXTRAS ARE OFF UNTIL IT IS TURNED OFF" : "FEATURES THE ORIGINAL DID NOT HAVE -- NONE APPLY IN CLASSIC MODE"
@@ -175,18 +179,17 @@ extras_page_draw :: proc(r: ^Renderer, x: ^Extras_Page, ps: ^Prefs_State) {
 // coordinates: through the same draw_item the game uses, so the preview
 // cannot drift from the real thing.
 @(private = "file")
-preview_ship :: proc(r: ^Renderer, ps: ^Prefs_State, id: sim.Res_ID, x, y: f32) {
-	outline := ps.saved.extras[.Self_Outline] != 0
+preview_ship :: proc(r: ^Renderer, ps: ^Prefs_State, id: sim.Res_ID, which: prefs.Extra, local: bool, x, y: f32) {
+	outline := local && extra_on(ps, .Self_Outline)
 	tex, src, ok := frame_rect(&r.textures, id, 0)
 	if !ok {
 		return
 	}
 	s := f32(WINDOW_SCALE)
 	dst := rl.Rectangle{(x - src.width / 2) * s, (y - src.height / 2) * s, src.width * s, src.height * s}
-	hue := f32(ps.saved.extras[.Accent_Hue])
-	on := !prefs_classic(ps)
+	hue := f32(ps.saved.extras[which])
 	white := rl.Color{255, 255, 255, 255}
-	if on && outline {
+	if outline {
 		for d in ([8][2]f32{{-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}}) {
 			o := dst
 			o.x += d.x * s
@@ -195,7 +198,7 @@ preview_ship :: proc(r: ^Renderer, ps: ^Prefs_State, id: sim.Res_ID, x, y: f32) 
 		}
 	}
 	draw_item(r, {texture = tex, src = src, tint = white}, dst)
-	if trim, tok := ship_trim(&r.textures, id); on && tok {
+	if trim, tok := ship_trim(&r.textures, id); extra_on(ps, which) && tok {
 		draw_item(r, {texture = trim, src = src, tint = white, effect = .Recolour, hue = hue, sat = TRIM_SATURATION, shine = TRIM_SHINE}, dst)
 	}
 }

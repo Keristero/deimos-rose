@@ -227,19 +227,23 @@ frame_rect :: proc(t: ^Textures, sprite: sim.Res_ID, frame: i32) -> (rl.Texture2
 	return p.texture, {f32(f.x), f32(f.y), f32(f.w), f32(f.h)}, true
 }
 
-// A ship's trim, for the Accent Hue extra: the pixels where player 1's
-// ship ("pl1?", silver) and player 2's ("pl2?", gold) differ. Everything
-// else is shared by the pair except the weapon's colour on the wings and
-// canopy, which is blue on player 1's and teal on player 2's -- so a pixel
-// is trim where the pair differ *and* player 1's is grey, not blue (every
-// PL1B pixel of saturation 0.7 or more is weapon colour: its gold twin's
-// median hue is 195). Each trim pixel keeps player 1's silver shading
-// as a grey the accent shader can colour. The mask is soft: its alpha
-// ramps with how far the pair differ, then is feathered one pixel, so
-// the accent blends into the shared shading instead of stopping on a
-// hard, aliased edge. Both plates share one layout (394x48 for every
-// pair), so the ship's own frame rectangles address it. Built on first
-// use, cached as "<id>@trim".
+// A ship's trim, for the accent hues: the metal that is silver on player
+// 1's ship ("pl1?") and gold on player 2's ("pl2?"). A pixel is trim when
+// player 1's is grey and player 2's is yellower than it. The weapon's
+// colour on the wings and canopy is also different between the pair
+// (blue on PL1B, teal on PL2B), but it is not grey, so it stays out.
+// Both tests use absolute channel differences, not saturation or summed
+// distance: the engines at the back are dark, and there a faint blue cast
+// reads as high saturation while gold and silver differ by only a few
+// levels, which left them a patchwork of accent and original colour.
+// Checked by rendering the mask for all 7 frames (level and banked) of
+// all four pairs (B, C, G, O). Each trim pixel keeps player 1's silver
+// shading as a grey the accent shader can colour. The mask is soft: its
+// alpha ramps with both tests, then is feathered one pixel, so the accent
+// blends into the shared shading instead of stopping on a hard, aliased
+// edge. Both plates share one layout (394x48 for every pair), so the
+// ship's own frame rectangles address it. Built on first use, cached as
+// "<id>@trim".
 ship_trim :: proc(t: ^Textures, sprite: sim.Res_ID) -> (rl.Texture2D, bool) {
 	if sprite[0] != 'p' || sprite[1] != 'l' || (sprite[2] != '1' && sprite[2] != '2') {
 		return {}, false
@@ -256,14 +260,14 @@ ship_trim :: proc(t: ^Textures, sprite: sim.Res_ID) -> (rl.Texture2D, bool) {
 	return tex, tex.id != 0
 }
 
-// Summed RGB distance between the pair: below TRIM_SOFT is shared shading,
-// above TRIM_HARD is certainly trim, and in between the mask ramps.
-@(private = "file") TRIM_SOFT :: 10
-@(private = "file") TRIM_HARD :: 48
-// Player 1's saturation: grey metal below TRIM_GREY, weapon colour above
-// TRIM_COLOUR, and a ramp between for the pixels where the two blend.
-@(private = "file") TRIM_GREY :: 0.25
-@(private = "file") TRIM_COLOUR :: 0.45
+// Player 1's chroma (largest channel minus smallest): grey metal below
+// TRIM_GREY, weapon colour above TRIM_COLOUR, a ramp between.
+@(private = "file") TRIM_GREY :: 40
+@(private = "file") TRIM_COLOUR :: 70
+// How much yellower player 2's pixel is than player 1's, in yellowness
+// min(r, g) - b: none below TRIM_SOFT, certainly gold above TRIM_HARD.
+@(private = "file") TRIM_SOFT :: 2
+@(private = "file") TRIM_HARD :: 14
 
 @(private = "file")
 smooth :: proc(lo, hi, x: f32) -> f32 {
@@ -297,11 +301,10 @@ ship_trim_build :: proc(t: ^Textures, silver, gold: sim.Res_ID) -> rl.Texture2D 
 	// How much of each pixel is trim, 0..1.
 	mask := make([]f32, w * h)
 	defer delete(mask)
+	yellow :: proc(c: rl.Color) -> f32 {return f32(min(c.r, c.g)) - f32(c.b)}
 	for c, i in pa {
-		d := f32(abs(int(c.r) - int(pb[i].r)) + abs(int(c.g) - int(pb[i].g)) + abs(int(c.b) - int(pb[i].b)))
-		hi := f32(max(c.r, c.g, c.b))
-		sat := hi > 0 ? (hi - f32(min(c.r, c.g, c.b))) / hi : 0
-		mask[i] = smooth(TRIM_SOFT, TRIM_HARD, d) * (1 - smooth(TRIM_GREY, TRIM_COLOUR, sat))
+		chroma := f32(max(c.r, c.g, c.b) - min(c.r, c.g, c.b))
+		mask[i] = (1 - smooth(TRIM_GREY, TRIM_COLOUR, chroma)) * smooth(TRIM_SOFT, TRIM_HARD, yellow(pb[i]) - yellow(c))
 	}
 	// Feathered with a 3x3 tent, but never below the pixel's own value, so
 	// the trim itself stays solid and only its edge softens outwards.

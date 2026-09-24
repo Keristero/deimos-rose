@@ -136,6 +136,11 @@ netplay_name_round_trips_and_is_cleaned :: proc(t: ^testing.T) {
 	testing.expect_value(t, prefs.parse("high_refresh_rate=1").extras[.High_Refresh_Rate], 1)
 	testing.expect_value(t, prefs.parse("self_outline=7").extras[.Self_Outline], 1)
 	testing.expect_value(t, prefs.parse("").extras[.Accent_Hue], prefs.EXTRAS[.Accent_Hue].default)
+	// A save from before the P2 hue and the Accent Colours toggle keeps
+	// accents on, with player 2 in the hue of their original gold.
+	testing.expect_value(t, prefs.parse("accent_hue=30").extras[.Accent_Colours], 1)
+	testing.expect_value(t, prefs.parse("accent_hue=30").extras[.Accent_Hue_P2], 63)
+	testing.expect_value(t, prefs.parse("accent_colours=0").extras[.Accent_Colours], 0)
 	prefs.name_set(&n, "abcdefghijklmnopqrs uvwxyz")
 	testing.expect_value(t, prefs.name_string(&n), "abcdefghijklmnopqrs") // cut at 20, trailing space dropped
 }

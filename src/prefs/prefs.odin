@@ -68,7 +68,9 @@ Prefs :: struct {
 // every one of them off, so classic stays the original game.
 Extra :: enum {
 	High_Refresh_Rate, // draw at the monitor's rate, interpolating between the fixed 30 Hz steps
-	Accent_Hue,        // your colour: ship trim, crosshair and air-to-ground shots
+	Accent_Colours,    // the two hues below, on or off together
+	Accent_Hue,        // player 1's colour, and yours in netplay: ship trim, crosshair and air-to-ground shots
+	Accent_Hue_P2,     // player 2's colour in a local game
 	Self_Outline,      // an outline in your accent round your own ship
 }
 
@@ -86,7 +88,9 @@ Extra_Info :: struct {
 
 EXTRAS := [Extra]Extra_Info {
 	.High_Refresh_Rate = {"high_refresh_rate", "HIGH REFRESH RATE", .Toggle, 0},
-	.Accent_Hue        = {"accent_hue", "ACCENT HUE", .Hue, 190}, // the cyan of the original crosshair
+	.Accent_Colours    = {"accent_colours", "ACCENT COLOURS", .Toggle, 1},
+	.Accent_Hue        = {"accent_hue", "P1 ACCENT HUE", .Hue, 190}, // the cyan of the original crosshair
+	.Accent_Hue_P2     = {"accent_hue_p2", "P2 ACCENT HUE", .Hue, 63}, // player 2's own gold (game/render.odin TRIM_SATURATION)
 	.Self_Outline      = {"self_outline", "SELF OUTLINE", .Toggle, 0},
 }
 

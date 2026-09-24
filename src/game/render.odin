@@ -117,10 +117,11 @@ TRIM_SHINE :: 0.3 // share of the saturation the brightest highlights lose
 CROSSHAIR_LIGHTEN :: 0.45
 
 // One player's accent for this frame, set by flow_draw: their hue on their
-// ship's trim, crosshair and air-to-ground shots, and optionally an outline.
+// ship's trim, crosshair and air-to-ground shots, and optionally an outline
+// (which Accent Colours does not turn off).
 Accent :: struct {
-	on:             bool,
-	hue:            f32, // degrees
+	on:             bool, // Accent Colours: trim, crosshair and ground shots in the hue
+	hue:            f32, // degrees; also the outline's colour
 	outline:        bool, // Self Outline, the local player only
 	hide_crosshair: bool, // the other player's, in netplay
 }
@@ -573,7 +574,7 @@ build_frame :: proc(r: ^Renderer, s: ^sim.State, blurs: ^Blurs, notices: ^Notice
 				recolour := ac.on && !p.weapons.crosshair_locked
 				draw_object(r, s, &p.weapons.crosshair, false, cbefore, {hue = ac.hue, recolour = recolour, lighten = CROSSHAIR_LIGHTEN})
 			}
-			draw_object(r, s, &p.obj, true, before, {hue = ac.hue, trim = ac.on, outline = ac.on && ac.outline})
+			draw_object(r, s, &p.obj, true, before, {hue = ac.hue, trim = ac.on, outline = ac.outline})
 		}
 	}
 	for &o in blurs.live {
