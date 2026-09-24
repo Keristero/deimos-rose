@@ -38,5 +38,8 @@ wineserver -w
 qts="$DR_WINE/prefix/drive_c/Program Files/QuickTime/QTSystem/QuickTime.qts"
 [ -f "$qts" ] || { echo "QuickTime did not install (rolled back?)" >&2; exit 1; }
 
-cp -a "$(dirname "$DR_EXE")" "$DR_WINE/prefix/drive_c/DR"
+# The real install, not game/: that may hold just a symlink to the exe,
+# which points outside the container and leaves Data behind.
+rm -rf "$DR_WINE/prefix/drive_c/DR"
+cp -aL "$(dirname "$(readlink -f "$DR_EXE")")" "$DR_WINE/prefix/drive_c/DR"
 echo "prefix ready: $DR_WINE/prefix"

@@ -138,11 +138,45 @@ Score_Bar_Layout :: struct {
 	players: [2]Score_Bar_Rects,
 }
 
+// One of the original's text presets (a "tefo" record), as
+// G_Text_GetPermTextSetting hands it to G_Text_Draw. Indexed in the order of
+// the "gate" id list (Text_Preset): the index is what the original passes.
+Text_Setting :: struct {
+	x, y:          i32,
+	format:        sim.Res_ID, // LEFT, RIGHT, CENT, or CEGA/CEBU (centre of the play field / screen)
+	monospaced:    bool,       // every character as wide as the widest digit (G_Text_Draw)
+	shadows:       bool,
+	blend:         i32,        // 0..32, 32 fully transparent
+	spacing:       i32,        // before each character
+	colorise:      bool,
+	colour:        [3]u8,
+	strip:         bool,       // a colour box behind the text
+	strip_blend:   i32,
+	strip_colour:  [3]u8,
+}
+
+// G_Text_GetPermTextSetting's indices, named after the "gate" list's keys.
+Text_Preset :: enum {
+	ScoreBar_ShieldMeter                  = 0x29,
+	ScoreBar_PowerMeter                   = 0x2a,
+	ScoreBar_Score_Player1                = 0x2b,
+	ScoreBar_Score_Player2                = 0x2c,
+	ScoreBar_LivesCounter_Player1         = 0x2d,
+	ScoreBar_LivesCounter_Player2         = 0x2e,
+	ScoreBar_LivesCounterLastLife_Player1 = 0x2f,
+	ScoreBar_LivesCounterLastLife_Player2 = 0x30,
+	Game_Notice                           = 0x31,
+	GroundAccuracyCount                   = 0x35,
+}
+
+TEXT_SETTINGS :: 0x36
+
 Assets :: struct {
 	root:     string,
 	sprites:  []Sprite_Plate,
 	levels:   []Level_Media,
 	scorebar: Score_Bar_Layout,
+	text:     [TEXT_SETTINGS]Text_Setting,
 	// Every `audio/*.wav` id except the ones levels reference as `music`
 	// (assets/audio/mu03.wav is a 196s stereo track, not a one-shot effect --
 	// see Level_Media.music). The game loads each of these once as a short
@@ -247,6 +281,21 @@ assets_open :: proc(root: string, allocator := context.allocator) -> (a: Assets)
 	}
 	a.sounds = sounds[:]
 
+	// The text presets: "gate" names one tefo record per index.
+	gate: Json_Definition
+	if read_json(strings.concatenate({root, "/data/idli/gate.json"}, context.temp_allocator), &gate, context.temp_allocator) {
+		for f, i in gate.fields {
+			if i >= TEXT_SETTINGS {
+				break
+			}
+			rec: Json_Definition
+			path := strings.concatenate({root, "/data/tefo/", strings.trim_space(f.value), ".json"}, context.temp_allocator)
+			if read_json(path, &rec, context.temp_allocator) {
+				a.text[i] = text_setting_from(rec.fields)
+			}
+		}
+	}
+
 	// inre "reli": 16 score bar rects (8 per player, in G_Res_GetPermRect
 	// order -- verified against G_ScoreBar_Init/Draw), then 6 more for the
 	// level-select and briefing screens that Stage 6 will use.
@@ -269,6 +318,37 @@ assets_open :: proc(root: string, allocator := context.allocator) -> (a: Assets)
 				p.shields = rect(jd.fields[base + 6])
 				p.power = rect(jd.fields[base + 7])
 			}
+		}
+	}
+	return
+}
+
+@(private = "file")
+text_setting_from :: proc(fields: []Json_Field) -> (t: Text_Setting) {
+	int_of :: proc(v: string) -> i32 {
+		n, _ := strconv.parse_int(strings.trim_space(v))
+		return i32(n)
+	}
+	rgb_of :: proc(v: string) -> [3]u8 {
+		n, _ := strconv.parse_int(strings.trim_space(v), 16)
+		return {u8(n >> 16), u8(n >> 8), u8(n)}
+	}
+	for f in fields {
+		v := f.value
+		yes := strings.trim_space(v) == "TRUE"
+		switch f.key {
+		case "Loc_X_INT":                         t.x = int_of(v)
+		case "Loc_Y_INT":                         t.y = int_of(v)
+		case "Format_ID":                         t.format = sim.res_id(strings.trim_space(v))
+		case "Monospaced_BOOL":                   t.monospaced = yes
+		case "DrawShadows_BOOL":                  t.shadows = yes
+		case "BlendAmount_0To32_INT":             t.blend = int_of(v)
+		case "SpaceBetweenChars_INT":             t.spacing = int_of(v)
+		case "Colorise_Do_BOOL":                  t.colorise = yes
+		case "ColoriseColor_RGB":                 t.colour = rgb_of(v)
+		case "ColorStrip_Do_BOOL":                t.strip = yes
+		case "ColorStrip_BlendAmount_0To32_INT":  t.strip_blend = int_of(v)
+		case "ColorStrip_Color_RGB":              t.strip_colour = rgb_of(v)
 		}
 	}
 	return

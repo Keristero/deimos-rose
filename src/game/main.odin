@@ -204,6 +204,7 @@ main :: proc() {
 	for !rl.WindowShouldClose() && !flow.quit {
 		// Preferences edits ps in place; apply whatever it holds now.
 		renderer.classic = prefs_classic(&ps)
+		renderer.textures.quicktime_gamma = renderer.classic
 		diagnostics.enabled = prefs_diagnostics(&ps)
 		renderer.textures.sfx_volume = f32(ps.saved.sfx_volume) / 100
 		renderer.textures.music_volume = f32(ps.saved.music_volume) / 100

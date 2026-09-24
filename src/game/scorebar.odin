@@ -1,114 +1,260 @@
 package game
 
-// The score bar: the panel to the right of the play field, showing each
-// player's score, extra lives, shields and weapon-power bars
-// (G_ScoreBar_Draw). Rect positions come from assets/data/reli/inre.json
-// (G_Res_GetPermRect 0-15 in the original -- see data.Score_Bar_Layout).
+// The score bar: the panel to the right of the play field (G_ScoreBar_*).
+// Per player it draws, in G_ScoreBar_Draw's order, the score, the ship
+// icon in the big circle, the lives count, the three air-weapon globes
+// (current, then the next two in the cycle), and the shield and power
+// meters. Everything is placed by the original's own data rather than
+// measured: the text by its presets (tefo sbs1/sbl1/sll1..., via
+// G_Text_GetPermTextSetting 0x29-0x30), the sprites by G_Res_GetPermFloat
+// 0x70-0x8f ("ScoreBar_P1LivesSymbol_XLoc" and so on), and which sprites by
+// the player definition (spriteScoreBar*) and each air weapon's
+// scoreBarPreviewFace. Coordinates in both are the original's 576-wide
+// front buffer, which starts at VIEW_X on screen.
 //
-// G_ScoreBar_Draw itself is a maze of raw offsets into a packed C struct;
-// rather than transliterate it, this reads the same backdrop image (im16
-// "scor", which already has the shields/power bars' "empty" colour and the
-// score/lives slots baked in as cutouts) and draws the same values
-// (G_Player::score/lives/shields, Weapon_Handler.air_powerup.percent) the
-// modern way, checked against a real screenshot of the running original
-// (work/wine/cmp/orig-00900.png).
-//
-// Not yet drawn: the life icon and the three weapon icons -- which sprite
-// each names is data-driven per player/weapon definition and not yet traced.
-// The panel shows their backdrop cutouts empty until that is done.
+// The meters do not jump: G_ScoreBar_Process moves each shown value towards
+// the real one every step, up by ScoreBar_*IncreaseRate (only while the
+// player is Playing) and down by *DecreaseRate. A player who has left the
+// game (or never joined, as player 2 in a one-player game) keeps their
+// last values, drawn half-faded: the text's blend moves halfway to 32 and
+// the icon is drawn at blend 16 (FUN_00439df0, FUN_00439f10, FUN_0043a140).
 
 import "core:fmt"
 
 import rl "vendor:raylib"
 
+import "dr:data"
 import "dr:sim"
 
-scorebar_draw :: proc(r: ^Renderer, s: ^sim.State, scale: f32) {
-	if r.scorebar_panel.id == 0 {
+// G_ScoreBar_Process's state, one per player (the 0x149-byte blocks at
+// DAT_004f0a20).
+Scorebar_View :: struct {
+	time:    i32, // the step last processed
+	level:   i32,
+	primed:  bool,
+	players: [2]Scorebar_Player,
+}
+
+Scorebar_Player :: struct {
+	shields, power: f32, // as shown, easing towards the player's
+	active:         bool, // +0x12f: drawn at full strength
+	was_active:     bool, // +0x12e
+}
+
+@(private = "file") PF_ICON_X :: 0x70 // P1 x, y, then P2 x, y
+@(private = "file") PF_SHIELD_X :: 0x74
+@(private = "file") PF_SHIELD_UP :: 0x78
+@(private = "file") PF_SHIELD_DOWN :: 0x79
+@(private = "file") PF_POWER_X :: 0x7a
+@(private = "file") PF_POWER_UP :: 0x7e
+@(private = "file") PF_POWER_DOWN :: 0x7f
+@(private = "file") PF_WEAPONS_X :: 0x80 // P1's three x, y pairs, then P2's
+@(private = "file") PF_WEAPONS_BLEND_NEXT :: 0x8c
+@(private = "file") PF_WEAPONS_BLEND_CURRENT :: 0x8d
+@(private = "file") PF_WEAPONS_SCALE_NEXT :: 0x8e
+@(private = "file") PF_LIVES_MAX :: 0x8f
+
+// Blend 0..32 as alpha, 32 invisible.
+@(private = "file")
+blend_alpha :: proc(blend: i32) -> u8 {
+	return u8(clamp(32 - blend, 0, 32) * 255 / 32)
+}
+
+// G_ScoreBar_ResetAtLevelStart and G_ScoreBar_Process, run once for each
+// step the simulation has moved on since the last frame.
+@(private = "file")
+scorebar_process :: proc(v: ^Scorebar_View, s: ^sim.State) {
+	pf := &s.defs.perm_floats
+	if !v.primed || s.level_number != v.level || s.time < v.time {
+		v^ = {primed = true, level = s.level_number, time = s.time}
+		for &p, i in s.players[:2] {
+			v.players[i].active = p.active
+			v.players[i].was_active = p.active
+		}
 		return
 	}
-	tex := r.scorebar_panel
+	for v.time < s.time {
+		v.time += 1
+		for &p, i in s.players[:2] {
+			sp := &v.players[i]
+			if !p.active || p.state == .Gone {
+				if sp.was_active {
+					sp.active = false
+					sp.was_active = false
+				}
+				continue
+			}
+			playing := p.state == .Playing
+			sp.shields = ease(sp.shields, p.shields, playing, pf[PF_SHIELD_UP], pf[PF_SHIELD_DOWN])
+			sp.power = ease(sp.power, p.weapons.air_powerup.percent, playing, pf[PF_POWER_UP], pf[PF_POWER_DOWN])
+			if sp.power < 1 {
+				sp.power = 0
+			} else if sp.power > 100 {
+				sp.power = 100
+			}
+		}
+	}
+}
+
+@(private = "file")
+ease :: proc(shown, real: f32, playing: bool, up, down: f32) -> f32 {
+	if shown < real {
+		return playing ? min(shown + up, real) : shown
+	}
+	if shown > real {
+		return max(shown - down, real)
+	}
+	return shown
+}
+
+scorebar_draw :: proc(r: ^Renderer, s: ^sim.State, scale: f32) {
+	tex, ok := menu_image(&r.textures, "scor")
+	if !ok {
+		return
+	}
 	dst := rl.Rectangle{SCOREBAR_X * scale, 0, f32(tex.width) * scale, f32(tex.height) * scale}
 	rl.DrawTexturePro(tex, {0, 0, f32(tex.width), f32(tex.height)}, dst, {0, 0}, 0, rl.WHITE)
 
-	// G_ScoreBar_Init enables both halves of the panel unconditionally: a
-	// single-player game still shows "player 2, 0 lives, 0 score" in the
-	// lower half, not a blank one -- confirmed against orig-00900.png.
-	for &p in s.players {
-		l := &r.textures.assets.scorebar.players[p.number]
-		text_panel(r, fmt.tprintf("%07d", p.score), l.score, scale)
-		text_panel(r, fmt.tprintf("%d", max(p.lives - 1, 0)), l.life_count, scale)
-		bar_panel(r, l.shields, clamp(p.shields, 0, 100), {115, 150, 156, 255}, scale)
-		bar_panel(r, l.power, clamp(p.weapons.air_powerup.percent, 0, 100), {156, 130, 90, 255}, scale)
+	v := &r.scorebar
+	scorebar_process(v, s)
+	pf := &s.defs.perm_floats
+	text := &r.textures.assets.text
+	for pn in 0 ..< 2 {
+		p := &s.players[pn]
+		sp := &v.players[pn]
+		faded := i32(-1)
+		if !sp.active {
+			faded = 16 // halfway from the presets' 0 to 32
+		}
+
+		// Score.
+		score := text[int(data.Text_Preset.ScoreBar_Score_Player1) + pn]
+		text_preset_draw(r, score, fmt.tprintf("%07d", p.score), VIEW_X, scale, faded)
+
+		// Ship icon, in the player's accent when they have one.
+		def := &s.defs.players[p.def].def
+		icon_at := sim.Vec{pf[PF_ICON_X + 2 * pn], pf[PF_ICON_X + 2 * pn + 1]}
+		ac := r.accents[pn]
+		scorebar_sprite(r, def.sprite_score_bar, def.sprite_score_bar_frame, icon_at, scale, sp.active ? 0 : 16, 1, ac.on ? ac.hue : -1)
+
+		// Lives: the spares, capped at ScoreBar_Lives_MaxNumDisplayed, red
+		// on the last one.
+		lives := max(p.lives - 1, 0)
+		if cap := i32(pf[PF_LIVES_MAX]); cap > 0 && cap < lives {
+			lives = cap
+		}
+		preset := data.Text_Preset.ScoreBar_LivesCounter_Player1
+		if sp.active && lives == 0 {
+			preset = .ScoreBar_LivesCounterLastLife_Player1
+		}
+		text_preset_draw(r, text[int(preset) + pn], fmt.tprintf("%d", lives), VIEW_X, scale, faded)
+
+		// Air weapons: current, next, the one after (AirWeapon_GetScoreBarInfo);
+		// only an active player's are drawn.
+		if sp.active {
+			faces := air_weapon_faces(s, &p.weapons)
+			for f, slot in faces {
+				if f.sprite == sim.NONE {
+					continue
+				}
+				at := sim.Vec{pf[PF_WEAPONS_X + 6 * pn + 2 * slot], pf[PF_WEAPONS_X + 6 * pn + 2 * slot + 1]}
+				blend := i32(pf[PF_WEAPONS_BLEND_CURRENT])
+				size: f32 = 1
+				if slot > 0 {
+					blend = i32(pf[PF_WEAPONS_BLEND_NEXT])
+					size = pf[PF_WEAPONS_SCALE_NEXT]
+				}
+				scorebar_sprite(r, f.sprite, f.frame, at, scale, blend, size)
+			}
+		}
+
+		// Meters: the full glass sprite, with what is missing covered by the
+		// preset's colour strip (black at blend 8).
+		layout := &r.textures.assets.scorebar.players[pn]
+		meter(r, def.sprite_score_bar_shield, def.sprite_score_bar_shield_frame, {pf[PF_SHIELD_X + 2 * pn], pf[PF_SHIELD_X + 2 * pn + 1]},
+			layout.shields, sp.shields, text[data.Text_Preset.ScoreBar_ShieldMeter], scale)
+		meter(r, def.sprite_score_bar_power, def.sprite_score_bar_power_frame, {pf[PF_POWER_X + 2 * pn], pf[PF_POWER_X + 2 * pn + 1]},
+			layout.power, sp.power, text[data.Text_Preset.ScoreBar_PowerMeter], scale)
 	}
 }
 
-// A rect from data.Score_Bar_Layout is local to the panel image; the panel
-// itself sits at SCOREBAR_X on screen.
+// A sprite centred on a front-buffer point (U_Sprite_Draw), faded by a
+// 0..32 blend and scaled. hue >= 0 lays the accent over its trim.
 @(private = "file")
-panel_rect :: proc(rc: sim.Rect, scale: f32) -> rl.Rectangle {
-	return {
-		(SCOREBAR_X + f32(rc.left)) * scale, f32(rc.top) * scale,
-		f32(rc.right - rc.left) * scale, f32(rc.bottom - rc.top) * scale,
-	}
-}
-
-// Every rect in inre.json is a generously oversized bounding box, not a
-// tight fit around its text -- the life count's is 46x44 for one digit that
-// belongs inside a round ~30px badge cutout in the panel backdrop. Checked
-// pixel-for-pixel against orig-00900.png: drawing straight at (rc.left,
-// rc.top), as the score's tight rect happened to get away with, put life
-// count's digit in the empty margin above the badge instead of inside it.
-// Centering horizontally and sitting the text on the rect's bottom edge (its
-// height less the glyph height) lands both the score digits and the life
-// count digit exactly where the original draws them.
-//
-// The score readout also needs a gap between digits: measured per-digit ink
-// columns in orig-00900.png's "0001250" (a column-brightness scan, since the
-// digits and the badge glow are both light on dark) put each digit's left
-// edge 3px past the previous digit's frame width -- e.g. the '0'->'0' and
-// '5'->'0' gaps both land exactly on width+3, matching G_Text_Draw's own
-// look elsewhere (game/text.odin's draw_text already takes a spacing param;
-// text_panel just never added the gap).
-@(private = "file")
-SPACING :: 3
-
-@(private = "file")
-text_panel :: proc(r: ^Renderer, str: string, rc: sim.Rect, scale: f32) {
-	w, h: f32
-	for i in 0 ..< len(str) {
-		_, src, ok := frame_rect(&r.textures, FONT, glyph_of(str[i]))
-		if !ok {
-			continue
-		}
-		w += src.width
-		if i > 0 {
-			w += SPACING
-		}
-		h = max(h, src.height)
-	}
-	x := (SCOREBAR_X + f32(rc.left) + (f32(rc.right - rc.left) - w) / 2) * scale
-	y := (f32(rc.bottom) - h) * scale
-	for i in 0 ..< len(str) {
-		tex, src, ok := frame_rect(&r.textures, FONT, glyph_of(str[i]))
-		if !ok {
-			continue
-		}
-		dst := rl.Rectangle{x, y, src.width * scale, src.height * scale}
-		rl.DrawTexturePro(tex, src, dst, {0, 0}, 0, rl.WHITE)
-		x += (src.width + SPACING) * scale
-	}
-}
-
-// The fill sprite the original draws over the backdrop's empty bar, clipped
-// to `percent` of the rect's width -- here, a plain rounded-rectangle fill.
-@(private = "file")
-bar_panel :: proc(r: ^Renderer, rc: sim.Rect, percent: f32, color: rl.Color, scale: f32) {
-	if percent <= 0 {
+scorebar_sprite :: proc(r: ^Renderer, id: sim.Res_ID, frame: i32, at: sim.Vec, scale: f32, blend: i32, size: f32, hue: f32 = -1) {
+	tex, src, ok := frame_rect(&r.textures, id, frame)
+	if !ok {
 		return
 	}
-	full := panel_rect(rc, scale)
-	fill := full
-	fill.width *= percent / 100
-	rl.DrawRectangleRounded(fill, 1, 8, color)
+	w := i32(src.width * size)
+	h := i32(src.height * size)
+	x := VIEW_X + at.x - f32(sim.halve(w))
+	y := at.y - f32(sim.halve(h))
+	dst := rl.Rectangle{x * scale, y * scale, f32(w) * scale, f32(h) * scale}
+	tint := rl.Color{255, 255, 255, blend_alpha(blend)}
+	draw_item(r, {texture = tex, src = src, tint = tint}, dst)
+	if hue < 0 {
+		return
+	}
+	if trim, tok := ship_trim(&r.textures, id); tok {
+		// The trim covers the silver frame; either frame shares its shape.
+		_, f0, _ := frame_rect(&r.textures, id, 0)
+		draw_item(r, {texture = trim, src = f0, tint = tint, effect = .Recolour, hue = hue, sat = TRIM_SATURATION, shine = TRIM_SHINE}, dst)
+	}
+}
+
+// FUN_0043a3a0 / FUN_0043a740.
+@(private = "file")
+meter :: proc(r: ^Renderer, id: sim.Res_ID, frame: i32, at: sim.Vec, rc: sim.Rect, percent: f32, strip: data.Text_Setting, scale: f32) {
+	scorebar_sprite(r, id, frame, at, scale, 0, 1)
+	pct := percent
+	if pct > 100 {
+		pct = 100
+	} else if pct < 0 {
+		pct = 0
+	}
+	if pct >= 100 {
+		return
+	}
+	width := rc.right - rc.left
+	left := rc.left + sim.trunc_i32(f32(width) * (pct / 100))
+	box := rl.Rectangle {
+		(SCOREBAR_X + f32(left)) * scale, f32(rc.top) * scale,
+		f32(rc.right - left) * scale, f32(rc.bottom - rc.top) * scale,
+	}
+	c := strip.strip_colour
+	rl.DrawRectangleRec(box, {c[0], c[1], c[2], blend_alpha(strip.strip_blend)})
+}
+
+Weapon_Face :: struct {
+	sprite: sim.Res_ID,
+	frame:  i32,
+}
+
+// G_WeaponHandler::AirWeapon_GetScoreBarInfo: the current (or queued) air
+// weapon's face, then the next two available on this level, each dropped
+// ("none") when it repeats one already shown.
+air_weapon_faces :: proc(s: ^sim.State, h: ^sim.Weapon_Handler) -> (out: [3]Weapon_Face) {
+	out = {{sprite = sim.NONE}, {sprite = sim.NONE}, {sprite = sim.NONE}}
+	cur := sim.air_weapon_shown(h)
+	if cur == sim.NO_WEAPON {
+		return
+	}
+	face :: proc(s: ^sim.State, w: i32) -> Weapon_Face {
+		d := &s.defs.weapons[w]
+		return {d.score_bar_preview_face, d.score_bar_preview_frame}
+	}
+	out[0] = face(s, cur)
+	next := sim.next_weapon_of_type(s.defs, sim.WEP_AIR, s.defs.weapons[cur].id, s.level_number)
+	out[1] = next == sim.NO_WEAPON ? out[0] : face(s, next)
+	if out[1] == out[0] {
+		out[1] = {sprite = sim.NONE}
+		return
+	}
+	after := next == sim.NO_WEAPON ? sim.NO_WEAPON : sim.next_weapon_of_type(s.defs, sim.WEP_AIR, s.defs.weapons[next].id, s.level_number)
+	out[2] = after == sim.NO_WEAPON ? out[0] : face(s, after)
+	if out[2] == out[0] || out[2] == out[1] {
+		out[2] = {sprite = sim.NONE}
+	}
+	return
 }

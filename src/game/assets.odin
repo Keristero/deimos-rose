@@ -7,6 +7,7 @@ package game
 // time, so nothing is cut or re-packed at runtime.
 
 import "core:fmt"
+import "core:math"
 import "core:strings"
 
 import rl "vendor:raylib"
@@ -39,6 +40,10 @@ Textures :: struct {
 	plates:  map[sim.Res_ID]Plate,
 	terrain: map[string]rl.Texture2D, // by im16 image id
 	images:  map[string]rl.Texture2D, // by im16 image id -- menu backgrounds, not level-tied
+
+	// Classic mode: im16 images as the original showed them, through
+	// QuickTime's gamma (im16_load). main.odin copies it in every frame.
+	quicktime_gamma: bool,
 	sounds:  map[sim.Res_ID]Sound_Clip,
 	music:   map[string]rl.Music, // by the level's own music id, e.g. "mu03"
 
@@ -153,15 +158,57 @@ terrain_texture :: proc(t: ^Textures, level: sim.Res_ID) -> (rl.Texture2D, bool)
 	if media == nil || media.background == "" || media.background == "none" {
 		return {}, false
 	}
-	if tex, ok := t.terrain[media.background]; ok {
-		return tex, true
+	return im16_texture(t, &t.terrain, media.background)
+}
+
+// The original decodes every TGA (the im16 images: terrain, menu and
+// loading backdrops, the score bar) through QuickTime's GraphicsImporter
+// (U_Image_LoadInBuffer, 0x44cba0), which gamma-corrects it on the way into
+// the 16-bit buffer; its sprites are GIFs (U_Sprite_Load asks for 'GIF '),
+// which come through unchanged. Fitted against Wine captures of demo 1 at
+// steps 300/900/1500/2100 (oracle:shot), ~1.4M pixel channels of terrain and
+// score-bar panel: each 5-bit channel v shows as round(31 * (v/31)^0.75),
+// exactly, for every v from 1 to 24 with enough samples to call (1->2, 2->4,
+// 4->7, 8->11, 12->15, 17->20, 22->24); sprite pixels (the shield meter)
+// match with no curve. It is why the original looks lighter and less
+// saturated. QuickTime runs the same code under Wine as on Windows, so this
+// is the original's look, not the emulator's -- though that is inferred, not
+// checked on a Windows machine.
+@(private = "file") QUICKTIME_GAMMA :: 0.75
+
+@(private = "file")
+quicktime_gamma_table :: proc() -> (tab: [32]u8) {
+	for v in 0 ..< 32 {
+		g := u8(math.round(31 * math.pow(f32(v) / 31, QUICKTIME_GAMMA)))
+		tab[v] = (g << 3) | (g >> 2) // expanded as data/tga.odin expands
 	}
-	path := fmt.ctprintf("%s/images/im16/%s.png", t.root, media.background)
-	tex := rl.LoadTexture(path)
+	return
+}
+
+// An im16 image, cached in `cache` by id -- with QuickTime's gamma applied
+// in classic mode, cached beside the plain one as "<id>@qt".
+im16_texture :: proc(t: ^Textures, cache: ^map[string]rl.Texture2D, id: string) -> (rl.Texture2D, bool) {
+	key := t.quicktime_gamma ? fmt.tprintf("%s@qt", id) : id
+	if tex, ok := cache[key]; ok {
+		return tex, tex.id != 0
+	}
+	img := rl.LoadImage(fmt.ctprintf("%s/images/im16/%s.png", t.root, id))
+	if img.data == nil {
+		return {}, false
+	}
+	defer rl.UnloadImage(img)
+	if t.quicktime_gamma {
+		rl.ImageFormat(&img, .UNCOMPRESSED_R8G8B8A8)
+		tab := quicktime_gamma_table()
+		for &c in ([^]rl.Color)(img.data)[:img.width * img.height] {
+			c.r, c.g, c.b = tab[c.r >> 3], tab[c.g >> 3], tab[c.b >> 3]
+		}
+	}
+	tex := rl.LoadTextureFromImage(img)
 	if tex.id == 0 {
 		return {}, false
 	}
-	t.terrain[media.background] = tex
+	cache[t.quicktime_gamma ? strings.clone(key) : id] = tex
 	return tex, true
 }
 
@@ -203,16 +250,7 @@ menu_image_rose :: proc(t: ^Textures, id: string) -> (rl.Texture2D, bool) {
 }
 
 menu_image :: proc(t: ^Textures, id: string) -> (rl.Texture2D, bool) {
-	if tex, ok := t.images[id]; ok {
-		return tex, true
-	}
-	path := fmt.ctprintf("%s/images/im16/%s.png", t.root, id)
-	tex := rl.LoadTexture(path)
-	if tex.id == 0 {
-		return {}, false
-	}
-	t.images[id] = tex
-	return tex, true
+	return im16_texture(t, &t.images, id)
 }
 
 // The frame rectangle within a plate, or nothing when the sprite or frame is
@@ -244,8 +282,15 @@ frame_rect :: proc(t: ^Textures, sprite: sim.Res_ID, frame: i32) -> (rl.Texture2
 // edge. Both plates share one layout (394x48 for every pair), so the
 // ship's own frame rectangles address it. Built on first use, cached as
 // "<id>@trim".
+//
+// The score bar's ship icon ("play") is the same pair as frames 0 (silver)
+// and 1 (gold) of one plate; its trim covers frame 0, for either frame to
+// draw over.
+SCOREBAR_ICON :: sim.Res_ID{'p', 'l', 'a', 'y'}
+
 ship_trim :: proc(t: ^Textures, sprite: sim.Res_ID) -> (rl.Texture2D, bool) {
-	if sprite[0] != 'p' || sprite[1] != 'l' || (sprite[2] != '1' && sprite[2] != '2') {
+	icon := sprite == SCOREBAR_ICON
+	if !icon && (sprite[0] != 'p' || sprite[1] != 'l' || (sprite[2] != '1' && sprite[2] != '2')) {
 		return {}, false
 	}
 	name := sprite
@@ -254,8 +299,10 @@ ship_trim :: proc(t: ^Textures, sprite: sim.Res_ID) -> (rl.Texture2D, bool) {
 		return tex, tex.id != 0
 	}
 	silver, gold := sprite, sprite
-	silver[2], gold[2] = '1', '2'
-	tex := ship_trim_build(t, silver, gold)
+	if !icon {
+		silver[2], gold[2] = '1', '2'
+	}
+	tex := ship_trim_build(t, silver, gold, icon)
 	t.images[strings.clone(key)] = tex // cached even when it failed, so it is tried once
 	return tex, tex.id != 0
 }
@@ -276,7 +323,7 @@ smooth :: proc(lo, hi, x: f32) -> f32 {
 }
 
 @(private = "file")
-ship_trim_build :: proc(t: ^Textures, silver, gold: sim.Res_ID) -> rl.Texture2D {
+ship_trim_build :: proc(t: ^Textures, silver, gold: sim.Res_ID, icon: bool) -> rl.Texture2D {
 	path :: proc(t: ^Textures, id: sim.Res_ID) -> cstring {
 		for &p in t.assets.sprites {
 			if p.id == id {
@@ -294,6 +341,16 @@ ship_trim_build :: proc(t: ^Textures, silver, gold: sim.Res_ID) -> rl.Texture2D 
 	}
 	rl.ImageFormat(&a, .UNCOMPRESSED_R8G8B8A8)
 	rl.ImageFormat(&b, .UNCOMPRESSED_R8G8B8A8)
+	if icon {
+		// Gold's frame laid over silver's, so the two line up.
+		_, f0, ok0 := frame_rect(t, silver, 0)
+		_, f1, ok1 := frame_rect(t, silver, 1)
+		if !ok0 || !ok1 {
+			return {}
+		}
+		rl.ImageDrawRectangleRec(&b, f0, {}) // cleared: ImageDraw blends
+		rl.ImageDraw(&b, a, f1, f0, rl.WHITE)
+	}
 	w, h := int(a.width), int(a.height)
 	pa := ([^]rl.Color)(a.data)[:w * h]
 	pb := ([^]rl.Color)(b.data)[:w * h]

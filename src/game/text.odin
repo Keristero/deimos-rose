@@ -7,6 +7,7 @@ package game
 
 import rl "vendor:raylib"
 
+import "dr:data"
 import "dr:sim"
 
 FONT :: sim.Res_ID{'t', 'e', 's', 'm'}
@@ -95,5 +96,56 @@ draw_text :: proc(
 		dst := rl.Rectangle{f32(x), f32(y), src.width, src.height}
 		push_item(r, layer, Item{texture = tex, src = src, dst = dst, tint = color})
 		x += i32(src.width) + spacing
+	}
+}
+
+// G_Text_Draw with one of the original's text presets (data.Text_Setting),
+// laid out as FUN_0043e4e0 does: each character is preceded by the preset's
+// spacing and advances by its own width -- or, monospaced, by the widest
+// digit's (G_Text_Draw measures '1'..'0' once and keeps the widest).
+// Glyphs sit top-aligned on the preset's y. CENT centres the whole run,
+// spacing included, on x. Colorise tints the white glyphs; the preset's
+// blend (0 opaque .. 32 invisible) and `fade` scale the alpha.
+//
+// Preset coordinates are the original's front buffer (the 576-wide play
+// field plus score bar), so `origin_x` is where that buffer starts on
+// screen: VIEW_X in the game. Drawn immediately, at `scale`.
+text_preset_draw :: proc(r: ^Renderer, t: data.Text_Setting, s: string, origin_x: f32, scale: f32, blend := i32(-1), colour: Maybe(rl.Color) = nil) {
+	cell: f32
+	if t.monospaced {
+		for g in i32(52) ..= 61 { // '1'..'9', '0'
+			if _, src, ok := frame_rect(&r.textures, FONT, g); ok {
+				cell = max(cell, src.width)
+			}
+		}
+	}
+	advance :: proc(r: ^Renderer, c: byte, cell: f32) -> f32 {
+		if cell > 0 {
+			return cell
+		}
+		_, src, ok := frame_rect(&r.textures, FONT, glyph_of(c))
+		return ok ? src.width : 0
+	}
+	total: f32
+	for i in 0 ..< len(s) {
+		total += advance(r, s[i], cell) + f32(t.spacing)
+	}
+	x := f32(t.x)
+	switch t.format {
+	case sim.Res_ID{'C', 'E', 'N', 'T'}:
+		x = f32(t.x) - f32(i32(total / 2))
+	case sim.Res_ID{'R', 'I', 'G', 'H'}:
+		x = f32(t.x) - total
+	}
+	b := blend >= 0 ? blend : t.blend
+	tint := colour.? or_else (t.colorise ? rl.Color{t.colour[0], t.colour[1], t.colour[2], 255} : rl.WHITE)
+	tint.a = u8(clamp(32 - b, 0, 32) * 255 / 32)
+	for i in 0 ..< len(s) {
+		x += f32(t.spacing)
+		if tex, src, ok := frame_rect(&r.textures, FONT, glyph_of(s[i])); ok && s[i] != ' ' {
+			dst := rl.Rectangle{(origin_x + x) * scale, f32(t.y) * scale, src.width * scale, src.height * scale}
+			rl.DrawTexturePro(tex, src, dst, {0, 0}, 0, tint)
+		}
+		x += advance(r, s[i], cell)
 	}
 }

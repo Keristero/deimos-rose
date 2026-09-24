@@ -185,10 +185,7 @@ Renderer :: struct {
 	// and wrecks straight into it; this is the same buffer.
 	terrain:       rl.RenderTexture2D,
 	terrain_level: sim.Res_ID,
-	// The score bar's backdrop (im16 "scor", 160x480): the metal panel and
-	// its cutouts for the score slot, life icon, weapon icons and the
-	// shields/power bars. Loaded once; nothing ever changes it.
-	scorebar_panel: rl.Texture2D,
+	terrain_qt:    bool, // built with QuickTime's gamma (classic mode)
 	// Set by DR_DUMP: print every sprite of the next frame, which is how a
 	// misplaced or mis-scaled draw gets identified.
 	dump:     bool,
@@ -207,6 +204,7 @@ Renderer :: struct {
 	// Netplay accents, per player slot (flow_draw sets them each frame;
 	// all off otherwise), and what draws them.
 	accents:          [sim.MAX_PLAYERS]Accent,
+	scorebar:         Scorebar_View, // the meters as shown, easing (scorebar.odin)
 	accent_shader:    rl.Shader,
 	accent_hue_loc:   i32,
 	accent_sat_loc:   i32,
@@ -253,7 +251,7 @@ renderer_init :: proc(r: ^Renderer, root: string, classic: bool = false, audio: 
 	}
 	r.shadows = true
 	r.classic = classic
-	r.scorebar_panel = rl.LoadTexture(fmt.ctprintf("%s/images/im16/scor.png", root))
+	r.textures.quicktime_gamma = classic
 	r.accent_shader = rl.LoadShaderFromMemory(nil, ACCENT_SHADER)
 	r.accent_hue_loc = rl.GetShaderLocation(r.accent_shader, "hue")
 	r.accent_sat_loc = rl.GetShaderLocation(r.accent_shader, "minSat")
@@ -263,9 +261,6 @@ renderer_init :: proc(r: ^Renderer, root: string, classic: bool = false, audio: 
 }
 
 renderer_destroy :: proc(r: ^Renderer) {
-	if r.scorebar_panel.id != 0 {
-		rl.UnloadTexture(r.scorebar_panel)
-	}
 	if r.terrain.id != 0 {
 		rl.UnloadRenderTexture(r.terrain)
 	}
@@ -630,7 +625,7 @@ present :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, scale: f32) 
 // The map buffer for a level: the image, plus every mark burned into it
 // since the level started. Rebuilt when the level changes.
 terrain_prepare :: proc(r: ^Renderer, s: ^sim.State) {
-	if r.terrain_level == s.level.id && r.terrain.id != 0 {
+	if r.terrain_level == s.level.id && r.terrain.id != 0 && r.terrain_qt == r.textures.quicktime_gamma {
 		return
 	}
 	tex, ok := terrain_texture(&r.textures, s.level.id)
@@ -642,6 +637,7 @@ terrain_prepare :: proc(r: ^Renderer, s: ^sim.State) {
 	}
 	r.terrain = rl.LoadRenderTexture(tex.width, tex.height)
 	r.terrain_level = s.level.id
+	r.terrain_qt = r.textures.quicktime_gamma
 	rl.BeginTextureMode(r.terrain)
 	rl.ClearBackground(rl.BLACK)
 	// A render texture is bottom-up, so the map goes in flipped and every
