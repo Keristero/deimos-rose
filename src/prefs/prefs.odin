@@ -38,12 +38,19 @@ KEY_UP :: 265
 KEY_LEFT_SHIFT :: 340
 KEY_LEFT_CONTROL :: 341
 KEY_CAPS_LOCK :: 280
+KEY_ESCAPE :: 256
 
 // The controls a player can bind: the original's seven, then Pause, in
-// sim.Button's order so each converts with a cast. The original pauses on
-// Caps Lock (DirectInput key 0x3a, which U_App_Event_IsKeyDown latches:
-// each press flips it) and nothing else; Escape is not a pause key, and
-// stays free to cancel a rebind.
+// sim.Button's order so each converts with a cast.
+//
+// Pause defaults to Escape. The original paused on Caps Lock (DirectInput
+// key 0x3a), but raylib cannot read Caps Lock as a key. Its GLFW key
+// callback (KeyCallback in the linked libraylib.a 6.0: `cmp $0x118` then
+// `and $0x10` on the mods) forces KEY_CAPS_LOCK down whenever the lock
+// modifier is on. The key then reads as the lock state, not the key: a
+// press shows only when the lock turns on, so every other tap is lost and
+// a pause could not be undone. Binding Caps Lock is still allowed, with
+// that flaw.
 Action :: enum u8 {
 	Up,
 	Down,
@@ -198,7 +205,7 @@ defaults :: proc() -> Prefs {
 		.Fire_Air    = {KEY_SPACE, KEY_NONE},
 		.Fire_Ground = {KEY_LEFT_CONTROL, KEY_NONE},
 		.Change_Air  = {KEY_LEFT_SHIFT, KEY_NONE},
-		.Pause       = {KEY_CAPS_LOCK, KEY_NONE}, // the original's one pause key
+		.Pause       = {KEY_ESCAPE, KEY_NONE}, // see Action
 	}
 	p.bindings[1] = {
 		.Up          = {KEY_I, KEY_NONE},
@@ -238,8 +245,8 @@ step_volume :: proc(v: ^int, dir: int) {
 // Stable names for the save file -- not the enum's own spelling, so renaming
 // an Action does not silently drop everyone's bindings. Pause is saved as
 // "pause_key": a "pause" line is from when P was the default, and every save
-// wrote it out, so honouring it would keep everyone off the original's Caps
-// Lock. It is ignored.
+// wrote it out, so honouring it would keep everyone off the default. It is
+// ignored.
 @(private = "file")
 BUTTON_KEYS := [Action]string {
 	.Up          = "up",

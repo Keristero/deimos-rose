@@ -8,6 +8,7 @@ package game
 
 import "core:fmt"
 import "core:os"
+import "core:strings"
 import "core:time"
 
 import rl "vendor:raylib"
@@ -132,6 +133,9 @@ Flow :: struct {
 // both of U_Sound_Play's RNG calls have equal bounds and draw nothing, and
 // no resource 0 exists, so there is nothing to port.
 //
+// The port's key is the Pause binding, Escape by default: raylib cannot
+// read Caps Lock as a key (see prefs.Action).
+//
 // Outside classic mode a MAIN MENU button sits under the notice (new
 // content). A netplay pause is a state inside the simulation both peers
 // share (sim.session_step), not .Paused, but looks the same.
@@ -179,18 +183,25 @@ pause_notice_step :: proc(fl: ^Flow) {
 	}
 }
 
-// "Press Caps Lock", or the key it was rebound to.
+// The original's "Press Caps Lock" (game string 0) while Caps Lock is the
+// key; otherwise the same words for the key bound, cased like the
+// original's ("Press Escape").
 @(private = "file")
 pause_notice_text :: proc(fl: ^Flow, r: ^Renderer) -> string {
 	for b in fl.prefs.saved.bindings {
 		for k in b[.Pause] {
-			if k == prefs.KEY_NONE {
-				continue
-			}
 			if k == prefs.KEY_CAPS_LOCK {
-				break
+				return game_string(r, GS_PRESS_CAPS_LOCK)
 			}
-			return fmt.tprintf("Press %s", key_name(k))
+			if k != prefs.KEY_NONE {
+				name := transmute([]u8)strings.to_lower(key_name(k), context.temp_allocator)
+				for c, i in name {
+					if c >= 'a' && c <= 'z' && (i == 0 || name[i - 1] == ' ') {
+						name[i] = c - 'a' + 'A'
+					}
+				}
+				return fmt.tprintf("Press %s", string(name))
+			}
 		}
 	}
 	return game_string(r, GS_PRESS_CAPS_LOCK)

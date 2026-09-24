@@ -327,7 +327,7 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		preferences_update(&flow, r, &flow.preferences) // lays the buttons out
 	case "paused":
 		// Single-player pause over a level a couple of seconds in: the
-		// "Press Caps Lock" notice, and outside classic mode the button.
+		// pause notice, and outside classic mode the button.
 		flow_start_session(&flow, 0x1234_5678, .Single, 0)
 		for _ in 0 ..< 60 {
 			_ = sim.session_step(state, {})

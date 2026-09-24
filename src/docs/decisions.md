@@ -197,7 +197,11 @@ with new (netplay) menu items added in the same style but hidden under
   - Resuming plays nothing, and the notice fades out at perm float 0x49
     (4/32) a step.
 
-  Classic mode matches this exactly. Otherwise a Main Menu button is added
+  Classic mode matches this except for the key. The port pauses on
+  Escape, and the notice names whichever key is bound ("Press Escape").
+  raylib cannot read Caps Lock as a key: its GLFW key callback forces the
+  key down while the lock is on, so only every other tap registered and
+  a pause could not be undone. Otherwise a Main Menu button is added
   under the notice, since the original has no way out from there — its
   Escape, a separate key, ends the game.
 - **A mission-briefing screen has full text/timing perm data defined
@@ -476,9 +480,10 @@ original six.
   keys; player 2's (IJKL, U/O and ;) are new. Pause became bindable later
   (D32), with P as player 1's default. It was briefly unbindable with
   Escape as the only pause key. Now it is bindable again as `pause_key`,
-  defaulting to Caps Lock for player 1, the original's key (D21). Player 2
-  gets none by default. Escape no longer pauses. A saved `pause=` line,
-  from the P era, is ignored so it cannot keep anyone off Caps Lock. A default still gives way to a key a saved file already uses. Binding a key takes it off any
+  defaulting to Escape for player 1 (D21 says why not Caps Lock, the
+  original's key). Player 2
+  gets none by default. A saved `pause=` line,
+  from the P era, is ignored so it cannot keep anyone off the default. A default still gives way to a key a saved file already uses. Binding a key takes it off any
   other action, for either player. Every button is now read as held,
   including Change Weapon — the sim edge-detects it itself
   (`weapons_process`), and the old one-frame `IsKeyPressed` could drop a
@@ -524,13 +529,13 @@ rollback session): `step`, then the level change, so resimulation
 reproduces it on the same frame. Flow only reads the result. Films, demos
 and the oracle tools keep plain `step`, which is unchanged.
 
-The netplay pause (player 1's Pause binding, Caps Lock by default) is a
+The netplay pause (player 1's Pause binding, Escape by default) is a
 `Pause` input bit, not a network message: it reaches the peer and is replayed on rollback
 like any button, so both sides pause on the same frame, and either can
 resume. While paused only `frame` advances (the rollback ring's key); game
 time, the RNG and entities stand still. It is new content — the original's
 pause is outside the simulation — so single-player keeps flow's `.Paused`.
-Both show the original's "Press Caps Lock" notice (D21). Outside classic
+Both show the original's pause notice (D21). Outside classic
 mode they also show a Main Menu button; netplay has no classic mode. Leaving a netplay game from it sends
 Goodbye; the peer freezes and can continue alone (F5).
 

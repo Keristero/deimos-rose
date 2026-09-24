@@ -25,6 +25,7 @@ import "dr:sim"
 #assert(i32(rl.KeyboardKey.LEFT_CONTROL) == prefs.KEY_LEFT_CONTROL)
 #assert(i32(rl.KeyboardKey.KEY_NULL) == prefs.KEY_NONE)
 #assert(i32(rl.KeyboardKey.CAPS_LOCK) == prefs.KEY_CAPS_LOCK)
+#assert(i32(rl.KeyboardKey.ESCAPE) == prefs.KEY_ESCAPE)
 
 // $XDG_DATA_HOME/deimos-rising/<name>, else %APPDATA%\deimos-rising\<name>
 // on Windows (which has no HOME), else ~/.local/share/deimos-rising/<name>.
