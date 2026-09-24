@@ -536,6 +536,7 @@ flow_draw :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 	case .Playing, .Paused, .Game_Over, .Complete, .Attract:
 	}
 	flow_set_accents(fl, r)
+	r.replay = fl.mode == .Attract
 	build_frame(r, fl.state, blurs, notices)
 	present(r, fl.state, particles, scale)
 	switch fl.mode {
@@ -553,8 +554,10 @@ flow_draw :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 	case .Complete:
 		draw_banner("ALL LEVELS COMPLETE", "")
 	case .Attract:
-		rl.DrawText("DEMO -- press any key for the title screen",
-			16, SCREEN_H * WINDOW_SCALE - 28, 18, rl.Color{200, 200, 200, 200})
+		if !r.classic { // the original labels a demo "REPLAY" and nothing more
+			rl.DrawText("DEMO -- press any key for the title screen",
+				16, SCREEN_H * WINDOW_SCALE - 28, 18, rl.Color{200, 200, 200, 200})
+		}
 	case .Playing:
 		// Phase 8 stage 3: frozen waiting on a peer -- title == "" (link_state
 		// == .Live) draws nothing, the ordinary case for every prior netplay

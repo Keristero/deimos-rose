@@ -72,13 +72,17 @@ tagged_parse :: proc(text: []byte, allocator := context.allocator) -> []Tag {
 			rest = ""
 		}
 
+		raw := line
 		line = strings.trim_space(line)
 		if len(line) == 0 || strings.has_prefix(line, "//") {
 			continue
 		}
 		if line[0] != '#' {
-			// Bare line: a .stli entry.
-			append(&out, Tag{key = "", value = line})
+			// Bare line: a .stli entry, kept as written. Its spaces are part
+			// of the string: pgsl's "Ground Accuracy:   " and "   Bonus:  "
+			// are sprintf'd together as they are, and a capture of the
+			// original shows the gaps they make.
+			append(&out, Tag{key = "", value = raw})
 			continue
 		}
 

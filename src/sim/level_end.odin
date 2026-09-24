@@ -21,6 +21,7 @@ Level_End :: struct {
 	percent:       i32,  // DAT_004e497a: ground targets destroyed
 	bonus:         i32,  // DAT_004e4872: what is left to award
 	bonus_step:    i32,  // DAT_004e4876
+	bonus_total:   i32,  // the bonus as first worked out: 0 reads "None!", not a count
 	fade:          i32,  // DAT_004e486a
 	perfect_levels: i32, // DAT_004e485e: levels finished at 100%
 	perfect:       bool, // DAT_004e497e: the perfect-game bonus is running
@@ -123,6 +124,7 @@ level_end_begin :: proc(s: ^State, time: i32) {
 		tier = 0xc2
 	}
 	l.bonus = pf(s, tier) * s.level_number
+	l.bonus_total = l.bonus
 	l.bonus_step = count_step(s, l.bonus)
 }
 

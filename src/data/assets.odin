@@ -153,10 +153,13 @@ Text_Setting :: struct {
 	strip:         bool,       // a colour box behind the text
 	strip_blend:   i32,
 	strip_colour:  [3]u8,
+	strip_h:       i32,        // the strip's margin beyond the text, across
+	strip_v:       i32,        // and down
 }
 
 // G_Text_GetPermTextSetting's indices, named after the "gate" list's keys.
 Text_Preset :: enum {
+	Player_MoneyCount                     = 0x1e,
 	ScoreBar_ShieldMeter                  = 0x29,
 	ScoreBar_PowerMeter                   = 0x2a,
 	ScoreBar_Score_Player1                = 0x2b,
@@ -177,6 +180,9 @@ Assets :: struct {
 	levels:   []Level_Media,
 	scorebar: Score_Bar_Layout,
 	text:     [TEXT_SETTINGS]Text_Setting,
+	// G_Res_GetPermGameString's table (stli "pgsl"): "Ground Accuracy:",
+	// "Bonus:", "Coin Bonus:", "REPLAY" and the rest, by index.
+	game_strings: []string,
 	// Every `audio/*.wav` id except the ones levels reference as `music`
 	// (assets/audio/mu03.wav is a 196s stereo track, not a one-shot effect --
 	// see Level_Media.music). The game loads each of these once as a short
@@ -281,6 +287,16 @@ assets_open :: proc(root: string, allocator := context.allocator) -> (a: Assets)
 	}
 	a.sounds = sounds[:]
 
+	// G_Res_GetPermGameString: stli "pgsl", one line per index.
+	pgsl: Json_Definition
+	if read_json(strings.concatenate({root, "/data/stli/pgsl.json"}, context.temp_allocator), &pgsl, context.temp_allocator) {
+		lines := make([]string, len(pgsl.fields), allocator)
+		for f, i in pgsl.fields {
+			lines[i] = strings.clone(f.value, allocator)
+		}
+		a.game_strings = lines
+	}
+
 	// The text presets: "gate" names one tefo record per index.
 	gate: Json_Definition
 	if read_json(strings.concatenate({root, "/data/idli/gate.json"}, context.temp_allocator), &gate, context.temp_allocator) {
@@ -339,7 +355,16 @@ text_setting_from :: proc(fields: []Json_Field) -> (t: Text_Setting) {
 		switch f.key {
 		case "Loc_X_INT":                         t.x = int_of(v)
 		case "Loc_Y_INT":                         t.y = int_of(v)
-		case "Format_ID":                         t.format = sim.res_id(strings.trim_space(v))
+		case "Format_ID":
+			// The loader (FUN_0043f280) also takes a digit: 0 LEFT, 1 CENT,
+			// 2 RIGH, 3 CEBU, 4 CEGA ("gare", the REPLAY label, says 4).
+			// Anything else it does not know reads as LEFT.
+			digits := [5]sim.Res_ID{{'L', 'E', 'F', 'T'}, {'C', 'E', 'N', 'T'}, {'R', 'I', 'G', 'H'}, {'C', 'E', 'B', 'U'}, {'C', 'E', 'G', 'A'}}
+			f := strings.trim_space(v)
+			t.format = sim.res_id(f)
+			if len(f) == 1 && f[0] >= '0' && f[0] <= '4' {
+				t.format = digits[f[0] - '0']
+			}
 		case "Monospaced_BOOL":                   t.monospaced = yes
 		case "DrawShadows_BOOL":                  t.shadows = yes
 		case "BlendAmount_0To32_INT":             t.blend = int_of(v)
@@ -349,6 +374,8 @@ text_setting_from :: proc(fields: []Json_Field) -> (t: Text_Setting) {
 		case "ColorStrip_Do_BOOL":                t.strip = yes
 		case "ColorStrip_BlendAmount_0To32_INT":  t.strip_blend = int_of(v)
 		case "ColorStrip_Color_RGB":              t.strip_colour = rgb_of(v)
+		case "ColorStrip_HOffset_INT":            t.strip_h = int_of(v)
+		case "ColorStrip_VOffset_INT":            t.strip_v = int_of(v)
 		}
 	}
 	return

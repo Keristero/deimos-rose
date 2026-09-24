@@ -509,6 +509,7 @@ run_shots :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, blurs: ^Bl
 	// DR_SHOT_AT) where some draw's DR_DUMP line contains <text> -- e.g.
 	// "pbta frame 1" for a locked crosshair. One run, first 20 steps shown.
 	r.find = os.get_env("DR_SHOT_FIND", context.temp_allocator)
+	r.replay = true // a demo film, as the original labels one
 	found := 0
 	for i in 0 ..= last {
 		if r.find != "" {
@@ -531,10 +532,18 @@ run_shots :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, blurs: ^Bl
 			fmt.printfln("step %v draw list:", i)
 		}
 		build_frame(r, s, blurs, notices)
-		rl.BeginDrawing()
-		rl.ClearBackground(rl.Color{0, 0, 0, 255})
-		present(r, s, particles, WINDOW_SCALE)
-		rl.EndDrawing()
+		// Only a frame that is saved is presented: EndDrawing waits for
+		// vsync, which made a shot a few thousand steps in take minutes.
+		// Twice, so both swap buffers hold it -- the read-back below reads
+		// whichever one the swap left, and a skipped frame leaves it stale.
+		if next < len(steps) && steps[next] == i {
+			for _ in 0 ..< 2 {
+				rl.BeginDrawing()
+				rl.ClearBackground(rl.Color{0, 0, 0, 255})
+				present(r, s, particles, WINDOW_SCALE)
+				rl.EndDrawing()
+			}
+		}
 		if r.dump {
 			r.dump = false
 		}

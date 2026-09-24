@@ -110,7 +110,7 @@ player_level_reset :: proc (s: ^State, p: ^Player, time: i32) {
 	p.appeared = false
 	glow_stop(&p.obj) // Glow_Stop
 	p.money = 0       // Money_Reset
-	p.counter = {}    // MoneyCounter_Reset
+	p.counter = {fade = 0x20} // MoneyCounter_Reset: hidden until it fades in
 	player_shields_reset(s, p, true)
 	overload_clear(p)
 	player_reset_sprite(s, p)
@@ -219,6 +219,20 @@ player_process_state :: proc(s: ^State, p: ^Player, time: i32) {
 player_process :: proc(s: ^State, p: ^Player, time: i32, input: Buttons, film: ^Film) {
 	if !p.active {
 		return
+	}
+	// The defence bonus, before Priv_ProcessState: once the level is ending
+	// (DAT_004e4855), a player who took no damage this level (this[0xcc]
+	// still clear) gets the "Notice - Defence Bonus" at their ship and
+	// level * perm float 0xb8 points. Setting the flag makes it once only.
+	if s.level_ending && !p.defence_spawned {
+		p.defence_spawned = true
+		if d := player_def(s, p); d.active_defence_bonus_object != NONE {
+			req := spawn_request(d.active_defence_bonus_object)
+			req.loc = p.loc
+			req.owner_player = p.number // this+0xc2
+			eg_request_spawn(s, req)
+		}
+		player_score(s, p, s.level_number * trunc_i32(s.defs.perm_floats[0xb8]), false)
 	}
 	player_process_state(s, p, time)
 	// Priv_GetInputs: only a player in play reads input, so a film is

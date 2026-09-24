@@ -61,8 +61,8 @@ blend_alpha :: proc(blend: i32) -> u8 {
 }
 
 // G_ScoreBar_ResetAtLevelStart and G_ScoreBar_Process, run once for each
-// step the simulation has moved on since the last frame.
-@(private = "file")
+// step the simulation has moved on since the last frame (from build_frame,
+// so a shot that presents only some steps still eases every one).
 scorebar_process :: proc(v: ^Scorebar_View, s: ^sim.State) {
 	pf := &s.defs.perm_floats
 	if !v.primed || s.level_number != v.level || s.time < v.time {
@@ -116,7 +116,6 @@ scorebar_draw :: proc(r: ^Renderer, s: ^sim.State, scale: f32) {
 	rl.DrawTexturePro(tex, {0, 0, f32(tex.width), f32(tex.height)}, dst, {0, 0}, 0, rl.WHITE)
 
 	v := &r.scorebar
-	scorebar_process(v, s)
 	pf := &s.defs.perm_floats
 	text := &r.textures.assets.text
 	for pn in 0 ..< 2 {

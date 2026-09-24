@@ -186,6 +186,7 @@ Renderer :: struct {
 	terrain:       rl.RenderTexture2D,
 	terrain_level: sim.Res_ID,
 	terrain_qt:    bool, // built with QuickTime's gamma (classic mode)
+	replay:        bool, // a film is playing: the original labels it "REPLAY"
 	// Set by DR_DUMP: print every sprite of the next frame, which is how a
 	// misplaced or mis-scaled draw gets identified.
 	dump:     bool,
@@ -524,6 +525,7 @@ build_frame :: proc(r: ^Renderer, s: ^sim.State, blurs: ^Blurs, notices: ^Notice
 	}
 	terrain_prepare(r, s)
 	terrain_stamp(r, s)
+	scorebar_process(&r.scorebar, s)
 	pv := r.interp_prev
 	if pv != nil && pv.level != s.level {
 		pv = nil // a different level: nothing on screen was there a step ago
@@ -619,7 +621,12 @@ present :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, scale: f32) 
 	run(r, 2, 5, scale)
 	particles_draw(particles, scale, r.interp_prev != nil ? r.interp_alpha : 1)
 	run(r, 6, 15, scale)
+	level_end_draw(r, s, scale) // layer 0xf text, over the sprites
 	scorebar_draw(r, s, scale)
+	if r.replay {
+		// G_Game_Play, while a film plays: game string 9 through preset 0x26.
+		text_preset_draw(r, r.textures.assets.text[0x26], game_string(r, 9), VIEW_X, scale)
+	}
 }
 
 // The map buffer for a level: the image, plus every mark burned into it

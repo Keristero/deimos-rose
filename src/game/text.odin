@@ -136,6 +136,32 @@ text_preset_draw :: proc(r: ^Renderer, t: data.Text_Setting, s: string, origin_x
 		x = f32(t.x) - f32(i32(total / 2))
 	case sim.Res_ID{'R', 'I', 'G', 'H'}:
 		x = f32(t.x) - total
+	case sim.Res_ID{'C', 'E', 'G', 'A'}:
+		// Centred on the play field: (perm float 0x36 VisibleGameWidth -
+		// width) / 2, the x the preset gives ignored (FUN_0043e4e0).
+		x = f32(i32((PLAY_W - total) / 2))
+	case sim.Res_ID{'C', 'E', 'B', 'U'}:
+		// Centred on the buffer, perm float 0x34 MinScreenWidth (640).
+		// Provisional: taken as the whole screen, which puts its origin
+		// VIEW_X left of the play field's; no CEBU text is drawn yet to
+		// check it against.
+		x = f32(i32((SCREEN_W - total) / 2)) - VIEW_X
+	}
+	if t.strip {
+		// ColorStrip: a box behind the text, as tall as the tallest glyph
+		// and wider by the H/V offsets each side (G_Text_Draw).
+		h: f32
+		for i in 0 ..< len(s) {
+			if _, src, ok := frame_rect(&r.textures, FONT, glyph_of(s[i])); ok {
+				h = max(h, src.height)
+			}
+		}
+		c := t.strip_colour
+		box := rl.Rectangle {
+			(origin_x + x - f32(t.strip_h)) * scale, (f32(t.y) - f32(t.strip_v)) * scale,
+			(total + 1 + 2 * f32(t.strip_h)) * scale, (h + 2 * f32(t.strip_v)) * scale,
+		}
+		rl.DrawRectangleRec(box, {c[0], c[1], c[2], u8(clamp(32 - t.strip_blend, 0, 32) * 255 / 32)})
 	}
 	b := blend >= 0 ? blend : t.blend
 	tint := colour.? or_else (t.colorise ? rl.Color{t.colour[0], t.colour[1], t.colour[2], 255} : rl.WHITE)
