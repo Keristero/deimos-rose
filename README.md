@@ -13,22 +13,19 @@ There are builds for windows and linux.
 - Online netplay with rollback and reconnect functionality. (port 60902)
 - High refresh rate mode, drawing smoothly between game updates (Preferences)
 
+There is also a Classic mode which disables all enhancements and attempts to present the graphics and colors as faithfully to the original as possible.
+
 #### Upcoming enhancements:
-- Classic mode which simply aims to be as faithful as possible to the original
+- HD upscaled textures, reflections, and new shader effects for water and more
 - Easy mode which gives the player a powerup after each stage they complete
-- Infinite procedural roguelike mode
+- Infinite procedural roguelike mode with new guns and biomes
 
 #### Known issues
-- Some sounds use the wrong sound effects, eg weapons are swapped etc.
-- Enemies can be visible offscreen in window mode
+- Some sounds use the wrong sound effects, eg weapons are swapped etc. (fixed I think)
+- Enemies can be visible offscreen in window mode, most notably just before they spawn in from the sides (fixed I think)
 - Menus dont match originals
 - Missing or strange looking visuals, eg:
    - Missing scorch marks on ground after ground fire
-   - Air to ground crosshairs missing
-   - Air to ground weapon looks weird
-   - Smoke looks weird
-   - Score ticker at end of level missing
-   - First Air to Air weapon is missing some small impact particle effects
 
 #### Known enhancement issues:
 - Sometimes when players reconnect they might see the wrong level background loaded
