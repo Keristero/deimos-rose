@@ -126,8 +126,15 @@ main :: proc() {
 		}
 	}
 
-	provider := data.provider_open(os.get_env("DR_ORIG", context.temp_allocator))
+	orig := os.get_env("DR_ORIG", context.temp_allocator)
+	provider := data.provider_open(orig)
 	defs, _ := data.defs_load(&provider)
+	// Without the PAKs every film replays against no definitions at all,
+	// which reads as a divergence at call 0 rather than a missing install.
+	if len(defs.levels) == 0 {
+		fmt.eprintfln("no levels loaded from DR_ORIG=%s -- it needs the full install (\" Data/Paks\")", orig)
+		os.exit(1)
+	}
 	state := new(sim.State)
 
 	// DR_DIFF_CONTEXT=n prints n calls of context around the divergence.
