@@ -568,6 +568,13 @@ build_frame :: proc(r: ^Renderer, s: ^sim.State, blurs: ^Blurs, notices: ^Notice
 	for g := w.active.head; g != sim.NO_LINK; g = w.group_links[g].next {
 		for i := w.groups[g].entities.head; i != sim.NO_LINK; i = w.entity_links[i].next {
 			e := &w.entities[i]
+			// G_EG_BuildDrawList draws neither an entity nor its shadow
+			// until its appear delay (+0xa4) has run out; units waiting
+			// just off the field would otherwise show there, or cast a
+			// shadow onto it.
+			if e.appear_delay >= 1 {
+				continue
+			}
 			u := &s.defs.units[e.unit]
 			// The same slot holding the same entity a step ago (numbers are
 			// unique, so a reused slot does not match).
@@ -651,11 +658,16 @@ present :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, scale: f32) 
 			}
 		}
 	}
+	// Every blit in the original clips to the 416x480 play field
+	// (U_PixelScale16_*: x to 0..0x1a0, y to 0..0x1e0), so a unit waiting
+	// just off the left edge is not drawn in the border beside it.
+	rl.BeginScissorMode(i32(VIEW_X * scale), 0, i32(PLAY_W * scale), i32(PLAY_H * scale))
 	run(r, 0, 1, scale)
 	draw_terrain(r, s, scale)
 	run(r, 2, 5, scale)
 	particles_draw(particles, scale, r.side_scroll, r.interp_prev != nil ? r.interp_alpha : 1)
 	run(r, 6, 15, scale)
+	rl.EndScissorMode()
 	level_end_draw(r, s, scale) // layer 0xf text, over the sprites
 	scorebar_draw(r, s, scale)
 	if r.replay {
