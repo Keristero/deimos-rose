@@ -103,8 +103,9 @@ Item_Effect :: enum u8 {
 // "pbhf", say) still reads clearly as the accent colour against the map.
 ACCENT_SATURATION :: 0.85
 // The ship's trim is shaded metal, recoloured from the silver of player 1's
-// ship: softer than the crosshair and shots, so it still looks like metal.
-TRIM_SATURATION :: 0.6
+// ship: a little softer than the crosshair and shots, so it keeps some
+// sheen, but strong enough to read as the player's colour at a glance.
+TRIM_SATURATION :: 0.8
 // How far the unlocked crosshair is washed towards white: lighter and
 // paler than the locked frame's pure red, whatever the accent.
 CROSSHAIR_LIGHTEN :: 0.45

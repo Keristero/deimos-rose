@@ -256,8 +256,8 @@ ship_trim :: proc(t: ^Textures, sprite: sim.Res_ID) -> (rl.Texture2D, bool) {
 
 // Summed RGB distance between the pair: below TRIM_SOFT is shared shading,
 // above TRIM_HARD is certainly trim, and in between the mask ramps.
-@(private = "file") TRIM_SOFT :: 16
-@(private = "file") TRIM_HARD :: 72
+@(private = "file") TRIM_SOFT :: 10
+@(private = "file") TRIM_HARD :: 48
 
 @(private = "file")
 ship_trim_build :: proc(t: ^Textures, silver, gold: sim.Res_ID) -> rl.Texture2D {

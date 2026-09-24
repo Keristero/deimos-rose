@@ -80,23 +80,17 @@ hue_slider_draw :: proc(hue: int, rect: rl.Rectangle, dim := false) {
 @(private = "file") EXTRAS_LABEL_X :: 110
 @(private = "file") EXTRAS_VALUE_X :: 350 // centre of a toggle; a slider spans either side
 @(private = "file") EXTRAS_SLIDER_W :: 150
-@(private = "file") EXTRAS_PREVIEW_X :: 520
 @(private = "file") EXTRAS_BACK_Y :: 436
 @(private = "file") EXTRAS_NOTE_Y :: 404
 
-// A ship drawn beside a row, showing what the setting does to it.
-@(private = "file") PREVIEW_SHIP :: sim.Res_ID{'p', 'l', '1', 'b'}
-
-@(private = "file")
-Extra_Preview :: #type proc(r: ^Renderer, ps: ^Prefs_State, x, y: f32)
-
-// Which rows show a preview: the extras that change how your ship looks.
-@(private = "file")
-EXTRA_PREVIEWS := [prefs.Extra]Extra_Preview {
-	.High_Refresh_Rate = nil,
-	.Accent_Hue        = preview_ship_trim,
-	.Self_Outline      = preview_ship_outline,
-}
+// The preview: both players' ships as they would be drawn in play with
+// your accent and outline -- you fly either one in netplay, depending on
+// the slot you get. Off to the right of the rows rather than beside one,
+// since two of them (hue and outline) change it.
+@(private = "file") PREVIEW_SHIPS :: [2]sim.Res_ID{{'p', 'l', '1', 'b'}, {'p', 'l', '2', 'b'}}
+@(private = "file") PREVIEW_X :: 540 // centre of the pair
+@(private = "file") PREVIEW_Y :: 150
+@(private = "file") PREVIEW_GAP :: 70
 
 Extras_Page :: struct {
 	toggles: [prefs.Extra]Text_Button,
@@ -166,31 +160,23 @@ extras_page_draw :: proc(r: ^Renderer, x: ^Extras_Page, ps: ^Prefs_State) {
 		case .Hue:
 			hue_slider_draw(ps.saved.extras[e], extras_slider_rect(e), classic)
 		}
-		if p := EXTRA_PREVIEWS[e]; p != nil {
-			p(r, ps, EXTRAS_PREVIEW_X, y + 10)
-		}
+	}
+	for id, i in PREVIEW_SHIPS {
+		x := PREVIEW_X + (f32(i) - 0.5) * PREVIEW_GAP
+		preview_ship(r, ps, id, x, PREVIEW_Y)
+		menu_draw_text(r, i == 0 ? "P1" : "P2", i32(x), PREVIEW_Y + 26, dim, .Centre)
 	}
 	note := classic ? "CLASSIC MODE IS ON: EXTRAS ARE OFF UNTIL IT IS TURNED OFF" : "FEATURES THE ORIGINAL DID NOT HAVE -- NONE APPLY IN CLASSIC MODE"
 	menu_draw_text(r, note, SCREEN_W / 2, EXTRAS_NOTE_Y, dim, .Centre)
 	text_button_draw(r, &x.back)
 }
 
-@(private = "file")
-preview_ship_trim :: proc(r: ^Renderer, ps: ^Prefs_State, x, y: f32) {
-	preview_ship(r, ps, x, y, false)
-}
-
-@(private = "file")
-preview_ship_outline :: proc(r: ^Renderer, ps: ^Prefs_State, x, y: f32) {
-	preview_ship(r, ps, x, y, ps.saved.extras[.Self_Outline] != 0)
-}
-
 // The ship as it would be drawn in play, centred on (x, y) in menu
 // coordinates: through the same draw_item the game uses, so the preview
 // cannot drift from the real thing.
 @(private = "file")
-preview_ship :: proc(r: ^Renderer, ps: ^Prefs_State, x, y: f32, outline: bool) {
-	id := PREVIEW_SHIP
+preview_ship :: proc(r: ^Renderer, ps: ^Prefs_State, id: sim.Res_ID, x, y: f32) {
+	outline := ps.saved.extras[.Self_Outline] != 0
 	tex, src, ok := frame_rect(&r.textures, id, 0)
 	if !ok {
 		return
