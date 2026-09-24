@@ -438,11 +438,17 @@ draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shad
 			})
 		}
 	}
-	push_item(r, layer, Item {
-		texture = tex, src = src, dst = dst, tint = {255, 255, 255, alpha},
-		effect = accent.recolour ? .Recolour : .None, hue = accent.hue, sat = ACCENT_SATURATION,
-		lighten = accent.lighten,
-	})
+	// A colorised object (doColorise, +0x52) skips its own sprite: only the
+	// tint pass below draws, flat, in its shape (Priv_Draw). The ground
+	// bomb's glow "glow" frame 4 is one -- drawn plain it was a wide grey
+	// ball where the original shows a small cyan core.
+	if !o.colorise {
+		push_item(r, layer, Item {
+			texture = tex, src = src, dst = dst, tint = {255, 255, 255, alpha},
+			effect = accent.recolour ? .Recolour : .None, hue = accent.hue, sat = ACCENT_SATURATION,
+			lighten = accent.lighten,
+		})
+	}
 	if accent.trim {
 		if trim, tok := ship_trim(&r.textures, o.sprite); tok {
 			push_item(r, layer, Item {
