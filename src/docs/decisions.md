@@ -464,8 +464,9 @@ original six.
 - **Player 2 now has keys.** Local 2 Player previously fed player 2 an empty
   input every step. Player 1's defaults are exactly the old hard-coded
   keys; player 2's (IJKL, U/O and ;) are new. Pause became bindable later
-  (D32): P, player 1's default Pause, was player 2's Change Weapon at
-  first; loading a file saved before then lets the default give way. Binding a key takes it off any
+  (D32), with P as player 1's default, and was made unbindable again as
+  unnecessary: Escape is the one pause key, and a saved `pause=` line is
+  ignored. A default still gives way to a key a saved file already uses. Binding a key takes it off any
   other action, for either player. Every button is now read as held,
   including Change Weapon — the sim edge-detects it itself
   (`weapons_process`), and the old one-frame `IsKeyPressed` could drop a
@@ -511,7 +512,7 @@ rollback session): `step`, then the level change, so resimulation
 reproduces it on the same frame. Flow only reads the result. Films, demos
 and the oracle tools keep plain `step`, which is unchanged.
 
-The netplay pause (Escape, the bindable Pause key, or the pause menu's
+The netplay pause (Escape, or the pause menu's
 Resume) is a `Pause` input
 bit, not a network message: it reaches the peer and is replayed on rollback
 like any button, so both sides pause on the same frame, and either can

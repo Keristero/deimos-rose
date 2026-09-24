@@ -1,5 +1,6 @@
 package tests
 
+import "core:strings"
 import "core:testing"
 
 import "dr:prefs"
@@ -69,10 +70,7 @@ prefs_defaults_give_each_player_distinct_keys :: proc(t: ^testing.T) {
 	defer delete(seen)
 	for b, player in p.bindings {
 		for keys, button in b {
-			// Player 2 has no Pause key by default; Escape pauses for both.
-			if !(player == 1 && button == .Pause) {
-				testing.expectf(t, keys[0] != prefs.KEY_NONE, "player %d %v has no key", player + 1, button)
-			}
+			testing.expectf(t, keys[0] != prefs.KEY_NONE, "player %d %v has no key", player + 1, button)
 			for k in keys {
 				if k == prefs.KEY_NONE {
 					continue
@@ -101,20 +99,14 @@ prefs_volume_steps_stay_in_range :: proc(t: ^testing.T) {
 }
 
 @(test)
-prefs_parse_gives_way_to_keys_an_older_file_chose :: proc(t: ^testing.T) {
-	// Before Pause was bindable, player 2's Change Weapon defaulted to P and
-	// files have no pause lines. P is now player 1's default Pause; loading
-	// such a file must not leave P doing both.
-	old := "p2.change_weapon=80,0\n"
-	got := prefs.parse(old)
-	testing.expect_value(t, got.bindings[1][.Change_Air], [prefs.BINDING_SLOTS]i32{prefs.KEY_P, prefs.KEY_NONE})
-	testing.expect_value(t, got.bindings[0][.Pause], [prefs.BINDING_SLOTS]i32{prefs.KEY_NONE, prefs.KEY_NONE})
-
-	// And a file that does set Pause keeps it, round trip included.
-	p := prefs.defaults()
-	prefs.bind(&p, 1, .Pause, 0, prefs.KEY_O) // takes O off player 2's Fire Ground
-	testing.expect_value(t, p.bindings[1][.Fire_Ground][0], i32(prefs.KEY_NONE))
-	testing.expect_value(t, prefs.parse(prefs.format(&p, context.temp_allocator)), p)
+prefs_parse_ignores_a_pause_binding :: proc(t: ^testing.T) {
+	// Pause was bindable for a while (P for player 1). Escape is the only
+	// pause key now; a save from then must load, and free P for anything.
+	got := prefs.parse("p1.pause=80,0\np2.change_weapon=80,0\n")
+	want := prefs.defaults()
+	want.bindings[1][.Change_Air] = {prefs.KEY_P, prefs.KEY_NONE}
+	testing.expect_value(t, got, want)
+	testing.expect(t, !strings.contains(prefs.format(&got, context.temp_allocator), "pause"))
 }
 
 @(test)

@@ -36,7 +36,7 @@ import "dr:sim"
 @(private = "file") PREFS_SLOT_X :: [prefs.BINDING_SLOTS]f32{350, 470}
 
 @(private = "file")
-BUTTON_NAMES := [sim.Button]string {
+BUTTON_NAMES := [prefs.Action]string {
 	.Up          = "UP",
 	.Down        = "DOWN",
 	.Left        = "LEFT",
@@ -44,7 +44,6 @@ BUTTON_NAMES := [sim.Button]string {
 	.Fire_Air    = "FIRE AIR",
 	.Fire_Ground = "FIRE GROUND",
 	.Change_Air  = "CHANGE WEAPON",
-	.Pause       = "PAUSE",
 }
 
 @(private = "file")
@@ -74,11 +73,11 @@ Preferences :: struct {
 
 	// Waiting for a key for this binding slot, after its button was clicked.
 	capturing:      bool,
-	capture_button: sim.Button,
+	capture_button: prefs.Action,
 	capture_slot:   int,
 
 	player_prev, player_next: Text_Button,
-	keys:                     [sim.Button][prefs.BINDING_SLOTS]Text_Button,
+	keys:                     [prefs.Action][prefs.BINDING_SLOTS]Text_Button,
 	reset:                    Text_Button,
 	volume_down, volume_up:   [Option]Text_Button, // only .Sound and .Music use these
 	toggle:                   [Option]Text_Button, // .Display/.Diagnostics/.Classic, and the volume readouts
@@ -121,7 +120,7 @@ preferences_layout :: proc(r: ^Renderer, p: ^Preferences, ps: ^Prefs_State) {
 	text_button_relabel(r, &p.player_prev, "<", PREFS_VALUE_X - PREFS_ARROW_DX, PREFS_PLAYER_Y)
 	text_button_relabel(r, &p.player_next, ">", PREFS_VALUE_X + PREFS_ARROW_DX, PREFS_PLAYER_Y)
 	slot_x := PREFS_SLOT_X
-	for button in sim.Button {
+	for button in prefs.Action {
 		y := PREFS_KEYS_Y + f32(button) * PREFS_ROW
 		for slot in 0 ..< prefs.BINDING_SLOTS {
 			label := key_name(ps.saved.bindings[p.player][button][slot])
@@ -167,7 +166,7 @@ preferences_update :: proc(fl: ^Flow, r: ^Renderer, p: ^Preferences) {
 	if prev || next {
 		p.player = (p.player + (next ? 1 : sim.MAX_PLAYERS - 1)) % sim.MAX_PLAYERS
 	}
-	for button in sim.Button {
+	for button in prefs.Action {
 		for slot in 0 ..< prefs.BINDING_SLOTS {
 			if text_button_update(r, &p.keys[button][slot], mouse, dt) {
 				p.capturing, p.capture_button, p.capture_slot = true, button, slot
@@ -265,7 +264,7 @@ preferences_draw :: proc(r: ^Renderer, p: ^Preferences, ps: ^Prefs_State) {
 	text_button_draw(r, &p.player_prev)
 	text_button_draw(r, &p.player_next)
 
-	for button in sim.Button {
+	for button in prefs.Action {
 		y := PREFS_KEYS_Y + i32(button) * PREFS_ROW
 		menu_draw_text(r, BUTTON_NAMES[button], PREFS_LABEL_X, y + 5, white)
 		for slot in 0 ..< prefs.BINDING_SLOTS {

@@ -1083,7 +1083,7 @@ netplay_playing_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blu
 	// Pause is an input bit (sim.session_step), so it reaches the peer
 	// like any button and both sides pause on the same frame. Held while
 	// the key is, or for a Resume click's short pulse.
-	if rl.IsKeyDown(.ESCAPE) || nl.pause_pulse > 0 { // plus the Pause binding, via gather_input
+	if rl.IsKeyDown(.ESCAPE) || nl.pause_pulse > 0 {
 		local += {.Pause}
 	}
 	nl.pause_pulse = max(nl.pause_pulse - 1, 0)

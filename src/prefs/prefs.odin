@@ -38,11 +38,30 @@ KEY_UP :: 265
 KEY_LEFT_SHIFT :: 340
 KEY_LEFT_CONTROL :: 341
 
+// The controls a player can bind: the original's seven, in sim.Button's
+// order so each converts with a cast. Pause is not among them: Escape
+// pauses, for every player, and cannot be bound -- it has to stay free to
+// cancel a rebind. sim.Button's Pause bit is netplay's, set by Escape.
+Action :: enum u8 {
+	Up,
+	Down,
+	Left,
+	Right,
+	Fire_Air,
+	Fire_Ground,
+	Change_Air,
+}
+#assert(int(Action.Up) == int(sim.Button.Up))
+#assert(int(Action.Down) == int(sim.Button.Down))
+#assert(int(Action.Left) == int(sim.Button.Left))
+#assert(int(Action.Right) == int(sim.Button.Right))
+#assert(int(Action.Fire_Air) == int(sim.Button.Fire_Air))
+#assert(int(Action.Fire_Ground) == int(sim.Button.Fire_Ground))
+#assert(int(Action.Change_Air) == int(sim.Button.Change_Air))
+
 // Two keys per action: player 1 has always had both the arrows and WASD.
-// Pause is an action like the rest; Escape also always pauses, for every
-// player, and cannot be bound -- it has to stay free to cancel a rebind.
 BINDING_SLOTS :: 2
-Bindings :: [sim.Button][BINDING_SLOTS]i32
+Bindings :: [Action][BINDING_SLOTS]i32
 
 VOLUME_STEP :: 10 // percent per click of the volume arrows
 
@@ -158,8 +177,7 @@ hue_wrap :: proc(h: int) -> int {
 // nothing moved. Player 2 had no keys at all -- local co-op fed it an empty
 // input every step -- so theirs are new: IJKL on the right of the keyboard,
 // clear of player 1's arrows/WASD/Space/Ctrl/Shift, with U/O and ; beside
-// them. P is player 1's Pause, as it was before Pause could be rebound;
-// player 2 has none by default (Escape pauses for both).
+// them.
 defaults :: proc() -> Prefs {
 	p := Prefs {
 		sfx_volume   = 100,
@@ -176,7 +194,6 @@ defaults :: proc() -> Prefs {
 		.Fire_Air    = {KEY_SPACE, KEY_NONE},
 		.Fire_Ground = {KEY_LEFT_CONTROL, KEY_NONE},
 		.Change_Air  = {KEY_LEFT_SHIFT, KEY_NONE},
-		.Pause       = {KEY_P, KEY_NONE},
 	}
 	p.bindings[1] = {
 		.Up          = {KEY_I, KEY_NONE},
@@ -186,7 +203,6 @@ defaults :: proc() -> Prefs {
 		.Fire_Air    = {KEY_U, KEY_NONE},
 		.Fire_Ground = {KEY_O, KEY_NONE},
 		.Change_Air  = {KEY_SEMICOLON, KEY_NONE},
-		.Pause       = {KEY_NONE, KEY_NONE},
 	}
 	return p
 }
@@ -194,7 +210,7 @@ defaults :: proc() -> Prefs {
 // Binds `key` to one slot, first taking it off anything else it was bound
 // to, for either player: one key driving two actions (or both ships in
 // co-op) is never what a player rebinding meant. KEY_NONE just clears.
-bind :: proc(p: ^Prefs, player: int, button: sim.Button, slot: int, key: i32) {
+bind :: proc(p: ^Prefs, player: int, button: Action, slot: int, key: i32) {
 	if key != KEY_NONE {
 		for &b in p.bindings {
 			for &keys in b {
@@ -214,9 +230,10 @@ step_volume :: proc(v: ^int, dir: int) {
 }
 
 // Stable names for the save file -- not the enum's own spelling, so renaming
-// a sim.Button does not silently drop everyone's bindings.
+// an Action does not silently drop everyone's bindings. A "pause" line, from
+// before Pause stopped being bindable, is not recognised and so ignored.
 @(private = "file")
-BUTTON_KEYS := [sim.Button]string {
+BUTTON_KEYS := [Action]string {
 	.Up          = "up",
 	.Down        = "down",
 	.Left        = "left",
@@ -224,7 +241,6 @@ BUTTON_KEYS := [sim.Button]string {
 	.Fire_Air    = "fire_air",
 	.Fire_Ground = "fire_ground",
 	.Change_Air  = "change_weapon",
-	.Pause       = "pause",
 }
 
 // One `name=value` per line, like progress.odin's and highscores.odin's
@@ -252,13 +268,13 @@ format :: proc(p: ^Prefs, allocator := context.allocator) -> string {
 // missing file, an older file without some setting, or a hand-edited typo
 // each fall back per setting rather than losing the lot.
 //
-// A default can collide with a key the file already uses: a file from
-// before Pause was bindable has player 2's Change Weapon on P, which is now
-// player 1's default Pause. What the player chose wins; the default gives
-// way, so one key never ends up doing two things.
+// A default can collide with a key the file already uses: an older file can
+// have bound a key that a later version made a default. What the player
+// chose wins; the default gives way, so one key never ends up doing two
+// things.
 parse :: proc(text: string) -> Prefs {
 	p := defaults()
-	from_file: [sim.MAX_PLAYERS]sim.Buttons
+	from_file: [sim.MAX_PLAYERS]bit_set[Action]
 	rest := text
 	for line in strings.split_lines_iterator(&rest) {
 		eq := strings.index_byte(line, '=')
@@ -314,7 +330,7 @@ parse_flag :: proc(value: string, out: ^bool) {
 }
 
 @(private = "file")
-parse_binding :: proc(name, value: string, p: ^Prefs) -> (player: int, button: sim.Button, ok: bool) {
+parse_binding :: proc(name, value: string, p: ^Prefs) -> (player: int, button: Action, ok: bool) {
 	if len(name) < 4 || name[0] != 'p' || name[2] != '.' {
 		return
 	}
@@ -342,7 +358,7 @@ parse_binding :: proc(name, value: string, p: ^Prefs) -> (player: int, button: s
 }
 
 @(private = "file")
-drop_colliding_defaults :: proc(p: ^Prefs, from_file: [sim.MAX_PLAYERS]sim.Buttons) {
+drop_colliding_defaults :: proc(p: ^Prefs, from_file: [sim.MAX_PLAYERS]bit_set[Action]) {
 	chosen: map[i32]bool
 	defer delete(chosen)
 	for b, player in p.bindings {

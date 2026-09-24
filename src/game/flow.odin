@@ -156,17 +156,11 @@ pause_menu_draw :: proc(r: ^Renderer, m: ^Pause_Menu, note: string) {
 	}
 }
 
-// Escape always pauses (it cannot be bound); so does each player's own
-// Pause binding (Preferences; P for player 1 by default). Player 2's only
-// counts while they are in the game -- a local 2 Player session. Netplay's
-// held Pause bit comes from gather_input's bindings plus Escape
-// (netplay_playing_step).
+// Escape pauses, for every player, and cannot be rebound. Netplay's held
+// Pause bit comes from Escape too (netplay_playing_step).
 @(private = "file")
 pause_key_pressed :: proc(fl: ^Flow) -> bool {
-	if rl.IsKeyPressed(.ESCAPE) || binding_pressed(&fl.prefs.saved.bindings[0], .Pause) {
-		return true
-	}
-	return fl.state.players[1].active && binding_pressed(&fl.prefs.saved.bindings[1], .Pause)
+	return rl.IsKeyPressed(.ESCAPE)
 }
 
 flow_init :: proc(fl: ^Flow, root: string, defs: ^sim.Defs, state: ^sim.State, r: ^Renderer, ps: ^Prefs_State) {
@@ -355,10 +349,8 @@ flow_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 			if fl.state.players[1].active {
 				input[1] = gather_input(&fl.prefs.saved.bindings[1])
 			}
-			// A local session pauses through flow (.Paused, the original's
-			// kind of pause), never the sim's netplay pause.
-			input[0] -= {.Pause}
-			input[1] -= {.Pause}
+			// No binding sets the sim's Pause bit: a local session pauses
+			// through flow (.Paused, the original's kind of pause) instead.
 			flow_sim_step(fl, r, particles, blurs, notices, input, nil, true)
 		}
 		// The step itself moved to the next level if there was one

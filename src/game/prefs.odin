@@ -100,15 +100,6 @@ prefs_set_fullscreen :: proc(ps: ^Prefs_State, on: bool) {
 	prefs_state_save(ps)
 }
 
-// Whether a key bound to `button` went down this frame.
-binding_pressed :: proc(b: ^prefs.Bindings, button: sim.Button) -> bool {
-	for k in b[button] {
-		if k != prefs.KEY_NONE && rl.IsKeyPressed(rl.KeyboardKey(k)) {
-			return true
-		}
-	}
-	return false
-}
 
 // Presentation-side input capture: the simulation never reads a device.
 // Every button is read as held; the sim does its own edge detection (e.g.
@@ -117,10 +108,10 @@ binding_pressed :: proc(b: ^prefs.Bindings, button: sim.Button) -> bool {
 // a press that landed on a render frame with no sim step in it.
 gather_input :: proc(b: ^prefs.Bindings) -> sim.Buttons {
 	out: sim.Buttons
-	for keys, button in b {
+	for keys, action in b {
 		for k in keys {
 			if k != prefs.KEY_NONE && rl.IsKeyDown(rl.KeyboardKey(k)) {
-				out += {button}
+				out += {sim.Button(action)}
 			}
 		}
 	}
