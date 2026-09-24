@@ -15,6 +15,7 @@ package game
 // the same frames, at the same places, in the same sequence.
 
 import "core:fmt"
+import "core:strings"
 
 import rl "vendor:raylib"
 
@@ -84,9 +85,10 @@ Item :: struct {
 	tint:    rl.Color,
 	effect:  Item_Effect,
 	hue:     f32, // degrees, for effect != .None
+	sat:     f32, // minimum saturation, for effect != .None
 }
 
-// Netplay accents (new content, never in classic mode): drawn through
+// Accents (Extras, never in classic mode): drawn through
 // ACCENT_SHADER rather than baked into textures, since the same sprite is
 // shared by both players and, for the ground bomb's "bgbu", by an air
 // weapon too.
@@ -99,12 +101,17 @@ Item_Effect :: enum u8 {
 // High enough that a white or grey sprite (the glow of the ground weapon's
 // "pbhf", say) still reads clearly as the accent colour against the map.
 ACCENT_SATURATION :: 0.85
+// The ship's trim is shaded metal, recoloured from the silver of player 1's
+// ship: softer than the crosshair and shots, so it still looks like metal.
+TRIM_SATURATION :: 0.6
 
-// One player's accent for this frame, set by flow_draw.
+// One player's accent for this frame, set by flow_draw: their hue on their
+// ship's trim, crosshair and air-to-ground shots, and optionally an outline.
 Accent :: struct {
 	on:             bool,
 	hue:            f32, // degrees
-	hide_crosshair: bool,
+	outline:        bool, // Self Outline, the local player only
+	hide_crosshair: bool, // the other player's, in netplay
 }
 
 // A player's accent as a plain colour, for menu text.
@@ -170,6 +177,10 @@ Renderer :: struct {
 	// Set by DR_DUMP: print every sprite of the next frame, which is how a
 	// misplaced or mis-scaled draw gets identified.
 	dump:     bool,
+	// Set by DR_SHOT_FIND: count the draws whose DR_DUMP line contains this
+	// text, without printing them (run_shots reports the steps).
+	find:      string,
+	find_hits: int,
 	// -classic / Preferences' Classic Mode, copied in each frame by
 	// main.odin -- see settings.odin.
 	classic:  bool,
@@ -295,6 +306,7 @@ tint_color :: proc "contextless" (c: u16, amount: i32) -> rl.Color {
 Draw_Accent :: struct {
 	hue:      f32,
 	recolour: bool,
+	trim:     bool, // a ship: its silver/gold trim (ship_trim) in the accent
 	outline:  bool,
 }
 
@@ -339,11 +351,17 @@ draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shad
 	// wrecks stamp_object burns into the map at destruction.
 	layer := o.draw_to_terrain ? 1 : layer_of(o.draw_layer, o.is_air)
 
-	if r.dump {
+	if r.dump || r.find != "" {
 		id := o.sprite
-		fmt.printfln("  layer %2d  %v frame %v  at %.1f,%.1f  %.0fx%.0f  scale %.3f  vis %.0f  tint %.0f/%04x  glow %v  terrain %v  shadow %v",
+		line := fmt.tprintf("  layer %2d  %v frame %v  at %.1f,%.1f  %.0fx%.0f  scale %.3f  vis %.0f  tint %.0f/%04x  glow %v  terrain %v  shadow %v",
 			layer, string(id[:]), o.frame, o.loc.x, o.loc.y, dst.width, dst.height,
 			o.scale, o.visibility, o.tint, o.tint_color, o.glowing, o.draw_to_terrain, casts_shadow)
+		if r.dump {
+			fmt.println(line)
+		}
+		if r.find != "" && strings.contains(line, r.find) {
+			r.find_hits += 1
+		}
 	}
 
 	// The shadow: a silhouette of the same frame, offset and never less than
@@ -381,14 +399,22 @@ draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shad
 			o.y += d.y
 			push_item(r, layer, Item {
 				texture = tex, src = src, dst = o, tint = {255, 255, 255, alpha},
-				effect = .Silhouette, hue = accent.hue,
+				effect = .Silhouette, hue = accent.hue, sat = ACCENT_SATURATION,
 			})
 		}
 	}
 	push_item(r, layer, Item {
 		texture = tex, src = src, dst = dst, tint = {255, 255, 255, alpha},
-		effect = accent.recolour ? .Recolour : .None, hue = accent.hue,
+		effect = accent.recolour ? .Recolour : .None, hue = accent.hue, sat = ACCENT_SATURATION,
 	})
+	if accent.trim {
+		if trim, tok := ship_trim(&r.textures, o.sprite); tok {
+			push_item(r, layer, Item {
+				texture = trim, src = src, dst = dst, tint = {255, 255, 255, alpha},
+				effect = .Recolour, hue = accent.hue, sat = TRIM_SATURATION,
+			})
+		}
+	}
 
 	// A recoloured object's tint and glow take the accent too: the ground
 	// weapon's glow trail "pbgl" is tinted 70% cyan, which would otherwise
@@ -398,14 +424,14 @@ draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shad
 		push_item(r, layer, Item {
 			texture = tex, src = src, dst = dst,
 			tint = tint_color(o.tint_color, i32(o.tint * 32 / 100)),
-			effect = over, hue = accent.hue,
+			effect = over, hue = accent.hue, sat = ACCENT_SATURATION,
 		})
 	}
 	if o.glowing {
 		push_item(r, layer, Item {
 			texture = tex, src = src, dst = dst,
 			tint = tint_color(o.glow_color, o.glow_amount),
-			effect = over, hue = accent.hue,
+			effect = over, hue = accent.hue, sat = ACCENT_SATURATION,
 		})
 	}
 }
@@ -521,15 +547,35 @@ build_frame :: proc(r: ^Renderer, s: ^sim.State, blurs: ^Blurs, notices: ^Notice
 				if before != nil && pv.players[k].weapons.crosshair_shown {
 					cbefore = &pv.players[k].weapons.crosshair
 				}
-				draw_object(r, s, &p.weapons.crosshair, false, cbefore, {hue = ac.hue, recolour = ac.on})
+				// Locked keeps its own red, so a lock still shows.
+				recolour := ac.on && !p.weapons.crosshair_locked
+				draw_object(r, s, &p.weapons.crosshair, false, cbefore, {hue = ac.hue, recolour = recolour})
 			}
-			draw_object(r, s, &p.obj, true, before, {hue = ac.hue, outline = ac.on})
+			draw_object(r, s, &p.obj, true, before, {hue = ac.hue, trim = ac.on, outline = ac.on && ac.outline})
 		}
 	}
 	for &o in blurs.live {
 		draw_object(r, s, &o, false)
 	}
 	notices_draw(r, notices)
+}
+
+// One item at its final screen rectangle, through ACCENT_SHADER when it
+// carries an effect. Also used directly by the Extras previews.
+draw_item :: proc(r: ^Renderer, it: Item, dst: rl.Rectangle) {
+	if it.effect == .None || r.accent_shader.id == 0 {
+		rl.DrawTexturePro(it.texture, it.src, dst, {0, 0}, 0, it.tint)
+		return
+	}
+	hue := it.hue / 360
+	sat := it.sat
+	flat := f32(it.effect == .Silhouette ? 1 : 0)
+	rl.BeginShaderMode(r.accent_shader)
+	rl.SetShaderValue(r.accent_shader, r.accent_hue_loc, &hue, .FLOAT)
+	rl.SetShaderValue(r.accent_shader, r.accent_sat_loc, &sat, .FLOAT)
+	rl.SetShaderValue(r.accent_shader, r.accent_flat_loc, &flat, .FLOAT)
+	rl.DrawTexturePro(it.texture, it.src, dst, {0, 0}, 0, it.tint)
+	rl.EndShaderMode()
 }
 
 // Draws what build_frame collected, in the original's order.
@@ -542,19 +588,7 @@ present :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, scale: f32) 
 				dst.y *= scale
 				dst.width *= scale
 				dst.height *= scale
-				if it.effect == .None || r.accent_shader.id == 0 {
-					rl.DrawTexturePro(it.texture, it.src, dst, {0, 0}, 0, it.tint)
-					continue
-				}
-				hue := it.hue / 360
-				sat := f32(ACCENT_SATURATION)
-				flat := f32(it.effect == .Silhouette ? 1 : 0)
-				rl.BeginShaderMode(r.accent_shader)
-				rl.SetShaderValue(r.accent_shader, r.accent_hue_loc, &hue, .FLOAT)
-				rl.SetShaderValue(r.accent_shader, r.accent_sat_loc, &sat, .FLOAT)
-				rl.SetShaderValue(r.accent_shader, r.accent_flat_loc, &flat, .FLOAT)
-				rl.DrawTexturePro(it.texture, it.src, dst, {0, 0}, 0, it.tint)
-				rl.EndShaderMode()
+				draw_item(r, it, dst)
 			}
 		}
 	}

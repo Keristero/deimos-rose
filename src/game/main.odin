@@ -63,7 +63,7 @@ main :: proc() {
 	// A menu capture draws into its own render texture (run_menu_shot), so
 	// its window never needs to be seen.
 	flags := rl.ConfigFlags{.VSYNC_HINT, .WINDOW_RESIZABLE}
-	if menu_shot_name != "" {
+	if menu_shot_name != "" || os.get_env("DR_SHOT_FIND", context.temp_allocator) != "" {
 		flags += {.WINDOW_HIDDEN}
 	}
 	rl.SetConfigFlags(flags)
@@ -210,7 +210,7 @@ main :: proc() {
 		if prefs_fullscreen(&ps) != rl.IsWindowState({.BORDERLESS_WINDOWED_MODE}) {
 			rl.ToggleBorderlessWindowed()
 		}
-		high := prefs_high_refresh_rate(&ps)
+		high := extra_on(&ps, .High_Refresh_Rate)
 		if applied, ok := fps_high.?; !ok || applied != high {
 			fps := i32(step_hz)
 			if high {
@@ -387,6 +387,13 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		// instead, since this only ever draws once and never polls.
 		flow.mode = .Netplay_Lobby
 		netplay_lobby_init(&flow.netplay, r)
+	case "preferences_extras":
+		// The Extras page with a colour and Self Outline on, so both
+		// previews show what they do.
+		flow.mode = .Preferences
+		flow.preferences.extras_open = true
+		ps.saved.extras[.Accent_Hue] = 30
+		ps.saved.extras[.Self_Outline] = 1
 	case "netplay_lobby_name":
 		flow.mode = .Netplay_Lobby
 		netplay_lobby_init(&flow.netplay, r)
@@ -493,7 +500,27 @@ run_shots :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, blurs: ^Bl
 	last := len(steps) == 0 ? 0 : steps[len(steps) - 1]
 	next := 0
 	dump := os.get_env("DR_DUMP", context.temp_allocator) != ""
+	// DR_SHOT_FIND=<text>: no images, just the steps (up to the last
+	// DR_SHOT_AT) where some draw's DR_DUMP line contains <text> -- e.g.
+	// "pbta frame 1" for a locked crosshair. One run, first 20 steps shown.
+	r.find = os.get_env("DR_SHOT_FIND", context.temp_allocator)
+	found := 0
 	for i in 0 ..= last {
+		if r.find != "" {
+			r.find_hits = 0
+			build_frame(r, s, blurs, notices)
+			if r.find_hits > 0 {
+				found += 1
+				if found <= 20 {
+					fmt.printfln("step %v: %v match(es)", i, r.find_hits)
+				}
+			}
+			sim.step(s, {}, film)
+			particles_step(particles, s)
+			blurs_step(blurs, s)
+			notices_step(notices, s)
+			continue
+		}
 		r.dump = dump && next < len(steps) && steps[next] == i
 		if r.dump {
 			fmt.printfln("step %v draw list:", i)
@@ -519,6 +546,9 @@ run_shots :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, blurs: ^Bl
 		blurs_step(blurs, s)
 		notices_step(notices, s)
 		sounds_step(&r.textures, s)
+	}
+	if r.find != "" {
+		fmt.printfln("%q: %v of %v steps", r.find, found, last + 1)
 	}
 }
 

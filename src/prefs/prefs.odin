@@ -51,21 +51,55 @@ Prefs :: struct {
 	sfx_volume:   int, // percent, 0..100
 	music_volume: int, // percent, 0..100
 	fullscreen:   bool,
-	// Draw at the monitor's refresh rate, interpolating between sim steps
-	// (game/render.odin). The simulation still steps at a fixed 30 Hz.
-	high_refresh_rate: bool,
 	diagnostics:  bool,
 	classic:      bool,
 	// The name last entered in the netplay lobby, offered again next time
 	// and recorded against this player's high scores after a netplay game.
 	netplay_name: Name,
-	// This player's accent colour in netplay, a hue in degrees (0..359):
-	// an outline round their ship, their crosshair and their air-to-ground
-	// shots (game/render.odin), so each player can tell theirs apart.
-	accent_hue: int,
+	// Enhancements beyond the original, each off in classic mode
+	// (game/extras.odin). One value per entry of EXTRAS.
+	extras: [Extra]int,
 }
 
-ACCENT_HUE_DEFAULT :: 190 // the cyan of the original crosshair
+// Extras: every setting for a feature the original did not have. Adding
+// one means an entry here and in EXTRAS, and using it through game/
+// extras.odin's extra_on/extra_value -- saving, loading and its row on the
+// Preferences Extras page all come from this table. Classic mode switches
+// every one of them off, so classic stays the original game.
+Extra :: enum {
+	High_Refresh_Rate, // draw at the monitor's rate, interpolating between the fixed 30 Hz steps
+	Accent_Hue,        // your colour: ship trim, crosshair and air-to-ground shots
+	Self_Outline,      // an outline in your accent round your own ship
+}
+
+Extra_Kind :: enum {
+	Toggle, // 0 or 1
+	Hue,    // degrees, 0..359
+}
+
+Extra_Info :: struct {
+	key:     string, // in the save file; high_refresh_rate and accent_hue predate the table
+	label:   string,
+	kind:    Extra_Kind,
+	default: int,
+}
+
+EXTRAS := [Extra]Extra_Info {
+	.High_Refresh_Rate = {"high_refresh_rate", "HIGH REFRESH RATE", .Toggle, 0},
+	.Accent_Hue        = {"accent_hue", "ACCENT HUE", .Hue, 190}, // the cyan of the original crosshair
+	.Self_Outline      = {"self_outline", "SELF OUTLINE", .Toggle, 0},
+}
+
+// Clamps or wraps a value to what its kind allows.
+extra_clean :: proc(e: Extra, v: int) -> int {
+	switch EXTRAS[e].kind {
+	case .Toggle:
+		return v != 0 ? 1 : 0
+	case .Hue:
+		return hue_wrap(v)
+	}
+	return v
+}
 
 // A player's name, the same 20 printable-ASCII characters the high score
 // name entry allows (game/menu_high_score_entry.odin, from the original's
@@ -100,6 +134,15 @@ name_set :: proc(n: ^Name, text: string) {
 	}
 }
 
+extra_by_key :: proc(key: string) -> (Extra, bool) {
+	for info, e in EXTRAS {
+		if info.key == key {
+			return e, true
+		}
+	}
+	return {}, false
+}
+
 // Any whole number of degrees, brought into 0..359.
 hue_wrap :: proc(h: int) -> int {
 	return ((h % 360) + 360) % 360
@@ -116,7 +159,9 @@ defaults :: proc() -> Prefs {
 	p := Prefs {
 		sfx_volume   = 100,
 		music_volume = 100,
-		accent_hue   = ACCENT_HUE_DEFAULT,
+	}
+	for info, e in EXTRAS {
+		p.extras[e] = info.default
 	}
 	p.bindings[0] = {
 		.Up          = {KEY_UP, KEY_W},
@@ -184,11 +229,12 @@ format :: proc(p: ^Prefs, allocator := context.allocator) -> string {
 	fmt.sbprintf(&sb, "sfx_volume=%d\n", p.sfx_volume)
 	fmt.sbprintf(&sb, "music_volume=%d\n", p.music_volume)
 	fmt.sbprintf(&sb, "fullscreen=%d\n", p.fullscreen ? 1 : 0)
-	fmt.sbprintf(&sb, "high_refresh_rate=%d\n", p.high_refresh_rate ? 1 : 0)
 	fmt.sbprintf(&sb, "diagnostics=%d\n", p.diagnostics ? 1 : 0)
 	fmt.sbprintf(&sb, "classic=%d\n", p.classic ? 1 : 0)
 	fmt.sbprintf(&sb, "netplay_name=%s\n", name_string(&p.netplay_name))
-	fmt.sbprintf(&sb, "accent_hue=%d\n", p.accent_hue)
+	for info, e in EXTRAS {
+		fmt.sbprintf(&sb, "%s=%d\n", info.key, p.extras[e])
+	}
 	for b, player in p.bindings {
 		for keys, button in b {
 			fmt.sbprintf(&sb, "p%d.%s=%d,%d\n", player + 1, BUTTON_KEYS[button], keys[0], keys[1])
@@ -223,19 +269,19 @@ parse :: proc(text: string) -> Prefs {
 			parse_volume(value, &p.music_volume)
 		case "fullscreen":
 			parse_flag(value, &p.fullscreen)
-		case "high_refresh_rate":
-			parse_flag(value, &p.high_refresh_rate)
 		case "diagnostics":
 			parse_flag(value, &p.diagnostics)
 		case "classic":
 			parse_flag(value, &p.classic)
 		case "netplay_name":
 			name_set(&p.netplay_name, value)
-		case "accent_hue":
-			if v, ok := strconv.parse_int(value); ok {
-				p.accent_hue = hue_wrap(v)
-			}
 		case:
+			if e, ok := extra_by_key(name); ok {
+				if v, vok := strconv.parse_int(value); vok {
+					p.extras[e] = extra_clean(e, v)
+				}
+				continue
+			}
 			if player, button, ok := parse_binding(name, value, &p); ok {
 				from_file[player] += {button}
 			}

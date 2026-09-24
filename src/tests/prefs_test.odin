@@ -9,7 +9,9 @@ import "dr:sim"
 prefs_round_trip_through_the_save_format :: proc(t: ^testing.T) {
 	p := prefs.defaults()
 	p.sfx_volume, p.music_volume = 30, 0
-	p.fullscreen, p.classic, p.high_refresh_rate = true, true, true
+	p.fullscreen, p.classic = true, true
+	p.extras[.High_Refresh_Rate] = 1
+	p.extras[.Accent_Hue] = 42
 	prefs.bind(&p, 1, .Fire_Air, 1, prefs.KEY_SPACE) // moves Space off player 1
 	text := prefs.format(&p, context.temp_allocator)
 	got := prefs.parse(text)
@@ -127,9 +129,13 @@ netplay_name_round_trips_and_is_cleaned :: proc(t: ^testing.T) {
 	n: prefs.Name
 	prefs.name_set(&n, "a\tbéc")
 	testing.expect_value(t, prefs.name_string(&n), "abc") // printable ASCII only
-	testing.expect_value(t, prefs.parse("accent_hue=-30").accent_hue, 330)
-	testing.expect_value(t, prefs.parse("accent_hue=725").accent_hue, 5)
-	testing.expect_value(t, prefs.parse("").accent_hue, prefs.ACCENT_HUE_DEFAULT)
+	// Extras keep the key names the settings had before the table, so an
+	// older save still loads them.
+	testing.expect_value(t, prefs.parse("accent_hue=-30").extras[.Accent_Hue], 330)
+	testing.expect_value(t, prefs.parse("accent_hue=725").extras[.Accent_Hue], 5)
+	testing.expect_value(t, prefs.parse("high_refresh_rate=1").extras[.High_Refresh_Rate], 1)
+	testing.expect_value(t, prefs.parse("self_outline=7").extras[.Self_Outline], 1)
+	testing.expect_value(t, prefs.parse("").extras[.Accent_Hue], prefs.EXTRAS[.Accent_Hue].default)
 	prefs.name_set(&n, "abcdefghijklmnopqrs uvwxyz")
 	testing.expect_value(t, prefs.name_string(&n), "abcdefghijklmnopqrs") // cut at 20, trailing space dropped
 }

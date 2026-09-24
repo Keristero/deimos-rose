@@ -2,7 +2,8 @@ package game
 
 // The Preferences screen, reached from the main menu's Preferences button:
 // per-player key bindings, sound and music volume, fullscreen, the
-// diagnostics overlay and classic mode. New content -- the original's
+// diagnostics overlay and classic mode, plus the Extras page
+// (game/extras.odin) for everything the original did not have. New content -- the original's
 // Preferences was a native Win32 dialog with no art to port -- so it is
 // built from Text_Buttons like the netplay lobby, not traced plates.
 //
@@ -51,9 +52,9 @@ Option :: enum {
 	Sound,
 	Music,
 	Display,
-	High_Refresh,
 	Diagnostics,
 	Classic,
+	Extras,
 }
 
 @(private = "file")
@@ -61,13 +62,15 @@ OPTION_NAMES := [Option]string {
 	.Sound       = "SOUND VOLUME",
 	.Music       = "MUSIC VOLUME",
 	.Display     = "DISPLAY",
-	.High_Refresh = "HIGH REFRESH RATE",
 	.Diagnostics = "DIAGNOSTICS",
 	.Classic     = "CLASSIC MODE",
+	.Extras      = "EXTRAS",
 }
 
 Preferences :: struct {
 	player: int, // whose bindings are shown, 0-based
+	extras_open: bool, // showing the Extras page instead
+	extras:      Extras_Page,
 
 	// Waiting for a key for this binding slot, after its button was clicked.
 	capturing:      bool,
@@ -101,12 +104,12 @@ option_value :: proc(ps: ^Prefs_State, o: Option) -> string {
 		return fmt.tprintf("%d%%", ps.saved.music_volume)
 	case .Display:
 		return prefs_fullscreen(ps) ? "FULLSCREEN" : "WINDOWED"
-	case .High_Refresh:
-		return on_off(prefs_high_refresh_rate(ps))
 	case .Diagnostics:
 		return on_off(prefs_diagnostics(ps))
 	case .Classic:
 		return on_off(prefs_classic(ps))
+	case .Extras:
+		return "OPEN"
 	}
 	return ""
 }
@@ -143,6 +146,12 @@ preferences_layout :: proc(r: ^Renderer, p: ^Preferences, ps: ^Prefs_State) {
 // Called once per render frame from flow_handle_input's .Preferences case.
 preferences_update :: proc(fl: ^Flow, r: ^Renderer, p: ^Preferences) {
 	ps := fl.prefs
+	if p.extras_open {
+		if extras_page_update(r, &p.extras, ps) {
+			p.extras_open = false
+		}
+		return
+	}
 	preferences_layout(r, p, ps)
 
 	if p.capturing {
@@ -194,9 +203,9 @@ preferences_update :: proc(fl: ^Flow, r: ^Renderer, p: ^Preferences) {
 			if text_button_update(r, &p.toggle[o], mouse, dt) {
 				prefs_set_fullscreen(ps, !prefs_fullscreen(ps))
 			}
-		case .High_Refresh:
+		case .Extras:
 			if text_button_update(r, &p.toggle[o], mouse, dt) {
-				prefs_set_high_refresh_rate(ps, !prefs_high_refresh_rate(ps))
+				p.extras_open = true
 			}
 		case .Diagnostics:
 			if text_button_update(r, &p.toggle[o], mouse, dt) {
@@ -240,6 +249,10 @@ preferences_capture :: proc(p: ^Preferences, ps: ^Prefs_State) {
 }
 
 preferences_draw :: proc(r: ^Renderer, p: ^Preferences, ps: ^Prefs_State) {
+	if p.extras_open {
+		extras_page_draw(r, &p.extras, ps)
+		return
+	}
 	menu_draw_background(r, "back")
 	white := rl.Color{255, 255, 255, 255}
 	dim := rl.Color{190, 190, 190, 255}

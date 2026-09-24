@@ -237,7 +237,21 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 		}
 	}
 	if !u.harmless_to_players && u.is_ground_based && u.can_be_hit_by_player_projectile && st.is_targetable {
-		// Crosshair highlighting: presentation only.
+		// A ground target under a player's crosshair locks it, which turns
+		// it from its normal frame to the locked one (red for "plbo").
+		// G_EG_Process 0x418220 tests each player in play whose crosshair
+		// is not locked yet this step against the bounds taken after
+		// SpawnControl (b above): left <= x < right, top <= y < bottom.
+		// weapons_process unlocks it again every step.
+		for &p in s.players {
+			if p.state != .Playing || p.weapons.crosshair_locked {
+				continue
+			}
+			c := p.weapons.crosshair.loc
+			if f32(b.left) <= c.x && c.x < f32(b.right) && f32(b.top) <= c.y && c.y < f32(b.bottom) {
+				crosshair_hilite(s, &p.weapons, true)
+			}
+		}
 	}
 	if !e.stationary && !e.is_air && u.collides_with_ground_obstacles {
 		if debris_hits(s, object_bounds(&e.obj)) {

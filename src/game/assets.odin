@@ -226,3 +226,62 @@ frame_rect :: proc(t: ^Textures, sprite: sim.Res_ID, frame: i32) -> (rl.Texture2
 	f := p.frames[frame]
 	return p.texture, {f32(f.x), f32(f.y), f32(f.w), f32(f.h)}, true
 }
+
+// A ship's trim, for the Accent Hue extra: the pixels where player 1's
+// ship ("pl1?", silver) and player 2's ("pl2?", gold) differ. Everything
+// else -- the weapon's colour on the wings and canopy, the dark shading --
+// is shared by the pair, so comparing them finds the trim exactly, with no
+// colour-range guessing. Each trim pixel keeps player 1's silver shading
+// as a grey the accent shader can colour; the rest is transparent. Both
+// plates share one layout (394x48 for every pair), so the ship's own frame
+// rectangles address it. Built on first use, cached as "<id>@trim".
+ship_trim :: proc(t: ^Textures, sprite: sim.Res_ID) -> (rl.Texture2D, bool) {
+	if sprite[0] != 'p' || sprite[1] != 'l' || (sprite[2] != '1' && sprite[2] != '2') {
+		return {}, false
+	}
+	name := sprite
+	key := fmt.tprintf("%s@trim", string(name[:]))
+	if tex, ok := t.images[key]; ok {
+		return tex, tex.id != 0
+	}
+	silver, gold := sprite, sprite
+	silver[2], gold[2] = '1', '2'
+	tex := ship_trim_build(t, silver, gold)
+	t.images[strings.clone(key)] = tex // cached even when it failed, so it is tried once
+	return tex, tex.id != 0
+}
+
+@(private = "file") TRIM_DIFFERENCE :: 40 // summed RGB distance; below it is the shared shading
+
+@(private = "file")
+ship_trim_build :: proc(t: ^Textures, silver, gold: sim.Res_ID) -> rl.Texture2D {
+	path :: proc(t: ^Textures, id: sim.Res_ID) -> cstring {
+		for &p in t.assets.sprites {
+			if p.id == id {
+				return fmt.ctprintf("%s/%s", t.root, p.image)
+			}
+		}
+		return ""
+	}
+	a := rl.LoadImage(path(t, silver))
+	defer rl.UnloadImage(a)
+	b := rl.LoadImage(path(t, gold))
+	defer rl.UnloadImage(b)
+	if a.data == nil || b.data == nil || a.width != b.width || a.height != b.height {
+		return {}
+	}
+	rl.ImageFormat(&a, .UNCOMPRESSED_R8G8B8A8)
+	rl.ImageFormat(&b, .UNCOMPRESSED_R8G8B8A8)
+	pa := ([^]rl.Color)(a.data)[:a.width * a.height]
+	pb := ([^]rl.Color)(b.data)[:b.width * b.height]
+	for &c, i in pa {
+		d := abs(int(c.r) - int(pb[i].r)) + abs(int(c.g) - int(pb[i].g)) + abs(int(c.b) - int(pb[i].b))
+		if c.a == 0 || d < TRIM_DIFFERENCE {
+			c = {}
+			continue
+		}
+		l := u8(0.299 * f32(c.r) + 0.587 * f32(c.g) + 0.114 * f32(c.b))
+		c = {l, l, l, c.a}
+	}
+	return rl.LoadTextureFromImage(a)
+}

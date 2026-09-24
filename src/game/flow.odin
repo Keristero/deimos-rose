@@ -535,17 +535,7 @@ flow_draw :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 		return
 	case .Playing, .Paused, .Game_Over, .Complete, .Attract:
 	}
-	// Accents only for a session started from the netplay lobby, where
-	// they were chosen -- never a local game, a demo or classic mode. The
-	// other player's crosshair is left out while connected: it is only
-	// useful to whoever is aiming with it.
-	r.accents = {}
-	if fl.session_named && fl.mode != .Attract && !r.classic {
-		for i in 0 ..< sim.MAX_PLAYERS {
-			r.accents[i] = {on = true, hue = f32(fl.session_hues[i])}
-			r.accents[i].hide_crosshair = fl.netplay_active && i != fl.netplay.rs.local_player
-		}
-	}
+	flow_set_accents(fl, r)
 	build_frame(r, fl.state, blurs, notices)
 	present(r, fl.state, particles, scale)
 	switch fl.mode {
@@ -603,4 +593,32 @@ draw_banner :: proc(line, sub: cstring) {
 		sw := rl.MeasureText(sub, 18)
 		rl.DrawText(sub, cx - sw / 2, cy + 16, 18, rl.Color{200, 200, 200, 255})
 	}
+}
+
+// Who is drawn with an accent this frame (Extras; nothing in classic mode or
+// a demo). In netplay both players have one, each the colour its owner
+// picked, and the other player's crosshair is left out: it only helps
+// whoever is aiming with it. Otherwise it is this machine's colour on
+// player 1, the only player whose colour we know. Self Outline only ever
+// rings the ship of the player at this machine.
+@(private = "file")
+flow_set_accents :: proc(fl: ^Flow, r: ^Renderer) {
+	r.accents = {}
+	if fl.mode == .Attract || !extra_on(fl.prefs, .Accent_Hue) {
+		return
+	}
+	outline := extra_on(fl.prefs, .Self_Outline)
+	if fl.session_named {
+		local := fl.netplay_active ? fl.netplay.rs.local_player : -1
+		for i in 0 ..< sim.MAX_PLAYERS {
+			r.accents[i] = {
+				on             = true,
+				hue            = f32(fl.session_hues[i]),
+				outline        = outline && i == local,
+				hide_crosshair = fl.netplay_active && i != local,
+			}
+		}
+		return
+	}
+	r.accents[0] = {on = true, hue = f32(extra_value(fl.prefs, .Accent_Hue)), outline = outline}
 }

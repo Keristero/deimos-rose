@@ -563,3 +563,26 @@ run our side with `-classic`, since this port restyles some things the
 original has outside classic mode and a comparison is only meaningful
 without them. `mise run menu-shot` stays non-classic: it is for looking at
 this port's own screens, which classic hides.
+
+### D35 — Extras: one table for every enhancement, off in classic mode
+
+Classic mode is the original game, look and behaviour both. Everything this
+port adds on top is an *extra*: listed once in `prefs.EXTRAS` (key, label,
+kind, default) and read only through `game/extras.odin`'s `extra_on` /
+`extra_value`, which report every extra off under classic mode whatever is
+saved. Saving, loading and the Preferences Extras page are built from the
+table, so a new extra is an enum entry, a table row and its use site -- no
+new save-file code, no new Preferences layout. A row that changes how the
+ship looks gets a preview through `EXTRA_PREVIEWS`, drawn with the game's
+own `draw_item`, so it cannot drift from play.
+
+First entries: High Refresh Rate (moved from the main Preferences list;
+same save key), Accent Hue (the ship's silver/gold trim, the crosshair
+while unlocked, and air-to-ground shots) and Self Outline (the local
+ship only, off by default). The trim is found by comparing each player 1
+ship plate with its player 2 twin: the pairs differ only in the body metal,
+so no colour ranges are guessed.
+
+Deliberately not extras: the rose menu backgrounds (D34) and the netplay
+lobby, which classic mode already hides by its own switches. Moving them
+under the table is possible later; nothing here depends on it.

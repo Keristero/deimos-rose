@@ -295,50 +295,18 @@ netplay_begin_name_entry :: proc(fl: ^Flow, nl: ^Netplay, role: Netplay_Role) {
 	nl.phase = .Enter_Name
 	nl.name_role = role
 	nl.local_name = fl.prefs.saved.netplay_name
-	nl.local_hue = fl.prefs.saved.accent_hue
+	nl.local_hue = extra_value(fl.prefs, .Accent_Hue)
 	nl.error = ""
 }
 
-// The accent hue slider under the name: a strip of every hue, dragged with
-// the mouse or nudged with Left/Right (which type nothing into the name).
+// The accent hue slider under the name: the same setting as Preferences'
+// Extras page, so a colour picked in either place is the one used.
 @(private = "file") ACCENT_SLIDER_W :: 256
-@(private = "file") ACCENT_SLIDER_H :: 8
 @(private = "file") ACCENT_SLIDER_Y :: 284
-@(private = "file") ACCENT_KEY_STEP :: 5
 
 @(private = "file")
 accent_slider_rect :: proc() -> rl.Rectangle {
-	return {SCREEN_W / 2 - ACCENT_SLIDER_W / 2, ACCENT_SLIDER_Y, ACCENT_SLIDER_W, ACCENT_SLIDER_H}
-}
-
-@(private = "file")
-accent_slider_update :: proc(hue: ^int) {
-	if rl.IsKeyPressed(.LEFT) || rl.IsKeyPressedRepeat(.LEFT) {
-		hue^ = prefs.hue_wrap(hue^ - ACCENT_KEY_STEP)
-	}
-	if rl.IsKeyPressed(.RIGHT) || rl.IsKeyPressedRepeat(.RIGHT) {
-		hue^ = prefs.hue_wrap(hue^ + ACCENT_KEY_STEP)
-	}
-	if rl.IsMouseButtonDown(.LEFT) {
-		m := menu_mouse_pos()
-		rect := accent_slider_rect()
-		grab := rl.Rectangle{rect.x - 4, rect.y - 6, rect.width + 8, rect.height + 12}
-		if rl.CheckCollisionPointRec(m, grab) {
-			t := clamp((m.x - rect.x) / rect.width, 0, 1)
-			hue^ = min(int(t * 360), 359)
-		}
-	}
-}
-
-@(private = "file")
-accent_slider_draw :: proc(hue: int) {
-	rect := accent_slider_rect()
-	for i in 0 ..< i32(ACCENT_SLIDER_W) {
-		c := rl.ColorFromHSV(f32(i) * 360 / ACCENT_SLIDER_W, ACCENT_SATURATION, 1)
-		rl.DrawRectangle((i32(rect.x) + i) * WINDOW_SCALE, i32(rect.y) * WINDOW_SCALE, WINDOW_SCALE, ACCENT_SLIDER_H * WINDOW_SCALE, c)
-	}
-	x := (rect.x + f32(hue) * rect.width / 360) * WINDOW_SCALE
-	rl.DrawRectangleLinesEx({x - 3, (rect.y - 3) * WINDOW_SCALE, 7, (rect.height + 6) * WINDOW_SCALE}, 2, rl.WHITE)
+	return {SCREEN_W / 2 - ACCENT_SLIDER_W / 2, ACCENT_SLIDER_Y, ACCENT_SLIDER_W, HUE_SLIDER_H}
 }
 
 @(private = "file")
@@ -354,7 +322,7 @@ netplay_update_enter_name :: proc(fl: ^Flow, nl: ^Netplay) {
 		n.len -= 1
 		n.buf[n.len] = 0
 	}
-	accent_slider_update(&nl.local_hue)
+	hue_slider_update(&nl.local_hue, accent_slider_rect(), true)
 	if rl.IsKeyPressed(.ESCAPE) {
 		nl.phase = .Menu
 		nl.error = ""
@@ -369,9 +337,9 @@ netplay_update_enter_name :: proc(fl: ^Flow, nl: ^Netplay) {
 		return
 	}
 	nl.error = ""
-	if fl.prefs.saved.netplay_name != n^ || fl.prefs.saved.accent_hue != nl.local_hue {
+	if fl.prefs.saved.netplay_name != n^ || extra_value(fl.prefs, .Accent_Hue) != nl.local_hue {
 		fl.prefs.saved.netplay_name = n^
-		fl.prefs.saved.accent_hue = nl.local_hue
+		fl.prefs.saved.extras[.Accent_Hue] = nl.local_hue
 		prefs_state_save(fl.prefs)
 	}
 	switch nl.name_role {
@@ -408,7 +376,7 @@ netplay_start_hosting :: proc(nl: ^Netplay) {
 // without a name.
 netplay_lobby_start_from_flag :: proc(nl: ^Netplay, saved: ^prefs.Prefs, mode: string) {
 	nl.local_name = saved.netplay_name
-	nl.local_hue = saved.accent_hue
+	nl.local_hue = saved.extras[.Accent_Hue]
 	if nl.local_name.len == 0 {
 		prefs.name_set(&nl.local_name, high_scores_default_last_name(mode == "host" ? 0 : 1))
 	}
@@ -1173,7 +1141,7 @@ netplay_lobby_draw :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 		}
 		menu_draw_text(r, name, SCREEN_W / 2, 240, accent_color(nl.local_hue), .Centre)
 		menu_draw_text(r, "ACCENT COLOUR -- DRAG, OR LEFT/RIGHT", SCREEN_W / 2, 266, dim, .Centre)
-		accent_slider_draw(nl.local_hue)
+		hue_slider_draw(nl.local_hue, accent_slider_rect())
 		menu_draw_text(r, "ESC TO CANCEL", SCREEN_W / 2, 314, dim, .Centre)
 		if nl.error != "" {
 			menu_draw_text(r, nl.error, SCREEN_W / 2, 340, bad, .Centre)

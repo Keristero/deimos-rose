@@ -90,6 +90,23 @@ and fast tests all die without it, and it cannot be retrofitted cheaply.
 **RNG lives in the state.** An ambient global generator desyncs rollback
 silently. `G_Film::GetRandomSeed` shows the original made the same choice.
 
+**Classic mode is the original, exactly.** With classic mode on, the game
+must look and behave as the 2003 build does: same sprites, colours, frames,
+text and timing. Anything this port adds — a colour, an outline, a menu, a
+smoothing — is an *extra* (decisions.md D35): an entry in `prefs.EXTRAS`,
+read only through `extra_on`/`extra_value`, which classic mode switches
+off. Never change a default look to suit an enhancement; add an extra.
+Check a visual change with classic on as well as off. When the port
+differs from the original in classic mode, that is a bug to port, not an
+enhancement to keep (the crosshair's red lock was missing this way).
+
+**Test cheaply.** Prefer a question the tools answer in one run over
+rendering and eyeballing many frames: `mise run shots:find FIND='pbta frame
+1'` lists the demo steps where a sprite/frame is drawn; `DR_DUMP` prints a
+frame's draw list; `mise run menu-shot MENU=...` renders one screen. Look
+at one image once the numbers say it is the right one. When a question
+comes up twice, build the tool for it rather than a third ad-hoc script.
+
 **Tests must not require the original game data.** Use synthetic fixtures.
 Integration checks against `game/` are fine but must skip cleanly when absent,
 so CI runs for someone without a copy of the game.
