@@ -230,11 +230,14 @@ frame_rect :: proc(t: ^Textures, sprite: sim.Res_ID, frame: i32) -> (rl.Texture2
 // A ship's trim, for the Accent Hue extra: the pixels where player 1's
 // ship ("pl1?", silver) and player 2's ("pl2?", gold) differ. Everything
 // else -- the weapon's colour on the wings and canopy, the dark shading --
-// is shared by the pair, so comparing them finds the trim exactly, with no
+// is shared by the pair, so comparing them finds the trim with no
 // colour-range guessing. Each trim pixel keeps player 1's silver shading
-// as a grey the accent shader can colour; the rest is transparent. Both
-// plates share one layout (394x48 for every pair), so the ship's own frame
-// rectangles address it. Built on first use, cached as "<id>@trim".
+// as a grey the accent shader can colour. The mask is soft: its alpha
+// ramps with how far the pair differ, then is feathered one pixel, so
+// the accent blends into the shared shading instead of stopping on a
+// hard, aliased edge. Both plates share one layout (394x48 for every
+// pair), so the ship's own frame rectangles address it. Built on first
+// use, cached as "<id>@trim".
 ship_trim :: proc(t: ^Textures, sprite: sim.Res_ID) -> (rl.Texture2D, bool) {
 	if sprite[0] != 'p' || sprite[1] != 'l' || (sprite[2] != '1' && sprite[2] != '2') {
 		return {}, false
@@ -251,7 +254,10 @@ ship_trim :: proc(t: ^Textures, sprite: sim.Res_ID) -> (rl.Texture2D, bool) {
 	return tex, tex.id != 0
 }
 
-@(private = "file") TRIM_DIFFERENCE :: 40 // summed RGB distance; below it is the shared shading
+// Summed RGB distance between the pair: below TRIM_SOFT is shared shading,
+// above TRIM_HARD is certainly trim, and in between the mask ramps.
+@(private = "file") TRIM_SOFT :: 16
+@(private = "file") TRIM_HARD :: 72
 
 @(private = "file")
 ship_trim_build :: proc(t: ^Textures, silver, gold: sim.Res_ID) -> rl.Texture2D {
@@ -272,16 +278,47 @@ ship_trim_build :: proc(t: ^Textures, silver, gold: sim.Res_ID) -> rl.Texture2D 
 	}
 	rl.ImageFormat(&a, .UNCOMPRESSED_R8G8B8A8)
 	rl.ImageFormat(&b, .UNCOMPRESSED_R8G8B8A8)
-	pa := ([^]rl.Color)(a.data)[:a.width * a.height]
-	pb := ([^]rl.Color)(b.data)[:b.width * b.height]
-	for &c, i in pa {
-		d := abs(int(c.r) - int(pb[i].r)) + abs(int(c.g) - int(pb[i].g)) + abs(int(c.b) - int(pb[i].b))
-		if c.a == 0 || d < TRIM_DIFFERENCE {
-			c = {}
-			continue
+	w, h := int(a.width), int(a.height)
+	pa := ([^]rl.Color)(a.data)[:w * h]
+	pb := ([^]rl.Color)(b.data)[:w * h]
+
+	// How much of each pixel is trim, 0..1.
+	mask := make([]f32, w * h)
+	defer delete(mask)
+	for c, i in pa {
+		d := f32(abs(int(c.r) - int(pb[i].r)) + abs(int(c.g) - int(pb[i].g)) + abs(int(c.b) - int(pb[i].b)))
+		x := clamp((d - TRIM_SOFT) / (TRIM_HARD - TRIM_SOFT), 0, 1)
+		mask[i] = x * x * (3 - 2 * x) // smoothstep
+	}
+	// Feathered with a 3x3 tent, but never below the pixel's own value, so
+	// the trim itself stays solid and only its edge softens outwards.
+	// Frames sit side by side on the plate; a ship's alpha is 0 between
+	// them, so the feather never carries colour onto a visible neighbour.
+	for y in 0 ..< h {
+		for x in 0 ..< w {
+			i := y * w + x
+			c := pa[i]
+			if c.a == 0 {
+				c = {}
+				pa[i] = c
+				continue
+			}
+			sum, wsum: f32
+			for dy in -1 ..= 1 {
+				for dx in -1 ..= 1 {
+					nx, ny := x + dx, y + dy
+					if nx < 0 || ny < 0 || nx >= w || ny >= h {
+						continue
+					}
+					k := f32((2 - abs(dx)) * (2 - abs(dy)))
+					sum += mask[ny * w + nx] * k
+					wsum += k
+				}
+			}
+			m := max(mask[i], sum / wsum)
+			l := u8(0.299 * f32(c.r) + 0.587 * f32(c.g) + 0.114 * f32(c.b))
+			pa[i] = {l, l, l, u8(m * f32(c.a))}
 		}
-		l := u8(0.299 * f32(c.r) + 0.587 * f32(c.g) + 0.114 * f32(c.b))
-		c = {l, l, l, c.a}
 	}
 	return rl.LoadTextureFromImage(a)
 }

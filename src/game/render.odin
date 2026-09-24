@@ -86,6 +86,7 @@ Item :: struct {
 	effect:  Item_Effect,
 	hue:     f32, // degrees, for effect != .None
 	sat:     f32, // minimum saturation, for effect != .None
+	lighten: f32, // 0..1 towards white after recolouring, for effect != .None
 }
 
 // Accents (Extras, never in classic mode): drawn through
@@ -104,6 +105,9 @@ ACCENT_SATURATION :: 0.85
 // The ship's trim is shaded metal, recoloured from the silver of player 1's
 // ship: softer than the crosshair and shots, so it still looks like metal.
 TRIM_SATURATION :: 0.6
+// How far the unlocked crosshair is washed towards white: lighter and
+// paler than the locked frame's pure red, whatever the accent.
+CROSSHAIR_LIGHTEN :: 0.45
 
 // One player's accent for this frame, set by flow_draw: their hue on their
 // ship's trim, crosshair and air-to-ground shots, and optionally an outline.
@@ -132,6 +136,7 @@ uniform vec4 colDiffuse;
 uniform float hue;     // 0..1
 uniform float minSat;
 uniform float flatten; // 1 for a silhouette
+uniform float lighten; // 0..1 towards white, after the hue is applied
 out vec4 finalColor;
 
 vec3 rgb2hsv(vec3 c) {
@@ -157,7 +162,7 @@ void main() {
 	if (flatten > 0.5) {
 		hsv.z = 1.0;
 	}
-	finalColor = vec4(hsv2rgb(hsv), t.a);
+	finalColor = vec4(mix(hsv2rgb(hsv), vec3(1.0), lighten), t.a);
 }
 `
 
@@ -196,6 +201,7 @@ Renderer :: struct {
 	accent_hue_loc:   i32,
 	accent_sat_loc:   i32,
 	accent_flat_loc:  i32,
+	accent_light_loc: i32,
 	// The units the ground weapons spawn -- their shots, which take their
 	// owner's accent. Found once from the definitions (build_frame).
 	ground_units:     [dynamic]sim.Res_ID,
@@ -241,6 +247,7 @@ renderer_init :: proc(r: ^Renderer, root: string, classic: bool = false, audio: 
 	r.accent_hue_loc = rl.GetShaderLocation(r.accent_shader, "hue")
 	r.accent_sat_loc = rl.GetShaderLocation(r.accent_shader, "minSat")
 	r.accent_flat_loc = rl.GetShaderLocation(r.accent_shader, "flatten")
+	r.accent_light_loc = rl.GetShaderLocation(r.accent_shader, "lighten")
 }
 
 renderer_destroy :: proc(r: ^Renderer) {
@@ -308,6 +315,7 @@ Draw_Accent :: struct {
 	recolour: bool,
 	trim:     bool, // a ship: its silver/gold trim (ship_trim) in the accent
 	outline:  bool,
+	lighten:  f32, // with recolour: towards white (the unlocked crosshair)
 }
 
 draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shadow: bool, prev: ^sim.Game_Object = nil, accent := Draw_Accent{}) {
@@ -406,6 +414,7 @@ draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shad
 	push_item(r, layer, Item {
 		texture = tex, src = src, dst = dst, tint = {255, 255, 255, alpha},
 		effect = accent.recolour ? .Recolour : .None, hue = accent.hue, sat = ACCENT_SATURATION,
+		lighten = accent.lighten,
 	})
 	if accent.trim {
 		if trim, tok := ship_trim(&r.textures, o.sprite); tok {
@@ -547,9 +556,11 @@ build_frame :: proc(r: ^Renderer, s: ^sim.State, blurs: ^Blurs, notices: ^Notice
 				if before != nil && pv.players[k].weapons.crosshair_shown {
 					cbefore = &pv.players[k].weapons.crosshair
 				}
-				// Locked keeps its own red, so a lock still shows.
+				// Locked keeps its own red, so a lock still shows. Unlocked
+				// is the accent washed towards white, so that even a red
+				// accent reads differently from the lock.
 				recolour := ac.on && !p.weapons.crosshair_locked
-				draw_object(r, s, &p.weapons.crosshair, false, cbefore, {hue = ac.hue, recolour = recolour})
+				draw_object(r, s, &p.weapons.crosshair, false, cbefore, {hue = ac.hue, recolour = recolour, lighten = CROSSHAIR_LIGHTEN})
 			}
 			draw_object(r, s, &p.obj, true, before, {hue = ac.hue, trim = ac.on, outline = ac.on && ac.outline})
 		}
@@ -574,6 +585,8 @@ draw_item :: proc(r: ^Renderer, it: Item, dst: rl.Rectangle) {
 	rl.SetShaderValue(r.accent_shader, r.accent_hue_loc, &hue, .FLOAT)
 	rl.SetShaderValue(r.accent_shader, r.accent_sat_loc, &sat, .FLOAT)
 	rl.SetShaderValue(r.accent_shader, r.accent_flat_loc, &flat, .FLOAT)
+	light := it.lighten
+	rl.SetShaderValue(r.accent_shader, r.accent_light_loc, &light, .FLOAT)
 	rl.DrawTexturePro(it.texture, it.src, dst, {0, 0}, 0, it.tint)
 	rl.EndShaderMode()
 }
