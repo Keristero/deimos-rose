@@ -18,6 +18,9 @@ import "core:os"
 import "core:strconv"
 import "core:strings"
 
+import "dr:prefs"
+import "dr:sim"
+
 HIGH_SCORE_SLOTS :: 15
 
 High_Score_Entry :: struct {
@@ -134,4 +137,31 @@ high_scores_insert :: proc(table: ^[HIGH_SCORE_SLOTS]High_Score_Entry, name: str
 	}
 	table[rank] = {name, score, sector}
 	return rank, true
+}
+
+// Netplay's end of session: every active player's score that makes the
+// table goes in under the name they entered in the lobby, with no name
+// entry screen. Inserted in player order, as score_entry_start does. The
+// last-name cache is left alone: that belongs to the local name entry.
+// Returns whether anything was recorded.
+high_scores_record :: proc(scores: [sim.MAX_PLAYERS]int, active: [sim.MAX_PLAYERS]bool, names: [sim.MAX_PLAYERS]prefs.Name, sector: string) -> bool {
+	save := high_scores_load()
+	recorded := false
+	for i in 0 ..< sim.MAX_PLAYERS {
+		if !active[i] {
+			continue
+		}
+		n := names[i]
+		name := strings.clone(prefs.name_string(&n), context.temp_allocator)
+		if name == "" {
+			name = high_scores_default_last_name(i)
+		}
+		if _, ok := high_scores_insert(&save.table, name, scores[i], sector); ok {
+			recorded = true
+		}
+	}
+	if recorded {
+		high_scores_save(&save)
+	}
+	return recorded
 }

@@ -166,7 +166,7 @@ main :: proc() {
 	if netplay_flag := os.get_env("DR_NETPLAY", context.temp_allocator); netplay_flag != "" {
 		netplay_lobby_init(&flow.netplay, &renderer)
 		flow.mode = .Netplay_Lobby
-		netplay_lobby_start_from_flag(&flow.netplay, netplay_flag)
+		netplay_lobby_start_from_flag(&flow.netplay, ps.saved.netplay_name, netplay_flag)
 	}
 
 	// Escape means pause/resume/back everywhere in Flow, not an instant quit
@@ -379,6 +379,11 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		// instead, since this only ever draws once and never polls.
 		flow.mode = .Netplay_Lobby
 		netplay_lobby_init(&flow.netplay, r)
+	case "netplay_lobby_name":
+		flow.mode = .Netplay_Lobby
+		netplay_lobby_init(&flow.netplay, r)
+		flow.netplay.phase = .Enter_Name
+		prefs.name_set(&flow.netplay.local_name, "Keristero")
 	case "netplay_lobby_join":
 		flow.mode = .Netplay_Lobby
 		netplay_lobby_init(&flow.netplay, r)
@@ -396,7 +401,9 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		flow.netplay.role = .Guest
 		flow.netplay.phase = .Connected
 		flow.netplay.ping_ms = 42 // sample value -- ping_ms is only ever set from a real Pong in netplay_tick_ping
-		flow.netplay.remote_ready = true // local not ready yet, so the Ready button still draws alongside "OTHER PLAYER: READY"
+		flow.netplay.remote_ready = true // local not ready yet, so the Ready button still draws beside the peer's READY
+		prefs.name_set(&flow.netplay.local_name, "Keristero") // sample names, normally from each side's Hello
+		prefs.name_set(&flow.netplay.peer_name, "Supercobra")
 	case "netplay_lobby_connected_host":
 		// Phase 8 stage 2: the host's own view -- level-select arrows above
 		// an enabled Ready (highest_reached forced high enough that

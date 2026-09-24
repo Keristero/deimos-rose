@@ -13,6 +13,7 @@ import "core:time"
 import rl "vendor:raylib"
 
 import "dr:data"
+import "dr:prefs"
 import "dr:sim"
 
 Flow_Mode :: enum {
@@ -93,6 +94,13 @@ Flow :: struct {
 	// Flow_Mode.
 	netplay:        Netplay,
 	netplay_active: bool,
+	// The names both players entered in the netplay lobby, by player slot.
+	// While session_named, the end of the session records their scores
+	// under these names instead of asking (flow_finish_session). Kept here,
+	// not in Netplay, because leaving a session resets Netplay before it
+	// finishes, and "continue alone" keeps the session going without it.
+	session_names: [sim.MAX_PLAYERS]prefs.Name,
+	session_named: bool,
 
 	// Saved preferences plus this run's launch flags (game/prefs.odin),
 	// owned by main.odin; the Preferences screen edits them in place.
@@ -280,12 +288,30 @@ flow_finish_session :: proc(fl: ^Flow) {
 	scores := [sim.MAX_PLAYERS]int{}
 	active := [sim.MAX_PLAYERS]bool{}
 	sector := ""
+	// Who took part, not who is still `active`: a player out of lives is
+	// no longer active, and game_over is only set once neither is, so
+	// reading `active` here skipped every score after a Game Over. The
+	// original reports both slots from G_Game_Play (0x41e690) whatever
+	// their state, an unused one with its score of 0.
 	for i in 0 ..< sim.MAX_PLAYERS {
 		scores[i] = int(fl.state.players[i].score)
-		active[i] = fl.state.players[i].active
+		active[i] = fl.state.session.game_type != .Single || i == 0
 	}
 	if fl.state.level != nil {
 		sector = fl.state.level.identifier
+	}
+	if fl.session_named {
+		// Netplay: both names are already known, so there is nothing to
+		// type -- each qualifying score goes straight into the table, which
+		// is then shown.
+		fl.session_named = false
+		if high_scores_record(scores, active, fl.session_names, sector) {
+			high_scores_view_init(&fl.high_scores)
+			fl.mode = .High_Scores
+		} else {
+			fl.mode = .Title
+		}
+		return
 	}
 	if score_entry_start(&fl.score_entry, scores, active, sector) {
 		fl.mode = .Score_Entry
@@ -437,6 +463,7 @@ flow_random_seed :: proc() -> u32 {
 // Level_Select.center.
 flow_start_session :: proc(fl: ^Flow, seed: u32, game_type: sim.Game_Type, level_index: int) {
 	fl.session_start_pos = level_index + 1
+	fl.session_named = false // a local game asks for names at the end
 	level := fl.defs.levels[level_index].id
 	sim.init(fl.state, sim.Session{seed = seed, level_id = level, game_type = game_type}, fl.defs)
 	fl.mode = .Playing

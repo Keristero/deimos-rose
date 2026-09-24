@@ -41,6 +41,7 @@ import rl "vendor:raylib"
 
 import "dr:data"
 import "dr:net"
+import "dr:prefs"
 import "dr:sim"
 
 // Chosen from IANA's dynamic/private port range (49152-65535) to avoid
@@ -72,6 +73,7 @@ NETPLAY_SYNC_MIN_STALL_EVERY :: 2 // even at a huge lead, stall no more often th
 
 Netplay_Phase :: enum {
 	Menu,          // choose Host or Join
+	Enter_Name,    // either side, after choosing: the name high scores are recorded under
 	Enter_Address, // guest only: typing "host" or "host:port"
 	Resolving,     // guest only: Enter pressed; one frame of "RESOLVING..." before the blocking lookup
 	Connecting,    // Hello sent (guest) or awaited (host), not yet both-ways confirmed
@@ -116,6 +118,14 @@ Netplay :: struct {
 	got_peer_hello: bool,
 	local_ready:    bool,
 	remote_ready:   bool,
+
+	// This machine's player's name (prefilled from, and saved back to,
+	// Prefs.netplay_name) and the peer's, from its Hello. Flow copies both
+	// into session_names when a session starts, so the high scores can be
+	// recorded under them once it ends (flow_finish_session).
+	local_name: prefs.Name,
+	peer_name:  prefs.Name,
+	name_role:  Netplay_Role, // what Enter_Name goes on to: hosting, or the address prompt
 
 	addr_buf:     [NETPLAY_ADDR_MAX]u8,
 	addr_len:     int,
@@ -226,6 +236,8 @@ netplay_lobby_update :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 	switch nl.phase {
 	case .Menu:
 		netplay_update_menu(fl, r, nl)
+	case .Enter_Name:
+		netplay_update_enter_name(fl, nl)
 	case .Enter_Address:
 		netplay_update_enter_address(nl, r)
 	case .Resolving:
@@ -261,15 +273,65 @@ netplay_update_menu :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 	mouse := menu_mouse_pos()
 	dt := rl.GetFrameTime()
 	if text_button_update(r, &nl.menu_host, mouse, dt) {
-		netplay_start_hosting(nl)
+		netplay_begin_name_entry(fl, nl, .Host)
 	}
 	if text_button_update(r, &nl.menu_join, mouse, dt) {
-		nl.phase = .Enter_Address
-		nl.addr_len = copy(nl.addr_buf[:], "127.0.0.1") // loopback default -- the only peer this port can verify without a second machine
-		nl.addr_default = true
+		netplay_begin_name_entry(fl, nl, .Guest)
 	}
 	if text_button_update(r, &nl.menu_back, mouse, dt) || rl.IsKeyPressed(.ESCAPE) {
 		fl.mode = .Title
+	}
+}
+
+// The name comes first, for hosting and joining alike, so both players'
+// scores can be recorded under their names when the game ends. The last
+// name used is offered again.
+@(private = "file")
+netplay_begin_name_entry :: proc(fl: ^Flow, nl: ^Netplay, role: Netplay_Role) {
+	nl.phase = .Enter_Name
+	nl.name_role = role
+	nl.local_name = fl.prefs.saved.netplay_name
+	nl.error = ""
+}
+
+@(private = "file")
+netplay_update_enter_name :: proc(fl: ^Flow, nl: ^Netplay) {
+	n := &nl.local_name
+	for c := rl.GetCharPressed(); c != 0; c = rl.GetCharPressed() {
+		if c >= 0x20 && c <= 0x7e && n.len < prefs.NAME_MAX {
+			n.buf[n.len] = u8(c)
+			n.len += 1
+		}
+	}
+	if (rl.IsKeyPressed(.BACKSPACE) || rl.IsKeyPressedRepeat(.BACKSPACE)) && n.len > 0 {
+		n.len -= 1
+		n.buf[n.len] = 0
+	}
+	if rl.IsKeyPressed(.ESCAPE) {
+		nl.phase = .Menu
+		nl.error = ""
+		return
+	}
+	if !(rl.IsKeyPressed(.ENTER) || rl.IsKeyPressed(.KP_ENTER)) {
+		return
+	}
+	prefs.name_set(n, prefs.name_string(n)) // trims surrounding spaces
+	if n.len == 0 {
+		nl.error = "enter a name first"
+		return
+	}
+	nl.error = ""
+	if fl.prefs.saved.netplay_name != n^ {
+		fl.prefs.saved.netplay_name = n^
+		prefs_state_save(fl.prefs)
+	}
+	switch nl.name_role {
+	case .Host:
+		netplay_start_hosting(nl)
+	case .Guest:
+		nl.phase = .Enter_Address
+		nl.addr_len = copy(nl.addr_buf[:], "127.0.0.1") // loopback default -- the only peer this port can verify without a second machine
+		nl.addr_default = true
 	}
 }
 
@@ -293,7 +355,12 @@ netplay_start_hosting :: proc(nl: ^Netplay) {
 // has to drive xdotool through the one truly interactive step left -- each
 // side's own Ready button -- instead of also guessing Main Menu/lobby
 // button pixel coordinates blindly. `mode` is "host" or "join:<address>".
-netplay_lobby_start_from_flag :: proc(nl: ^Netplay, mode: string) {
+// The saved name is used as it is, or "Player 1"/"Player 2" without one.
+netplay_lobby_start_from_flag :: proc(nl: ^Netplay, saved_name: prefs.Name, mode: string) {
+	nl.local_name = saved_name
+	if nl.local_name.len == 0 {
+		prefs.name_set(&nl.local_name, high_scores_default_last_name(mode == "host" ? 0 : 1))
+	}
 	if mode == "host" {
 		netplay_start_hosting(nl)
 		return
@@ -406,7 +473,7 @@ netplay_join :: proc(nl: ^Netplay, text: string) {
 	nl.role = .Guest
 	nl.peer, nl.have_peer = ep, true
 	net.reliable_init(&nl.rc, ep)
-	net.send_hello(&nl.rc, &nl.sock, 1) // guest is always player 1; see netplay_start_hosting/netplay_poll for the host's player 0
+	net.send_hello(&nl.rc, &nl.sock, 1, prefs.name_string(&nl.local_name)) // guest is always player 1; see netplay_start_hosting/netplay_poll for the host's player 0
 	nl.sent_own_hello = true
 	nl.phase = .Connecting
 	nl.error = ""
@@ -432,7 +499,7 @@ netplay_update_connecting :: proc(nl: ^Netplay, r: ^Renderer) {
 	handshake_done := nl.have_peer && nl.got_peer_hello && nl.sent_own_hello && !nl.rc.pending
 	if handshake_done {
 		nl.phase = .Connected
-		fmt.eprintfln("netplay: connected as %v", nl.role) // tools/netplay/loopback_check.sh greps for this
+		fmt.eprintfln("netplay: connected as %v, playing with %q", nl.role, prefs.name_string(&nl.peer_name)) // tools/netplay/loopback_check.sh greps for "netplay: connected as"
 	}
 }
 
@@ -561,7 +628,7 @@ netplay_poll :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 		}
 		switch kind {
 		case .Hello:
-			seq, _, hok := net.decode_hello(buf[:n]) // the peer's player index isn't needed: role/local_player are fixed by who hosted vs. joined, or -- reconnecting -- by Resync_Start's assigned_player
+			seq, _, peer_name, hok := net.decode_hello(buf[:n]) // the peer's player index isn't needed: role/local_player are fixed by who hosted vs. joined, or -- reconnecting -- by Resync_Start's assigned_player
 			if !hok {
 				continue
 			}
@@ -577,9 +644,15 @@ netplay_poll :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 			is_new := net.reliable_accept(&nl.rc, &nl.sock, nl.peer, seq)
 			if is_new {
 				nl.got_peer_hello = true
+				prefs.name_set(&nl.peer_name, peer_name)
+				if reconnecting {
+					// Whoever rejoins takes over the vacated player, and
+					// their score is recorded under their own name.
+					fl.session_names[1 - nl.rs.local_player] = nl.peer_name
+				}
 			}
 			if (nl.role == .Host || reconnecting) && !nl.sent_own_hello {
-				net.send_hello(&nl.rc, &nl.sock, 0) // unused by the receiver either way -- see the comment above
+				net.send_hello(&nl.rc, &nl.sock, 0, prefs.name_string(&nl.local_name)) // unused by the receiver either way -- see the comment above
 				nl.sent_own_hello = true
 			}
 			if reconnecting && is_new {
@@ -728,6 +801,7 @@ netplay_begin_session :: proc(fl: ^Flow, nl: ^Netplay, seed: u32, level_index: i
 	sim.init(fl.state, sim.Session{seed = seed, level_id = level, game_type = .Co_Op}, fl.defs)
 	local_player := nl.role == .Host ? 0 : 1
 	net.rollback_session_init(&nl.rs, fl.state, local_player)
+	netplay_name_session(fl, nl, local_player)
 	nl.desync = {}
 	nl.warned_desync = false
 	nl.link_state = .Live
@@ -736,6 +810,14 @@ netplay_begin_session :: proc(fl: ^Flow, nl: ^Netplay, seed: u32, level_index: i
 	fl.netplay_active = true
 	fl.mode = .Playing
 	fmt.eprintfln("netplay: session started as player %d, seed %d, level %d", local_player, seed, level_index) // tools/netplay/loopback_check.sh greps for this
+}
+
+// Which name each player's score is recorded under at the end.
+@(private = "file")
+netplay_name_session :: proc(fl: ^Flow, nl: ^Netplay, local_player: int) {
+	fl.session_names[local_player] = nl.local_name
+	fl.session_names[1 - local_player] = nl.peer_name
+	fl.session_named = true
 }
 
 // Phase 8 stage 3: the peer has gone quiet mid-session. Rather than tearing
@@ -873,6 +955,7 @@ netplay_finish_resync_receive :: proc(fl: ^Flow, nl: ^Netplay) {
 	nl.recv_got = nil
 
 	net.rollback_session_init(&nl.rs, fl.state, int(nl.recv_assigned_player))
+	netplay_name_session(fl, nl, int(nl.recv_assigned_player))
 	nl.desync = {}
 	nl.warned_desync = false
 	fl.netplay_active = true
@@ -1027,6 +1110,18 @@ netplay_lobby_draw :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 		if nl.error != "" {
 			menu_draw_text(r, nl.error, SCREEN_W / 2, 340, bad, .Centre)
 		}
+	case .Enter_Name:
+		menu_draw_text(r, "ENTER YOUR NAME, THEN PRESS ENTER", SCREEN_W / 2, 200, dim, .Centre)
+		menu_draw_text(r, "HIGH SCORES ARE RECORDED UNDER IT", SCREEN_W / 2, 215, dim, .Centre)
+		name := prefs.name_string(&nl.local_name)
+		if nl.local_name.len < prefs.NAME_MAX && int(rl.GetTime() * 2) % 2 == 0 {
+			name = fmt.tprintf("%s_", name)
+		}
+		menu_draw_text(r, name, SCREEN_W / 2, 240, white, .Centre)
+		menu_draw_text(r, "ESC TO CANCEL", SCREEN_W / 2, 300, dim, .Centre)
+		if nl.error != "" {
+			menu_draw_text(r, nl.error, SCREEN_W / 2, 340, bad, .Centre)
+		}
 	case .Enter_Address:
 		menu_draw_text(r, "JOIN -- ENTER HOST ADDRESS, THEN PRESS ENTER", SCREEN_W / 2, 200, dim, .Centre)
 		menu_draw_text(r, string(nl.addr_buf[:nl.addr_len]), SCREEN_W / 2, 230, nl.addr_default ? dim : white, .Centre)
@@ -1070,8 +1165,8 @@ netplay_lobby_draw :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 			text_button_draw(r, &nl.level_next)
 		}
 
-		you := nl.local_ready ? "YOU: READY" : "YOU: NOT READY"
-		them := nl.remote_ready ? "OTHER PLAYER: READY" : "OTHER PLAYER: NOT READY"
+		you := fmt.tprintf("%s (YOU): %s", prefs.name_string(&nl.local_name), nl.local_ready ? "READY" : "NOT READY")
+		them := fmt.tprintf("%s: %s", prefs.name_string(&nl.peer_name), nl.remote_ready ? "READY" : "NOT READY")
 		menu_draw_text(r, you, SCREEN_W / 2, 335, nl.local_ready ? good : dim, .Centre)
 		menu_draw_text(r, them, SCREEN_W / 2, 355, nl.remote_ready ? good : dim, .Centre)
 		if !nl.local_ready {

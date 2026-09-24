@@ -56,6 +56,42 @@ Prefs :: struct {
 	high_refresh_rate: bool,
 	diagnostics:  bool,
 	classic:      bool,
+	// The name last entered in the netplay lobby, offered again next time
+	// and recorded against this player's high scores after a netplay game.
+	netplay_name: Name,
+}
+
+// A player's name, the same 20 printable-ASCII characters the high score
+// name entry allows (game/menu_high_score_entry.odin, from the original's
+// 0x14-byte buffer). Fixed-size so Prefs stays a plain value.
+NAME_MAX :: 20
+
+Name :: struct {
+	buf: [NAME_MAX]u8,
+	len: int,
+}
+
+name_string :: proc(n: ^Name) -> string {
+	return string(n.buf[:n.len])
+}
+
+// Keeps printable ASCII only, drops surrounding spaces, and cuts anything
+// past NAME_MAX.
+name_set :: proc(n: ^Name, text: string) {
+	n^ = {}
+	trimmed := strings.trim_space(text)
+	for i in 0 ..< len(trimmed) {
+		if c := trimmed[i]; c >= 0x20 && c <= 0x7e && n.len < NAME_MAX {
+			n.buf[n.len] = c
+			n.len += 1
+		}
+	}
+	for n.len > 0 && n.buf[n.len - 1] == ' ' {
+		n.len -= 1 // a cut can end on a space
+	}
+	for i in n.len ..< NAME_MAX {
+		n.buf[i] = 0 // so two equal names compare equal
+	}
 }
 
 // Player 1's defaults are exactly the controls hard-coded before bindings
@@ -139,6 +175,7 @@ format :: proc(p: ^Prefs, allocator := context.allocator) -> string {
 	fmt.sbprintf(&sb, "high_refresh_rate=%d\n", p.high_refresh_rate ? 1 : 0)
 	fmt.sbprintf(&sb, "diagnostics=%d\n", p.diagnostics ? 1 : 0)
 	fmt.sbprintf(&sb, "classic=%d\n", p.classic ? 1 : 0)
+	fmt.sbprintf(&sb, "netplay_name=%s\n", name_string(&p.netplay_name))
 	for b, player in p.bindings {
 		for keys, button in b {
 			fmt.sbprintf(&sb, "p%d.%s=%d,%d\n", player + 1, BUTTON_KEYS[button], keys[0], keys[1])
@@ -179,6 +216,8 @@ parse :: proc(text: string) -> Prefs {
 			parse_flag(value, &p.diagnostics)
 		case "classic":
 			parse_flag(value, &p.classic)
+		case "netplay_name":
+			name_set(&p.netplay_name, value)
 		case:
 			if player, button, ok := parse_binding(name, value, &p); ok {
 				from_file[player] += {button}

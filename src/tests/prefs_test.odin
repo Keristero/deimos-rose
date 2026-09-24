@@ -114,3 +114,19 @@ prefs_parse_gives_way_to_keys_an_older_file_chose :: proc(t: ^testing.T) {
 	testing.expect_value(t, p.bindings[1][.Fire_Ground][0], i32(prefs.KEY_NONE))
 	testing.expect_value(t, prefs.parse(prefs.format(&p, context.temp_allocator)), p)
 }
+
+@(test)
+netplay_name_round_trips_and_is_cleaned :: proc(t: ^testing.T) {
+	p := prefs.defaults()
+	testing.expect_value(t, prefs.name_string(&p.netplay_name), "")
+	prefs.name_set(&p.netplay_name, "  Keristero  ")
+	got := prefs.parse(prefs.format(&p, context.temp_allocator))
+	testing.expect_value(t, prefs.name_string(&got.netplay_name), "Keristero")
+	testing.expect_value(t, got, p)
+
+	n: prefs.Name
+	prefs.name_set(&n, "a\tbéc")
+	testing.expect_value(t, prefs.name_string(&n), "abc") // printable ASCII only
+	prefs.name_set(&n, "abcdefghijklmnopqrs uvwxyz")
+	testing.expect_value(t, prefs.name_string(&n), "abcdefghijklmnopqrs") // cut at 20, trailing space dropped
+}

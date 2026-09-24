@@ -25,7 +25,7 @@ Packet_Kind :: enum u8 {
 	Start           = 9,  // host -> guest: "begin now", carries the session seed and level -- the reliable channel
 	Level_Choice    = 10, // host -> guest: the host's currently-selected level index, sent every lobby frame like Ping -- unreliable, so just resent rather than acked
 	Resync_Start    = 11, // survivor -> reconnecting peer: "here comes the game state", carries the assigned player slot and total byte count -- the reliable channel
-	State_Chunk     = 12, // survivor -> reconnecting peer: one piece of a raw sim.State dump -- its own stop-and-wait, not the reliable channel (too big for its 8-byte buf)
+	State_Chunk     = 12, // survivor -> reconnecting peer: one piece of a raw sim.State dump -- its own stop-and-wait, not the reliable channel (too big for its small buf)
 	State_Chunk_Ack = 13, // reconnecting peer -> survivor: "got that chunk, send the next"
 }
 
@@ -79,18 +79,32 @@ get_u64 :: proc(b: []byte) -> u64 {
 // net/reliable.odin -- so each can be resent verbatim until acked and a
 // duplicate delivery can be told apart from a new message.
 
-encode_hello :: proc(buf: []byte, seq: u8, player: u8) -> int {
+// Hello also carries the sender's name (a length byte, then up to
+// HELLO_NAME_MAX bytes), so each side can record both players' high scores
+// under their own names when a netplay game ends. A longer name is cut
+// short rather than refused.
+HELLO_NAME_MAX :: 20
+
+encode_hello :: proc(buf: []byte, seq: u8, player: u8, name: string) -> int {
+	cut := name[:min(len(name), HELLO_NAME_MAX)]
 	buf[0] = u8(Packet_Kind.Hello)
 	buf[1] = seq
 	buf[2] = player
-	return 3
+	buf[3] = u8(len(cut))
+	copy(buf[4:], cut)
+	return 4 + len(cut)
 }
 
-decode_hello :: proc(buf: []byte) -> (seq: u8, player: u8, ok: bool) {
-	if len(buf) < 3 || Packet_Kind(buf[0]) != .Hello {
-		return 0, 0, false
+// `name` is a view into `buf`: copy it out before buf is reused.
+decode_hello :: proc(buf: []byte) -> (seq: u8, player: u8, name: string, ok: bool) {
+	if len(buf) < 4 || Packet_Kind(buf[0]) != .Hello {
+		return 0, 0, "", false
 	}
-	return buf[1], buf[2], true
+	n := int(buf[3])
+	if n > HELLO_NAME_MAX || len(buf) < 4 + n {
+		return 0, 0, "", false
+	}
+	return buf[1], buf[2], string(buf[4:4 + n]), true
 }
 
 encode_ready :: proc(buf: []byte, seq: u8) -> int {
@@ -202,7 +216,7 @@ decode_resync_start :: proc(buf: []byte) -> (seq: u8, assigned_player: u8, total
 // sim.init resolves a level id into a pointer rather than trusting one sent
 // over the wire. Its own stop-and-wait (game/netplay.odin), not
 // net/reliable.odin's channel: STATE_CHUNK_SIZE payloads don't fit that
-// channel's 8-byte buf, sized for Hello/Ready/Goodbye/Start/Resync_Start and
+// channel's 24-byte buf, sized for Hello/Ready/Goodbye/Start/Resync_Start and
 // nothing bigger by design.
 STATE_CHUNK_SIZE :: 1024
 

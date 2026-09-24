@@ -277,7 +277,7 @@ depends = ["build"]
 run = '''
 #!/usr/bin/env bash
 set -euo pipefail
-for MENU in netplay_lobby netplay_lobby_join netplay_lobby_connecting netplay_lobby_connected \
+for MENU in netplay_lobby netplay_lobby_name netplay_lobby_join netplay_lobby_connecting netplay_lobby_connected \
             netplay_lobby_connected_host netplay_lobby_connected_host_locked diagnostics; do
   MENU="$MENU" mise run menu-shot
 done

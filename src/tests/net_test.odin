@@ -10,14 +10,31 @@ import "dr:sim"
 @(test)
 packet_hello_round_trips :: proc(t: ^testing.T) {
 	buf: [64]byte
-	n := net.encode_hello(buf[:], 5, 1)
+	n := net.encode_hello(buf[:], 5, 1, "Keristero")
 	kind, kok := net.peek_kind(buf[:n])
 	testing.expect(t, kok)
 	testing.expect_value(t, kind, net.Packet_Kind.Hello)
-	seq, player, ok := net.decode_hello(buf[:n])
+	seq, player, name, ok := net.decode_hello(buf[:n])
 	testing.expect(t, ok)
 	testing.expect_value(t, seq, u8(5))
 	testing.expect_value(t, player, u8(1))
+	testing.expect_value(t, name, "Keristero")
+}
+
+@(test)
+packet_hello_names_are_capped_and_checked :: proc(t: ^testing.T) {
+	buf: [64]byte
+	n := net.encode_hello(buf[:], 0, 0, "abcdefghijklmnopqrstuvwxyz")
+	_, _, name, ok := net.decode_hello(buf[:n])
+	testing.expect(t, ok)
+	testing.expect_value(t, name, "abcdefghijklmnopqrst") // HELLO_NAME_MAX
+	// A name length pointing past the end of the packet is refused.
+	_, _, _, short := net.decode_hello(buf[:n - 1])
+	testing.expect(t, !short)
+	n = net.encode_hello(buf[:], 0, 0, "")
+	_, _, name, ok = net.decode_hello(buf[:n])
+	testing.expect(t, ok)
+	testing.expect_value(t, name, "")
 }
 
 @(test)
@@ -229,7 +246,7 @@ reliable_handshake_completes_over_loopback :: proc(t: ^testing.T) {
 
 	rc_a: net.Reliable_Channel
 	net.reliable_init(&rc_a, a_to_b)
-	net.send_hello(&rc_a, &a, 0)
+	net.send_hello(&rc_a, &a, 0, "a")
 	testing.expect(t, rc_a.pending, "hello should be pending until acked")
 
 	buf: [64]byte
@@ -240,7 +257,7 @@ reliable_handshake_completes_over_loopback :: proc(t: ^testing.T) {
 	}
 	kind, kok := net.peek_kind(buf[:n])
 	testing.expect(t, kok && kind == .Hello)
-	seq, player, dok := net.decode_hello(buf[:n])
+	seq, player, _, dok := net.decode_hello(buf[:n])
 	testing.expect(t, dok)
 	testing.expect_value(t, player, u8(0))
 
