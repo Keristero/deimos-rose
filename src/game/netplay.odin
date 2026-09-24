@@ -52,9 +52,6 @@ NETPLAY_PORT :: 60902
 NETPLAY_PING_INTERVAL :: 1.0 // seconds between RTT probes once connected
 NETPLAY_INPUT_WINDOW :: 8    // matches tests/rollback_session_test.odin's own WINDOW
 NETPLAY_CHECKSUM_LAG :: 20   // frames behind "now" a checksum is reported at; matches the test, comfortably under ROLLBACK_DEPTH (64)
-// A pause-menu Resume click holds the Pause bit for this many ticks, then
-// releases it: one press, as the sim's edge detection sees it.
-NETPLAY_PAUSE_PULSE_TICKS :: 2
 
 NETPLAY_ADDR_MAX :: 260 // a 253-character hostname plus ":65535"
 
@@ -147,7 +144,6 @@ Netplay :: struct {
 	ping_sent_at:  time.Time,
 	ping_ms:       f32,
 
-	pause_pulse:   int,  // ticks left of a Resume click's Pause bit (NETPLAY_PAUSE_PULSE_TICKS)
 	pending_start: bool, // set by netplay_poll on an accepted Start; consumed once per frame
 	start_seed:    u32,
 	start_level:   u8,
@@ -841,6 +837,7 @@ netplay_begin_session :: proc(fl: ^Flow, nl: ^Netplay, seed: u32, level_index: i
 	}
 	level := fl.defs.levels[level_index].id
 	sim.init(fl.state, sim.Session{seed = seed, level_id = level, game_type = .Co_Op}, fl.defs)
+	fl.pause_menu.notice, fl.netplay_was_paused = false, false
 	local_player := nl.role == .Host ? 0 : 1
 	net.rollback_session_init(&nl.rs, fl.state, local_player)
 	netplay_name_session(fl, nl, local_player)
@@ -1079,14 +1076,10 @@ netplay_playing_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blu
 		return
 	}
 
-	local := gather_input(&fl.prefs.saved.bindings[0]) // this machine's player, whichever slot it plays
-	// Pause is an input bit (sim.session_step), so it reaches the peer
-	// like any button and both sides pause on the same frame. Held while
-	// the key is, or for a Resume click's short pulse.
-	if rl.IsKeyDown(.ESCAPE) || nl.pause_pulse > 0 {
-		local += {.Pause}
-	}
-	nl.pause_pulse = max(nl.pause_pulse - 1, 0)
+	// This machine's player, whichever slot it plays. Pause is one of its
+	// input bits (sim.session_step): it reaches the peer like any button,
+	// so both sides pause, and resume, on the same frame.
+	local := gather_input(&fl.prefs.saved.bindings[0])
 	net.rollback_session_advance(&nl.rs, local)
 	// While paused nothing moves; existing particles and ghosts freeze too.
 	if !fl.state.paused {

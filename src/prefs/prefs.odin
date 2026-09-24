@@ -37,11 +37,13 @@ KEY_DOWN :: 264
 KEY_UP :: 265
 KEY_LEFT_SHIFT :: 340
 KEY_LEFT_CONTROL :: 341
+KEY_CAPS_LOCK :: 280
 
-// The controls a player can bind: the original's seven, in sim.Button's
-// order so each converts with a cast. Pause is not among them: Escape
-// pauses, for every player, and cannot be bound -- it has to stay free to
-// cancel a rebind. sim.Button's Pause bit is netplay's, set by Escape.
+// The controls a player can bind: the original's seven, then Pause, in
+// sim.Button's order so each converts with a cast. The original pauses on
+// Caps Lock (DirectInput key 0x3a, which U_App_Event_IsKeyDown latches:
+// each press flips it) and nothing else; Escape is not a pause key, and
+// stays free to cancel a rebind.
 Action :: enum u8 {
 	Up,
 	Down,
@@ -50,6 +52,7 @@ Action :: enum u8 {
 	Fire_Air,
 	Fire_Ground,
 	Change_Air,
+	Pause,
 }
 #assert(int(Action.Up) == int(sim.Button.Up))
 #assert(int(Action.Down) == int(sim.Button.Down))
@@ -58,6 +61,7 @@ Action :: enum u8 {
 #assert(int(Action.Fire_Air) == int(sim.Button.Fire_Air))
 #assert(int(Action.Fire_Ground) == int(sim.Button.Fire_Ground))
 #assert(int(Action.Change_Air) == int(sim.Button.Change_Air))
+#assert(int(Action.Pause) == int(sim.Button.Pause))
 
 // Two keys per action: player 1 has always had both the arrows and WASD.
 BINDING_SLOTS :: 2
@@ -194,6 +198,7 @@ defaults :: proc() -> Prefs {
 		.Fire_Air    = {KEY_SPACE, KEY_NONE},
 		.Fire_Ground = {KEY_LEFT_CONTROL, KEY_NONE},
 		.Change_Air  = {KEY_LEFT_SHIFT, KEY_NONE},
+		.Pause       = {KEY_CAPS_LOCK, KEY_NONE}, // the original's one pause key
 	}
 	p.bindings[1] = {
 		.Up          = {KEY_I, KEY_NONE},
@@ -203,6 +208,7 @@ defaults :: proc() -> Prefs {
 		.Fire_Air    = {KEY_U, KEY_NONE},
 		.Fire_Ground = {KEY_O, KEY_NONE},
 		.Change_Air  = {KEY_SEMICOLON, KEY_NONE},
+		.Pause       = {KEY_NONE, KEY_NONE}, // the original has one pause key, player 1's
 	}
 	return p
 }
@@ -230,8 +236,10 @@ step_volume :: proc(v: ^int, dir: int) {
 }
 
 // Stable names for the save file -- not the enum's own spelling, so renaming
-// an Action does not silently drop everyone's bindings. A "pause" line, from
-// before Pause stopped being bindable, is not recognised and so ignored.
+// an Action does not silently drop everyone's bindings. Pause is saved as
+// "pause_key": a "pause" line is from when P was the default, and every save
+// wrote it out, so honouring it would keep everyone off the original's Caps
+// Lock. It is ignored.
 @(private = "file")
 BUTTON_KEYS := [Action]string {
 	.Up          = "up",
@@ -241,6 +249,7 @@ BUTTON_KEYS := [Action]string {
 	.Fire_Air    = "fire_air",
 	.Fire_Ground = "fire_ground",
 	.Change_Air  = "change_weapon",
+	.Pause       = "pause_key",
 }
 
 // One `name=value` per line, like progress.odin's and highscores.odin's

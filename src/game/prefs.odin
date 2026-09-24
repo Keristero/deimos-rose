@@ -24,6 +24,7 @@ import "dr:sim"
 #assert(i32(rl.KeyboardKey.LEFT_SHIFT) == prefs.KEY_LEFT_SHIFT)
 #assert(i32(rl.KeyboardKey.LEFT_CONTROL) == prefs.KEY_LEFT_CONTROL)
 #assert(i32(rl.KeyboardKey.KEY_NULL) == prefs.KEY_NONE)
+#assert(i32(rl.KeyboardKey.CAPS_LOCK) == prefs.KEY_CAPS_LOCK)
 
 // $XDG_DATA_HOME/deimos-rising/<name>, else %APPDATA%\deimos-rising\<name>
 // on Windows (which has no HOME), else ~/.local/share/deimos-rising/<name>.
@@ -116,6 +117,16 @@ gather_input :: proc(b: ^prefs.Bindings) -> sim.Buttons {
 		}
 	}
 	return out
+}
+
+// Whether any key bound to `action` went down this frame.
+binding_pressed :: proc(b: ^prefs.Bindings, action: prefs.Action) -> bool {
+	for k in b[action] {
+		if k != prefs.KEY_NONE && rl.IsKeyPressed(rl.KeyboardKey(k)) {
+			return true
+		}
+	}
+	return false
 }
 
 // A short, upper-case name for a key, for the Preferences screen.

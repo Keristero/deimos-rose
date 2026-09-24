@@ -44,6 +44,7 @@ BUTTON_NAMES := [prefs.Action]string {
 	.Fire_Air    = "FIRE AIR",
 	.Fire_Ground = "FIRE GROUND",
 	.Change_Air  = "CHANGE WEAPON",
+	.Pause       = "PAUSE",
 }
 
 @(private = "file")
@@ -289,9 +290,9 @@ preferences_draw :: proc(r: ^Renderer, p: ^Preferences, ps: ^Prefs_State) {
 		status = fmt.tprintf("PLAYER %d %s: PRESS A KEY -- BACKSPACE CLEARS, ESC CANCELS",
 			p.player + 1, BUTTON_NAMES[p.capture_button])
 	case p.player == 1:
-		status = "PLAYER 2'S KEYS ARE USED IN LOCAL 2 PLAYER GAMES -- ESC ALWAYS PAUSES"
+		status = "PLAYER 2'S KEYS ARE USED IN LOCAL 2 PLAYER GAMES"
 	case:
-		status = "PLAYER 1'S KEYS ARE ALSO YOURS IN NETPLAY -- ESC ALWAYS PAUSES"
+		status = "PLAYER 1'S KEYS ARE ALSO YOURS IN NETPLAY"
 	}
 	menu_draw_text(r, status, SCREEN_W / 2, PREFS_STATUS_Y, dim, .Centre)
 }

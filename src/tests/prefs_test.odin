@@ -70,7 +70,11 @@ prefs_defaults_give_each_player_distinct_keys :: proc(t: ^testing.T) {
 	defer delete(seen)
 	for b, player in p.bindings {
 		for keys, button in b {
-			testing.expectf(t, keys[0] != prefs.KEY_NONE, "player %d %v has no key", player + 1, button)
+			// Player 2 has no Pause key by default: the original had one
+			// player and one pause key, Caps Lock.
+			if !(player == 1 && button == .Pause) {
+				testing.expectf(t, keys[0] != prefs.KEY_NONE, "player %d %v has no key", player + 1, button)
+			}
 			for k in keys {
 				if k == prefs.KEY_NONE {
 					continue
@@ -99,14 +103,22 @@ prefs_volume_steps_stay_in_range :: proc(t: ^testing.T) {
 }
 
 @(test)
-prefs_parse_ignores_a_pause_binding :: proc(t: ^testing.T) {
-	// Pause was bindable for a while (P for player 1). Escape is the only
-	// pause key now; a save from then must load, and free P for anything.
+prefs_parse_ignores_an_old_pause_binding :: proc(t: ^testing.T) {
+	// Pause was bindable once before, saved as "pause" and defaulting to P
+	// for player 1 -- so every file from then says p1.pause=80. The binding
+	// is "pause_key" now, defaulting to Caps Lock as in the original, and
+	// the old line must not keep anyone off it.
 	got := prefs.parse("p1.pause=80,0\np2.change_weapon=80,0\n")
 	want := prefs.defaults()
 	want.bindings[1][.Change_Air] = {prefs.KEY_P, prefs.KEY_NONE}
 	testing.expect_value(t, got, want)
-	testing.expect(t, !strings.contains(prefs.format(&got, context.temp_allocator), "pause"))
+	testing.expect_value(t, got.bindings[0][.Pause], [prefs.BINDING_SLOTS]i32{prefs.KEY_CAPS_LOCK, prefs.KEY_NONE})
+	testing.expect(t, !strings.contains(prefs.format(&got, context.temp_allocator), "pause="))
+
+	// A rebound Pause key survives the round trip.
+	p := prefs.defaults()
+	prefs.bind(&p, 0, .Pause, 0, prefs.KEY_P)
+	testing.expect_value(t, prefs.parse(prefs.format(&p, context.temp_allocator)), p)
 }
 
 @(test)

@@ -185,11 +185,21 @@ with new (netplay) menu items added in the same style but hidden under
   original binary can show but are hidden developer tools, not normal player
   menus. Deferred to a new "Bonus — Developer tools" phase rather than
   in scope for faithful player-menu recreation (see `docs/README.md`).
-- **Pause has no on-screen "PAUSED" text in the original at all** —
-  `G_Interface_PauseGame` only stops sound, pauses music and darkens the
-  borders (`U_Display::DrawBlackBorders`) while idling. The project owner
-  chose to match this exactly: the faithful pause screen drops the "PAUSED"
-  banner Flow currently draws.
+- **Pause has no "PAUSED" banner in the original.** *Corrected:* this
+  first said it showed no text at all, which was wrong.
+  `G_GameInterface::Process_StartFrame` (0x4230f0) pauses on Caps Lock and
+  requests a notice of game string 0, "Press Caps Lock". It uses text
+  preset 0x31 in CEGA alignment, with no fade-in, then calls
+  `G_Interface_PauseGame` (0x426510).
+  - PauseGame stops every sound, plays perm sound 8 ("incl"), pauses the
+    music and idles, redrawing the frozen frame.
+  - `DrawBlackBorders` only repaints the margins; nothing is darkened.
+  - Resuming plays nothing, and the notice fades out at perm float 0x49
+    (4/32) a step.
+
+  Classic mode matches this exactly. Otherwise a Main Menu button is added
+  under the notice, since the original has no way out from there — its
+  Escape, a separate key, ends the game.
 - **A mission-briefing screen has full text/timing perm data defined
   (`Briefing_*`) but is never read by any code, and every shipped level sets
   `briefing: "none"`.** Cut content — not part of the recreation.
@@ -464,9 +474,11 @@ original six.
 - **Player 2 now has keys.** Local 2 Player previously fed player 2 an empty
   input every step. Player 1's defaults are exactly the old hard-coded
   keys; player 2's (IJKL, U/O and ;) are new. Pause became bindable later
-  (D32), with P as player 1's default, and was made unbindable again as
-  unnecessary: Escape is the one pause key, and a saved `pause=` line is
-  ignored. A default still gives way to a key a saved file already uses. Binding a key takes it off any
+  (D32), with P as player 1's default. It was briefly unbindable with
+  Escape as the only pause key. Now it is bindable again as `pause_key`,
+  defaulting to Caps Lock for player 1, the original's key (D21). Player 2
+  gets none by default. Escape no longer pauses. A saved `pause=` line,
+  from the P era, is ignored so it cannot keep anyone off Caps Lock. A default still gives way to a key a saved file already uses. Binding a key takes it off any
   other action, for either player. Every button is now read as held,
   including Change Weapon — the sim edge-detects it itself
   (`weapons_process`), and the old one-frame `IsKeyPressed` could drop a
@@ -512,15 +524,14 @@ rollback session): `step`, then the level change, so resimulation
 reproduces it on the same frame. Flow only reads the result. Films, demos
 and the oracle tools keep plain `step`, which is unchanged.
 
-The netplay pause (Escape, or the pause menu's
-Resume) is a `Pause` input
-bit, not a network message: it reaches the peer and is replayed on rollback
+The netplay pause (player 1's Pause binding, Caps Lock by default) is a
+`Pause` input bit, not a network message: it reaches the peer and is replayed on rollback
 like any button, so both sides pause on the same frame, and either can
 resume. While paused only `frame` advances (the rollback ring's key); game
 time, the RNG and entities stand still. It is new content — the original's
 pause is outside the simulation — so single-player keeps flow's `.Paused`.
-Both show a Resume / Main Menu menu, except in classic mode, which keeps
-the original's text-free pause (D21). Leaving a netplay game from it sends
+Both show the original's "Press Caps Lock" notice (D21). Outside classic
+mode they also show a Main Menu button; netplay has no classic mode. Leaving a netplay game from it sends
 Goodbye; the peer freezes and can continue alone (F5).
 
 `sim.checksum` now includes the level number, the level-complete flag and

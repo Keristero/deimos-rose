@@ -110,57 +110,122 @@ Flow :: struct {
 	prefs:       ^Prefs_State,
 	preferences: Preferences,
 
-	pause_menu:   Pause_Menu,
+	pause_menu:         Pause_Menu,
+	netplay_was_paused: bool, // the shared pause as last seen, to notice it starting
 	music_paused: bool, // whether flow_music_update last left fl.music paused
 }
 
-// Resume / Main Menu, shown while paused -- new content: the original's
-// G_Interface_PauseGame draws no text at all (D21), so classic mode keeps
-// that and shows neither. The same menu serves a netplay pause, which is a
-// state inside the simulation both peers share (sim.session_step), not
-// .Paused.
+// The original's pause (G_GameInterface::Process_StartFrame 0x4230f0,
+// CheckForPause, G_Interface_PauseGame 0x426510): Caps Lock requests a
+// notice of game string 0, "Press Caps Lock", in text preset 0x31 ("gano")
+// with its alignment forced to CEGA (the template at 0x4e5359, for the game
+// screen's update flag 1), no delay and no fade-in. At the end of that frame
+// PauseGame stops every sound, plays perm sound 8 at volume 100, pauses the
+// music and idles, redrawing the frozen frame -- notice and all -- until
+// Caps Lock is pressed again. It draws nothing else and darkens nothing
+// (DrawBlackBorders repaints the margins, which are black already).
+// Resuming plays no sound; the notice is released and fades by perm float
+// 0x49 (4/32) a step.
+//
+// The notice's sound slot in the template is id 0 with zero pitch and
+// volume: G_Notice_Process "plays" it on the first step after resuming, but
+// both of U_Sound_Play's RNG calls have equal bounds and draw nothing, and
+// no resource 0 exists, so there is nothing to port.
+//
+// Outside classic mode a MAIN MENU button sits under the notice (new
+// content). A netplay pause is a state inside the simulation both peers
+// share (sim.session_step), not .Paused, but looks the same.
 Pause_Menu :: struct {
-	resume:    Text_Button,
 	main_menu: Text_Button,
+	notice:    bool, // the notice is up, or still fading after a resume
+	blend:     i32, // the notice's blend, 0 opaque .. 32 gone
 }
 
-@(private = "file") PAUSE_TITLE_Y :: 200
-@(private = "file") PAUSE_RESUME_Y :: 232
 @(private = "file") PAUSE_MAIN_MENU_Y :: 262
+@(private = "file") PS_PAUSE :: 8 // perm sound "incl"
+@(private = "file") PF_NOTICE_FADE_OUT :: 0x49
+@(private = "file") GS_PRESS_CAPS_LOCK :: 0
 
-// Returns which button was clicked this frame, if any.
+// Whether the pause menu's button was clicked this frame.
 @(private = "file")
-pause_menu_update :: proc(r: ^Renderer, m: ^Pause_Menu) -> (resume, main_menu: bool) {
-	if m.resume.rect.width == 0 {
-		m.resume = text_button_at(r, "RESUME", PAUSE_RESUME_Y)
-		m.main_menu = text_button_at(r, "MAIN MENU", PAUSE_MAIN_MENU_Y)
+pause_menu_update :: proc(r: ^Renderer, m: ^Pause_Menu) -> (main_menu: bool) {
+	if m.main_menu.rect.width == 0 {
+		m.main_menu = text_button_at_x(r, "MAIN MENU", VIEW_X + PLAY_W / 2, PAUSE_MAIN_MENU_Y)
 	}
-	mouse := menu_mouse_pos()
-	dt := rl.GetFrameTime()
-	resume = text_button_update(r, &m.resume, mouse, dt)
-	main_menu = text_button_update(r, &m.main_menu, mouse, dt)
-	return
+	return text_button_update(r, &m.main_menu, menu_mouse_pos(), rl.GetFrameTime())
 }
 
+// What G_Interface_PauseGame does on the way in, and the notice going up.
 @(private = "file")
-pause_menu_draw :: proc(r: ^Renderer, m: ^Pause_Menu, note: string) {
-	if m.resume.rect.width == 0 {
-		return // not built until the first update
+pause_begin :: proc(fl: ^Flow, r: ^Renderer) {
+	for _, &clip in r.textures.sounds {
+		for v in clip.voices {
+			rl.StopSound(v)
+		}
 	}
-	rl.DrawRectangle(0, (PAUSE_TITLE_Y - 14) * WINDOW_SCALE, SCREEN_W * WINDOW_SCALE, 116 * WINDOW_SCALE, rl.Color{0, 0, 0, 170})
-	menu_draw_text(r, "PAUSED", SCREEN_W / 2, PAUSE_TITLE_Y, rl.Color{255, 255, 255, 255}, .Centre)
-	text_button_draw(r, &m.resume)
-	text_button_draw(r, &m.main_menu)
-	if note != "" {
-		menu_draw_text(r, note, SCREEN_W / 2, PAUSE_MAIN_MENU_Y + 30, rl.Color{190, 190, 190, 255}, .Centre)
+	menu_play_sound(r, fl.defs.perm_sounds[PS_PAUSE])
+	fl.pause_menu.notice, fl.pause_menu.blend = true, 0
+}
+
+// One sim step of the notice fading once play has resumed.
+@(private = "file")
+pause_notice_step :: proc(fl: ^Flow) {
+	m := &fl.pause_menu
+	if m.notice && !fl.state.paused {
+		m.blend += max(sim.trunc_i32(fl.defs.perm_floats[PF_NOTICE_FADE_OUT]), 1)
+		if m.blend >= 32 {
+			m.notice = false
+		}
 	}
 }
 
-// Escape pauses, for every player, and cannot be rebound. Netplay's held
-// Pause bit comes from Escape too (netplay_playing_step).
+// "Press Caps Lock", or the key it was rebound to.
+@(private = "file")
+pause_notice_text :: proc(fl: ^Flow, r: ^Renderer) -> string {
+	for b in fl.prefs.saved.bindings {
+		for k in b[.Pause] {
+			if k == prefs.KEY_NONE {
+				continue
+			}
+			if k == prefs.KEY_CAPS_LOCK {
+				break
+			}
+			return fmt.tprintf("Press %s", key_name(k))
+		}
+	}
+	return game_string(r, GS_PRESS_CAPS_LOCK)
+}
+
+// G_Notice_BuildDrawList: the preset with the notice's blend added to the
+// text's and its strip's, the strip dropped once that passes 32.
+@(private = "file")
+pause_draw :: proc(fl: ^Flow, r: ^Renderer, scale: f32, paused: bool, note: string) {
+	m := &fl.pause_menu
+	if m.notice {
+		t := r.textures.assets.text[data.Text_Preset.Game_Notice]
+		t.format = sim.Res_ID{'C', 'E', 'G', 'A'}
+		t.strip_blend += m.blend
+		if t.strip_blend > 32 {
+			t.strip = false
+		}
+		text_preset_draw(r, t, pause_notice_text(fl, r), VIEW_X, scale, t.blend + m.blend)
+	}
+	if paused && !r.classic && m.main_menu.rect.width != 0 {
+		text_button_draw(r, &m.main_menu)
+		if note != "" {
+			menu_draw_text(r, note, VIEW_X + PLAY_W / 2, PAUSE_MAIN_MENU_Y + 30, rl.Color{190, 190, 190, 255}, .Centre)
+		}
+	}
+}
+
+// The Pause binding: player 1's, and player 2's while they are in the game
+// (a local 2 Player session).
 @(private = "file")
 pause_key_pressed :: proc(fl: ^Flow) -> bool {
-	return rl.IsKeyPressed(.ESCAPE)
+	if binding_pressed(&fl.prefs.saved.bindings[0], .Pause) {
+		return true
+	}
+	return fl.state.players[1].active && binding_pressed(&fl.prefs.saved.bindings[1], .Pause)
 }
 
 flow_init :: proc(fl: ^Flow, root: string, defs: ^sim.Defs, state: ^sim.State, r: ^Renderer, ps: ^Prefs_State) {
@@ -206,15 +271,18 @@ flow_handle_input :: proc(fl: ^Flow, r: ^Renderer) {
 	case .Playing:
 		if fl.netplay_active {
 			netplay_playing_poll(fl, r, &fl.netplay)
-			// Escape/P pause through the simulation itself: netplay_
-			// playing_step turns them into the Pause input bit, so both
-			// peers pause on the same frame. The menu below appears once
-			// the (shared) state says paused, whoever pressed it.
+			// The Pause binding pauses through the simulation itself:
+			// gather_input sets the Pause input bit, so both peers pause
+			// on the same frame. The notice and button appear once the
+			// (shared) state says paused, whoever pressed it.
+			if fl.state.paused != fl.netplay_was_paused {
+				fl.netplay_was_paused = fl.state.paused
+				if fl.state.paused {
+					pause_begin(fl, r)
+				}
+			}
 			if fl.state.paused {
-				resume, leave := pause_menu_update(r, &fl.pause_menu)
-				if resume {
-					fl.netplay.pause_pulse = NETPLAY_PAUSE_PULSE_TICKS
-				} else if leave {
+				if pause_menu_update(r, &fl.pause_menu) {
 					// The peer sees a Goodbye and freezes, able to continue
 					// alone (F5) -- the same as any mid-game disconnect.
 					netplay_disconnect(&fl.netplay)
@@ -239,13 +307,11 @@ flow_handle_input :: proc(fl: ^Flow, r: ^Renderer) {
 			}
 		} else if pause_key_pressed(fl) {
 			fl.mode = .Paused
+			pause_begin(fl, r)
 		}
 	case .Paused:
-		resume, leave := false, false
-		if !r.classic {
-			resume, leave = pause_menu_update(r, &fl.pause_menu)
-		}
-		if resume || pause_key_pressed(fl) {
+		leave := !r.classic && pause_menu_update(r, &fl.pause_menu)
+		if pause_key_pressed(fl) {
 			fl.mode = .Playing
 		} else if leave {
 			// Through the usual end of a session, so a score good enough
@@ -274,6 +340,7 @@ flow_handle_input :: proc(fl: ^Flow, r: ^Renderer) {
 // menu.
 @(private = "file")
 flow_finish_session :: proc(fl: ^Flow) {
+	fl.pause_menu.notice, fl.netplay_was_paused = false, false
 	if fl.netplay_active {
 		// A netplay match ending normally (not a mid-game disconnect, which
 		// netplay_poll's Goodbye handling already clears this on) -- close
@@ -349,10 +416,13 @@ flow_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 			if fl.state.players[1].active {
 				input[1] = gather_input(&fl.prefs.saved.bindings[1])
 			}
-			// No binding sets the sim's Pause bit: a local session pauses
-			// through flow (.Paused, the original's kind of pause) instead.
+			// A local session pauses through flow (.Paused, the original's
+			// kind of pause), never the sim's netplay pause.
+			input[0] -= {.Pause}
+			input[1] -= {.Pause}
 			flow_sim_step(fl, r, particles, blurs, notices, input, nil, true)
 		}
+		pause_notice_step(fl)
 		// The step itself moved to the next level if there was one
 		// (sim.session_step), so complete still being set means the list
 		// is finished. Flow only reads the state here, never changes it:
@@ -461,6 +531,7 @@ flow_start_session :: proc(fl: ^Flow, seed: u32, game_type: sim.Game_Type, level
 	fl.session_named = false // a local game asks for names at the end
 	level := fl.defs.levels[level_index].id
 	sim.init(fl.state, sim.Session{seed = seed, level_id = level, game_type = game_type}, fl.defs)
+	fl.pause_menu.notice, fl.netplay_was_paused = false, false
 	fl.mode = .Playing
 }
 
@@ -533,14 +604,7 @@ flow_draw :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 	present(r, fl.state, particles, scale)
 	switch fl.mode {
 	case .Paused:
-		// G_Interface_PauseGame (read in full) draws no on-screen text at
-		// all -- stop sound, pause music, darken the borders, idle. D21:
-		// classic mode matches that exactly; otherwise the pause menu sits
-		// on top, since without it there was no way back to the title.
-		draw_paused_borders()
-		if !r.classic {
-			pause_menu_draw(r, &fl.pause_menu, "")
-		}
+		pause_draw(fl, r, scale, true, "")
 	case .Game_Over:
 		draw_banner("GAME OVER", "")
 	case .Complete:
@@ -557,24 +621,14 @@ flow_draw :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 		if fl.netplay_active {
 			if title, sub := netplay_disconnect_banner(&fl.netplay); title != "" {
 				draw_banner(title, sub)
-			} else if fl.state.paused {
-				draw_paused_borders()
-				pause_menu_draw(r, &fl.pause_menu, "PAUSED FOR BOTH PLAYERS -- EITHER CAN RESUME")
+			} else {
+				pause_draw(fl, r, scale, fl.state.paused, "PAUSED FOR BOTH PLAYERS -- EITHER CAN RESUME")
 			}
+		} else {
+			pause_draw(fl, r, scale, false, "") // the notice fading after a resume
 		}
 	case .Title, .Level_Select, .Credits, .High_Scores, .Score_Entry, .Preferences, .Netplay_Lobby:
 	}
-}
-
-// U_Display::DrawBlackBorders (read in full) blacks out two perm-float-sized
-// strips rather than the whole screen; the exact rects depend on perm floats
-// 0x34/0x35/0x3b whose border-specific semantics weren't pinned down here.
-// Approximated as a full-screen dim, which gives the same "the game froze
-// and darkened" read without claiming pixel-exact border geometry -- refine
-// if a live screenshot comparison calls for it.
-@(private = "file")
-draw_paused_borders :: proc() {
-	rl.DrawRectangle(0, 0, SCREEN_W * WINDOW_SCALE, SCREEN_H * WINDOW_SCALE, rl.Color{0, 0, 0, 120})
 }
 
 @(private = "file")
