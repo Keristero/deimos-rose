@@ -335,6 +335,19 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		flow.mode = .Paused
 		flow.pause_menu.notice = true
 		flow_handle_input(&flow, r) // builds the pause menu's buttons
+	case "restarted":
+		// The check for effects outliving a session: play until particles
+		// are on screen, quit to the menu, start a new game. The shot must
+		// show none of the old game's, and the counts are printed.
+		flow_start_session(&flow, 0x1234_5678, .Single, 0)
+		for i := 0; i < 2000 && (i < 300 || len(particles.live) == 0); i += 1 {
+			_ = sim.session_step(state, {{.Fire_Air, .Fire_Ground}, {}})
+			particles_step(&particles, state)
+			blurs_step(&blurs, state)
+		}
+		fmt.eprintfln("before quitting: %d particles, %d ghosts", len(particles.live), len(blurs.live))
+		flow.mode = .Title // quitting to the menu
+		flow_start_session(&flow, 0x1234_5678, .Single, 0)
 	case "interpolated":
 		// High refresh rate interpolation's own check: a level a few
 		// seconds in, drawn DR_INTERP_ALPHA (default 0.5) of the way from
@@ -482,6 +495,9 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 	rl.ClearBackground(rl.Color{0, 0, 0, 255})
 	flow_draw(&flow, r, &particles, &blurs, &notices, WINDOW_SCALE)
 	diagnostics_draw(&diag, flow.netplay_active, flow.netplay.ping_ms)
+	if name == "restarted" {
+		fmt.eprintfln("new game drawn with: %d particles, %d ghosts", len(particles.live), len(blurs.live))
+	}
 	rl.EndTextureMode()
 	img := rl.LoadImageFromTexture(r.canvas.texture)
 	rl.ImageFlipVertical(&img) // render textures are bottom-up

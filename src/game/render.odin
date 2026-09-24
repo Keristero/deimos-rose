@@ -556,8 +556,10 @@ build_frame :: proc(r: ^Renderer, s: ^sim.State, blurs: ^Blurs, notices: ^Notice
 	terrain_stamp(r, s)
 	scorebar_process(&r.scorebar, s)
 	pv := r.interp_prev
-	if pv != nil && pv.level != s.level {
-		pv = nil // a different level: nothing on screen was there a step ago
+	if pv != nil && (pv.level != s.level || pv.levels_played != s.levels_played || pv.frame > s.frame) {
+		// A different level, or a new session: nothing on screen was there
+		// a step ago.
+		pv = nil
 	}
 	r.view_top, r.side_scroll = f32(s.bgnd.view_top), f32(s.bgnd.side_scroll)
 	if pv != nil {

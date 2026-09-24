@@ -217,7 +217,7 @@ depends = ["build"]
 run = "bash tools/oracle/menu_compare.sh"
 
 [tasks."menu-shot"]
-description = "Render one of our own menu screens headlessly, no comparison (MENU=main [OUT=path]; DR_SHOT_HUE=63 sets the accent on preferences_extras) -- for a quick look, or debug MENU cases from run_menu_shot"
+description = "Render one of our own menu screens headlessly, no comparison (MENU=main [OUT=path]; MENU=restarted checks a new game starts with none of the last one's particles; DR_SHOT_HUE=63 sets the accent on preferences_extras) -- for a quick look, or debug MENU cases from run_menu_shot"
 depends = ["build"]
 # Wrapped in xvfb-run/DISPLAY= exactly like the shots and menu-shots:compare
 # tasks -- running $DR_BUILD/deimos directly (without this) opens a real
@@ -237,7 +237,7 @@ rm -f "$OUT.png"
 XVFB=()
 if command -v xvfb-run >/dev/null; then XVFB=(env DISPLAY= xvfb-run -s "-screen 0 1280x1024x24"); fi
 "${XVFB[@]}" env DR_ASSETS="$DR_ASSETS" DR_MENU_SHOT="$MENU" DR_SHOT="$OUT" \
-  "$DR_BUILD/deimos" 2>&1 | grep -E "^wrote|^cannot" || true
+  "$DR_BUILD/deimos" 2>&1 | grep -E "^wrote|^cannot|particles," || true
 [ -f "$OUT.png" ] || { echo "menu-shot: no image written for MENU=$MENU" >&2; exit 1; }
 echo "$OUT.png"
 '''

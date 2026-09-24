@@ -837,7 +837,7 @@ netplay_begin_session :: proc(fl: ^Flow, nl: ^Netplay, seed: u32, level_index: i
 	}
 	level := fl.defs.levels[level_index].id
 	sim.init(fl.state, sim.Session{seed = seed, level_id = level, game_type = .Co_Op}, fl.defs)
-	fl.pause_menu.notice, fl.netplay_was_paused = false, false
+	flow_session_began(fl)
 	local_player := nl.role == .Host ? 0 : 1
 	net.rollback_session_init(&nl.rs, fl.state, local_player)
 	netplay_name_session(fl, nl, local_player)
@@ -1081,6 +1081,7 @@ netplay_playing_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blu
 	// so both sides pause, and resume, on the same frame.
 	local := gather_input(&fl.prefs.saved.bindings[0])
 	net.rollback_session_advance(&nl.rs, local)
+	flow_effects_sync(fl, particles, blurs, notices)
 	// While paused nothing moves; existing particles and ghosts freeze too.
 	if !fl.state.paused {
 		particles_step(particles, fl.state)

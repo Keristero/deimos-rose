@@ -112,6 +112,9 @@ Flow :: struct {
 	preferences: Preferences,
 
 	pause_menu:         Pause_Menu,
+	// levels_played for the level the particles, ghosts and notices on
+	// screen belong to; 0 once a new session starts (see flow_effects_sync).
+	effects_level:      i32,
 	netplay_was_paused: bool, // the shared pause as last seen, to notice it starting
 	music_paused: bool, // whether flow_music_update last left fl.music paused
 }
@@ -523,10 +526,36 @@ flow_sim_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Bl
 	} else {
 		sim.step(fl.state, input, film)
 	}
+	flow_effects_sync(fl, particles, blurs, notices)
 	particles_step(particles, fl.state)
 	blurs_step(blurs, fl.state)
 	notices_step(notices, fl.state)
 	sounds_step(&r.textures, fl.state)
+}
+
+// After every sim.init: whatever the last session left on screen is not
+// part of this one.
+flow_session_began :: proc(fl: ^Flow) {
+	fl.pause_menu.notice, fl.netplay_was_paused = false, false
+	fl.effects_level = 0
+}
+
+// The original empties its particles, motion-blur ghosts and notices at the
+// start of every level (G_Particle_ResetAtLevelStart 0x42e890,
+// G_MotionBlur_ResetAtLevelStart 0x42d5b0, G_Notice_ResetAtLevelStart
+// 0x42df90). They live outside sim.State here, so they are cleared when
+// levels_played, which sim.level_start bumps, moves on, or a new session
+// begins. Call it after a sim step and before the effects take that step's
+// events, so a new level's first effects survive. flow_draw calls it too,
+// for a session started with no step yet taken.
+flow_effects_sync :: proc(fl: ^Flow, particles: ^Particles, blurs: ^Blurs, notices: ^Notices) {
+	if fl.effects_level == fl.state.levels_played {
+		return
+	}
+	fl.effects_level = fl.state.levels_played
+	clear(&particles.live)
+	clear(&blurs.live)
+	notices^ = {}
 }
 
 // Called from the main menu's 1 Player/2 Player buttons (game/menu_main.odin).
@@ -542,7 +571,7 @@ flow_start_session :: proc(fl: ^Flow, seed: u32, game_type: sim.Game_Type, level
 	fl.session_named = false // a local game asks for names at the end
 	level := fl.defs.levels[level_index].id
 	sim.init(fl.state, sim.Session{seed = seed, level_id = level, game_type = game_type}, fl.defs)
-	fl.pause_menu.notice, fl.netplay_was_paused = false, false
+	flow_session_began(fl)
 	fl.mode = .Playing
 }
 
@@ -572,6 +601,7 @@ flow_load_demo :: proc(fl: ^Flow, index: int) -> bool {
 	fl.has_film = true
 	fl.sim_film = data.film_to_sim(fl.film)
 	sim.init(fl.state, fl.sim_film.session, fl.defs)
+	flow_session_began(fl)
 	fl.demo_index = index
 	fl.mode = .Attract
 	return true
@@ -585,6 +615,9 @@ flow_load_demo :: proc(fl: ^Flow, index: int) -> bool {
 // through raylib's own font directly instead -- the same shortcut
 // draw_debug already takes for its dev overlay.
 flow_draw :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs, notices: ^Notices, scale: f32) {
+	if fl.state.level != nil {
+		flow_effects_sync(fl, particles, blurs, notices)
+	}
 	switch fl.mode {
 	case .Title:
 		main_menu_draw(r, &fl.main_menu)
