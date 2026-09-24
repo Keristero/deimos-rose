@@ -50,16 +50,19 @@ jobs:
       - run: mise run rng:determinism
 
       # Zipped here rather than by upload-artifact, which drops the exec bit.
-      # The game loads assets/ relative to its working directory (D29).
+      # The game loads assets/ relative to its working directory (D29). The
+      # zip is named with the same version the binary and release tag carry.
       - name: Zip the binary with its assets
         run: |
+          ver=$(bash tools/version/version.sh)
           mkdir -p dist/deimos && cp build/deimos dist/deimos/ && cp -r assets dist/deimos/
-          cd dist && zip -9qr ../deimos-linux-amd64.zip deimos
+          cd dist && zip -9qr "../deimos-$ver-linux-amd64.zip" deimos
 
       - uses: actions/upload-artifact@v4
         with:
           name: deimos-linux-amd64
-          path: src/deimos-linux-amd64.zip
+          path: src/deimos-*-linux-amd64.zip
+          if-no-files-found: error
 
   build-windows:
     runs-on: windows-latest
@@ -111,13 +114,15 @@ jobs:
       # exe plus assets/ is the whole program.
       - name: Zip the binary with its assets
         run: |
+          ver=$(bash tools/version/version.sh)
           mkdir -p dist/deimos && cp build/deimos.exe dist/deimos/ && cp -r assets dist/deimos/
-          cd dist && 7z a -bso0 ../deimos-windows-amd64.zip deimos
+          cd dist && 7z a -bso0 "../deimos-$ver-windows-amd64.zip" deimos
 
       - uses: actions/upload-artifact@v4
         with:
           name: deimos-windows-amd64
-          path: src/deimos-windows-amd64.zip
+          path: src/deimos-*-windows-amd64.zip
+          if-no-files-found: error
 
   # One prerelease per push to main, carrying both platforms' zips, tagged
   # with the version both build jobs baked in (tools/version/version.sh --
