@@ -79,32 +79,35 @@ get_u64 :: proc(b: []byte) -> u64 {
 // net/reliable.odin -- so each can be resent verbatim until acked and a
 // duplicate delivery can be told apart from a new message.
 
-// Hello also carries the sender's name (a length byte, then up to
-// HELLO_NAME_MAX bytes), so each side can record both players' high scores
-// under their own names when a netplay game ends. A longer name is cut
-// short rather than refused.
+// Hello also carries who the sender is: their accent hue (u16 degrees,
+// drawn round their ship and on their crosshair and shots) and their name
+// (a length byte, then up to HELLO_NAME_MAX bytes), so each side can record
+// both players' high scores under their own names when a netplay game ends.
+// A longer name is cut short rather than refused.
 HELLO_NAME_MAX :: 20
+HELLO_SIZE_MAX :: 6 + HELLO_NAME_MAX
 
-encode_hello :: proc(buf: []byte, seq: u8, player: u8, name: string) -> int {
+encode_hello :: proc(buf: []byte, seq: u8, player: u8, hue: u16, name: string) -> int {
 	cut := name[:min(len(name), HELLO_NAME_MAX)]
 	buf[0] = u8(Packet_Kind.Hello)
 	buf[1] = seq
 	buf[2] = player
-	buf[3] = u8(len(cut))
-	copy(buf[4:], cut)
-	return 4 + len(cut)
+	buf[3] = u8(hue); buf[4] = u8(hue >> 8)
+	buf[5] = u8(len(cut))
+	copy(buf[6:], cut)
+	return 6 + len(cut)
 }
 
 // `name` is a view into `buf`: copy it out before buf is reused.
-decode_hello :: proc(buf: []byte) -> (seq: u8, player: u8, name: string, ok: bool) {
-	if len(buf) < 4 || Packet_Kind(buf[0]) != .Hello {
-		return 0, 0, "", false
+decode_hello :: proc(buf: []byte) -> (seq: u8, player: u8, hue: u16, name: string, ok: bool) {
+	if len(buf) < 6 || Packet_Kind(buf[0]) != .Hello {
+		return
 	}
-	n := int(buf[3])
-	if n > HELLO_NAME_MAX || len(buf) < 4 + n {
-		return 0, 0, "", false
+	n := int(buf[5])
+	if n > HELLO_NAME_MAX || len(buf) < 6 + n {
+		return
 	}
-	return buf[1], buf[2], string(buf[4:4 + n]), true
+	return buf[1], buf[2], u16(buf[3]) | u16(buf[4]) << 8, string(buf[6:6 + n]), true
 }
 
 encode_ready :: proc(buf: []byte, seq: u8) -> int {
@@ -216,7 +219,7 @@ decode_resync_start :: proc(buf: []byte) -> (seq: u8, assigned_player: u8, total
 // sim.init resolves a level id into a pointer rather than trusting one sent
 // over the wire. Its own stop-and-wait (game/netplay.odin), not
 // net/reliable.odin's channel: STATE_CHUNK_SIZE payloads don't fit that
-// channel's 24-byte buf, sized for Hello/Ready/Goodbye/Start/Resync_Start and
+// channel's small buf, sized for Hello/Ready/Goodbye/Start/Resync_Start and
 // nothing bigger by design.
 STATE_CHUNK_SIZE :: 1024
 

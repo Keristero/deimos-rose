@@ -125,6 +125,10 @@ Netplay :: struct {
 	// recorded under them once it ends (flow_finish_session).
 	local_name: prefs.Name,
 	peer_name:  prefs.Name,
+	// Accent hues (degrees) the same way: this machine's from Prefs, the
+	// peer's from its Hello. Copied into Flow.session_hues with the names.
+	local_hue: int,
+	peer_hue:  int,
 	name_role:  Netplay_Role, // what Enter_Name goes on to: hosting, or the address prompt
 
 	addr_buf:     [NETPLAY_ADDR_MAX]u8,
@@ -291,7 +295,50 @@ netplay_begin_name_entry :: proc(fl: ^Flow, nl: ^Netplay, role: Netplay_Role) {
 	nl.phase = .Enter_Name
 	nl.name_role = role
 	nl.local_name = fl.prefs.saved.netplay_name
+	nl.local_hue = fl.prefs.saved.accent_hue
 	nl.error = ""
+}
+
+// The accent hue slider under the name: a strip of every hue, dragged with
+// the mouse or nudged with Left/Right (which type nothing into the name).
+@(private = "file") ACCENT_SLIDER_W :: 256
+@(private = "file") ACCENT_SLIDER_H :: 8
+@(private = "file") ACCENT_SLIDER_Y :: 284
+@(private = "file") ACCENT_KEY_STEP :: 5
+
+@(private = "file")
+accent_slider_rect :: proc() -> rl.Rectangle {
+	return {SCREEN_W / 2 - ACCENT_SLIDER_W / 2, ACCENT_SLIDER_Y, ACCENT_SLIDER_W, ACCENT_SLIDER_H}
+}
+
+@(private = "file")
+accent_slider_update :: proc(hue: ^int) {
+	if rl.IsKeyPressed(.LEFT) || rl.IsKeyPressedRepeat(.LEFT) {
+		hue^ = prefs.hue_wrap(hue^ - ACCENT_KEY_STEP)
+	}
+	if rl.IsKeyPressed(.RIGHT) || rl.IsKeyPressedRepeat(.RIGHT) {
+		hue^ = prefs.hue_wrap(hue^ + ACCENT_KEY_STEP)
+	}
+	if rl.IsMouseButtonDown(.LEFT) {
+		m := menu_mouse_pos()
+		rect := accent_slider_rect()
+		grab := rl.Rectangle{rect.x - 4, rect.y - 6, rect.width + 8, rect.height + 12}
+		if rl.CheckCollisionPointRec(m, grab) {
+			t := clamp((m.x - rect.x) / rect.width, 0, 1)
+			hue^ = min(int(t * 360), 359)
+		}
+	}
+}
+
+@(private = "file")
+accent_slider_draw :: proc(hue: int) {
+	rect := accent_slider_rect()
+	for i in 0 ..< i32(ACCENT_SLIDER_W) {
+		c := rl.ColorFromHSV(f32(i) * 360 / ACCENT_SLIDER_W, ACCENT_SATURATION, 1)
+		rl.DrawRectangle((i32(rect.x) + i) * WINDOW_SCALE, i32(rect.y) * WINDOW_SCALE, WINDOW_SCALE, ACCENT_SLIDER_H * WINDOW_SCALE, c)
+	}
+	x := (rect.x + f32(hue) * rect.width / 360) * WINDOW_SCALE
+	rl.DrawRectangleLinesEx({x - 3, (rect.y - 3) * WINDOW_SCALE, 7, (rect.height + 6) * WINDOW_SCALE}, 2, rl.WHITE)
 }
 
 @(private = "file")
@@ -307,6 +354,7 @@ netplay_update_enter_name :: proc(fl: ^Flow, nl: ^Netplay) {
 		n.len -= 1
 		n.buf[n.len] = 0
 	}
+	accent_slider_update(&nl.local_hue)
 	if rl.IsKeyPressed(.ESCAPE) {
 		nl.phase = .Menu
 		nl.error = ""
@@ -321,8 +369,9 @@ netplay_update_enter_name :: proc(fl: ^Flow, nl: ^Netplay) {
 		return
 	}
 	nl.error = ""
-	if fl.prefs.saved.netplay_name != n^ {
+	if fl.prefs.saved.netplay_name != n^ || fl.prefs.saved.accent_hue != nl.local_hue {
 		fl.prefs.saved.netplay_name = n^
+		fl.prefs.saved.accent_hue = nl.local_hue
 		prefs_state_save(fl.prefs)
 	}
 	switch nl.name_role {
@@ -355,9 +404,11 @@ netplay_start_hosting :: proc(nl: ^Netplay) {
 // has to drive xdotool through the one truly interactive step left -- each
 // side's own Ready button -- instead of also guessing Main Menu/lobby
 // button pixel coordinates blindly. `mode` is "host" or "join:<address>".
-// The saved name is used as it is, or "Player 1"/"Player 2" without one.
-netplay_lobby_start_from_flag :: proc(nl: ^Netplay, saved_name: prefs.Name, mode: string) {
-	nl.local_name = saved_name
+// The saved name and accent are used as they are, or "Player 1"/"Player 2"
+// without a name.
+netplay_lobby_start_from_flag :: proc(nl: ^Netplay, saved: ^prefs.Prefs, mode: string) {
+	nl.local_name = saved.netplay_name
+	nl.local_hue = saved.accent_hue
 	if nl.local_name.len == 0 {
 		prefs.name_set(&nl.local_name, high_scores_default_last_name(mode == "host" ? 0 : 1))
 	}
@@ -473,7 +524,7 @@ netplay_join :: proc(nl: ^Netplay, text: string) {
 	nl.role = .Guest
 	nl.peer, nl.have_peer = ep, true
 	net.reliable_init(&nl.rc, ep)
-	net.send_hello(&nl.rc, &nl.sock, 1, prefs.name_string(&nl.local_name)) // guest is always player 1; see netplay_start_hosting/netplay_poll for the host's player 0
+	net.send_hello(&nl.rc, &nl.sock, 1, u16(nl.local_hue), prefs.name_string(&nl.local_name)) // guest is always player 1; see netplay_start_hosting/netplay_poll for the host's player 0
 	nl.sent_own_hello = true
 	nl.phase = .Connecting
 	nl.error = ""
@@ -499,7 +550,7 @@ netplay_update_connecting :: proc(nl: ^Netplay, r: ^Renderer) {
 	handshake_done := nl.have_peer && nl.got_peer_hello && nl.sent_own_hello && !nl.rc.pending
 	if handshake_done {
 		nl.phase = .Connected
-		fmt.eprintfln("netplay: connected as %v, playing with %q", nl.role, prefs.name_string(&nl.peer_name)) // tools/netplay/loopback_check.sh greps for "netplay: connected as"
+		fmt.eprintfln("netplay: connected as %v, playing with %q (accent hue %d)", nl.role, prefs.name_string(&nl.peer_name), nl.peer_hue) // tools/netplay/loopback_check.sh greps for "netplay: connected as"
 	}
 }
 
@@ -628,7 +679,7 @@ netplay_poll :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 		}
 		switch kind {
 		case .Hello:
-			seq, _, peer_name, hok := net.decode_hello(buf[:n]) // the peer's player index isn't needed: role/local_player are fixed by who hosted vs. joined, or -- reconnecting -- by Resync_Start's assigned_player
+			seq, _, peer_hue, peer_name, hok := net.decode_hello(buf[:n]) // the peer's player index isn't needed: role/local_player are fixed by who hosted vs. joined, or -- reconnecting -- by Resync_Start's assigned_player
 			if !hok {
 				continue
 			}
@@ -645,14 +696,16 @@ netplay_poll :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 			if is_new {
 				nl.got_peer_hello = true
 				prefs.name_set(&nl.peer_name, peer_name)
+				nl.peer_hue = prefs.hue_wrap(int(peer_hue))
 				if reconnecting {
 					// Whoever rejoins takes over the vacated player, and
 					// their score is recorded under their own name.
 					fl.session_names[1 - nl.rs.local_player] = nl.peer_name
+					fl.session_hues[1 - nl.rs.local_player] = nl.peer_hue
 				}
 			}
 			if (nl.role == .Host || reconnecting) && !nl.sent_own_hello {
-				net.send_hello(&nl.rc, &nl.sock, 0, prefs.name_string(&nl.local_name)) // unused by the receiver either way -- see the comment above
+				net.send_hello(&nl.rc, &nl.sock, 0, u16(nl.local_hue), prefs.name_string(&nl.local_name)) // unused by the receiver either way -- see the comment above
 				nl.sent_own_hello = true
 			}
 			if reconnecting && is_new {
@@ -817,6 +870,8 @@ netplay_begin_session :: proc(fl: ^Flow, nl: ^Netplay, seed: u32, level_index: i
 netplay_name_session :: proc(fl: ^Flow, nl: ^Netplay, local_player: int) {
 	fl.session_names[local_player] = nl.local_name
 	fl.session_names[1 - local_player] = nl.peer_name
+	fl.session_hues[local_player] = nl.local_hue
+	fl.session_hues[1 - local_player] = nl.peer_hue
 	fl.session_named = true
 }
 
@@ -1088,7 +1143,6 @@ netplay_lobby_draw :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 	white := rl.Color{255, 255, 255, 255}
 	dim := rl.Color{190, 190, 190, 255}
 	bad := rl.Color{230, 90, 90, 255}
-	good := rl.Color{110, 220, 140, 255}
 
 	menu_draw_text(r, "NETPLAY", SCREEN_W / 2, 130, white, .Centre)
 
@@ -1117,8 +1171,10 @@ netplay_lobby_draw :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 		if nl.local_name.len < prefs.NAME_MAX && int(rl.GetTime() * 2) % 2 == 0 {
 			name = fmt.tprintf("%s_", name)
 		}
-		menu_draw_text(r, name, SCREEN_W / 2, 240, white, .Centre)
-		menu_draw_text(r, "ESC TO CANCEL", SCREEN_W / 2, 300, dim, .Centre)
+		menu_draw_text(r, name, SCREEN_W / 2, 240, accent_color(nl.local_hue), .Centre)
+		menu_draw_text(r, "ACCENT COLOUR -- DRAG, OR LEFT/RIGHT", SCREEN_W / 2, 266, dim, .Centre)
+		accent_slider_draw(nl.local_hue)
+		menu_draw_text(r, "ESC TO CANCEL", SCREEN_W / 2, 314, dim, .Centre)
 		if nl.error != "" {
 			menu_draw_text(r, nl.error, SCREEN_W / 2, 340, bad, .Centre)
 		}
@@ -1167,8 +1223,10 @@ netplay_lobby_draw :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 
 		you := fmt.tprintf("%s (YOU): %s", prefs.name_string(&nl.local_name), nl.local_ready ? "READY" : "NOT READY")
 		them := fmt.tprintf("%s: %s", prefs.name_string(&nl.peer_name), nl.remote_ready ? "READY" : "NOT READY")
-		menu_draw_text(r, you, SCREEN_W / 2, 335, nl.local_ready ? good : dim, .Centre)
-		menu_draw_text(r, them, SCREEN_W / 2, 355, nl.remote_ready ? good : dim, .Centre)
+		// Each name in its player's accent, so the colours can be told
+		// apart before the game starts.
+		menu_draw_text(r, you, SCREEN_W / 2, 335, accent_color(nl.local_hue), .Centre)
+		menu_draw_text(r, them, SCREEN_W / 2, 355, accent_color(nl.peer_hue), .Centre)
 		if !nl.local_ready {
 			text_button_draw(r, &nl.ready_btn, !host_locked)
 		} else if nl.phase == .Starting {

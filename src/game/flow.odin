@@ -101,6 +101,9 @@ Flow :: struct {
 	// finishes, and "continue alone" keeps the session going without it.
 	session_names: [sim.MAX_PLAYERS]prefs.Name,
 	session_named: bool,
+	// Each player's accent hue from the lobby, drawn while session_named
+	// (build_frame's accents, set in flow_draw).
+	session_hues: [sim.MAX_PLAYERS]int,
 
 	// Saved preferences plus this run's launch flags (game/prefs.odin),
 	// owned by main.odin; the Preferences screen edits them in place.
@@ -531,6 +534,17 @@ flow_draw :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 		netplay_lobby_draw(fl, r, &fl.netplay)
 		return
 	case .Playing, .Paused, .Game_Over, .Complete, .Attract:
+	}
+	// Accents only for a session started from the netplay lobby, where
+	// they were chosen -- never a local game, a demo or classic mode. The
+	// other player's crosshair is left out while connected: it is only
+	// useful to whoever is aiming with it.
+	r.accents = {}
+	if fl.session_named && fl.mode != .Attract && !r.classic {
+		for i in 0 ..< sim.MAX_PLAYERS {
+			r.accents[i] = {on = true, hue = f32(fl.session_hues[i])}
+			r.accents[i].hide_crosshair = fl.netplay_active && i != fl.netplay.rs.local_player
+		}
 	}
 	build_frame(r, fl.state, blurs, notices)
 	present(r, fl.state, particles, scale)

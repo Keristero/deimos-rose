@@ -127,6 +127,9 @@ netplay_name_round_trips_and_is_cleaned :: proc(t: ^testing.T) {
 	n: prefs.Name
 	prefs.name_set(&n, "a\tbéc")
 	testing.expect_value(t, prefs.name_string(&n), "abc") // printable ASCII only
+	testing.expect_value(t, prefs.parse("accent_hue=-30").accent_hue, 330)
+	testing.expect_value(t, prefs.parse("accent_hue=725").accent_hue, 5)
+	testing.expect_value(t, prefs.parse("").accent_hue, prefs.ACCENT_HUE_DEFAULT)
 	prefs.name_set(&n, "abcdefghijklmnopqrs uvwxyz")
 	testing.expect_value(t, prefs.name_string(&n), "abcdefghijklmnopqrs") // cut at 20, trailing space dropped
 }

@@ -17,7 +17,7 @@ Reliable_Channel :: struct {
 	next_seq:  u8,
 	pending:   bool,
 	seq:       u8,
-	buf:       [4 + HELLO_NAME_MAX]byte, // the largest is Hello with a full name
+	buf:       [HELLO_SIZE_MAX]byte, // the largest is Hello with a full name
 	length:    int,
 	sent_at:   time.Time,
 	retries:   int,
@@ -43,9 +43,9 @@ reliable_begin :: proc(rc: ^Reliable_Channel) -> u8 {
 	return rc.seq
 }
 
-send_hello :: proc(rc: ^Reliable_Channel, sock: ^Socket, player: u8, name: string) {
+send_hello :: proc(rc: ^Reliable_Channel, sock: ^Socket, player: u8, hue: u16, name: string) {
 	seq := reliable_begin(rc)
-	rc.length = encode_hello(rc.buf[:], seq, player, name)
+	rc.length = encode_hello(rc.buf[:], seq, player, hue, name)
 	send(sock, rc.to, rc.buf[:rc.length])
 }
 

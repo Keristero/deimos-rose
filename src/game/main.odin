@@ -142,6 +142,14 @@ main :: proc() {
 	// whether the compositing is right, and this makes that reviewable
 	// without a desktop session.
 	if shot != "" {
+		// DR_SHOT_ACCENTS=<hue>,<hue> draws each player with a netplay
+		// accent (flow_draw's r.accents), to check them without a session.
+		accents := os.get_env("DR_SHOT_ACCENTS", context.temp_allocator)
+		for field, i in strings.split(accents, ",", context.temp_allocator) {
+			if hue, ok := strconv.parse_int(strings.trim_space(field)); ok && i < sim.MAX_PLAYERS {
+				renderer.accents[i] = {on = true, hue = f32(prefs.hue_wrap(hue))}
+			}
+		}
 		run_shots(&renderer, state, &particles, &blurs, &notices, playing_film ? &film : nil, shot,
 			os.get_env("DR_SHOT_AT", context.temp_allocator))
 		return
@@ -166,7 +174,7 @@ main :: proc() {
 	if netplay_flag := os.get_env("DR_NETPLAY", context.temp_allocator); netplay_flag != "" {
 		netplay_lobby_init(&flow.netplay, &renderer)
 		flow.mode = .Netplay_Lobby
-		netplay_lobby_start_from_flag(&flow.netplay, ps.saved.netplay_name, netplay_flag)
+		netplay_lobby_start_from_flag(&flow.netplay, &ps.saved, netplay_flag)
 	}
 
 	// Escape means pause/resume/back everywhere in Flow, not an instant quit
@@ -384,6 +392,7 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		netplay_lobby_init(&flow.netplay, r)
 		flow.netplay.phase = .Enter_Name
 		prefs.name_set(&flow.netplay.local_name, "Keristero")
+		flow.netplay.local_hue = 30
 	case "netplay_lobby_join":
 		flow.mode = .Netplay_Lobby
 		netplay_lobby_init(&flow.netplay, r)
@@ -404,6 +413,7 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		flow.netplay.remote_ready = true // local not ready yet, so the Ready button still draws beside the peer's READY
 		prefs.name_set(&flow.netplay.local_name, "Keristero") // sample names, normally from each side's Hello
 		prefs.name_set(&flow.netplay.peer_name, "Supercobra")
+		flow.netplay.local_hue, flow.netplay.peer_hue = 30, 280
 	case "netplay_lobby_connected_host":
 		// Phase 8 stage 2: the host's own view -- level-select arrows above
 		// an enabled Ready (highest_reached forced high enough that

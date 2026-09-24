@@ -82,7 +82,77 @@ Item :: struct {
 	src:     rl.Rectangle,
 	dst:     rl.Rectangle,
 	tint:    rl.Color,
+	effect:  Item_Effect,
+	hue:     f32, // degrees, for effect != .None
 }
+
+// Netplay accents (new content, never in classic mode): drawn through
+// ACCENT_SHADER rather than baked into textures, since the same sprite is
+// shared by both players and, for the ground bomb's "bgbu", by an air
+// weapon too.
+Item_Effect :: enum u8 {
+	None,
+	Recolour,   // the sprite's own shading, in the accent hue
+	Silhouette, // the sprite's shape, flat in the accent hue
+}
+
+// High enough that a white or grey sprite (the glow of the ground weapon's
+// "pbhf", say) still reads clearly as the accent colour against the map.
+ACCENT_SATURATION :: 0.85
+
+// One player's accent for this frame, set by flow_draw.
+Accent :: struct {
+	on:             bool,
+	hue:            f32, // degrees
+	hide_crosshair: bool,
+}
+
+// A player's accent as a plain colour, for menu text.
+accent_color :: proc(hue: int) -> rl.Color {
+	return rl.ColorFromHSV(f32(hue), ACCENT_SATURATION * 0.8, 1)
+}
+
+// Replaces each pixel's hue with the accent's and lifts its saturation to
+// at least ACCENT_SATURATION, keeping its brightness and alpha (Recolour);
+// or ignores the colour altogether for a flat silhouette (Silhouette).
+// raylib's default vertex shader feeds it.
+@(private = "file")
+ACCENT_SHADER :: `#version 330
+in vec2 fragTexCoord;
+in vec4 fragColor;
+uniform sampler2D texture0;
+uniform vec4 colDiffuse;
+uniform float hue;     // 0..1
+uniform float minSat;
+uniform float flatten; // 1 for a silhouette
+out vec4 finalColor;
+
+vec3 rgb2hsv(vec3 c) {
+	vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+	vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+	vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+	float d = q.x - min(q.w, q.y);
+	float e = 1.0e-10;
+	return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+}
+
+vec3 hsv2rgb(vec3 c) {
+	vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+	vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+	return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+}
+
+void main() {
+	vec4 t = texture(texture0, fragTexCoord) * colDiffuse * fragColor;
+	vec3 hsv = rgb2hsv(t.rgb);
+	hsv.x = hue;
+	hsv.y = max(hsv.y, minSat);
+	if (flatten > 0.5) {
+		hsv.z = 1.0;
+	}
+	finalColor = vec4(hsv2rgb(hsv), t.a);
+}
+`
 
 Renderer :: struct {
 	textures: Textures,
@@ -107,6 +177,18 @@ Renderer :: struct {
 	// scaling it to the window (main.odin). Zero for the headless capture
 	// paths, which draw straight to the window as before.
 	canvas:   rl.RenderTexture2D,
+
+	// Netplay accents, per player slot (flow_draw sets them each frame;
+	// all off otherwise), and what draws them.
+	accents:          [sim.MAX_PLAYERS]Accent,
+	accent_shader:    rl.Shader,
+	accent_hue_loc:   i32,
+	accent_sat_loc:   i32,
+	accent_flat_loc:  i32,
+	// The units the ground weapons spawn -- their shots, which take their
+	// owner's accent. Found once from the definitions (build_frame).
+	ground_units:     [dynamic]sim.Res_ID,
+	ground_units_set: bool,
 
 	// High refresh rate interpolation, presentation only: the state as it
 	// was before the latest step, and how far the render is between that
@@ -144,6 +226,10 @@ renderer_init :: proc(r: ^Renderer, root: string, classic: bool = false, audio: 
 	r.shadows = true
 	r.classic = classic
 	r.scorebar_panel = rl.LoadTexture(fmt.ctprintf("%s/images/im16/scor.png", root))
+	r.accent_shader = rl.LoadShaderFromMemory(nil, ACCENT_SHADER)
+	r.accent_hue_loc = rl.GetShaderLocation(r.accent_shader, "hue")
+	r.accent_sat_loc = rl.GetShaderLocation(r.accent_shader, "minSat")
+	r.accent_flat_loc = rl.GetShaderLocation(r.accent_shader, "flatten")
 }
 
 renderer_destroy :: proc(r: ^Renderer) {
@@ -160,6 +246,10 @@ renderer_destroy :: proc(r: ^Renderer) {
 	for &l in r.layers {
 		delete(l)
 	}
+	if r.accent_shader.id != 0 {
+		rl.UnloadShader(r.accent_shader)
+	}
+	delete(r.ground_units)
 }
 
 push_item :: proc(r: ^Renderer, layer: int, it: Item) {
@@ -199,7 +289,16 @@ tint_color :: proc "contextless" (c: u16, amount: i32) -> rl.Color {
 //
 // `prev` is the same object as it was a step ago, when interpolating and it
 // existed then; nil draws it exactly where it is.
-draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shadow: bool, prev: ^sim.Game_Object = nil) {
+//
+// `accent` recolours the sprite (a player's crosshair or shots) or rings it
+// with an outline (their ship); the zero value draws it as it is.
+Draw_Accent :: struct {
+	hue:      f32,
+	recolour: bool,
+	outline:  bool,
+}
+
+draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shadow: bool, prev: ^sim.Game_Object = nil, accent := Draw_Accent{}) {
 	tex, src, ok := frame_rect(&r.textures, o.sprite, o.frame)
 	if r.dump && (!ok || o.visibility <= 0) {
 		id := o.sprite
@@ -273,19 +372,100 @@ draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shad
 	}
 
 	alpha := u8(clamp(o.visibility, 0, 100) * 255 / 100)
-	push_item(r, layer, Item{texture = tex, src = src, dst = dst, tint = {255, 255, 255, alpha}})
+	if accent.outline {
+		// The ship's own shape in its accent, one pixel out in each of
+		// the eight directions, underneath the ship itself.
+		for d in ([8][2]f32{{-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}}) {
+			o := dst
+			o.x += d.x
+			o.y += d.y
+			push_item(r, layer, Item {
+				texture = tex, src = src, dst = o, tint = {255, 255, 255, alpha},
+				effect = .Silhouette, hue = accent.hue,
+			})
+		}
+	}
+	push_item(r, layer, Item {
+		texture = tex, src = src, dst = dst, tint = {255, 255, 255, alpha},
+		effect = accent.recolour ? .Recolour : .None, hue = accent.hue,
+	})
 
+	// A recoloured object's tint and glow take the accent too: the ground
+	// weapon's glow trail "pbgl" is tinted 70% cyan, which would otherwise
+	// wash its accent back out.
+	over := accent.recolour ? Item_Effect.Recolour : .None
 	if o.tint > 0 {
 		push_item(r, layer, Item {
 			texture = tex, src = src, dst = dst,
 			tint = tint_color(o.tint_color, i32(o.tint * 32 / 100)),
+			effect = over, hue = accent.hue,
 		})
 	}
 	if o.glowing {
 		push_item(r, layer, Item {
 			texture = tex, src = src, dst = dst,
 			tint = tint_color(o.glow_color, o.glow_amount),
+			effect = over, hue = accent.hue,
 		})
+	}
+}
+
+// A shot from a ground weapon takes its owner's accent: the units the
+// weapon spawns, and everything those spawn in turn -- for "plbo" (the only
+// ground weapon today) its bomb "plbo" with its glow trail "pbgl" and hit
+// flash "pbhf", and the launch flash "pblf". Keyed by unit rather than
+// sprite, since the bomb's sprite "bgbu" is shared with an air weapon's
+// bullet. Marks drawn into the terrain (craters) keep their colours.
+@(private = "file")
+shot_accent :: proc(r: ^Renderer, s: ^sim.State, e: ^sim.Entity) -> Draw_Accent {
+	if e.owner_player < 0 || int(e.owner_player) >= sim.MAX_PLAYERS || e.draw_to_terrain {
+		return {}
+	}
+	ac := r.accents[e.owner_player]
+	if !ac.on {
+		return {}
+	}
+	if !r.ground_units_set {
+		r.ground_units_set = true
+		for &w in s.defs.weapons {
+			if w.type == sim.WEP_GROUND {
+				for sp in w.spawns {
+					ground_units_add(r, s.defs, sp.unit)
+				}
+			}
+		}
+	}
+	id := s.defs.units[e.unit].id
+	for u in r.ground_units {
+		if u == id {
+			return {hue = ac.hue, recolour = true}
+		}
+	}
+	return {}
+}
+
+@(private = "file")
+ground_units_add :: proc(r: ^Renderer, defs: ^sim.Defs, id: sim.Res_ID) {
+	if id == sim.NONE {
+		return
+	}
+	for u in r.ground_units {
+		if u == id {
+			return // already in, which also stops a unit that spawns itself
+		}
+	}
+	append(&r.ground_units, id)
+	for &u in defs.units {
+		if u.id != id {
+			continue
+		}
+		ground_units_add(r, defs, u.destruct_spawn)
+		ground_units_add(r, defs, u.deletion_spawn)
+		for &st in u.states {
+			for &set in st.spawn_sets {
+				ground_units_add(r, defs, set.spawn)
+			}
+		}
 	}
 }
 
@@ -322,7 +502,7 @@ build_frame :: proc(r: ^Renderer, s: ^sim.State, blurs: ^Blurs, notices: ^Notice
 			if pv != nil && pv.world.entity_used[i] && pv.world.entities[i].number == e.number {
 				before = &pv.world.entities[i].obj
 			}
-			draw_object(r, s, &e.obj, u.casts_shadows, before)
+			draw_object(r, s, &e.obj, u.casts_shadows, before, shot_accent(r, s, e))
 		}
 	}
 	for &p, k in s.players {
@@ -335,14 +515,15 @@ build_frame :: proc(r: ^Renderer, s: ^sim.State, blurs: ^Blurs, notices: ^Notice
 			// first (G_WeaponHandler::BuildDrawList, 0x447ad0: only once
 			// crosshair_shown, +0x117), then the ship. No shadow: the
 			// handler's Process clears the crosshair's +0x38 every step.
-			if p.weapons.crosshair_shown {
+			ac := r.accents[k]
+			if p.weapons.crosshair_shown && !ac.hide_crosshair {
 				cbefore: ^sim.Game_Object
 				if before != nil && pv.players[k].weapons.crosshair_shown {
 					cbefore = &pv.players[k].weapons.crosshair
 				}
-				draw_object(r, s, &p.weapons.crosshair, false, cbefore)
+				draw_object(r, s, &p.weapons.crosshair, false, cbefore, {hue = ac.hue, recolour = ac.on})
 			}
-			draw_object(r, s, &p.obj, true, before)
+			draw_object(r, s, &p.obj, true, before, {hue = ac.hue, outline = ac.on})
 		}
 	}
 	for &o in blurs.live {
@@ -361,7 +542,19 @@ present :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, scale: f32) 
 				dst.y *= scale
 				dst.width *= scale
 				dst.height *= scale
+				if it.effect == .None || r.accent_shader.id == 0 {
+					rl.DrawTexturePro(it.texture, it.src, dst, {0, 0}, 0, it.tint)
+					continue
+				}
+				hue := it.hue / 360
+				sat := f32(ACCENT_SATURATION)
+				flat := f32(it.effect == .Silhouette ? 1 : 0)
+				rl.BeginShaderMode(r.accent_shader)
+				rl.SetShaderValue(r.accent_shader, r.accent_hue_loc, &hue, .FLOAT)
+				rl.SetShaderValue(r.accent_shader, r.accent_sat_loc, &sat, .FLOAT)
+				rl.SetShaderValue(r.accent_shader, r.accent_flat_loc, &flat, .FLOAT)
 				rl.DrawTexturePro(it.texture, it.src, dst, {0, 0}, 0, it.tint)
+				rl.EndShaderMode()
 			}
 		}
 	}

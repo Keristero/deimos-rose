@@ -59,7 +59,13 @@ Prefs :: struct {
 	// The name last entered in the netplay lobby, offered again next time
 	// and recorded against this player's high scores after a netplay game.
 	netplay_name: Name,
+	// This player's accent colour in netplay, a hue in degrees (0..359):
+	// an outline round their ship, their crosshair and their air-to-ground
+	// shots (game/render.odin), so each player can tell theirs apart.
+	accent_hue: int,
 }
+
+ACCENT_HUE_DEFAULT :: 190 // the cyan of the original crosshair
 
 // A player's name, the same 20 printable-ASCII characters the high score
 // name entry allows (game/menu_high_score_entry.odin, from the original's
@@ -94,6 +100,11 @@ name_set :: proc(n: ^Name, text: string) {
 	}
 }
 
+// Any whole number of degrees, brought into 0..359.
+hue_wrap :: proc(h: int) -> int {
+	return ((h % 360) + 360) % 360
+}
+
 // Player 1's defaults are exactly the controls hard-coded before bindings
 // existed (game/main.odin's old gather_input), so an existing player finds
 // nothing moved. Player 2 had no keys at all -- local co-op fed it an empty
@@ -105,6 +116,7 @@ defaults :: proc() -> Prefs {
 	p := Prefs {
 		sfx_volume   = 100,
 		music_volume = 100,
+		accent_hue   = ACCENT_HUE_DEFAULT,
 	}
 	p.bindings[0] = {
 		.Up          = {KEY_UP, KEY_W},
@@ -176,6 +188,7 @@ format :: proc(p: ^Prefs, allocator := context.allocator) -> string {
 	fmt.sbprintf(&sb, "diagnostics=%d\n", p.diagnostics ? 1 : 0)
 	fmt.sbprintf(&sb, "classic=%d\n", p.classic ? 1 : 0)
 	fmt.sbprintf(&sb, "netplay_name=%s\n", name_string(&p.netplay_name))
+	fmt.sbprintf(&sb, "accent_hue=%d\n", p.accent_hue)
 	for b, player in p.bindings {
 		for keys, button in b {
 			fmt.sbprintf(&sb, "p%d.%s=%d,%d\n", player + 1, BUTTON_KEYS[button], keys[0], keys[1])
@@ -218,6 +231,10 @@ parse :: proc(text: string) -> Prefs {
 			parse_flag(value, &p.classic)
 		case "netplay_name":
 			name_set(&p.netplay_name, value)
+		case "accent_hue":
+			if v, ok := strconv.parse_int(value); ok {
+				p.accent_hue = hue_wrap(v)
+			}
 		case:
 			if player, button, ok := parse_binding(name, value, &p); ok {
 				from_file[player] += {button}
