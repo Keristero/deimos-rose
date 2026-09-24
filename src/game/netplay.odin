@@ -129,6 +129,12 @@ Netplay :: struct {
 	// peer's from its Hello. Copied into Flow.session_hues with the names.
 	local_hue: int,
 	peer_hue:  int,
+	// The lobby's hue slider changed local_hue and the peer has not been told
+	// yet: it goes as a fresh Hello, which the peer takes as an update, once
+	// the stop-and-wait channel is free. A Ready pressed meanwhile waits
+	// behind it (ready_unsent), so neither overwrites the other in flight.
+	hue_dirty:    bool,
+	ready_unsent: bool,
 	name_role:  Netplay_Role, // what Enter_Name goes on to: hosting, or the address prompt
 
 	addr_buf:     [NETPLAY_ADDR_MAX]u8,
@@ -299,10 +305,11 @@ netplay_begin_name_entry :: proc(fl: ^Flow, nl: ^Netplay, role: Netplay_Role) {
 	nl.error = ""
 }
 
-// The accent hue slider under the name: the same setting as Preferences'
-// Extras page, so a colour picked in either place is the one used.
+// The lobby's accent hue slider, under the players' names: the same setting
+// as Preferences' Extras page (player 1's hue), so a colour picked in either
+// place is the one used.
 @(private = "file") ACCENT_SLIDER_W :: 256
-@(private = "file") ACCENT_SLIDER_Y :: 284
+@(private = "file") ACCENT_SLIDER_Y :: 410
 
 @(private = "file")
 accent_slider_rect :: proc() -> rl.Rectangle {
@@ -322,7 +329,6 @@ netplay_update_enter_name :: proc(fl: ^Flow, nl: ^Netplay) {
 		n.len -= 1
 		n.buf[n.len] = 0
 	}
-	hue_slider_update(&nl.local_hue, accent_slider_rect(), true)
 	if rl.IsKeyPressed(.ESCAPE) {
 		nl.phase = .Menu
 		nl.error = ""
@@ -337,9 +343,8 @@ netplay_update_enter_name :: proc(fl: ^Flow, nl: ^Netplay) {
 		return
 	}
 	nl.error = ""
-	if fl.prefs.saved.netplay_name != n^ || extra_value(fl.prefs, .Accent_Hue) != nl.local_hue {
+	if fl.prefs.saved.netplay_name != n^ {
 		fl.prefs.saved.netplay_name = n^
-		fl.prefs.saved.extras[.Accent_Hue] = nl.local_hue
 		prefs_state_save(fl.prefs)
 	}
 	switch nl.name_role {
@@ -559,9 +564,25 @@ netplay_update_connected :: proc(fl: ^Flow, nl: ^Netplay, r: ^Renderer) {
 	// progress in a co-op session the host already vouches for is not a new
 	// problem this stage needs to solve.
 	host_locked := nl.role == .Host && nl.level_index >= fl.highest_reached
+	if !nl.local_ready && hue_slider_update(&nl.local_hue, accent_slider_rect(), true) {
+		nl.hue_dirty = true
+	}
 	if !nl.local_ready && !host_locked && text_button_update(r, &nl.ready_btn, mouse, dt) {
 		nl.local_ready = true
-		net.send_ready(&nl.rc, &nl.sock)
+		nl.ready_unsent = true
+	}
+	if !nl.rc.pending {
+		if nl.hue_dirty {
+			nl.hue_dirty = false
+			net.send_hello(&nl.rc, &nl.sock, nl.role == .Host ? 0 : 1, u16(nl.local_hue), prefs.name_string(&nl.local_name))
+			if extra_value(fl.prefs, .Accent_Hue) != nl.local_hue {
+				fl.prefs.saved.extras[.Accent_Hue] = nl.local_hue
+				prefs_state_save(fl.prefs)
+			}
+		} else if nl.ready_unsent {
+			nl.ready_unsent = false
+			net.send_ready(&nl.rc, &nl.sock)
+		}
 	}
 	if rl.IsKeyPressed(.ESCAPE) {
 		net.send_goodbye(&nl.rc, &nl.sock)
@@ -570,7 +591,7 @@ netplay_update_connected :: proc(fl: ^Flow, nl: ^Netplay, r: ^Renderer) {
 		return
 	}
 
-	if nl.role == .Host && nl.local_ready && nl.remote_ready && !nl.rc.pending {
+	if nl.role == .Host && nl.local_ready && !nl.ready_unsent && nl.remote_ready && !nl.rc.pending {
 		seed := flow_random_seed()
 		nl.start_seed, nl.start_level = seed, u8(nl.level_index)
 		net.send_start(&nl.rc, &nl.sock, seed, nl.start_level)
@@ -1140,9 +1161,7 @@ netplay_lobby_draw :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 			name = fmt.tprintf("%s_", name)
 		}
 		menu_draw_text(r, name, SCREEN_W / 2, 240, accent_color(nl.local_hue), .Centre)
-		menu_draw_text(r, "ACCENT COLOUR -- DRAG, OR LEFT/RIGHT", SCREEN_W / 2, 266, dim, .Centre)
-		hue_slider_draw(nl.local_hue, accent_slider_rect())
-		menu_draw_text(r, "ESC TO CANCEL", SCREEN_W / 2, 314, dim, .Centre)
+		menu_draw_text(r, "ESC TO CANCEL", SCREEN_W / 2, 270, dim, .Centre)
 		if nl.error != "" {
 			menu_draw_text(r, nl.error, SCREEN_W / 2, 340, bad, .Centre)
 		}
@@ -1195,6 +1214,10 @@ netplay_lobby_draw :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 		// apart before the game starts.
 		menu_draw_text(r, you, SCREEN_W / 2, 335, accent_color(nl.local_hue), .Centre)
 		menu_draw_text(r, them, SCREEN_W / 2, 355, accent_color(nl.peer_hue), .Centre)
+		if !nl.local_ready {
+			menu_draw_text(r, "YOUR ACCENT COLOUR -- DRAG, OR LEFT/RIGHT", SCREEN_W / 2, ACCENT_SLIDER_Y - 18, dim, .Centre)
+			hue_slider_draw(nl.local_hue, accent_slider_rect())
+		}
 		if !nl.local_ready {
 			text_button_draw(r, &nl.ready_btn, !host_locked)
 		} else if nl.phase == .Starting {

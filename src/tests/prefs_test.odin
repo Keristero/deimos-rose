@@ -143,4 +143,9 @@ netplay_name_round_trips_and_is_cleaned :: proc(t: ^testing.T) {
 	testing.expect_value(t, prefs.parse("accent_colours=0").extras[.Accent_Colours], 0)
 	prefs.name_set(&n, "abcdefghijklmnopqrs uvwxyz")
 	testing.expect_value(t, prefs.name_string(&n), "abcdefghijklmnopqrs") // cut at 20, trailing space dropped
+	// Re-trimming a name in place, as netplay's name entry does on Enter,
+	// used to wipe it: the text is a slice of the name being cleared.
+	prefs.name_set(&n, " Kez ")
+	prefs.name_set(&n, prefs.name_string(&n))
+	testing.expect_value(t, prefs.name_string(&n), "Kez")
 }

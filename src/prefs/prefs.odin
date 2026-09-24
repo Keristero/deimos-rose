@@ -122,20 +122,21 @@ name_string :: proc(n: ^Name) -> string {
 // Keeps printable ASCII only, drops surrounding spaces, and cuts anything
 // past NAME_MAX.
 name_set :: proc(n: ^Name, text: string) {
-	n^ = {}
+	// Built aside and assigned last: `text` may be a slice of `n` itself
+	// (name_string), which clearing `n` first would wipe.
+	out: Name
 	trimmed := strings.trim_space(text)
 	for i in 0 ..< len(trimmed) {
-		if c := trimmed[i]; c >= 0x20 && c <= 0x7e && n.len < NAME_MAX {
-			n.buf[n.len] = c
-			n.len += 1
+		if c := trimmed[i]; c >= 0x20 && c <= 0x7e && out.len < NAME_MAX {
+			out.buf[out.len] = c
+			out.len += 1
 		}
 	}
-	for n.len > 0 && n.buf[n.len - 1] == ' ' {
-		n.len -= 1 // a cut can end on a space
+	for out.len > 0 && out.buf[out.len - 1] == ' ' {
+		out.len -= 1 // a cut can end on a space
+		out.buf[out.len] = 0 // so two equal names compare equal
 	}
-	for i in n.len ..< NAME_MAX {
-		n.buf[i] = 0 // so two equal names compare equal
-	}
+	n^ = out
 }
 
 extra_by_key :: proc(key: string) -> (Extra, bool) {

@@ -231,9 +231,14 @@ set -euo pipefail
 MENU="${MENU:-main}"
 OUT="${OUT:-$DR_SRC/../work/shots/menus/$MENU/ours}"
 mkdir -p "$(dirname "$OUT")"
-DISPLAY= xvfb-run -s "-screen 0 1280x1024x24" env \
-  DR_ASSETS="$DR_ASSETS" DR_MENU_SHOT="$MENU" DR_SHOT="$OUT" \
+rm -f "$OUT.png"
+# Without xvfb-run (not every dev machine has it) the shot opens a window on
+# the current display for a moment instead.
+XVFB=()
+if command -v xvfb-run >/dev/null; then XVFB=(env DISPLAY= xvfb-run -s "-screen 0 1280x1024x24"); fi
+"${XVFB[@]}" env DR_ASSETS="$DR_ASSETS" DR_MENU_SHOT="$MENU" DR_SHOT="$OUT" \
   "$DR_BUILD/deimos" 2>&1 | grep -E "^wrote|^cannot" || true
+[ -f "$OUT.png" ] || { echo "menu-shot: no image written for MENU=$MENU" >&2; exit 1; }
 echo "$OUT.png"
 '''
 
