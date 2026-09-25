@@ -127,6 +127,7 @@ run = [
   "odin check tools/rngcheck $DR_COLL -vet -strict-style",
   "odin check tools/icons   $DR_COLL -vet -strict-style",
   "odin check tools/recolour $DR_COLL -vet -strict-style",
+  "odin check tools/dps     $DR_COLL -vet -strict-style",
 ]
 
 [tasks.test]
@@ -331,6 +332,16 @@ depends = ["setup"]
 run = """
 odin run tools/recolour $DR_COLL $DR_LINK -out:$DR_BUILD/recolour$DR_EXT -- \
   "${RECIPE:-tools/recolour/extra.json}" "$DR_ASSETS"
+"""
+
+[tasks."dps:report"]
+description = "Measure every weapon's damage per second in the simulation alone -- against one target and a cluster of five, bare and with each passive at each level, under every firing policy -- and write a dated HTML report (OUT=../work/reports by default; DPS_SECONDS=60 of play per run, DPS_STAGE=7). See docs/dps-report.md"
+depends = ["setup"]
+# The sim only: no window, no audio device. Runs spread over every core.
+run = """
+odin build tools/dps $DR_COLL $DR_LINK -o:speed -out:$DR_BUILD/dps$DR_EXT && \
+  "$DR_BUILD/dps$DR_EXT" "$DR_ASSETS" "${OUT:-$DR_SRC/../work/reports}" \
+  -seconds:${DPS_SECONDS:-60} -stage:${DPS_STAGE:-7}
 """
 
 [tasks."assets:verify"]

@@ -1,0 +1,563 @@
+// The DPS report (notes/dps-report.md; docs/dps-report.md records how it
+// was read): how much damage each weapon deals, and how much each passive at
+// each of its levels adds to it, measured in the simulation alone.
+//
+//   dps <assets root> <out dir> [-seconds:N] [-stage:N] [-threads:N]
+//
+// Every run is a fresh sim.State on a copy of the stage with nothing placed
+// in it. Once the ship is in play the run gives it the weapon and the
+// passive levels under test, lets the crosshair settle, and then spawns
+// targets where the weapon aims: a stand-in enemy that never moves, fires
+// or dies. Its shields are topped back up after every step, and the damage
+// is what was taken off them. Two scenarios: one target, and a cluster of
+// five around the same point.
+//
+// A weapon is fired under every input policy weapon_policies lists (taps at
+// each cadence, holding, charging and releasing) and the best of them is its
+// DPS, so every number is what a perfect player would get from that loadout.
+// Every run uses the same seed, so a passive's gain is paired with the
+// baseline it is measured against.
+//
+// It writes <out dir>/dps-YYYY-MM-DD.html and prints a summary. No window,
+// no audio: only the sim runs.
+package dps
+
+import "core:fmt"
+import "core:mem/virtual"
+import "core:os"
+import "core:slice"
+import "core:strconv"
+import "core:strings"
+import "core:sync"
+import "core:thread"
+import "core:time"
+
+import "dr:data"
+import "dr:sim"
+
+SEED :: 0x5eed_d95
+STEP_HZ :: 30
+
+// Where the targets stand. Air targets are this far straight ahead of the
+// ship; ground targets stand on the crosshair, where the bombs land.
+// Provisional: picked to be well inside every air weapon's reach (the Bacta
+// Gun's is the shortest, 240 px).
+AIR_RANGE :: 120
+
+// The cluster: a loose V of five, open towards the ship, about as tight as
+// the game's own formations fly. Provisional, by eye.
+CLUSTER := [5]sim.Vec{{0, 0}, {-40, 0}, {40, 0}, {-20, -34}, {20, -34}}
+
+// A target's shields, put back after every step. Far above any one step's
+// damage, so a target is never destroyed, and small enough that an f32 still
+// holds a hundredth of a point.
+TARGET_SHIELDS :: 10000
+
+// The stand-in enemies are copies of these, so that they are the size of a
+// real enemy and cost a shot what a real one does (a shot that hits takes
+// the target's own damage).
+AIR_TARGET_FROM :: "blha"    // BlackHawk
+GROUND_TARGET_FROM :: "tala" // Tank - Laser
+AIR_TARGET :: "dpsa"
+GROUND_TARGET :: "dpsg"
+
+// Steps allowed for the ship to fly in, and for the crosshair to reach its
+// full distance once the weapon is set.
+ENTRY_STEPS :: 600
+SETTLE_STEPS :: 90
+
+// Tap cadences tried, in steps between presses.
+TAP_MIN :: 2
+TAP_MAX :: 40
+
+Scenario :: enum u8 {
+	Single,
+	Cluster,
+}
+
+SCENARIO_NAMES := [Scenario]string {
+	.Single  = "single target",
+	.Cluster = "cluster of 5",
+}
+
+Policy_Kind :: enum u8 {
+	Tap,    // press for one step every `period` steps
+	Hold,   // hold fire throughout (under Auto Charge this autofires)
+	Charge, // charge to the full power level, release, repeat
+}
+
+Policy :: struct {
+	kind:   Policy_Kind,
+	period: i32,
+}
+
+// A loadout under test: nothing, or one passive at one level.
+Config :: struct {
+	has:     bool,
+	passive: sim.Passive,
+	level:   u8,
+}
+
+Weapon_Case :: struct {
+	index:  i32, // in Defs.weapons
+	id:     sim.Res_ID,
+	name:   string,
+	unlock: i32, // minimum_level_available
+	ground: bool,
+	charge: bool, // has an air power-up to charge
+}
+
+Job :: struct {
+	weapon:   int,
+	scenario: Scenario,
+	config:   int,
+	policy:   Policy,
+}
+
+Outcome :: struct {
+	ok:     bool,
+	damage: f64, // over the measured steps, all targets together
+	hits:   i32,
+}
+
+Best :: struct {
+	dps:     f64,
+	hits:    f64, // hits a second, all targets together
+	policy:  Policy,
+	by_kind: [Policy_Kind]Kind_Best, // the best of each kind of policy
+}
+
+Kind_Best :: struct {
+	tried:  bool,
+	dps:    f64,
+	policy: Policy,
+}
+
+Shared :: struct {
+	defs:     ^sim.Defs,
+	weapons:  []Weapon_Case,
+	configs:  []Config,
+	jobs:     []Job,
+	outcomes: []Outcome,
+	steps:    int,
+	next:     int, // the next job to take, atomically
+}
+
+main :: proc() {
+	if len(os.args) < 3 {
+		fmt.eprintln("usage: dps <assets root> <out dir> [-seconds:N] [-stage:N] [-threads:N]")
+		os.exit(2)
+	}
+	root, out_dir := os.args[1], os.args[2]
+	seconds, stage, threads := 60, 7, os.get_processor_core_count()
+	for a in os.args[3:] {
+		key, _, val := strings.partition(a, ":")
+		n, ok := strconv.parse_int(val)
+		if !ok || n < 1 {
+			fmt.eprintfln("dps: bad option %s", a)
+			os.exit(2)
+		}
+		switch key {
+		case "-seconds":
+			seconds = n
+		case "-stage":
+			stage = n
+		case "-threads":
+			threads = n
+		case:
+			fmt.eprintfln("dps: unknown option %s", a)
+			os.exit(2)
+		}
+	}
+
+	arena: virtual.Arena
+	if virtual.arena_init_growing(&arena) != nil {
+		fmt.eprintln("dps: out of memory")
+		os.exit(1)
+	}
+	defer virtual.arena_destroy(&arena)
+	alloc := virtual.arena_allocator(&arena)
+	defs, _ := data.assets_defs_load(root, alloc)
+	if len(defs.levels) == 0 || len(defs.weapons) == 0 {
+		fmt.eprintfln("dps: no game data under %s (run mise run assets:all)", root)
+		os.exit(1)
+	}
+	if _, ok := data.extra_defs_load(root, &defs, alloc); !ok {
+		fmt.eprintfln("dps: cannot load the new content under %s/extra", root)
+		os.exit(1)
+	}
+	if !dps_prepare(&defs, i32(stage), alloc) {
+		os.exit(1)
+	}
+
+	sh := Shared {
+		defs  = &defs,
+		steps = seconds * STEP_HZ,
+	}
+	sh.weapons = dps_weapons(&defs, alloc)
+	sh.configs = dps_configs(alloc)
+	sh.jobs = dps_jobs(&sh, alloc)
+	sh.outcomes = make([]Outcome, len(sh.jobs), alloc)
+	fmt.eprintfln("dps: %d weapons, %d loadouts, %d runs of %d s on %d threads",
+		len(sh.weapons), len(sh.configs), len(sh.jobs), seconds, threads)
+
+	start := time.tick_now()
+	workers := make([]^thread.Thread, max(threads, 1), alloc)
+	for &w in workers {
+		w = thread.create_and_start_with_data(&sh, dps_worker)
+	}
+	for w in workers {
+		thread.join(w)
+		thread.destroy(w)
+	}
+	fmt.eprintfln("dps: ran in %.1f s", time.duration_seconds(time.tick_since(start)))
+
+	failed := 0
+	for o in sh.outcomes {
+		if !o.ok {
+			failed += 1
+		}
+	}
+	if failed > 0 {
+		fmt.eprintfln("dps: %d runs could not be set up", failed)
+		os.exit(1)
+	}
+
+	best := dps_best(&sh, alloc)
+	date := dps_date()
+	html := report_html(&sh, best, date, seconds, stage)
+	if err := os.make_directory_all(out_dir); err != nil && err != .Exist {
+		fmt.eprintfln("dps: cannot make %s: %v", out_dir, err)
+		os.exit(1)
+	}
+	path := fmt.aprintf("%s/dps-%s.html", out_dir, date, allocator = alloc)
+	if err := os.write_entire_file(path, transmute([]u8)html); err != nil {
+		fmt.eprintfln("dps: cannot write %s: %v", path, err)
+		os.exit(1)
+	}
+	report_text(&sh, best)
+	fmt.printfln("wrote %s", path)
+}
+
+dps_date :: proc() -> string {
+	y, m, d := time.date(time.now())
+	return fmt.tprintf("%04d-%02d-%02d", y, int(m), d)
+}
+
+// The stage, emptied, as the only level; and the stand-in targets appended
+// to the units.
+dps_prepare :: proc(d: ^sim.Defs, stage: i32, alloc := context.allocator) -> bool {
+	lv := -1
+	for &l, i in d.levels {
+		if l.number == stage {
+			lv = i
+		}
+	}
+	if lv < 0 {
+		fmt.eprintfln("dps: no stage %d", stage)
+		return false
+	}
+	levels := make([]sim.Level_Def, 1, alloc)
+	levels[0] = d.levels[lv]
+	levels[0].placements = nil
+	d.levels = levels
+
+	units := make([]sim.Unit, len(d.units) + 2, alloc)
+	copy(units, d.units)
+	for pair, k in ([2][2]string{{AIR_TARGET_FROM, AIR_TARGET}, {GROUND_TARGET_FROM, GROUND_TARGET}}) {
+		from := sim.unit_index(d, sim.res_id(pair[0]))
+		if from < 0 {
+			fmt.eprintfln("dps: no unit %s to copy a target from", pair[0])
+			return false
+		}
+		units[len(d.units) + k] = target_unit(&d.units[from], sim.res_id(pair[1]), alloc)
+	}
+	d.units = units
+	return true
+}
+
+// A copy of `u` that stands still, never fires, never changes state and
+// never runs out of shields: one state, the unit's first, stripped of
+// everything that moves or spawns.
+target_unit :: proc(u: ^sim.Unit, id: sim.Res_ID, alloc := context.allocator) -> sim.Unit {
+	t := u^
+	t.id = id
+	t.shields_base_amount = TARGET_SHIELDS
+	t.shields_level_increment = 0
+	t.shields_max_amount = TARGET_SHIELDS
+	t.initial_speed_min, t.initial_speed_max = 0, 0
+	// One to a request, exactly where it is asked for.
+	t.num_in_group_min, t.num_in_group_max = 1, 1
+	t.appears_percent = 100
+	t.x_offset_min, t.x_offset_max, t.y_offset_min, t.y_offset_max = 0, 0, 0, 0
+	t.group_delay_min, t.group_delay_max = 0, 0
+	t.can_be_spawned_only_when_players_active = false
+	t.hittable_when_invisible = true
+	t.can_be_hit_by_player_projectile = true
+	t.harmless_to_players = false
+	states := make([]sim.Unit_State, 1, alloc)
+	st := &states[0]
+	st^ = u.states[0]
+	st.spawn_sets = nil
+	st.rules = nil
+	st.collides = true
+	st.pause_vertical_scrolling = true
+	st.on_timer_min, st.on_timer_max = 0, 0
+	st.on_timer_change_to = ""
+	st.on_counter = 0
+	st.on_counter_change_to = ""
+	st.on_range = 0
+	st.on_range_change_to = ""
+	st.on_hit_change_to = ""
+	st.hunts, st.cyclic_motion, st.flee = false, false, sim.NONE
+	st.hold_position_to_target, st.do_rotate_to_target = false, false
+	st.max_speed, st.delta, st.hold_max_speed, st.hold_delta = 0, 0, 0, 0
+	st.invulnerable_until_all_children_destroyed = false
+	st.invulnerable_until_owner_destroyed = false
+	st.invulnerable_shields_do_not_deplete_on_collision = false
+	st.use_this_state_on_shield_depletion = false
+	st.collides_with_players = false
+	st.delete_on_no_active_players, st.destruct_on_no_active_players = false, false
+	st.destruct_if_vertical_scrolling_not_paused = false
+	st.lock_to_owner_loc, st.link_to_owner_loc, st.orbit_owner = false, false, false
+	st.pass_hits_to_owner = false
+	st.entry_sound = sim.NONE
+	st.collision_spawn = sim.NONE
+	st.particles = sim.NONE
+	st.required_visibility_percent, st.visibility_delta_percent = 100, 0
+	t.states = states
+	return t
+}
+
+// Every air weapon, and the ground weapon, in the order they unlock.
+dps_weapons :: proc(d: ^sim.Defs, alloc := context.allocator) -> []Weapon_Case {
+	out := make([dynamic]Weapon_Case, alloc)
+	for &w, i in d.weapons {
+		if w.type != sim.WEP_AIR && w.type != sim.WEP_GROUND {
+			continue
+		}
+		append(&out, Weapon_Case {
+			index  = i32(i),
+			id     = w.id,
+			unlock = w.minimum_level_available,
+			name   = strings.trim_prefix(strings.trim_prefix(w.name, "Air - "), "Ground - "),
+			ground = w.type == sim.WEP_GROUND,
+			charge = w.type == sim.WEP_AIR && !w.auto_repeat &&
+				(w.powerup_air_activation_spawn != sim.NONE || w.powerup_air_release_spawn != sim.NONE),
+		})
+	}
+	slice.sort_by(out[:], proc(a, b: Weapon_Case) -> bool {
+		if a.ground != b.ground {
+			return !a.ground
+		}
+		return a.unlock != b.unlock ? a.unlock < b.unlock : a.index < b.index
+	})
+	return out[:]
+}
+
+// The baseline, then every level of every passive.
+dps_configs :: proc(alloc := context.allocator) -> []Config {
+	out := make([dynamic]Config, alloc)
+	append(&out, Config{})
+	for &def, pa in sim.PASSIVES {
+		for l in 1 ..= def.levels {
+			append(&out, Config{true, pa, l})
+		}
+	}
+	return out[:]
+}
+
+config_levels :: proc(c: Config) -> (lv: sim.Passive_Levels) {
+	if c.has {
+		lv[c.passive] = c.level
+	}
+	return
+}
+
+config_name :: proc(c: Config) -> string {
+	if !c.has {
+		return "none"
+	}
+	return fmt.tprintf("%s %d", passive_name(c.passive), c.level)
+}
+
+passive_name :: proc(p: sim.Passive) -> string {
+	n, _ := fmt.enum_value_to_string(p)
+	s, _ := strings.replace_all(n, "_", " ", context.temp_allocator)
+	return s
+}
+
+// The policies worth trying for a weapon under a loadout: taps at every
+// cadence; for a weapon with a power-up, charging; and, under Auto Charge
+// (where holding autofires) or for an auto-repeat weapon, holding. Holding a
+// charge weapon otherwise sits on a full charge until it overheats, which
+// hurts the ship, so it is left out.
+weapon_policies :: proc(w: Weapon_Case, c: Config, out: ^[dynamic]Policy) {
+	for p in TAP_MIN ..= TAP_MAX {
+		append(out, Policy{.Tap, i32(p)})
+	}
+	if w.ground {
+		return
+	}
+	auto_charge := c.has && c.passive == .Auto_Charge
+	if w.charge {
+		append(out, Policy{.Charge, 0})
+	}
+	if auto_charge || !w.charge {
+		append(out, Policy{.Hold, 0})
+	}
+}
+
+dps_jobs :: proc(sh: ^Shared, alloc := context.allocator) -> []Job {
+	out := make([dynamic]Job, alloc)
+	pols := make([dynamic]Policy, context.temp_allocator)
+	for w, wi in sh.weapons {
+		for c, ci in sh.configs {
+			clear(&pols)
+			weapon_policies(w, c, &pols)
+			for sc in Scenario {
+				for p in pols {
+					append(&out, Job{wi, sc, ci, p})
+				}
+			}
+		}
+	}
+	return out[:]
+}
+
+dps_worker :: proc(data: rawptr) {
+	sh := (^Shared)(data)
+	for {
+		i := sync.atomic_add(&sh.next, 1)
+		if i >= len(sh.jobs) {
+			return
+		}
+		j := sh.jobs[i]
+		sh.outcomes[i] = dps_run(sh.defs, sh.weapons[j.weapon], j.scenario, config_levels(sh.configs[j.config]), j.policy, sh.steps)
+		free_all(context.temp_allocator)
+	}
+}
+
+// The fire button for this step under the policy, from the state before it.
+policy_fire :: proc(s: ^sim.State, h: ^sim.Weapon_Handler, pol: Policy, k: int) -> bool {
+	switch pol.kind {
+	case .Tap:
+		return k % int(pol.period) == 0
+	case .Hold:
+		return true
+	case .Charge:
+		pu := &h.air_powerup
+		full := pu.state == 1 && pu.percent >= 100 || pu.state == 2
+		if sim.air_auto_charge(s, h) {
+			// It charges while fire is let go; a press releases it.
+			return full
+		}
+		// Hold to charge, let go for a step to release it at full power, and
+		// hold again straight away so the next charge starts as soon as the
+		// release is spent.
+		return !full
+	}
+	return false
+}
+
+dps_run :: proc(d: ^sim.Defs, w: Weapon_Case, sc: Scenario, levels: sim.Passive_Levels, pol: Policy, steps: int) -> (o: Outcome) {
+	s := new(sim.State)
+	defer free(s)
+	sim.init(s, sim.Session{seed = SEED, level_id = d.levels[0].id, game_type = .Single}, d)
+	p := &s.players[0]
+	for i := 0; i < ENTRY_STEPS && p.state != .Playing; i += 1 {
+		sim.session_step(s, {})
+	}
+	if p.state != .Playing {
+		return
+	}
+	p.passives = levels
+	h := &p.weapons
+	sim.change_weapon(s, h, w.ground ? sim.WEP_GROUND : sim.WEP_AIR, w.index)
+	sim.player_sprite_from_weapon(s, p)
+	for _ in 0 ..< SETTLE_STEPS {
+		sim.session_step(s, {})
+	}
+	if (w.ground ? h.ground.weapon : h.air.weapon) != w.index {
+		return
+	}
+
+	centre := w.ground ? h.crosshair.loc : p.loc + {0, -AIR_RANGE}
+	offsets := sc == .Single ? CLUSTER[:1] : CLUSTER[:]
+	targets: [len(CLUSTER)]sim.Entity_Ref
+	anchors: [len(CLUSTER)]sim.Vec
+	for off, i in offsets {
+		req := sim.spawn_request(sim.res_id(w.ground ? GROUND_TARGET : AIR_TARGET))
+		req.loc = centre + off
+		req.stationary = true
+		targets[i] = sim.eg_request_spawn(s, req)
+		if !sim.ref_valid(s, targets[i]) {
+			return
+		}
+		e := sim.entity_at(s, targets[i].index)
+		e.appear_delay = 0
+		anchors[i] = centre + off
+		e.loc = anchors[i]
+	}
+
+	button: sim.Button = w.ground ? .Fire_Ground : .Fire_Air
+	for k in 0 ..< steps {
+		b: sim.Buttons
+		if policy_fire(s, h, pol, k) {
+			b += {button}
+		}
+		sim.session_step(s, {b, {}})
+		for i in 0 ..< len(offsets) {
+			if !sim.ref_valid(s, targets[i]) {
+				return
+			}
+			e := sim.entity_at(s, targets[i].index)
+			if drop := TARGET_SHIELDS - e.shields; drop > 0 {
+				o.damage += f64(drop)
+				o.hits += 1
+			}
+			e.shields = TARGET_SHIELDS
+			e.loc, e.vel = anchors[i], {}
+		}
+	}
+	o.ok = true
+	return
+}
+
+// For each weapon, scenario and loadout, the best policy's DPS.
+dps_best :: proc(sh: ^Shared, alloc := context.allocator) -> [][Scenario][]Best {
+	out := make([][Scenario][]Best, len(sh.weapons), alloc)
+	for &w in out {
+		for &sc in w {
+			sc = make([]Best, len(sh.configs), alloc)
+			for &b in sc {
+				b.dps = -1
+			}
+		}
+	}
+	secs := f64(sh.steps) / STEP_HZ
+	for j, i in sh.jobs {
+		o := sh.outcomes[i]
+		b := &out[j.weapon][j.scenario][j.config]
+		dps := o.damage / secs
+		if dps > b.dps {
+			b.dps, b.hits, b.policy = dps, f64(o.hits) / secs, j.policy
+		}
+		if k := &b.by_kind[j.policy.kind]; !k.tried || dps > k.dps {
+			k^ = {true, dps, j.policy}
+		}
+	}
+	return out
+}
+
+policy_name :: proc(p: Policy) -> string {
+	switch p.kind {
+	case .Tap:
+		return fmt.tprintf("tap every %d", p.period)
+	case .Hold:
+		return "hold"
+	case .Charge:
+		return "charge"
+	}
+	return ""
+}
