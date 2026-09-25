@@ -16,7 +16,7 @@ Options:
 - `DPS_SECONDS=` sets the play measured per run (60 by default).
 - `DPS_STAGE=` sets the stage (7 by default).
 
-A run takes about 3 s across 32 cores, which is 18,672 runs of 60 s of
+A run takes about 8 s across 32 cores, which is 29,064 runs of 60 s of
 play each.
 
 ## Method
@@ -42,9 +42,11 @@ steps would otherwise end on a full charge. The tool zeroes `air_idle`
 after each settle step. That is the state holding fire would leave,
 without the shots holding would fire.
 
-**Targets.** Two stand-in units are appended to `Defs.units`:
+**Targets.** Four stand-in units are appended to `Defs.units`:
 - `dpsa`, copied from the BlackHawk, for air weapons;
-- `dpsg`, copied from the Laser Tank, for the Plasma Bomb.
+- `dpsg`, copied from the Laser Tank, for the Plasma Bomb;
+- `dpwa` and `dpwg`, the same two copied again with 0.8 shields, for the
+  wave.
 
 Each copy is a group of one with no placement offsets, spawned stationary.
 It has one state: the unit's first, stripped of timers, rules, spawn sets,
@@ -54,8 +56,16 @@ keeps:
 - the source unit's `damage`, so a shot that hits is spent as it would be
   against the real enemy.
 
-After every step, the run adds up how much the targets' shields dropped,
-then puts them back to 10,000.
+A copy leaves nothing when it dies: no destruct spawn, coins, random bonus
+or obstacle, so nothing it drops can take or give a hit.
+
+Outside the wave, the run adds up how much the targets' shields dropped
+after every step, then puts them back to 10,000, so they never die.
+
+In the wave, the targets die. Each step the run takes what each target's
+shields dropped since the last step. A target shot down counts only the
+shields it had left, so damage past a kill is not counted, unless it
+carries on to another target. It is replaced 12 steps later.
 
 **Scenarios.**
 - **Single target:** one target 120 px straight ahead of the ship for air
@@ -65,6 +75,12 @@ then puts them back to 10,000.
   two 34 px further back.
 - **Target behind:** the single target mirrored behind the ship, at the
   same distance.
+- **Wave of 9:** three rows of three, 40 px apart across and 34 px deep,
+  the first row where the single target stands. Each target has 0.8
+  shields, about a stage 9–12 air enemy's, and is replaced 12 steps after
+  it dies. This is the one scenario where overkill is wasted, and where
+  damage that carries through a kill (the Discharge Beam's leftover and
+  its shrapnel) counts.
 
 The ground target is placed ahead or behind by rule, not on the crosshair
 itself. Otherwise a passive that turns the crosshair round (Ground
@@ -104,12 +120,13 @@ been confirmed.
 ## How the request was read
 
 - **"A fast DPS check for each weapon."** Every air weapon and the ground
-  weapon in `Defs.weapons` are checked, the Chaingun included. It is
-  loaded from `assets/extra` and flown without a New Weapons session.
+  weapon in `Defs.weapons` are checked, the Chaingun and the Discharge
+  Beam included. They are loaded from `assets/extra` and flown without a
+  New Weapons session.
 - **"Every passive, at each possible level."** One passive at a time, not
   combinations. There are 25 levels, and combinations would multiply them.
 - **The report.** There is one section per set. Weapons are sorted by
-  the mean of their three scenarios. Each is a `<details>` element that
+  the mean of their four scenarios. Each is a `<details>` element that
   opens to its passives, ranked by the DPS they add. The overall list
   averages each passive level's DPS added over the set's weapons and
   scenarios. A second column averages it over only the weapons the
@@ -126,34 +143,42 @@ been confirmed.
 
 ### Primary fire
 
-| Weapon | Single | Cluster | Behind | Best policy |
-|---|---|---|---|---|
-| Bacta Gun | 5.98 | 8.96 | 0 | tap every 2 |
-| Rear Gun | 4.00 | 4.00 | 4.00 | tap every 3 |
-| Photon Beam | 5.33 | 5.33 | 0 | tap every 3 |
-| Plasma Bomb | 4.90 | 4.90 | 0 | tap every 17 |
-| Chaingun | 4.83 | 4.83 | 0 | tap every 31 |
-| Ion Cannon | 2.40 | 2.40 | 0 | tap every 5 |
+| Weapon | Single | Cluster | Behind | Wave | Best policy (single) |
+|---|---|---|---|---|---|
+| Bacta Gun | 5.98 | 8.96 | 0 | 8.55 | tap every 2 |
+| Discharge Beam | 6.00 | 6.00 | 0 | 8.90 | tap every 2 |
+| Rear Gun | 4.00 | 4.00 | 4.00 | 4.33 | tap every 3 |
+| Photon Beam | 5.33 | 5.33 | 0 | 5.55 | tap every 3 |
+| Chaingun | 4.83 | 4.83 | 0 | 3.09 | tap every 31 |
+| Plasma Bomb | 4.90 | 4.90 | 0 | 1.40 | tap every 17 |
+| Ion Cannon | 2.40 | 2.40 | 0 | 3.58 | tap every 5 |
 
-Ranked by the three-scenario mean, the Rear Gun (4.00 everywhere) comes
-second, after the Bacta Gun. Every other weapon is blind behind.
+Ranked by the four-scenario mean. Only the Rear Gun reaches a target
+behind.
 
-Passive changes that are not 0, as single / cluster / behind:
+Passive changes that are not 0, as single / cluster / behind / wave:
 
 | Passive | Weapon | Change | DPS added |
 |---|---|---|---|
-| Weapon 1 (Ion) 3 | Ion Cannon | +99.7% / +499.2% / 0 | +4.78 |
-| Weapon 2 (Bacta) 3 | Bacta Gun | +50.0% / +100.0% / 0 | +3.98 |
-| Weapon 3 (Rear) 2 | Rear Gun | +49.9% / +49.9% / +49.9% | +2.00 |
-| Weapon 1 (Ion) 2 | Ion Cannon | +99.7% / +99.7% / 0 | +1.59 |
-| Weapon 3 (Rear) 1 | Rear Gun | +33.2% / +33.2% / +33.2% | +1.33 |
-| Weapon 4 (Photon) 3 | Photon Beam | +28.5% / +28.5% / 0 | +1.01 |
-| Weapon 4 (Photon) 1, 2 | Photon Beam | +12.5% / +12.5% / 0 | +0.44 |
-| Ground Variant 1 1 | Plasma Bomb | −100% / −100% / 4.46 from 0 | −1.78 |
-| Ground Variant 1 2, 3 | Plasma Bomb | −100% / −100% / 3.97 from 0 | −1.95 |
+| Weapon 1 (Ion) 3 | Ion Cannon | +99.7% / +499.2% / 0 / +300.4% | +6.28 |
+| Weapon 2 (Bacta) 3 | Bacta Gun | +50.0% / +100.0% / 0 / +58.6% | +4.24 |
+| Weapon 4 (Photon) 3 | Photon Beam | +28.5% / +28.5% / 0 / +178.4% | +3.23 |
+| Weapon 1 (Ion) 2 | Ion Cannon | +99.7% / +99.7% / 0 / +211.0% | +3.08 |
+| Weapon 4 (Photon) 2 | Photon Beam | +12.5% / +12.5% / 0 / +143.7% | +2.33 |
+| Weapon 3 (Rear) 2 | Rear Gun | +49.9% / +49.9% / +49.9% / +10.9% | +1.61 |
+| Weapon 3 (Rear) 1 | Rear Gun | +33.2% / +33.2% / +33.2% / +10.9% | +1.11 |
+| Weapon 1 (Ion) 1 | Ion Cannon | 0 / 0 / 0 / +84.0% | +0.75 |
+| Weapon 2 (Bacta) 2 | Bacta Gun | 0 / 0 / 0 / +24.4% | +0.52 |
+| Weapon 2 (Bacta) 1 | Bacta Gun | 0 / 0 / 0 / +16.7% | +0.36 |
+| Weapon 4 (Photon) 1 | Photon Beam | +12.5% / +12.5% / 0 / 0 | +0.33 |
+| Ground Variant 1 1 | Plasma Bomb | −100% / −100% / 4.46 from 0 / −100% | −1.69 |
+| Ground Variant 1 2, 3 | Plasma Bomb | −100% / −100% / 3.97 from 0 / −100% | −1.81 |
 
-Every other passive level is 0 on every weapon. That includes Auto Charge
-and Improved Charge, since neither touches a shot that is not charged.
+Every other passive level is 0 on every weapon, apart from a +0.1% on the
+Discharge Beam's wave from Improved Manoeuvring 2 (see Method). That
+includes Auto Charge and Improved Charge, since neither touches a shot
+that is not charged. No weapon passive touches the Discharge Beam: it has
+none of its own.
 
 The Plasma Bomb's burst grows by one bomb per stage, up to 8, so its DPS
 depends on the stage. Taking the best cadence at each stage:
@@ -165,20 +190,21 @@ depends on the stage. Taking the best cadence at each stage:
 
 ### Charge shots
 
-| Weapon | Single | Cluster | Behind |
-|---|---|---|---|
-| Chaingun | 3.02 | 3.02 | 2.94 |
-| Bacta Gun | 3.43 | 3.44 | 0 |
-| Rear Gun | 2.98 | 2.98 | 0.02 |
-| Ion Cannon | 2.84 | 2.84 | 0 |
-| Photon Beam | 1.20 | 1.20 | 0 |
+| Weapon | Single | Cluster | Behind | Wave |
+|---|---|---|---|---|
+| Chaingun | 3.02 | 3.02 | 2.94 | 3.09 |
+| Rear Gun | 2.98 | 2.98 | 0.02 | 3.39 |
+| Bacta Gun | 3.43 | 3.44 | 0 | 1.63 |
+| Discharge Beam | 2.90 | 2.90 | 0 | 1.85 |
+| Ion Cannon | 2.84 | 2.84 | 0 | 1.60 |
+| Photon Beam | 1.20 | 1.20 | 0 | 3.07 |
 
-| Passive | Change on each weapon | DPS added, average |
+| Passive | Change on each weapon, ahead | DPS added, average |
 |---|---|---|
-| Improved Charge 1 | +1.3% (Rear) to +9.1% (Ion) | +0.12 |
-| Improved Charge 2 | +6.6% (Chaingun) to +12.9% (Ion) | +0.21 |
-| Improved Charge 3 | +11.2% (Rear) to +17.9% (Ion) | +0.30 |
-| Auto Charge 1, 2 | −38.8% to −42.8% | −0.83 |
+| Improved Charge 1 | +1.3% (Rear) to +9.9% (Discharge) | +0.12 |
+| Improved Charge 2 | +6.6% (Chaingun) to +19.8% (Discharge) | +0.21 |
+| Improved Charge 3 | +11.2% (Rear) to +29.7% (Discharge) | +0.33 |
+| Auto Charge 1, 2 | −38.8% to −44.0% | −0.88 |
 
 The weapon passives add at most +0.05 DPS here. That comes through the
 plain shot the first press fires before a charge begins. The Rear Gun's
@@ -198,7 +224,7 @@ plain shot the first press fires before a charge begins. The Rear Gun's
     enemy count: Weapon 1 level 3's +6 lanes, in the cluster.
   - *Extra Volley*, which fires again 2 steps later, is what the gains are
     made of.
-- **Primary fire beats charge shots for five of six weapons.** Measured
+- **Primary fire beats charge shots for six of seven weapons.** Measured
   over the whole run, a charge cycle deals less than tapping does in the
   same time. The Photon Beam's charge is under a quarter of its taps
   (1.20 against 5.33). The exception is the Ion Cannon, whose charge
@@ -225,6 +251,20 @@ plain shot the first press fires before a charge begins. The Rear Gun's
   apart, exactly the hit delay. The Volley Delay cut packs them closer,
   so some land inside the delay and are ignored. Level 3's extra lane
   lands on the same spot, so it adds nothing.
+- **The wave rewards spread and pierce, and punishes slow heavy hits.**
+  With 0.8 shields a target dies to two or three hits, so what counts is
+  how many targets a weapon reaches, not how hard it hits one. The
+  passives that add lanes gain far more here than ahead: Weapon 4 level 2
+  +144%, Weapon 1 level 2 +211%. The Plasma Bomb and the Chaingun's burst
+  fall to 1.40 and 3.09, since most of each burst lands on a target
+  already dead. Charge releases lose the same way, except where they
+  spread (the Photon Beam's and the Rear Gun's).
+- **The Discharge Beam leads the wave's straight lines.** Its pulse kills
+  the front target and carries the rest into the next, and its shrapnel
+  reaches the columns beside it: 8.90, against 4.33 to 5.55 for the other
+  single-lane weapons. Its charged beam carries 7.5 into a column only
+  2.4 deep, so in the wave most of it is overkill, and Improved Charge adds
+  nothing there.
 - **Straight-firing weapons get nothing from a cluster.** Only the Bacta
   Gun's spread (+50%) and Weapon 1 level 3's wide lanes reach past the
   front target, which soaks every other shot.
@@ -233,8 +273,9 @@ plain shot the first press fires before a charge begins. The Rear Gun's
 
 Each of these was picked by eye and would change the numbers:
 - the 120 px range to air targets, ahead and behind;
-- the V's spacing;
-- the BlackHawk and Laser Tank as the stand-ins.
+- the V's spacing, and the wave's;
+- the BlackHawk and Laser Tank as the stand-ins;
+- the wave's 0.8 shields and its 12-step respawn.
 
 The range matters most for passives that change reach (Projectile
 Lifetime, Accelerating Projectiles). At 120 px they cannot show a gain.

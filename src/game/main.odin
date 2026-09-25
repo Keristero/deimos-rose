@@ -384,19 +384,23 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 			state.loadout.boards[1].row = .Ready
 		}
 		flow.mode = .Playing
-	case "chaingun", "chaingun_charge":
-		// The Chaingun in play (docs/new-weapons.md), on stage 7 once its
-		// enemies are about: in chaingun, the burst a moment after a press;
-		// in chaingun_charge, the aimed volleys a moment after a charge is
-		// let go. Player 1 is handed the Chaingun and the loadout screen is
-		// skipped. New content: a visual check.
+	case "chaingun", "chaingun_charge", "discharge", "discharge_charge":
+		// A new weapon in play (docs/new-weapons.md) once its stage's
+		// enemies are about: the Chaingun on stage 7, the Discharge Beam on
+		// stage 10. In chaingun, the burst a moment after a press; in
+		// chaingun_charge, the aimed volleys a moment after a charge is let
+		// go. In discharge, a pulse as it fades; in discharge_charge, the
+		// charged beam the step after it is let go. Player 1 is handed the
+		// weapon and the loadout screen is skipped. New content: a visual
+		// check.
 		ps.saved.classic, ps.launch.classic, r.classic = false, false, false
 		extra_set(ps, .New_Weapons, 1)
-		flow_start_session(&flow, 0x1234_5678, .Single, 6)
+		beam := strings.has_prefix(name, "discharge")
+		flow_start_session(&flow, 0x1234_5678, .Single, beam ? 9 : 6)
 		state.loadout.shown = true
 		p := &state.players[0]
 		for &w, i in defs.weapons {
-			if w.id == sim.res_id("aicg") {
+			if w.id == sim.res_id(beam ? "aidb" : "aicg") {
 				p.weapons.loadout[0] = i32(i)
 				sim.change_weapon(state, &p.weapons, sim.WEP_AIR, i32(i))
 				sim.player_sprite_from_weapon(state, p)
@@ -404,17 +408,27 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		}
 		// An idle ship is shot down about 220 steps in.
 		warm, hold, after := 180, 4, 6
-		if name == "chaingun_charge" {
+		switch name {
+		case "chaingun_charge":
 			warm, hold, after = 120, 70, 12
+		case "discharge":
+			warm, hold, after = 180, 1, 1
+		case "discharge_charge":
+			warm, hold, after = 120, 90, 1
 		}
 		for _ in 0 ..< warm {
 			_ = sim.session_step(state, {})
 		}
+		// Taken now, so drawing the shot does not clear the effects below
+		// as a new level's.
+		flow_effects_sync(&flow, &particles, &blurs, &notices)
 		for _ in 0 ..< hold {
 			_ = sim.session_step(state, {{.Fire_Air}, {}})
+			particles_step(&particles, state)
 		}
 		for _ in 0 ..< after {
 			_ = sim.session_step(state, {})
+			particles_step(&particles, state)
 		}
 		flow.mode = .Playing
 	case "main_netplay":

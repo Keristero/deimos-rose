@@ -1,12 +1,14 @@
 // Recolours extracted sprite plates into new ones, for new content that
 // wants the game's own art in another colour: the Chaingun's dark grey
-// ships are the Bacta Gun's green ones (docs/new-weapons.md).
+// ships are the Bacta Gun's green ones, the Discharge Beam's red ones the
+// Ion Cannon's yellow (docs/new-weapons.md).
 //
 //   recolour <recipe.json> <assets root>
 //
 // A recipe lists plates to write. Each takes a plate of sprites/index.json,
 // and every pixel whose hue lies in [hue_min, hue_max] (degrees) has its
-// saturation and value scaled; everything else, and the alpha, is kept:
+// saturation and value scaled, and its hue turned by hue_shift (degrees,
+// 0 if left out); everything else, and the alpha, is kept:
 //
 //   {"plates": [
 //     {"from": "PL1G", "to": "PL1K", "hue_min": 70, "hue_max": 170,
@@ -38,6 +40,7 @@ Plate :: struct {
 	hue_max:    f32,
 	saturation: f32,
 	value:      f32,
+	hue_shift:  f32,
 }
 
 Recipe :: struct {
@@ -123,7 +126,7 @@ main :: proc() {
 	fmt.println("wrote", path)
 }
 
-// A pixel in the plate's hue band, faded towards grey and darkened.
+// A pixel in the plate's hue band, turned, faded towards grey and darkened.
 recolour :: proc(c: rl.Color, p: ^Plate) -> rl.Color {
 	if c.a == 0 {
 		return c
@@ -132,7 +135,13 @@ recolour :: proc(c: rl.Color, p: ^Plate) -> rl.Color {
 	if hsv.y < 0.05 || hsv.x < p.hue_min || hsv.x > p.hue_max {
 		return c // grey already, or not in the band
 	}
-	out := rl.ColorFromHSV(hsv.x, clamp(hsv.y * p.saturation, 0, 1), clamp(hsv.z * p.value, 0, 1))
+	hue := hsv.x + p.hue_shift
+	if hue < 0 {
+		hue += 360
+	} else if hue >= 360 {
+		hue -= 360
+	}
+	out := rl.ColorFromHSV(hue, clamp(hsv.y * p.saturation, 0, 1), clamp(hsv.z * p.value, 0, 1))
 	out.a = c.a
 	return out
 }

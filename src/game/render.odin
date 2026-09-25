@@ -667,8 +667,11 @@ present :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, scale: f32) 
 	run(r, 0, 1, scale)
 	draw_terrain(r, s, scale)
 	run(r, 2, 5, scale)
-	particles_draw(particles, scale, r.side_scroll, r.interp_prev != nil ? r.interp_alpha : 1)
-	run(r, 6, 15, scale)
+	t := r.interp_prev != nil ? r.interp_alpha : 1
+	particles_draw(particles, scale, r.side_scroll, t)
+	run(r, 6, 8, scale)
+	beams_draw(particles, scale, r.side_scroll, t) // over the air enemies, under the ships
+	run(r, 9, 15, scale)
 	rl.EndScissorMode()
 	level_end_draw(r, s, scale) // layer 0xf text, over the sprites
 	scorebar_draw(r, s, scale)

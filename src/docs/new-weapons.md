@@ -1,4 +1,4 @@
-# New Weapons: the loadout screen and the Chaingun
+# New Weapons: the loadout screen, the Chaingun and the Discharge Beam
 
 This is new content, not the original's. The design is in
 [notes/new-weapons.md](../../notes/new-weapons.md). This page records:
@@ -8,7 +8,8 @@ This is new content, not the original's. The design is in
 - what is still provisional.
 
 The cross-cutting choice is D37 in [decisions.md](decisions.md). It builds
-on D35 (extras) and D36 (screens that live in the simulation).
+on D35 (extras) and D36 (screens that live in the simulation). The
+Discharge Beam's instant shot is D38.
 
 ## What was built
 
@@ -95,6 +96,106 @@ These are `best_air_weapon`, `level_air_weapon` and `next_weapon_of_type`.
 So classic play and the demo films never meet the Chaingun, even though it
 is loaded in every session. `oracle:diff` stays exact.
 
+### The Discharge Beam
+
+The Discharge Beam is `aidb`, with its units in `assets/extra/data`. It is
+air weapon number six and unlocks at stage 10. Its ship is red:
+`pl1d`/`pl2d`, turned from the Ion Cannon's yellow by `tools/recolour`
+(see Content).
+
+The original has no instant shot, so the beam is a new mechanic, in
+`sim/beam.odin`. A weapon with `x_Beam_BOOL` fires no projectile of its
+own. Its spawn list holds only the muzzle flash, `dbmf`, which also plays
+the sound.
+
+- **Standard attack.** Every press, at most one every 8 steps, calls
+  `beam_fire` on that step. It casts a line straight up from the muzzle
+  and takes every target on it, nearest first. A target is on the line if
+  a player's air shot could hit it (`air_shot_can_hit`, shared with the
+  Chaingun's aiming) and its hit circle comes within half the beam's width
+  of the line.
+  - The first target takes the pulse's 1.6 damage through `entity_hit`,
+    as a shot would.
+  - A kill bursts into particles and throws 3 pieces of shrapnel, `dbsh`,
+    evenly spaced from a random heading. The damage its shields did not
+    soak carries on to the next target.
+  - The beam stops at the first target left standing, or one the hit
+    delay protects. With nothing to stop it, it goes off the top of the
+    screen.
+- **Charge attack.** Holding charges as the original's weapons do. On
+  release, `beam_release` fires one beam at once in place of the release
+  spawns: 7.5 damage, 14 px wide, scaled by the level reached against the
+  weapon's own max. A part charge deals part, and Improved Charge's higher
+  max deals more than the full 7.5. The width never falls below the
+  pulse's.
+- **Drawing.** `sim.State.beams` holds this step's beams, like the
+  particle and blur queues: where each started, where it stopped, its
+  width and whether it was charged. `game/beams.odin` keeps each for 6
+  steps (12 charged), drawn additively as a soft glow, a body and a white
+  core, with a flare where it stopped. It fades from the first frame.
+
+#### How the design was read
+
+- **"Raycast ahead until it hits something."** Straight up the screen, as
+  every forward shot flies. It is not aimed.
+- **"Leftover damage carries on."** The leftover is the pulse's damage
+  minus the shields of everything it killed. Against one tough target the
+  whole pulse is dealt, so the single-target DPS is simply damage × rate.
+- **"Until the beam leaves the screen."** Targets above the top edge are
+  out of reach. A target whose circle still overlaps the top edge is hit.
+- **Shrapnel, "short-lived, decent damage".** Each piece flies about 11
+  steps at speed 9–10 and deals 0.4. Pieces are ordinary player
+  projectiles, so they obey the hit delay and can kill, but a shrapnel kill
+  throws no more shrapnel.
+- **"Brighter and wider, pierces more."** The charged beam is a single
+  heavier beam, so it pierces more because it carries more damage. It is
+  3.5 times as wide and drawn brighter and longer.
+- **Weapon passives.** The Weapon 1–4 passives belong to the original's
+  weapons, so none applies. Improved Charge and Auto Charge work through
+  the ordinary power-up code.
+
+#### Balance
+
+The target was "competitive with the other weapons, assuming they had 2
+upgrades by this point", which is stage 10. It was checked with
+`mise run dps:report` at its default stage 7, in the four scenarios of
+[dps-report.md](dps-report.md). The Discharge Beam gets no weapon passive,
+so its bare numbers are set against the others' with their weapon passive
+at level 2, or with Improved Charge 2 for charge shots.
+
+Primary fire, DPS (single / cluster / behind / wave, mean):
+
+| Weapon | Single | Cluster | Behind | Wave | Mean |
+|---|---|---|---|---|---|
+| Bacta Gun, Weapon 2 at 2 | 5.98 | 8.96 | 0 | 10.64 | 6.40 |
+| Photon Beam, Weapon 4 at 2 | 6.00 | 6.00 | 0 | 13.53 | 6.38 |
+| Rear Gun, Weapon 3 at 2 | 6.00 | 6.00 | 6.00 | 4.80 | 5.70 |
+| **Discharge Beam** | **6.00** | **6.00** | **0** | **8.90** | **5.23** |
+| Ion Cannon, Weapon 1 at 2 | 4.79 | 4.79 | 0 | 11.13 | 5.18 |
+
+Charge shots, with Improved Charge 2:
+
+| Weapon | Single | Wave |
+|---|---|---|
+| Bacta Gun | 3.86 | 1.63 |
+| **Discharge Beam** | **3.47** | **1.85** |
+| Rear Gun | 3.35 | 3.70 |
+| Chaingun | 3.22 | 3.36 |
+| Ion Cannon | 3.21 | 1.61 |
+| Photon Beam | 1.28 | 3.20 |
+
+So the beam matches the best single-target damage, sits mid-table on the
+average, and is weaker than the spread weapons in a wave. It is a
+single-lane weapon: it gains nothing from a cluster, and in a wave the
+pulse clears one column and the shrapnel chips at its neighbours. Its
+charge is near the top ahead, and in the wave mid-table: 7.5 into a
+3-deep column of 0.8 is mostly overkill. Since it has no weapon passive,
+it doesn't grow past these numbers, while the others' level 3 does
+(Weapon 1 at 3 takes the Ion Cannon's wave to 14.3).
+
+The first guess, 1.45 damage, gave 5.44 ahead and a mean of 4.84, last of
+the five. It was raised to 1.6 to meet the others' 6.00 ahead.
+
 ### Presentation
 
 The drawing is in `game/loadout.odin`:
@@ -159,6 +260,17 @@ The last two are marked provisional in the code. The rest are data, which
 has no room for a comment, so this list is where they are marked. The
 loadout screen reuses the reward screen's sounds.
 
+The Discharge Beam's numbers were set against the DPS report (see
+Balance), but its feel is untested by hand:
+- a pulse every 8 steps, of 1.6 damage, 4 px wide;
+- the release's 7.5 damage and 14 px, a charge of 20 levels, 2 steps each;
+- 3 shrapnel pieces of 0.4 damage, speed 9–10, 7 steps of flight and 4 of
+  dwindling;
+- the sound: the Laser Gun Bullet's (`lgbu`), pitched down, a stand-in
+  for a proper zap;
+- in the code: the kill burst's size and colour (`sim/beam.odin`), and
+  the beam's lifetimes, widths and colours (`game/beams.odin`).
+
 ## Content
 
 `assets/extra` holds the new content: records in `data/` and sprites in
@@ -180,6 +292,16 @@ extra sprite index beside the game's own.
   saturation and 60% of their value. `assets:all` runs it after extracting.
 - **Glows.** The charge glow and its particles reuse `jgli`, tinted
   A8A8A8, rather than a new plate.
+- **The Discharge Beam's records.** `pbbf` (the Photon Beam's muzzle
+  flash) became `dbmf`, the pulse's flash and sound, and `dbrf`, the
+  release's. `cgpo` and `cgpp` became `dbpo` and `dbpp`, the charge glow,
+  tinted F83820. `bagb` and `bagh` became `dbsh` and `dbsx`, the shrapnel
+  and its hit, recoloured orange-red. `aicg` became `aidb`.
+- **Red ships.** The same recipe turns the Ion Cannon's plates (`PL1O`,
+  `PL2O`) and the score bar symbols (`WESY`) red: pixels with a hue from
+  20° to 75° have it turned by −50°, keeping their saturation and value.
+  `hue_shift` is the recipe's new field, 0 when left out. `WESD` is the
+  red symbol set, whose first frame is the beam's.
 
 ## Verification
 
@@ -200,12 +322,24 @@ extra sprite index beside the game's own.
       with the Chaingun in it;
     - a release volley at a mine placed up and to the right of the ship is
       two shots, both on the lead heading, flying abreast 6 px apart.
-- `mise run ci` is green: 130 tests.
+- `tests/beam_test.odin`, against `src/assets` (skipped without it):
+  - the Discharge Beam loads as extra, at stage 10, with its units, and
+    the original's selection never picks it;
+  - a pulse of 2.5 through targets of 1, 1 and 5 kills the first two
+    nearest first, leaves the third at 4.5 and stops there, never touches
+    a target beside the line, and throws 6 pieces of shrapnel;
+  - a second pulse on the same step is stopped by the hit delay;
+  - with nothing left standing, the beam leaves the screen;
+  - a full charge deals the release damage, half a charge half;
+  - through the fire button, a press fires one pulse and a held charge
+    releases one charged beam.
+- `mise run ci` is green: 135 tests.
 - `mise run oracle:diff` still matches all four demos call for call.
 - Looked at with `mise run menu-shot`:
   - `MENU=loadout`, `loadout_2p` and `loadout_placed` for the screen;
   - `chaingun` for a burst in flight;
   - `chaingun_charge` for aimed pairs after a release;
+  - `discharge` and `discharge_charge` for a pulse and a charged beam;
   - `netplay_lobby_connected_host` and `netplay_lobby_connected` for the
     lobby toggles.
 - Not yet done:

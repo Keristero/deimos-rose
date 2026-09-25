@@ -571,6 +571,7 @@ flow_effects_sync :: proc(fl: ^Flow, particles: ^Particles, blurs: ^Blurs, notic
 	}
 	fl.effects_level = fl.state.levels_played
 	clear(&particles.live)
+	clear(&particles.beams)
 	clear(&blurs.live)
 	notices^ = {}
 }

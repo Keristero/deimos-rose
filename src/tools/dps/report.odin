@@ -3,7 +3,7 @@ package dps
 // The report: a static HTML page with no scripts, and a plain-text summary
 // on stdout. The same two parts for each set, primary fire and charge shots:
 //
-// - Weapons, best first by their DPS averaged over the three scenarios. Each
+// - Weapons, best first by their DPS averaged over the four scenarios. Each
 //   one opens to its passives, ranked by the DPS they add to it.
 // - Passives: every level's DPS added, averaged over every weapon and
 //   scenario, best first.
@@ -168,7 +168,7 @@ overall_order :: proc(sh: ^Shared, t: Table, m: Mode) -> []Overall {
 report_text :: proc(sh: ^Shared, t: Table) {
 	for m in Mode {
 		fmt.printfln("== %s (DPS over the whole run; best policy)", MODE_NAMES[m])
-		fmt.printfln("%-14s %22s %22s %22s", "weapon", "single", "cluster", "behind")
+		fmt.printfln("%-14s %22s %22s %22s %22s", "weapon", "single", "cluster", "behind", "wave")
 		for w in weapon_order(sh, t, m) {
 			fmt.printf("%-14s", sh.weapons[w].name)
 			for sc in Scenario {
@@ -232,7 +232,7 @@ td.n, th.n { text-align: right; font-family: "IBM Plex Mono", ui-monospace, mono
 details { border-bottom: 1px solid var(--line); }
 details:last-child { border-bottom: 0; }
 summary { cursor: pointer; padding: 10px 12px; display: grid; gap: 4px 12px; list-style: none;
-  grid-template-columns: 2em minmax(7em, 1fr) repeat(3, minmax(7.5em, 1fr)); align-items: center; }
+  grid-template-columns: 2em minmax(7em, 1fr) repeat(4, minmax(7em, 1fr)); align-items: center; }
 summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 summary::-webkit-details-marker { display: none; }
 summary .rank { color: var(--dim); font-family: "IBM Plex Mono", ui-monospace, monospace; }
@@ -245,17 +245,18 @@ details[open] summary .name::before { content: "\25BE  "; }
 .bar { height: 4px; background: var(--bar); border-radius: 2px; margin-top: 3px; }
 .inner { padding: 0 12px 12px; }
 .none { color: var(--dim); font-size: 0.85rem; margin: 8px 10px; }
-.head { display: grid; grid-template-columns: 2em minmax(7em, 1fr) repeat(3, minmax(7.5em, 1fr));
+.head { display: grid; grid-template-columns: 2em minmax(7em, 1fr) repeat(4, minmax(7em, 1fr));
   gap: 12px; padding: 8px 12px; color: var(--dim); font-size: 0.78rem; font-weight: 600;
   text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid var(--line); }
 ul { padding-left: 20px; max-width: 75ch; } li { margin: 6px 0; }
 code { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 0.88em; }
 @media (max-width: 640px) {
-  summary, .head { grid-template-columns: 1.5em repeat(3, 1fr); }
-  summary .name, .head .nm { grid-column: 2 / 5; }
+  summary, .head { grid-template-columns: 1.5em repeat(4, 1fr); }
+  summary .name, .head .nm { grid-column: 2 / 6; }
   summary .s0, .head .s0 { grid-column: 2; }
   summary .s1, .head .s1 { grid-column: 3; }
   summary .s2, .head .s2 { grid-column: 4; }
+  summary .s3, .head .s3 { grid-column: 5; }
 }
 nav.modes { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 0 0 8px; }
 nav.modes a { color: var(--accent); font-weight: 600; text-decoration: none; }
@@ -285,7 +286,7 @@ report_html :: proc(sh: ^Shared, t: Table, date: string, seconds, stage: int) ->
 	fmt.sbprintf(&b, "<style>%s</style>\n</head>\n<body>\n<main>\n", CSS)
 	fmt.sbprintf(&b, "<h1>Deimos Rose DPS report</h1>\n<p class=\"sub\">%s &middot; stage %d &middot; %d s of play per run &middot; %d runs</p>\n",
 		date, stage, seconds, len(sh.jobs))
-	fmt.sbprintf(&b, "<p class=\"sub\">Two sets, each over the same three scenarios: primary fire, which never builds a charge, and charge shots, which charge to full, release and repeat. Every DPS is the damage dealt over the whole %d s, divided by %d, so a charge shot's DPS includes the time spent charging it.</p>\n",
+	fmt.sbprintf(&b, "<p class=\"sub\">Two sets, each over the same four scenarios: primary fire, which never builds a charge, and charge shots, which charge to full, release and repeat. Every DPS is the damage dealt over the whole %d s, divided by %d, so a charge shot's DPS includes the time spent charging it.</p>\n",
 		seconds, seconds)
 	fmt.sbprintf(&b, "<nav class=\"modes\">")
 	for m in Mode {
@@ -316,7 +317,7 @@ report_mode :: proc(b: ^strings.Builder, sh: ^Shared, t: Table, m: Mode) {
 	case .Charge:
 		fmt.sbprintf(b, "<p class=\"sub\">Only the weapons with a charge attack; the Plasma Bomb has none. Each charges to full, releases, and starts again once the release is spent.</p>\n")
 	}
-	fmt.sbprintf(b, "<h3>Weapons by DPS</h3>\n<p class=\"sub\">Ranked by the average over the three scenarios. Open a weapon for its passives, ranked by the DPS they add.</p>\n")
+	fmt.sbprintf(b, "<h3>Weapons by DPS</h3>\n<p class=\"sub\">Ranked by the average over the four scenarios. Open a weapon for its passives, ranked by the DPS they add.</p>\n")
 	fmt.sbprintf(b, "<div class=\"card\">\n<div class=\"head\"><span>#</span><span class=\"nm\">Weapon</span>")
 	for sc in Scenario {
 		fmt.sbprintf(b, "<span class=\"s%d\">%s</span>", int(sc), SCENARIO_NAMES[sc])
@@ -358,7 +359,7 @@ report_mode :: proc(b: ^strings.Builder, sh: ^Shared, t: Table, m: Mode) {
 	fmt.sbprintf(b, "</div>\n")
 
 	fmt.sbprintf(b, "<h3>Passives, averaged</h3>\n")
-	fmt.sbprintf(b, "<p class=\"sub\">The DPS each passive level adds, averaged over the %d weapons above and the three scenarios. A weapon passive changes only its own weapon, so that average spreads its gain over weapons it cannot touch; the next column averages over only the weapons it changes.</p>\n",
+	fmt.sbprintf(b, "<p class=\"sub\">The DPS each passive level adds, averaged over the %d weapons above and the four scenarios. A weapon passive changes only its own weapon, so that average spreads its gain over weapons it cannot touch; the next column averages over only the weapons it changes.</p>\n",
 		len(order))
 	fmt.sbprintf(b, "<div class=\"card scroll\">\n<table>\n<tr><th>#</th><th>Passive</th><th class=\"n\">Average added</th><th class=\"n\">Where it applies</th><th class=\"n\">Weapons changed</th><th>Adds most to</th></tr>\n")
 	for o, rank in overall_order(sh, t, m) {
@@ -381,9 +382,11 @@ report_method :: proc(b: ^strings.Builder, sh: ^Shared, seconds, stage: int) {
 		stage, SEED)
 	fmt.sbprintf(b, "<li>Once the ship is in play it gets the weapon and at most one passive at one level. After %d steps for the crosshair to settle, the targets are spawned and %d s (%d steps) are measured. DPS is the damage over all of it.</li>\n",
 		SETTLE_STEPS, seconds, seconds * STEP_HZ)
-	fmt.sbprintf(b, "<li>The targets are copies of the BlackHawk (air) and the Laser Tank (ground). Each copy is stationary, has one state that never fires, moves or changes, and has its shields topped back up every step. A shot that hits one is still spent as it would be against the real enemy.</li>\n")
+	fmt.sbprintf(b, "<li>The targets are copies of the BlackHawk (air) and the Laser Tank (ground). Each copy is stationary, has one state that never fires, moves or changes, and outside the wave has its shields topped back up every step. A shot that hits one is still spent as it would be against the real enemy.</li>\n")
 	fmt.sbprintf(b, "<li>Scenarios: <em>single target</em>, one target ahead; <em>cluster of 5</em>, that target and four more in a V, 40 px either side and 34 px further back; <em>target behind</em>, one target mirrored behind the ship. Air targets stand %d px from the ship. Ground targets stand where the crosshair lands the Plasma Bomb, and behind at the same distance.</li>\n",
 		AIR_RANGE)
+	fmt.sbprintf(b, "<li><em>Wave of 9</em> is the one scenario whose targets die: three rows of three, 40 px apart across and 34 px deep, starting where the single target stands. Each has %.1f shields, a stage 9&ndash;12 enemy's, and a target shot down is replaced %d steps later. Its DPS counts only the shields taken off, so damage past a kill counts only where it carries on to another target (the Discharge Beam) or throws out shrapnel that hits one.</li>\n",
+		WAVE_SHIELDS, WAVE_RESPAWN_STEPS)
 	fmt.sbprintf(b, "<li>Primary fire: a tap every %d to %d steps, and holding where holding fires (Auto Charge). A run in which a charge began is left out of this set. Charge shots: hold until the charge is full, let go for a step, hold again; under Auto Charge, the reverse. Each cell is the best run in its set, so these are a perfect player's numbers.</li>\n",
 		TAP_MIN, TAP_MAX)
 	fmt.sbprintf(b, "<li>An enemy ignores a hit that lands within %d step of its last one (perm float 0xa7, <code>entity_hit</code>). One target therefore takes at most %.0f hits a second, however many shots reach it.</li>\n",

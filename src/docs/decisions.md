@@ -660,3 +660,31 @@ The loadout screen follows D36: it is simulation state, stepped with
 ordinary inputs. New Weapons travels in `sim.Session.loadout` and in
 `net.START_LOADOUT`, the next bit of the flags byte that `Start` and
 `Level_Choice` already carry.
+
+### D38 — The Discharge Beam is an instant hit, not a projectile
+
+The Discharge Beam (docs/new-weapons.md) hits everything on its line on the
+step it fires. The original has nothing like it: every shot is an entity
+that flies and collides. The beam is not one. `sim/beam.odin` casts the line
+when the weapon fires, hits the targets through `entity_hit` nearest first,
+and pushes a `Beam_Event` onto `State.beams`, a per-step queue like the
+particle and blur requests. Presentation draws each event and lets it fade.
+
+Why not a very fast, very long projectile:
+- a projectile takes steps to cross the screen, and one fast enough to
+  seem instant would jump past thin targets between steps;
+- carrying leftover damage from one kill to the next target needs an
+  ordered pass over the line, which the collision loop does not make;
+- a beam drawn "up to what it hit" needs where it stopped, which the
+  event carries.
+
+Nothing new is kept between steps. What the beam did lives in the
+entities it hit and the shrapnel it spawned, which are ordinary state, so
+snapshots, rollback and `sim.checksum` needed no change. The queue is
+presentation input only, cleared each step, and not hashed. The target
+filter (`air_shot_can_hit`) is the one the Chaingun's aiming already uses,
+so the beam can hit exactly what an air shot can.
+
+The weapon still charges through the ordinary power-up state machine. A
+beam weapon's release calls `beam_release` in place of the release spawn
+timing, so Improved Charge and Auto Charge apply unchanged.

@@ -220,7 +220,7 @@ depends = ["build"]
 run = "bash tools/oracle/menu_compare.sh"
 
 [tasks."menu-shot"]
-description = "Render one of our own menu screens headlessly, no comparison (MENU=main [OUT=path]; MENU=restarted checks a new game starts with none of the last one's particles; DR_SHOT_HUE=63 sets the accent on preferences_extras; MENU=reward, reward_2p and level_select_easy show easy mode; MENU=loadout, loadout_2p, loadout_placed, chaingun and chaingun_charge show New Weapons) -- for a quick look, or debug MENU cases from run_menu_shot"
+description = "Render one of our own menu screens headlessly, no comparison (MENU=main [OUT=path]; MENU=restarted checks a new game starts with none of the last one's particles; DR_SHOT_HUE=63 sets the accent on preferences_extras; MENU=reward, reward_2p and level_select_easy show easy mode; MENU=loadout, loadout_2p, loadout_placed, chaingun, chaingun_charge, discharge and discharge_charge show New Weapons) -- for a quick look, or debug MENU cases from run_menu_shot"
 depends = ["build"]
 # Wrapped in xvfb-run/DISPLAY= exactly like the shots and menu-shots:compare
 # tasks -- running $DR_BUILD/deimos directly (without this) opens a real
@@ -335,7 +335,7 @@ odin run tools/recolour $DR_COLL $DR_LINK -out:$DR_BUILD/recolour$DR_EXT -- \
 """
 
 [tasks."dps:report"]
-description = "Measure every weapon's damage per second in the simulation alone -- against one target ahead, a cluster of five and one target behind, bare and with each passive at each level, as primary fire and as charge shots -- and write a dated HTML report (OUT=../work/reports by default; DPS_SECONDS=60 of play per run, DPS_STAGE=7). See docs/dps-report.md"
+description = "Measure every weapon's damage per second in the simulation alone -- against one target ahead, a cluster of five, one target behind and a killable wave of nine, bare and with each passive at each level, as primary fire and as charge shots -- and write a dated HTML report (OUT=../work/reports by default; DPS_SECONDS=60 of play per run, DPS_STAGE=7). See docs/dps-report.md"
 depends = ["setup"]
 # The sim only: no window, no audio device. Runs spread over every core.
 run = """

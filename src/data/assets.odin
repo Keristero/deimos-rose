@@ -513,8 +513,35 @@ weapons_append :: proc(weapons: ^[dynamic]sim.Weapon, root: string, extra: bool,
 			if v, ok := def_find(header, "x_AimedRelease_BOOL"); ok {
 				wp.aimed_release, _ = tag_bool(v)
 			}
+			beam_fill(&wp.beam, header)
 		}
 		append(weapons, wp)
+	}
+}
+
+// A beam weapon's x_Beam* keys (sim/beam.odin); none leaves it off.
+@(private = "file")
+beam_fill :: proc(b: ^sim.Beam_Def, header: []Tag) {
+	b^ = {}
+	if v, ok := def_find(header, "x_Beam_BOOL"); ok {
+		b.on, _ = tag_bool(v)
+	}
+	if !b.on {
+		return
+	}
+	float :: proc(header: []Tag, key: string) -> f32 {
+		v, _ := def_find(header, key)
+		f, _ := tag_float(v)
+		return f32(f)
+	}
+	b.damage = float(header, "x_BeamDamage_FLOAT")
+	b.width = float(header, "x_BeamWidth_FLOAT")
+	b.release_damage = float(header, "x_BeamReleaseDamage_FLOAT")
+	b.release_width = float(header, "x_BeamReleaseWidth_FLOAT")
+	b.shrapnel = sim.Res_ID(def_fourcc(header, "x_BeamShrapnel_ID"))
+	if v, ok := def_find(header, "x_BeamShrapnelCount_INT"); ok {
+		n, _ := tag_int(v)
+		b.shrapnel_count = i32(n)
 	}
 }
 

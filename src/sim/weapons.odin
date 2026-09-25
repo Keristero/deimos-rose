@@ -466,6 +466,9 @@ spawn_air :: proc(s: ^State, h: ^Weapon_Handler, at: Vec) {
 		req.passive_tag = tag
 		eg_request_spawn(s, req)
 	}
+	if wd := weapon_def(s, h.air.weapon); wd.beam.on {
+		beam_fire(s, h, wd, at, wd.beam.damage, wd.beam.width, false, s.time)
+	}
 }
 
 // Priv_AirPowerup_Process: holding fire-air charges a power-up. `held` is
@@ -539,6 +542,12 @@ air_powerup_process :: proc(s: ^State, h: ^Weapon_Handler, time: i32, at: Vec, w
 				change_weapon(s, h, WEP_AIR, h.queued_air)
 				h.queued_air = NO_WEAPON
 			}
+		} else if wd.beam.on {
+			// A beam's charge goes in one shot, however many levels it holds.
+			beam_release(s, h, wd, at, p.level, time)
+			p.release_time = time
+			p.level = 0
+			p.percent = 0
 		} else if p.release_time + wd.powerup_air_time_between_release_spawns < time {
 			if wd.aimed_release {
 				aimed_release_spawn(s, h, wd, at)

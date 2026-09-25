@@ -51,6 +51,7 @@ State :: struct {
 	particles:    Particle_Queue, // this step's particle bursts, for presentation
 	stamps:       Stamp_Queue,    // this step's marks on the terrain
 	blurs:        Blur_Queue,     // this step's new motion-blur ghosts
+	beams:        Beam_Queue,     // this step's laser shots, for presentation (beam.odin)
 	notice:       Notice_State,   // the pending on-screen notice, if any
 	notices:      Notice_Queue,   // this step's new notices, for presentation
 	accuracy_targets:   i32,  // DAT_004e4856
@@ -290,6 +291,7 @@ clear_step_events :: proc "contextless" (s: ^State) {
 	s.particles.count = 0
 	s.stamps.count = 0
 	s.blurs.count = 0
+	s.beams.count = 0
 	s.notices.count = 0
 }
 

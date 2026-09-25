@@ -1,0 +1,269 @@
+{
+    "id": "aidb",
+    "type": "wede",
+    "name": "Air - Discharge Beam",
+    "family": "",
+    "states": [],
+    "header": [
+        {
+            "key": "type_ID",
+            "value": "PEAA"
+        },
+        {
+            "key": "default_ID",
+            "value": "none"
+        },
+        {
+            "key": "name_STR",
+            "value": "Air - Discharge Beam"
+        },
+        {
+            "key": "description1_STR",
+            "value": "Fires an instant laser that carries on through what it destroys. Charge it for a wider beam that cuts through a line of enemies."
+        },
+        {
+            "key": "description2_STR",
+            "value": "No Description"
+        },
+        {
+            "key": "scoreBarPreviewFace_ID",
+            "value": "wesd"
+        },
+        {
+            "key": "scoreBarPreviewFrame_INT",
+            "value": "0"
+        },
+        {
+            "key": "maxAllowed_INT",
+            "value": "1"
+        },
+        {
+            "key": "minimumLevelAvailable_INT",
+            "value": "10"
+        },
+        {
+            "key": "maximumLevelAvailable_INT",
+            "value": "9999"
+        },
+        {
+            "key": "player1AppearanceFace_ID",
+            "value": "pl1d"
+        },
+        {
+            "key": "player2AppearanceFace_ID",
+            "value": "pl2d"
+        },
+        {
+            "key": "playerGlow_COLOR",
+            "value": "F83030"
+        },
+        {
+            "key": "selectionSound_ID",
+            "value": "none"
+        },
+        {
+            "key": "selectionSound_MinVolume_INT",
+            "value": "100"
+        },
+        {
+            "key": "selectionSound_MaxVolume_INT",
+            "value": "100"
+        },
+        {
+            "key": "selectionSound_Priority_INT",
+            "value": "50"
+        },
+        {
+            "key": "selectionSound_MinPitch_FLOAT",
+            "value": "1.000000"
+        },
+        {
+            "key": "selectionSound_MaxPitch_FLOAT",
+            "value": "1.000000"
+        },
+        {
+            "key": "crosshairFace_ID",
+            "value": "none"
+        },
+        {
+            "key": "crosshairFrame_INT",
+            "value": "0"
+        },
+        {
+            "key": "crosshairLockedFace_ID",
+            "value": "none"
+        },
+        {
+            "key": "crosshairLockedFrame_INT",
+            "value": "0"
+        },
+        {
+            "key": "crosshairXOffset_INT",
+            "value": "0"
+        },
+        {
+            "key": "crosshairYOffset_INT",
+            "value": "0"
+        },
+        {
+            "key": "crosshairSpawnOnActivation_ID",
+            "value": "none"
+        },
+        {
+            "key": "numAmmoInPack_INT",
+            "value": "0"
+        },
+        {
+            "key": "ammoWarnAtCount_INT",
+            "value": "0"
+        },
+        {
+            "key": "ammoWarning_STR",
+            "value": "none"
+        },
+        {
+            "key": "autoRepeat_BOOL",
+            "value": "FALSE"
+        },
+        {
+            "key": "delayBetweenLaunches_INT",
+            "value": "7"
+        },
+        {
+            "key": "delayBetweenLoadLaunches_INT",
+            "value": "0"
+        },
+        {
+            "key": "shieldIncrease_INT",
+            "value": "0"
+        },
+        {
+            "key": "livesIncrease_INT",
+            "value": "0"
+        },
+        {
+            "key": "invulnerableForTime_INT",
+            "value": "0"
+        },
+        {
+            "key": "spawn_NumUnitsToSpawn_INT",
+            "value": "1"
+        },
+        {
+            "key": "spawn_Name_STR",
+            "value": "Muzzle Flash"
+        },
+        {
+            "key": "spawn_Unit_ID",
+            "value": "dbmf"
+        },
+        {
+            "key": "spawn_XLoc_INT",
+            "value": "0"
+        },
+        {
+            "key": "spawn_YLoc_INT",
+            "value": "-8"
+        },
+        {
+            "key": "spawn_SetHeading_BOOL",
+            "value": "FALSE"
+        },
+        {
+            "key": "spawn_Angle_INT",
+            "value": "0"
+        },
+        {
+            "key": "powerup_Air_TimeUntilActivation_INT",
+            "value": "15"
+        },
+        {
+            "key": "powerup_Air_ActivationSpawn_ID",
+            "value": "dbpo"
+        },
+        {
+            "key": "powerup_Air_TimeBetweenPowerLevelChanges_INT",
+            "value": "2"
+        },
+        {
+            "key": "powerup_Air_MaxPowerLevel_INT",
+            "value": "20"
+        },
+        {
+            "key": "powerup_Air_OverloadTime_INT",
+            "value": "180"
+        },
+        {
+            "key": "powerup_Air_ReleaseSpawn_ID",
+            "value": "dbrf"
+        },
+        {
+            "key": "powerup_Air_TimeBetweenReleaseSpawns_INT",
+            "value": "0"
+        },
+        {
+            "key": "powerup_Air_DoReleaseOnMaxPowerLevel_BOOL",
+            "value": "FALSE"
+        },
+        {
+            "key": "powerup_Ground_TimeUntilActivation_INT",
+            "value": "0"
+        },
+        {
+            "key": "powerup_Ground_ActivationSpawn_ID",
+            "value": "none"
+        },
+        {
+            "key": "powerup_Ground_TimeBetweenPowerLevelChanges_INT",
+            "value": "0"
+        },
+        {
+            "key": "powerup_Ground_MaxPowerLevel_INT",
+            "value": "0"
+        },
+        {
+            "key": "powerup_Ground_OverloadTime_INT",
+            "value": "0"
+        },
+        {
+            "key": "powerup_Ground_ReleaseSpawn_ID",
+            "value": "none"
+        },
+        {
+            "key": "powerup_Ground_TimeBetweenReleaseSpawns_INT",
+            "value": "0"
+        },
+        {
+            "key": "powerup_Ground_DoReleaseOnMaxPowerLevel_BOOL",
+            "value": "FALSE"
+        },
+        {
+            "key": "x_Beam_BOOL",
+            "value": "TRUE"
+        },
+        {
+            "key": "x_BeamDamage_FLOAT",
+            "value": "1.600000"
+        },
+        {
+            "key": "x_BeamWidth_FLOAT",
+            "value": "4.000000"
+        },
+        {
+            "key": "x_BeamReleaseDamage_FLOAT",
+            "value": "7.500000"
+        },
+        {
+            "key": "x_BeamReleaseWidth_FLOAT",
+            "value": "14.000000"
+        },
+        {
+            "key": "x_BeamShrapnel_ID",
+            "value": "dbsh"
+        },
+        {
+            "key": "x_BeamShrapnelCount_INT",
+            "value": "3"
+        }
+    ]
+}

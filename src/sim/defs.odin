@@ -94,6 +94,7 @@ Weapon :: struct {
 	// docs/new-weapons.md), which exist only in a New Weapons session.
 	extra:         bool,
 	aimed_release: bool, // the charge fires aimed volleys at the nearest enemy
+	beam:          Beam_Def, // an instant laser instead of projectiles (beam.odin)
 }
 
 // Weapon types (Wep_Def.type), compared as ids by the original.

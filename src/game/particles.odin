@@ -45,6 +45,7 @@ PARTICLE_DIRECTIONS :: 100
 
 Particles :: struct {
 	live:       [dynamic]Particle,
+	beams:      [dynamic]Beam_Fx, // the Discharge Beam's, fading (beams.odin)
 	directions: [2][PARTICLE_DIRECTIONS]sim.Vec, // A (varied speed), B (ice)
 	next:       [2]int,
 }
@@ -56,6 +57,7 @@ Particles :: struct {
 
 particles_init :: proc(p: ^Particles) {
 	p.live = make([dynamic]Particle, 0, 256)
+	p.beams = make([dynamic]Beam_Fx, 0, 16)
 	// FUN_004300b0, over the 416x480 play field. The original reads its size
 	// from perm floats 0x36/0x37, which are fixed.
 	w, h := i32(PLAY_W), i32(PLAY_H)
@@ -75,12 +77,14 @@ particles_init :: proc(p: ^Particles) {
 
 particles_destroy :: proc(p: ^Particles) {
 	delete(p.live)
+	delete(p.beams)
 }
 
 // One sim step: new bursts from this step's events, then G_Particle_Process
 // over every live particle. Call once per sim.step, not once per render
 // frame, so particle motion stays tied to game time.
 particles_step :: proc(p: ^Particles, s: ^sim.State) {
+	beams_step(p, s)
 	pf := &s.defs.perm_floats
 	for &ev in s.particles.events[:s.particles.count] {
 		spawn_burst(p, &ev, pf)

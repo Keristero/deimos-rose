@@ -9,8 +9,12 @@
 // passive levels under test, lets the crosshair settle, and then spawns
 // targets: a stand-in enemy that never moves, fires or dies. Its shields are
 // topped back up after every step, and the damage is what was taken off
-// them. Three scenarios: one target ahead, a cluster of five ahead, and one
-// target behind.
+// them. Four scenarios: one target ahead, a cluster of five ahead, one
+// target behind, and a wave of nine ahead. The wave is the one whose
+// targets die: each has a real enemy's shields, is replaced a moment after
+// it is shot down, and only the shields taken off count, so what a weapon
+// wastes on overkill is seen, and what it carries through a kill (the
+// Discharge Beam's leftover damage and shrapnel) is too.
 //
 // A weapon is fired under every input policy weapon_policies lists, and the
 // report keeps two sets: primary fire (the best of the taps, and of holding
@@ -53,6 +57,17 @@ AIR_RANGE :: 120
 // the game's own formations fly. Provisional, by eye.
 CLUSTER := [5]sim.Vec{{0, 0}, {-40, 0}, {40, 0}, {-20, -34}, {20, -34}}
 
+// The wave: three rows of three, as far apart as the cluster's, from where
+// the single target stands and away from the ship.
+WAVE := [9]sim.Vec{{0, 0}, {-40, 0}, {40, 0}, {0, -34}, {-40, -34}, {40, -34}, {0, -68}, {-40, -68}, {40, -68}}
+
+// A wave target's shields: about a stage 9-12 air enemy's. Provisional.
+WAVE_SHIELDS :: 0.8
+
+// Steps before a wave target shot down is replaced. Provisional: about the
+// gap between the rows of a formation flying in.
+WAVE_RESPAWN_STEPS :: 12
+
 // A target's shields, put back after every step. Far above any one step's
 // damage, so a target is never destroyed, and small enough that an f32 still
 // holds a hundredth of a point.
@@ -65,6 +80,8 @@ AIR_TARGET_FROM :: "blha"    // BlackHawk
 GROUND_TARGET_FROM :: "tala" // Tank - Laser
 AIR_TARGET :: "dpsa"
 GROUND_TARGET :: "dpsg"
+AIR_WAVE_TARGET :: "dpwa"
+GROUND_WAVE_TARGET :: "dpwg"
 
 // Steps allowed for the ship to fly in, and for the crosshair to reach its
 // full distance once the weapon is set.
@@ -79,12 +96,14 @@ Scenario :: enum u8 {
 	Single,
 	Cluster,
 	Behind,
+	Wave,
 }
 
 SCENARIO_NAMES := [Scenario]string {
 	.Single  = "Single target",
 	.Cluster = "Cluster of 5",
 	.Behind  = "Target behind",
+	.Wave    = "Wave of 9",
 }
 
 // The two sets the report keeps.
@@ -280,29 +299,43 @@ dps_prepare :: proc(d: ^sim.Defs, stage: i32, alloc := context.allocator) -> boo
 	levels[0].placements = nil
 	d.levels = levels
 
-	units := make([]sim.Unit, len(d.units) + 2, alloc)
+	pairs := [4][2]string {
+		{AIR_TARGET_FROM, AIR_TARGET},
+		{GROUND_TARGET_FROM, GROUND_TARGET},
+		{AIR_TARGET_FROM, AIR_WAVE_TARGET},
+		{GROUND_TARGET_FROM, GROUND_WAVE_TARGET},
+	}
+	units := make([]sim.Unit, len(d.units) + len(pairs), alloc)
 	copy(units, d.units)
-	for pair, k in ([2][2]string{{AIR_TARGET_FROM, AIR_TARGET}, {GROUND_TARGET_FROM, GROUND_TARGET}}) {
+	for pair, k in pairs {
 		from := sim.unit_index(d, sim.res_id(pair[0]))
 		if from < 0 {
 			fmt.eprintfln("dps: no unit %s to copy a target from", pair[0])
 			return false
 		}
-		units[len(d.units) + k] = target_unit(&d.units[from], sim.res_id(pair[1]), alloc)
+		units[len(d.units) + k] = target_unit(&d.units[from], sim.res_id(pair[1]), k >= 2 ? WAVE_SHIELDS : TARGET_SHIELDS, alloc)
 	}
 	d.units = units
 	return true
 }
 
-// A copy of `u` that stands still, never fires, never changes state and
-// never runs out of shields: one state, the unit's first, stripped of
-// everything that moves or spawns.
-target_unit :: proc(u: ^sim.Unit, id: sim.Res_ID, alloc := context.allocator) -> sim.Unit {
+// A copy of `u` that stands still, never fires and never changes state: one
+// state, the unit's first, stripped of everything that moves or spawns.
+// When it dies it leaves nothing behind: no debris, coins or bonus that
+// could take or give a hit.
+target_unit :: proc(u: ^sim.Unit, id: sim.Res_ID, shields: f32, alloc := context.allocator) -> sim.Unit {
 	t := u^
 	t.id = id
-	t.shields_base_amount = TARGET_SHIELDS
+	t.shields_base_amount = shields
 	t.shields_level_increment = 0
-	t.shields_max_amount = TARGET_SHIELDS
+	t.shields_max_amount = shields
+	t.destruct_spawn = sim.NONE
+	t.destruct_num_coins_to_release = 0
+	t.destruct_coin, t.destruct_coin_on_group_kill = sim.NONE, sim.NONE
+	t.destruct_release_random_bonus = false
+	t.destruct_destroy_children, t.destruct_delete_children = false, false
+	t.destruct_draw_to_terrain, t.destruct_create_obstacle = false, false
+	t.destruct_notice = ""
 	t.initial_speed_min, t.initial_speed_max = 0, 0
 	// One to a request, exactly where it is asked for.
 	t.num_in_group_min, t.num_in_group_max = 1, 1
@@ -510,21 +543,28 @@ dps_run :: proc(d: ^sim.Defs, w: Weapon_Case, sc: Scenario, levels: sim.Passive_
 		ahead = {d.x, -abs(d.y)}
 	}
 	centre := p.loc + (sc == .Behind ? sim.Vec{ahead.x, -ahead.y} : ahead)
-	offsets := sc == .Cluster ? CLUSTER[:] : CLUSTER[:1]
-	targets: [len(CLUSTER)]sim.Entity_Ref
-	anchors: [len(CLUSTER)]sim.Vec
+	offsets: []sim.Vec
+	unit := w.ground ? GROUND_TARGET : AIR_TARGET
+	switch sc {
+	case .Single, .Behind:
+		offsets = CLUSTER[:1]
+	case .Cluster:
+		offsets = CLUSTER[:]
+	case .Wave:
+		offsets = WAVE[:]
+		unit = w.ground ? GROUND_WAVE_TARGET : AIR_WAVE_TARGET
+	}
+	targets: [len(WAVE)]sim.Entity_Ref
+	anchors: [len(WAVE)]sim.Vec
+	left: [len(WAVE)]f32 // a wave target's shields after the last step
+	down: [len(WAVE)]int // the step a wave target was shot down
 	for off, i in offsets {
-		req := sim.spawn_request(sim.res_id(w.ground ? GROUND_TARGET : AIR_TARGET))
-		req.loc = centre + off
-		req.stationary = true
-		targets[i] = sim.eg_request_spawn(s, req)
+		anchors[i] = centre + off
+		targets[i] = target_spawn(s, unit, anchors[i])
 		if !sim.ref_valid(s, targets[i]) {
 			return
 		}
-		e := sim.entity_at(s, targets[i].index)
-		e.appear_delay = 0
-		anchors[i] = centre + off
-		e.loc = anchors[i]
+		left[i] = sim.entity_at(s, targets[i].index).shields
 	}
 
 	button: sim.Button = w.ground ? .Fire_Ground : .Fire_Air
@@ -538,6 +578,33 @@ dps_run :: proc(d: ^sim.Defs, w: Weapon_Case, sc: Scenario, levels: sim.Passive_
 		// fired, but its shots cannot reach a ground target.
 		o.charged ||= !w.ground && h.air_powerup.state != 0
 		for i in 0 ..< len(offsets) {
+			if sc == .Wave {
+				if left[i] <= 0 {
+					if k - down[i] >= WAVE_RESPAWN_STEPS {
+						targets[i] = target_spawn(s, unit, anchors[i])
+						if !sim.ref_valid(s, targets[i]) {
+							return
+						}
+						left[i] = sim.entity_at(s, targets[i].index).shields
+					}
+					continue
+				}
+				if !sim.ref_valid(s, targets[i]) {
+					// Shot down: only the shields it had count.
+					o.damage += f64(left[i])
+					o.hits += 1
+					left[i], down[i] = 0, k
+					continue
+				}
+				e := sim.entity_at(s, targets[i].index)
+				if drop := left[i] - e.shields; drop > 0 {
+					o.damage += f64(drop)
+					o.hits += 1
+				}
+				left[i] = e.shields
+				e.loc, e.vel = anchors[i], {}
+				continue
+			}
 			if !sim.ref_valid(s, targets[i]) {
 				return
 			}
@@ -552,6 +619,20 @@ dps_run :: proc(d: ^sim.Defs, w: Weapon_Case, sc: Scenario, levels: sim.Passive_
 	}
 	o.ok = true
 	return
+}
+
+// A target, exactly at `at` and ready to be hit.
+target_spawn :: proc(s: ^sim.State, unit: string, at: sim.Vec) -> sim.Entity_Ref {
+	req := sim.spawn_request(sim.res_id(unit))
+	req.loc = at
+	req.stationary = true
+	r := sim.eg_request_spawn(s, req)
+	if sim.ref_valid(s, r) {
+		e := sim.entity_at(s, r.index)
+		e.appear_delay = 0
+		e.loc = at
+	}
+	return r
 }
 
 // For each weapon, mode, scenario and loadout, the best policy's DPS.
