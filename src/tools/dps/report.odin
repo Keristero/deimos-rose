@@ -1,7 +1,8 @@
 package dps
 
-// The report: a static HTML page with no scripts, and a plain-text summary
-// on stdout. The same two parts for each set, primary fire and charge shots:
+// The report: a static HTML page, and a plain-text summary on stdout. The
+// page's one script sorts a table by the column clicked; without it the
+// page reads the same, in the order below. The same two parts for each set, primary fire and charge shots:
 //
 // - Weapons, best first by their DPS averaged over the four scenarios. Each
 //   one opens to its passives, ranked by the DPS they add to it.
@@ -59,6 +60,19 @@ change_text :: proc(t: Table, w: int, m: Mode, sc: Scenario, c: int) -> string {
 		return "from 0"
 	}
 	return fmt.tprintf("%+.1f%%", d / base * 100)
+}
+
+// change_text's sort key: the percentage, with "from 0" above any of them.
+change_key :: proc(t: Table, w: int, m: Mode, sc: Scenario, c: int) -> f64 {
+	d := delta(t, w, m, sc, c)
+	if abs(d) <= NOISE_DPS {
+		return 0
+	}
+	base := cell(t, w, m, sc, 0).dps
+	if base <= NOISE_DPS {
+		return 1e9
+	}
+	return d / base * 100
 }
 
 change_class :: proc(d: f64) -> string {
@@ -263,6 +277,67 @@ nav.modes a { color: var(--accent); font-weight: 600; text-decoration: none; }
 nav.modes a:hover, nav.modes a:focus-visible { text-decoration: underline; }
 h3 { font-size: 1rem; margin: 20px 0 6px; }
 section.mode { scroll-margin-top: 12px; margin-top: 28px; }
+th, .head span { cursor: pointer; user-select: none; }
+th:hover, .head span:hover { color: var(--text); }
+th:focus-visible, .head span:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+[aria-sort="ascending"]::after { content: " \25B4"; color: var(--accent); }
+[aria-sort="descending"]::after { content: " \25BE"; color: var(--accent); }
+`
+
+// Click a column to sort by it, click again to reverse. A cell sorts by its
+// data-v when it has one (a number; empty sorts last either way) and by its
+// text otherwise. Numbers start highest first, text A to Z; ties keep the
+// order the page was written in. The weapon list is <details>, not a table:
+// its .head spans line up with each <summary>'s spans.
+SCRIPT :: `
+(function () {
+  function key(c) {
+    if (c.hasAttribute("data-v")) {
+      var v = c.getAttribute("data-v");
+      return v === "" ? null : Number(v);
+    }
+    return c.textContent.trim().toLowerCase();
+  }
+  function sortable(heads, rows, cellOf, parent) {
+    rows.forEach(function (r, i) { r.dataset.i = i; });
+    var col = -1, dir = 1;
+    heads.forEach(function (h, i) {
+      h.tabIndex = 0;
+      function go() {
+        var numeric = typeof key(cellOf(rows[0], i)) === "number";
+        dir = col === i ? -dir : (numeric ? -1 : 1);
+        col = i;
+        heads.forEach(function (o) { o.removeAttribute("aria-sort"); });
+        h.setAttribute("aria-sort", dir > 0 ? "ascending" : "descending");
+        rows.slice().sort(function (a, b) {
+          var x = key(cellOf(a, i)), y = key(cellOf(b, i));
+          if (x === null || y === null) {
+            if (x !== y) return x === null ? 1 : -1;
+          } else if (x !== y) {
+            return (x < y ? -1 : 1) * dir;
+          }
+          return a.dataset.i - b.dataset.i;
+        }).forEach(function (r) { parent.appendChild(r); });
+      }
+      h.addEventListener("click", go);
+      h.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); }
+      });
+    });
+  }
+  function kids(el) { return Array.prototype.slice.call(el.children); }
+  document.querySelectorAll("table").forEach(function (t) {
+    var body = t.tBodies[0];
+    if (!t.tHead || !body || body.rows.length < 2) return;
+    sortable(kids(t.tHead.rows[0]), kids(body), function (r, i) { return r.children[i]; }, body);
+  });
+  document.querySelectorAll(".head").forEach(function (h) {
+    var card = h.parentNode;
+    var rows = kids(card).filter(function (e) { return e.tagName === "DETAILS"; });
+    if (rows.length < 2) return;
+    sortable(kids(h), rows, function (r, i) { return r.firstElementChild.children[i]; }, card);
+  });
+})();
 `
 
 esc :: proc(s: string) -> string {
@@ -297,7 +372,7 @@ report_html :: proc(sh: ^Shared, t: Table, date: string, seconds, stage: int) ->
 		report_mode(&b, sh, t, m)
 	}
 	report_method(&b, sh, seconds, stage)
-	fmt.sbprintf(&b, "</main>\n</body>\n</html>\n")
+	fmt.sbprintf(&b, "</main>\n<script>%s</script>\n</body>\n</html>\n", SCRIPT)
 	return strings.to_string(b)
 }
 
@@ -324,18 +399,18 @@ report_mode :: proc(b: ^strings.Builder, sh: ^Shared, t: Table, m: Mode) {
 	}
 	fmt.sbprintf(b, "</div>\n")
 	for wi, rank in order {
-		fmt.sbprintf(b, "<details>\n<summary><span class=\"rank\">%d</span><span class=\"name\">%s</span>", rank + 1, esc(sh.weapons[wi].name))
+		fmt.sbprintf(b, "<details>\n<summary><span class=\"rank\" data-v=\"%d\">%d</span><span class=\"name\">%s</span>", rank + 1, rank + 1, esc(sh.weapons[wi].name))
 		for sc in Scenario {
 			bs := cell(t, wi, m, sc, 0)
 			pct := top > 0 ? bs.dps / top * 100 : 0
-			fmt.sbprintf(b, "<span class=\"metric s%d\"><span class=\"v\">%.2f</span><span class=\"p\">%s &middot; %.1f hits/s</span><span class=\"bar\" style=\"width:%.0f%%\"></span></span>",
-				int(sc), bs.dps, policy_name(bs.policy), bs.hits, pct)
+			fmt.sbprintf(b, "<span class=\"metric s%d\" data-v=\"%.4f\"><span class=\"v\">%.2f</span><span class=\"p\">%s &middot; %.1f hits/s</span><span class=\"bar\" style=\"width:%.0f%%\"></span></span>",
+				int(sc), bs.dps, bs.dps, policy_name(bs.policy), bs.hits, pct)
 		}
-		fmt.sbprintf(b, "</summary>\n<div class=\"inner scroll\">\n<table>\n<tr><th>Passive</th>")
+		fmt.sbprintf(b, "</summary>\n<div class=\"inner scroll\">\n<table>\n<thead><tr><th>Passive</th>")
 		for sc in Scenario {
 			fmt.sbprintf(b, "<th class=\"n\">%s</th><th class=\"n\">Change</th>", SCENARIO_NAMES[sc])
 		}
-		fmt.sbprintf(b, "<th class=\"n\">DPS added</th></tr>\n")
+		fmt.sbprintf(b, "<th class=\"n\">DPS added</th></tr></thead>\n<tbody>\n")
 		flat := make([dynamic]string, context.temp_allocator)
 		for ci in config_order(sh, t, wi, m) {
 			if no_effect(t, wi, m, ci) {
@@ -344,13 +419,14 @@ report_mode :: proc(b: ^strings.Builder, sh: ^Shared, t: Table, m: Mode) {
 			}
 			fmt.sbprintf(b, "<tr><td>%s</td>", esc(config_name(sh.configs[ci])))
 			for sc in Scenario {
-				fmt.sbprintf(b, "<td class=\"n\">%.2f</td><td class=\"n %s\">%s</td>", cell(t, wi, m, sc, ci).dps,
-					change_class(delta(t, wi, m, sc, ci)), change_text(t, wi, m, sc, ci))
+				d := cell(t, wi, m, sc, ci).dps
+				fmt.sbprintf(b, "<td class=\"n\" data-v=\"%.4f\">%.2f</td><td class=\"n %s\" data-v=\"%.4f\">%s</td>", d, d,
+					change_class(delta(t, wi, m, sc, ci)), change_key(t, wi, m, sc, ci), change_text(t, wi, m, sc, ci))
 			}
 			md := mean_delta(t, wi, m, ci)
-			fmt.sbprintf(b, "<td class=\"n %s\">%s</td></tr>\n", change_class(md), signed_dps(md))
+			fmt.sbprintf(b, "<td class=\"n %s\" data-v=\"%.4f\">%s</td></tr>\n", change_class(md), md, signed_dps(md))
 		}
-		fmt.sbprintf(b, "</table>\n")
+		fmt.sbprintf(b, "</tbody>\n</table>\n")
 		if len(flat) > 0 {
 			fmt.sbprintf(b, "<p class=\"none\">No effect: %s.</p>\n", esc(strings.join(flat[:], ", ", context.temp_allocator)))
 		}
@@ -361,18 +437,21 @@ report_mode :: proc(b: ^strings.Builder, sh: ^Shared, t: Table, m: Mode) {
 	fmt.sbprintf(b, "<h3>Passives, averaged</h3>\n")
 	fmt.sbprintf(b, "<p class=\"sub\">The DPS each passive level adds, averaged over the %d weapons above and the four scenarios. A weapon passive changes only its own weapon, so that average spreads its gain over weapons it cannot touch; the next column averages over only the weapons it changes.</p>\n",
 		len(order))
-	fmt.sbprintf(b, "<div class=\"card scroll\">\n<table>\n<tr><th>#</th><th>Passive</th><th class=\"n\">Average added</th><th class=\"n\">Where it applies</th><th class=\"n\">Weapons changed</th><th>Adds most to</th></tr>\n")
+	fmt.sbprintf(b, "<div class=\"card scroll\">\n<table>\n<thead><tr><th>#</th><th>Passive</th><th class=\"n\">Average added</th><th class=\"n\">Where it applies</th><th class=\"n\">Weapons changed</th><th>Adds most to</th></tr></thead>\n<tbody>\n")
 	for o, rank in overall_order(sh, t, m) {
 		most := "&ndash;"
 		if o.top >= 0 {
 			most = fmt.tprintf("%s (%s)", esc(sh.weapons[o.top].name), signed_dps(o.top_gain))
 		}
-		own := o.affected > 0 ? signed_dps(o.own) : "&ndash;"
-		fmt.sbprintf(b, "<tr><td>%d</td><td>%s</td><td class=\"n %s\">%s</td><td class=\"n %s\">%s</td><td class=\"n\">%d</td><td>%s</td></tr>\n",
-			rank + 1, esc(config_name(sh.configs[o.config])), change_class(o.mean), signed_dps(o.mean),
-			change_class(o.own), own, o.affected, most)
+		own, own_key := "&ndash;", ""
+		if o.affected > 0 {
+			own, own_key = signed_dps(o.own), fmt.tprintf("%.4f", o.own)
+		}
+		fmt.sbprintf(b, "<tr><td data-v=\"%d\">%d</td><td>%s</td><td class=\"n %s\" data-v=\"%.4f\">%s</td><td class=\"n %s\" data-v=\"%s\">%s</td><td class=\"n\" data-v=\"%d\">%d</td><td>%s</td></tr>\n",
+			rank + 1, rank + 1, esc(config_name(sh.configs[o.config])), change_class(o.mean), o.mean, signed_dps(o.mean),
+			change_class(o.own), own_key, own, o.affected, o.affected, most)
 	}
-	fmt.sbprintf(b, "</table>\n</div>\n</section>\n")
+	fmt.sbprintf(b, "</tbody>\n</table>\n</div>\n</section>\n")
 }
 
 report_method :: proc(b: ^strings.Builder, sh: ^Shared, seconds, stage: int) {

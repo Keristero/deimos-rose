@@ -132,6 +132,9 @@ been confirmed.
   scenarios. A second column averages it over only the weapons the
   passive changes, since a weapon passive's plain average is diluted
   across every weapon.
+  Every table, and the weapon list, sorts by the column clicked; a
+  second click reverses it. Numbers start highest first, text A to Z, and
+  a cell with nothing to show ("–") sorts last either way.
 - **Gains in DPS, not percent.** A weapon that deals nothing to a target
   behind has nothing to take a percentage of, and a passive that turns it
   round is worth most there. The per-scenario change is still shown as a
