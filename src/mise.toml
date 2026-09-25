@@ -128,6 +128,7 @@ run = [
   "odin check tools/icons   $DR_COLL -vet -strict-style",
   "odin check tools/recolour $DR_COLL -vet -strict-style",
   "odin check tools/dps     $DR_COLL -vet -strict-style",
+  "odin check tools/clips   $DR_COLL -vet -strict-style",
 ]
 
 [tasks.test]
@@ -243,6 +244,32 @@ if command -v xvfb-run >/dev/null; then XVFB=(env DISPLAY= xvfb-run -s "-screen 
   "$DR_BUILD/deimos" 2>&1 | grep -E "^wrote|^cannot|particles," || true
 [ -f "$OUT.png" ] || { echo "menu-shot: no image written for MENU=$MENU" >&2; exit 1; }
 echo "$OUT.png"
+'''
+
+[tasks."weapon-clips"]
+description = "Record a short GIF of each weapon in play on the stage it unlocks: taps, then a charge and its release (WEAPONS='aiic aibg airg aipb aicg aidb plbo' by default, OUT=../work/clips; KEEP_FRAMES=1 keeps the PNG frames in OUT/frames). Headless. See tools/clips"
+depends = ["setup"]
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+OUT="${OUT:-$DR_SRC/../work/clips}"
+rm -rf "$OUT/frames"
+mkdir -p "$OUT"
+odin build tools/clips $DR_COLL $DR_LINK -o:speed -out:$DR_BUILD/clips$DR_EXT
+XVFB=()
+if command -v xvfb-run >/dev/null; then XVFB=(env DISPLAY= xvfb-run -a -s "-screen 0 1280x1024x24"); fi
+"${XVFB[@]}" "$DR_BUILD/clips$DR_EXT" "$DR_ASSETS" "$OUT/frames" ${WEAPONS:-aiic aibg airg aipb aicg aidb plbo} |
+while read -r tag slug dir; do
+  [ "$tag" = clip ] || continue
+  # The play field only (x 32-448 of the 640 screen), at 15 fps and 64
+  # colours: the scrolling terrain changes every pixel of every frame,
+  # which GIF compresses badly, so this keeps a clip to a few MB.
+  ffmpeg -loglevel error -y -framerate 30 -pattern_type glob -i "$dir/*.png" \
+    -vf "crop=832:960:64:0,scale=360:-1:flags=lanczos,fps=15,split[a][b];[a]palettegen=max_colors=64:stats_mode=full[p];[b][p]paletteuse=dither=bayer:bayer_scale=5" \
+    -loop 0 "$OUT/$slug.gif"
+  echo "$OUT/$slug.gif"
+done
+[ -n "${KEEP_FRAMES:-}" ] || rm -rf "$OUT/frames"
 '''
 
 [tasks."shots"]
