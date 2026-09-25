@@ -60,13 +60,33 @@ packet_ping_and_pong_do_not_cross_decode :: proc(t: ^testing.T) {
 @(test)
 packet_level_choice_round_trips :: proc(t: ^testing.T) {
 	buf: [64]byte
-	n := net.encode_level_choice(buf[:], 7)
+	n := net.encode_level_choice(buf[:], 7, net.START_EASY)
 	kind, kok := net.peek_kind(buf[:n])
 	testing.expect(t, kok)
 	testing.expect_value(t, kind, net.Packet_Kind.Level_Choice)
-	level_index, ok := net.decode_level_choice(buf[:n])
+	level_index, flags, ok := net.decode_level_choice(buf[:n])
 	testing.expect(t, ok)
 	testing.expect_value(t, level_index, u8(7))
+	testing.expect_value(t, flags, u8(net.START_EASY))
+	// A build from before the flags byte sends two bytes: no flags.
+	_, old_flags, old_ok := net.decode_level_choice(buf[:2])
+	testing.expect(t, old_ok)
+	testing.expect_value(t, old_flags, u8(0))
+}
+
+@(test)
+packet_start_round_trips_with_flags :: proc(t: ^testing.T) {
+	buf: [64]byte
+	n := net.encode_start(buf[:], 5, 0xCAFE_F00D, 3, net.START_EASY)
+	seq, seed, level, flags, ok := net.decode_start(buf[:n])
+	testing.expect(t, ok)
+	testing.expect_value(t, seq, u8(5))
+	testing.expect_value(t, seed, u32(0xCAFE_F00D))
+	testing.expect_value(t, level, u8(3))
+	testing.expect_value(t, flags, u8(net.START_EASY))
+	_, _, _, old_flags, old_ok := net.decode_start(buf[:7])
+	testing.expect(t, old_ok)
+	testing.expect_value(t, old_flags, u8(0))
 }
 
 @(test)

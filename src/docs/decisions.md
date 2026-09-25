@@ -603,3 +603,23 @@ so no colour ranges are guessed.
 Deliberately not extras: the rose menu backgrounds (D34) and the netplay
 lobby, which classic mode already hides by its own switches. Moving them
 under the table is possible later; nothing here depends on it.
+
+### D36 — Easy mode's reward screen and passives live in the simulation
+
+Easy mode (an extra, D35) stops the session after each level's tally for a
+reward screen where every player still in the game picks a passive upgrade
+(docs/passive-upgrades.md). The screen is `sim/` state, stepped by
+`session_step` with the players' ordinary inputs, not a presentation-side
+menu: choices made on it change the next level's simulation, so they have
+to be rolled back, resimulated and resynced exactly as play is, and keeping
+them in `State` gets all three for nothing. The alternative -- a menu in
+`game/` that sent its choices as new netplay messages -- would have needed
+its own agreement protocol and its own reconnect path.
+
+Passives are held as a level per passive (`Player.passives`) and every
+modified stat is recomputed from them where it is used. Nothing stores a
+modified value, so passives touching one stat stack by construction, and
+each hook returns the original computation untouched when no passive
+applies -- `oracle:diff` stays exact, and `sim.checksum` only mixes the new
+fields in easy mode. Easy mode itself travels in `sim.Session` and the
+netplay `Start` packet's new flags byte.

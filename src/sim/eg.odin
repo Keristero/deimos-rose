@@ -18,6 +18,10 @@ Spawn_Request :: struct {
 	terrain_effects: bool, // +0x1b
 	owner:         Entity_Ref, // +0x1c
 	speed_scale:   f32,    // +0x24
+	// Not the original's: the weapon passive that shaped this spawn (see
+	// passive_tag) and how many spawners removed from the weapon it is.
+	passive_tag:   u8,
+	passive_depth: u8,
 }
 
 spawn_request :: proc "contextless" (unit: Res_ID) -> Spawn_Request {
@@ -375,6 +379,8 @@ spawn_entity :: proc(
 	e.heading = h
 	e.stationary = req.stationary
 	e.terrain_effects = req.terrain_effects
+	e.passive_tag = req.passive_tag
+	e.passive_depth = req.passive_depth
 
 	spawn_location(s, g, e)
 	spawn_velocity(s, g, e, use_heading, h, req.owner, req.speed_scale)
@@ -414,6 +420,9 @@ spawn_entity :: proc(
 	if u.include_in_ground_accuracy_count {
 		s.accuracy_targets += 1 // G_Game_GroundAccuracy_AddTarget
 		w.ground_targets += 1
+	}
+	if e.passive_tag != 0 {
+		passive_entity_init(s, e, time)
 	}
 	return {ei, e.number}
 }

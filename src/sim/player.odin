@@ -49,6 +49,11 @@ Player :: struct {
 	nag_time:      i32,          // +0x22b unregistered-copy nag timer
 	counter:       Money_Counter, // +0xd2 the end-of-level money readout
 	weapons:       Weapon_Handler, // +0x235
+	// Not the original's: easy mode's passive upgrades (sim/passives.odin).
+	// They last the session, not the level.
+	passives:      Passive_Levels,
+	regen_wait:    i32, // steps since the last damage, towards Recharge_Delay
+	regen_acc:     i32, // eighths of a percent towards the next, times step_hz
 }
 
 player_def :: #force_inline proc "contextless" (s: ^State, p: ^Player) -> ^Player_Def {
@@ -74,6 +79,8 @@ player_setup :: proc (s: ^State, p: ^Player, number: i32, game_type: Game_Type) 
 	p.score = 0
 	p.multiplier = 1
 	p.multiplier_entity = -1
+	p.passives = {}
+	player_regen_interrupt(p)
 	player_shields_reset(s, p, true)
 	weapons_new_game(s, &p.weapons, number, s.time, s.level_number)
 	p.speed = player_def(s, p).active_default_max_speed
@@ -112,6 +119,7 @@ player_level_reset :: proc (s: ^State, p: ^Player, time: i32) {
 	p.money = 0       // Money_Reset
 	p.counter = {fade = 0x20} // MoneyCounter_Reset: hidden until it fades in
 	player_shields_reset(s, p, true)
+	player_regen_interrupt(p)
 	overload_clear(p)
 	player_reset_sprite(s, p)
 	calculate_dimensions(s, &p.obj)
@@ -152,6 +160,7 @@ player_appear :: proc(s: ^State, p: ^Player, time: i32) {
 	// destroyed until entry_invulnerability_time after it reappears, and
 	// one that simply entered the level was never invulnerable at all.
 	overload_clear(p)
+	player_regen_interrupt(p)
 	p.crosshair_reach = 0
 	p.appeared = true
 	p.state, p.state_time = .Playing, time
@@ -288,6 +297,7 @@ player_process :: proc(s: ^State, p: ^Player, time: i32, input: Buttons, film: ^
 		case .None:
 		}
 	}
+	player_passives_process(s, p, time)
 	player_move(s, p, time)
 }
 
@@ -298,7 +308,7 @@ player_move :: proc(s: ^State, p: ^Player, time: i32) {
 	d := player_def(s, p)
 	up, right := .Up in p.inputs, .Right in p.inputs
 	down, left := .Down in p.inputs, .Left in p.inputs
-	top, acc := p.speed, d.active_velocity_delta
+	top, acc := p.speed, player_acceleration(s, p, d.active_velocity_delta)
 
 	if up {
 		p.vel.y -= acc
@@ -382,7 +392,7 @@ player_move :: proc(s: ^State, p: ^Player, time: i32) {
 	}
 	limit := trunc_i32(s.defs.perm_floats[0xb7])
 	hy := p.half.y
-	at_bottom := false
+	at_bottom, at_top := false, false
 	if f32(limit) <= p.loc.y - f32(hy) {
 		if f32(h) < f32(hy) + p.loc.y {
 			p.loc.y = f32(h - hy)
@@ -392,11 +402,19 @@ player_move :: proc(s: ^State, p: ^Player, time: i32) {
 	} else {
 		p.loc.y = f32(limit + hy)
 		p.vel.y = 0
+		at_top = true
 	}
 	p.weapons.loc = p.loc
 
 	if p.weapons.crosshair_shown {
-		if !down || !at_bottom {
+		// A ground weapon firing backwards is pulled in by pushing against
+		// the top of the screen instead of the bottom.
+		backwards := ground_fires_backwards(s, &p.weapons)
+		pull, pinned := down, at_bottom
+		if backwards {
+			pull, pinned = up, at_top
+		}
+		if !pull || !pinned {
 			if 0 < p.crosshair_reach {
 				p.crosshair_reach += trunc_i32(s.defs.perm_floats[0xba])
 				if p.crosshair_reach < 0 {
@@ -413,7 +431,13 @@ player_move :: proc(s: ^State, p: ^Player, time: i32) {
 		c := &p.weapons.crosshair
 		loc := Vec{f32(gw.crosshair_x_offset) + p.loc.x, f32(p.crosshair_reach) + f32(gw.crosshair_y_offset) + p.loc.y}
 		half := halve(c.dims.y)
-		if loc.y - f32(half) < 0 {
+		if backwards {
+			// Behind the ship at half the reach, kept on screen at the bottom.
+			loc.y = p.loc.y - f32(p.crosshair_reach + gw.crosshair_y_offset) / 2
+			if f32(h) < loc.y + f32(half) {
+				loc.y = f32(h - half)
+			}
+		} else if loc.y - f32(half) < 0 {
 			loc.y = f32(half)
 		}
 		c.loc = loc

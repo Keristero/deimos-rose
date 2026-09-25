@@ -439,12 +439,13 @@ flow_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 		pause_notice_step(fl)
 		// The step itself moved to the next level if there was one
 		// (sim.session_step), so complete still being set means the list
-		// is finished. Flow only reads the state here, never changes it:
+		// is finished -- unless easy mode's reward screen is holding the
+		// move back. Flow only reads the state here, never changes it:
 		// in netplay, the state is the rollback session's to change.
 		switch {
 		case fl.state.game_over:
 			fl.mode, fl.end_timer = .Game_Over, 0
-		case fl.state.level_end.complete:
+		case fl.state.level_end.complete && !fl.state.reward.active:
 			fl.mode, fl.end_timer = .Complete, 0
 		}
 		// G_LevelSelect only ever raises U_Prefs slot 3 (highest reached)
@@ -527,10 +528,21 @@ flow_sim_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Bl
 		sim.step(fl.state, input, film)
 	}
 	flow_effects_sync(fl, particles, blurs, notices)
+	flow_effects_step(fl, r, particles, blurs, notices)
+	sounds_step(&r.textures, fl.state)
+}
+
+// The presentation effects' step, after a sim step. They freeze with the
+// game: under the netplay pause and easy mode's reward screen, which both
+// stop the sim's clock while it keeps stepping.
+flow_effects_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs, notices: ^Notices) {
+	if fl.state.paused || fl.state.reward.active {
+		return
+	}
 	particles_step(particles, fl.state)
+	passive_particles_step(particles, fl.state, r)
 	blurs_step(blurs, fl.state)
 	notices_step(notices, fl.state)
-	sounds_step(&r.textures, fl.state)
 }
 
 // After every sim.init: whatever the last session left on screen is not
@@ -570,7 +582,8 @@ flow_start_session :: proc(fl: ^Flow, seed: u32, game_type: sim.Game_Type, level
 	fl.session_start_pos = level_index + 1
 	fl.session_named = false // a local game asks for names at the end
 	level := fl.defs.levels[level_index].id
-	sim.init(fl.state, sim.Session{seed = seed, level_id = level, game_type = game_type}, fl.defs)
+	easy := extra_on(fl.prefs, .Easy_Mode) // off in classic mode, like every extra
+	sim.init(fl.state, sim.Session{seed = seed, level_id = level, game_type = game_type, easy = easy}, fl.defs)
 	flow_session_began(fl)
 	fl.mode = .Playing
 }
@@ -646,6 +659,9 @@ flow_draw :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 	r.replay = fl.mode == .Attract
 	build_frame(r, fl.state, blurs, notices)
 	present(r, fl.state, particles, scale)
+	if fl.mode == .Playing || fl.mode == .Paused {
+		reward_draw(fl, r)
+	}
 	switch fl.mode {
 	case .Paused:
 		pause_draw(fl, r, scale, true, "")

@@ -102,6 +102,7 @@ Extra :: enum {
 	Accent_Hue,        // player 1's colour, and yours in netplay: ship trim, crosshair and air-to-ground shots
 	Accent_Hue_P2,     // player 2's colour in a local game
 	Self_Outline,      // an outline in your accent round your own ship
+	Easy_Mode,         // a passive upgrade to choose after every level (sim/passives.odin); also on level select and the lobby
 }
 
 Extra_Kind :: enum {
@@ -122,6 +123,7 @@ EXTRAS := [Extra]Extra_Info {
 	.Accent_Hue        = {"accent_hue", "P1 ACCENT HUE", .Hue, 190}, // the cyan of the original crosshair
 	.Accent_Hue_P2     = {"accent_hue_p2", "P2 ACCENT HUE", .Hue, 63}, // player 2's own gold (game/render.odin TRIM_SATURATION)
 	.Self_Outline      = {"self_outline", "SELF OUTLINE", .Toggle, 0},
+	.Easy_Mode         = {"easy_mode", "EASY MODE", .Toggle, 0},
 }
 
 // Clamps or wraps a value to what its kind allows.

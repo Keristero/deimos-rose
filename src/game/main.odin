@@ -314,6 +314,37 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		flow.pending_game_type = .Single
 		flow.mode = .Level_Select
 		level_select_init(&flow.level_select)
+	case "level_select_easy":
+		// Outside classic mode, with the Easy Mode toggle on.
+		ps.saved.classic, ps.launch.classic, r.classic = false, false, false
+		ps.saved.extras[.Easy_Mode] = 1
+		flow.pending_game_type = .Single
+		flow.mode = .Level_Select
+		level_select_init(&flow.level_select)
+	case "reward", "reward_2p":
+		// Easy mode's reward screen (game/reward.odin), opened straight over
+		// a level a couple of seconds in rather than played to its end. New
+		// content: a visual check. Player 1 already holds the first level
+		// of the first option, so its values read current -> next; in
+		// reward_2p both players are on the first option, player 1 locked,
+		// so the borders nest.
+		ps.saved.classic, ps.launch.classic, r.classic = false, false, false
+		two := name == "reward_2p"
+		flow_start_session(&flow, 0x1234_5678, two ? .Co_Op : .Single, 0)
+		state.session.easy = true
+		for _ in 0 ..< 60 {
+			_ = sim.session_step(state, {})
+		}
+		if !sim.reward_begin(state, {}) {
+			fmt.eprintln("reward: no options to offer")
+			os.exit(1)
+		}
+		state.players[0].passives[state.reward.options[0]] = 1
+		if two {
+			state.reward.cursor[1] = 0
+			state.reward.locked[0] = true
+		}
+		flow.mode = .Playing
 	case "main_netplay":
 		// The main menu once its first update has built the links and the
 		// Netplay item -- "main" above is kept exactly as the oracle

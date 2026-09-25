@@ -196,7 +196,11 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 	if st.orbit_owner {
 		orbit_owner(s, e)
 	}
-	spawn_control(s, e, time)
+	if e.spawn_pace == 0 {
+		spawn_control(s, e, time)
+	} else {
+		passive_paced_spawn_control(s, e)
+	}
 	if e.deleted {
 		return
 	}
@@ -391,10 +395,19 @@ spawn_control :: proc(s: ^State, e: ^Entity, time: i32) {
 	}
 }
 
-// The spawn at the end of SpawnControl: place the child relative to its
-// parent, optionally rotated with the parent's facing.
+// The spawn at the end of SpawnControl. A spawner fired by a weapon with a
+// passive may reshape the spawn first (passive_spawn_child).
 @(private = "file")
 spawn_child :: proc(s: ^State, e: ^Entity, set: ^Spawn_Set_Def) {
+	if e.passive_tag != 0 && e.passive_depth == 0 && passive_spawn_child(s, e, set) {
+		return
+	}
+	spawn_child_set(s, e, set)
+}
+
+// Place the child relative to its parent, optionally rotated with the
+// parent's facing.
+spawn_child_set :: proc(s: ^State, e: ^Entity, set: ^Spawn_Set_Def) {
 	ci := unit_index(s.defs, set.spawn)
 	child: ^Unit = ci >= 0 ? &s.defs.units[ci] : nil
 	// Terrain effects only come from mobile parents that allow them.
@@ -450,6 +463,10 @@ spawn_child :: proc(s: ^State, e: ^Entity, set: ^Spawn_Set_Def) {
 	req.owner_player = e.owner_player
 	req.stationary = set.stationary_option
 	req.terrain_effects = set.terrain_effects_option
+	if e.passive_tag != 0 {
+		req.passive_tag = e.passive_tag
+		req.passive_depth = e.passive_depth + 1
+	}
 	eg_request_spawn(s, req)
 }
 

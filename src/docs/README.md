@@ -15,6 +15,7 @@ do, and which decisions are still open.
 | 6 — Netplay | in progress — stages 1-5 done (snapshot ring, UDP transport, rollback, desync detection, lobby + live synced session); stage 6 (two-machine playtest) still needs a second physical machine | [phase-6-netplay.md](phase-6-netplay.md) |
 | 7 — Faithful menus | **complete** — all six stages done (Main Menu, Level Select, Credits, High Scores, minimal Pause, `-classic`/netplay-lobby gating) | [phase-7-faithful-menus.md](phase-7-faithful-menus.md) |
 | 8 — Netcode enhancements | **complete** — all five stages done (diagnostics overlay, netplay level select, pause-on-disconnect, reconnect, synchronised pausing); stage 5's throttle constants are provisional pending a real-latency playtest (D26) | [phase-8-netcode-enhancements.md](phase-8-netcode-enhancements.md) |
+| Easy mode & passive upgrades | **complete** — reward screen after each level's tally, nine passives, netplay lobby toggle; `oracle:diff` still exact; several constants provisional pending a hand playtest | [passive-upgrades.md](passive-upgrades.md) |
 | Bonus — Developer tools | not started — dev/cheat console, level editor; deferred, no exit criterion set yet | — |
 
 The overall plan lives in [../../notes/odin-rewrite-plan.md](../../notes/odin-rewrite-plan.md).

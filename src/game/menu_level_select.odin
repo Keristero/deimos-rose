@@ -81,6 +81,17 @@ Level_Select :: struct {
 	pulse:   Level_Select_Pulse,
 	scale:   f32, // 1.0..MaxScale; only the centre preview is ever drawn scaled
 	growing: bool,
+	// Not the original's: the Easy_Mode extra's toggle, under the level
+	// name, and only outside classic mode.
+	easy:    Text_Button,
+}
+
+@(private = "file") LS_EASY_Y :: 440
+
+@(private = "file")
+level_select_easy_layout :: proc(fl: ^Flow, r: ^Renderer, ls: ^Level_Select) {
+	label := extra_on(fl.prefs, .Easy_Mode) ? "EASY MODE: ON" : "EASY MODE: OFF"
+	text_button_relabel(r, &ls.easy, label, SCREEN_W / 2, LS_EASY_Y)
 }
 
 // Always opens on the first level: G_LevelSelect_GetStartingLevelIDFromUser's
@@ -115,6 +126,12 @@ level_select_update :: proc(fl: ^Flow, r: ^Renderer, ls: ^Level_Select) {
 	}
 
 	mouse := menu_mouse_pos()
+	if !r.classic {
+		level_select_easy_layout(fl, r, ls)
+		if text_button_update(r, &ls.easy, mouse, dt) {
+			extra_set(fl.prefs, .Easy_Mode, extra_on(fl.prefs, .Easy_Mode) ? 0 : 1)
+		}
+	}
 	for i in 0 ..< 3 {
 		was_hovering := ls.hover[i] > 0
 		clicked := update_hover_click(LS_RECTS[i], &ls.hover[i], mouse, dt)
@@ -228,6 +245,10 @@ level_select_draw :: proc(r: ^Renderer, fl: ^Flow, ls: ^Level_Select) {
 	level_select_draw_icon(r, LS_ICON_POS[0], LS_FRAME_PREV, ls.hover[0] > 0)
 	level_select_draw_icon(r, LS_ICON_POS[1], unlocked ? LS_FRAME_START : LS_FRAME_NOACCESS, ls.hover[1] > 0)
 	level_select_draw_icon(r, LS_ICON_POS[2], LS_FRAME_NEXT, ls.hover[2] > 0)
+	if !r.classic {
+		level_select_easy_layout(fl, r, ls)
+		text_button_draw(r, &ls.easy)
+	}
 }
 
 @(private = "file")

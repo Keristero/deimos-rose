@@ -231,6 +231,12 @@ Entity :: struct {
 	// change resets the new state's list), so one list is equivalent. It
 	// keeps State small enough to snapshot every frame for rollback.
 	spawn_info:    [MAX_SPAWN_SETS]Spawn_Info,
+	// Not the original's; all zero unless a passive shaped the entity.
+	passive_tag:   u8,  // the weapon passive (see passive_tag)
+	passive_depth: u8,  // spawners between it and the weapon
+	spawn_pace:    i32, // 0, or its spawn sets' pace in hundredths of a step
+	pace_acc:      i32,
+	spawn_clock:   i32, // the time its spawn sets run at, when paced
 }
 
 Group :: struct {

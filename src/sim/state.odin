@@ -21,11 +21,13 @@ level_id :: proc "contextless" (s: string) -> Level_ID {
 }
 
 // Session parameters fixed at start and never mutated. A film stores exactly
-// these three values plus the per-frame inputs.
+// the first three plus the per-frame inputs; `easy` is not the original's,
+// and no film sets it.
 Session :: struct {
 	seed:      u32,
 	level_id:  Level_ID,
 	game_type: Game_Type,
+	easy:      bool, // easy mode: a reward screen after every level (reward.odin)
 }
 
 // The complete simulation state. Everything that affects future frames lives
@@ -65,6 +67,7 @@ State :: struct {
 	// (game/flow.odin's .Paused, still what single-player uses).
 	paused:       bool,
 	pause_held:   [MAX_PLAYERS]bool, // each player's Pause bit last step, for edge detection
+	reward:       Reward,            // easy mode's reward screen, between levels
 	// The first original function reached that is not ported yet, by
 	// address; 0 while the port covers everything run so far. `gaps` keeps
 	// each distinct site with the film step it was first reached at.
@@ -198,7 +201,7 @@ level_transition :: proc(s: ^State) -> Level_Transition {
 	if s.game_over {
 		return .Game_Over
 	}
-	if !s.level_end.complete {
+	if !s.level_end.complete || s.reward.active {
 		return .None
 	}
 	return level_advance(s) ? .Advanced : .All_Complete
@@ -222,6 +225,10 @@ level_transition :: proc(s: ^State) -> Level_Transition {
 // While paused, only the frame count advances (the rollback ring is keyed
 // on it, and inputs keep flowing so either player can unpause); game time,
 // the RNG and every entity stand still.
+//
+// In easy mode a counted level opens the reward screen (reward.odin) on the
+// step it is counted, and the move to the next level waits for it to close.
+// It pauses the game the same way, and a pause pauses it in turn.
 session_step :: proc(s: ^State, input: Frame_Input, film: ^Film = nil) -> Level_Transition {
 	toggle := false
 	for i in 0 ..< MAX_PLAYERS {
@@ -243,13 +250,21 @@ session_step :: proc(s: ^State, input: Frame_Input, film: ^Film = nil) -> Level_
 	for &b in game_input {
 		b -= {.Pause}
 	}
+	if s.reward.active {
+		if reward_step(s, game_input) {
+			return .None
+		}
+		return level_transition(s)
+	}
 	step(s, game_input, film)
+	if reward_due(s) && reward_begin(s, game_input) {
+		return .None
+	}
 	return level_transition(s)
 }
 
-// This step's presentation events start empty; step and a paused
-// session_step both begin here.
-@(private = "file")
+// This step's presentation events start empty; step, a paused session_step
+// and the reward screen all begin here.
 clear_step_events :: proc "contextless" (s: ^State) {
 	s.sounds.count = 0
 	s.particles.count = 0
@@ -344,6 +359,20 @@ checksum :: proc "contextless" (s: ^State) -> u64 {
 		mix(&h, u64(p.state))
 		mix(&h, u64(transmute(u32)p.loc.x))
 		mix(&h, u64(transmute(u32)p.loc.y))
+	}
+	// Easy mode's own state. Only then: a session without it hashes as it
+	// always has.
+	if s.session.easy {
+		r := &s.reward
+		mix(&h, u64(r.active ? 1 : 0) | u64(r.count) << 8 | u64(r.ready_time) << 16)
+		for i in 0 ..< MAX_PLAYERS {
+			mix(&h, u64(r.cursor[i]) | u64(r.locked[i] ? 1 : 0) << 32)
+			p := &s.players[i]
+			for lv in p.passives {
+				mix(&h, u64(lv))
+			}
+			mix(&h, u64(p.regen_wait) | u64(p.regen_acc) << 32)
+		}
 	}
 	w := &s.world
 	mix(&h, u64(w.used_count))

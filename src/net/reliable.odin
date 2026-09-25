@@ -61,9 +61,9 @@ send_goodbye :: proc(rc: ^Reliable_Channel, sock: ^Socket) {
 	send(sock, rc.to, rc.buf[:rc.length])
 }
 
-send_start :: proc(rc: ^Reliable_Channel, sock: ^Socket, seed: u32, level: u8) {
+send_start :: proc(rc: ^Reliable_Channel, sock: ^Socket, seed: u32, level: u8, flags: u8 = 0) {
 	seq := reliable_begin(rc)
-	rc.length = encode_start(rc.buf[:], seq, seed, level)
+	rc.length = encode_start(rc.buf[:], seq, seed, level, flags)
 	send(sock, rc.to, rc.buf[:rc.length])
 }
 

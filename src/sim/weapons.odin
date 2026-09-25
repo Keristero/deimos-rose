@@ -29,6 +29,7 @@ Powerup :: struct {
 	level:        i32,
 	percent:      f32,
 	release_time: i32,
+	pace:         i32, // not the original's: see powerup_level_due
 }
 
 MAX_AUX :: 8
@@ -55,6 +56,11 @@ Weapon_Handler :: struct {
 	player:          i32,  // +0x119
 	fade_in:         f32,  // +0x11d perm float 0x95
 	fade_out:        f32,  // +0x121 perm float 0x96
+	// Not the original's; used only by passives (sim/passives.odin).
+	air_idle:        i32,  // steps fire-air has been let go, for Auto Charge
+	volleys_left:    i32,  // extra volleys still owed by the last shot
+	volley_pace:     i32,  // hundredths of a step towards the next one
+	ground_pace:     i32,  // hundredths of a step towards the next bomb
 }
 
 Weapon_Result :: enum i32 {
@@ -169,6 +175,7 @@ weapons_appear :: proc(s: ^State, h: ^Weapon_Handler, level_start: bool) {
 	h.air_held = 0
 	h.ground_powerup = Powerup{entity = -1}
 	h.ground_held = 0
+	h.air_idle, h.volleys_left, h.volley_pace, h.ground_pace = 0, 0, 0, 0
 	if h.queued_ground != NO_WEAPON {
 		change_weapon(s, h, WEP_GROUND, h.queued_ground)
 		h.queued_ground = NO_WEAPON
@@ -242,7 +249,12 @@ weapons_process :: proc(
 	fire_ground, fire_air, fire_aux := false, false, false
 	h.air_held = air ? h.air_held + 1 : 0
 	h.ground_held = ground ? h.ground_held + 1 : 0
-	if !air && (h.air_powerup.state == 1 || h.air_powerup.state == 2) {
+	// Auto Charge turns the air button around: the power-up charges while
+	// it is let go, and a press releases it.
+	auto_charge := air_auto_charge(s, h)
+	h.air_idle = air || h.air_powerup.state != 0 ? 0 : h.air_idle + 1
+	release := auto_charge ? air && !h.prev_air : !air
+	if release && (h.air_powerup.state == 1 || h.air_powerup.state == 2) {
 		h.air_powerup.state = 3
 		h.air_powerup.time = time
 		powerup_release(s, h.air_powerup.entity, time)
@@ -255,7 +267,7 @@ weapons_process :: proc(
 		result = .Released
 	}
 	if !weapon_def(s, h.air.weapon).auto_repeat {
-		air_powerup_process(s, h, time, at, h.air.weapon, &result)
+		air_powerup_process(s, h, time, at, h.air.weapon, auto_charge ? h.air_idle : h.air_held, &result)
 	}
 	gw := weapon_def(s, h.ground.weapon)
 	if gw.powerup_ground_activation_spawn != NONE || gw.powerup_ground_release_spawn != NONE {
@@ -269,6 +281,7 @@ weapons_process :: proc(
 		}
 		h.appeared = true
 		air_changed = true
+		h.volleys_left = 0
 		// U_Sound_Play(id, priority, volume, loop): no draws in this overload.
 		if id := s.defs.perm_sounds[0x12]; id != NONE && s.sounds.count < MAX_SOUND_EVENTS {
 			s.sounds.events[s.sounds.count] = {id, 100, 0x4b, 1, true}
@@ -283,7 +296,7 @@ weapons_process :: proc(
 		if ground && !h.prev_ground && h.ground_powerup.state == 0 {
 			fire_ground = check_spawning_ground(s, h, time)
 		}
-	} else if h.ground.last2 + gw.delay_between_load_launches < time {
+	} else if ground_burst_due(s, h, time) {
 		h.ground.pending -= 1
 		fire_ground = true
 		h.ground.last2 = time
@@ -301,7 +314,13 @@ weapons_process :: proc(
 	if fire_ground {
 		spawn_ground(s, h, at)
 	}
+	if h.air_powerup.state != 0 {
+		h.volleys_left = 0
+	}
 	if fire_air {
+		spawn_air(s, h, at)
+		air_volleys_schedule(s, h)
+	} else if air_volley_due(s, h) {
 		spawn_air(s, h, at)
 	}
 	if fire_aux {
@@ -335,11 +354,11 @@ powerup_release :: proc(s: ^State, entity: i32, time: i32) {
 	}
 }
 
-// Priv_CheckSpawning_Air.
+// Priv_CheckSpawning_Air. Under Auto Charge holding fire-air autofires.
 check_spawning_air :: proc "contextless" (s: ^State, h: ^Weapon_Handler, time: i32) -> bool {
 	wd := weapon_def(s, h.air.weapon)
-	if h.air.last + wd.delay_between_launches < time {
-		if !(!wd.auto_repeat && h.prev_air) {
+	if h.air.last + air_firing_delay(s, h, h.air.weapon) < time {
+		if !(!wd.auto_repeat && !air_auto_charge(s, h) && h.prev_air) {
 			h.air.pending += 1
 			h.air.last = time
 			h.air.last2 = time
@@ -376,23 +395,26 @@ check_spawning_ground :: proc "contextless" (s: ^State, h: ^Weapon_Handler, time
 	h.ground.pending -= 1
 	h.ground.last = time
 	h.ground.last2 = time
+	h.ground_pace = 0
 	return true
 }
 
 // Priv_Spawn_Ground: each spawn record of the ground weapon, its speed scaled
-// by the crosshair's distance, then the crosshair's activation spawn.
+// by the crosshair's distance, then the crosshair's activation spawn. A
+// passive may add lanes, or turn the weapon behind the ship (weapon_spawns).
 spawn_ground :: proc(s: ^State, h: ^Weapon_Handler, at: Vec) {
 	wd := weapon_def(s, h.ground.weapon)
-	for &sp in wd.spawns {
-		if sp.unit == NONE {
-			continue
-		}
+	backwards := ground_fires_backwards(s, h)
+	tag := weapon_passive_tag(s, h.player, h.ground.weapon)
+	spawns: [MAX_LANES + MAX_EXTRA_SPAWNS]Weapon_Spawn
+	for sp in spawns[:weapon_spawns(s, h.ground.weapon, h.player, backwards, spawns[:])] {
 		req := spawn_request(sp.unit)
 		req.owner_player = h.player
-		req.loc = {f32(sp.x_loc) + at.x, f32(sp.y_loc) + at.y}
+		req.loc = {f32(sp.x) + at.x, f32(sp.y) + at.y}
 		req.explicit_heading = sp.set_heading
 		req.heading = sp.angle
-		reach := max(trunc_i32(h.loc.y - h.crosshair.loc.y), 0)
+		req.passive_tag = tag
+		reach := max(trunc_i32(backwards ? h.crosshair.loc.y - h.loc.y : h.loc.y - h.crosshair.loc.y), 0)
 		req.speed_scale = f32(reach) / f32(abs(wd.crosshair_y_offset))
 		eg_request_spawn(s, req)
 	}
@@ -409,27 +431,29 @@ spawn_air :: proc(s: ^State, h: ^Weapon_Handler, at: Vec) {
 	if h.air.pending <= 0 {
 		return
 	}
-	wd := weapon_def(s, h.air.weapon)
-	for &sp in wd.spawns {
-		if sp.unit == NONE {
-			continue
-		}
+	tag := weapon_passive_tag(s, h.player, h.air.weapon)
+	spawns: [MAX_LANES + MAX_EXTRA_SPAWNS]Weapon_Spawn
+	for sp in spawns[:weapon_spawns(s, h.air.weapon, h.player, false, spawns[:])] {
 		req := spawn_request(sp.unit)
 		req.owner_player = h.player
-		req.loc = {f32(sp.x_loc) + at.x, f32(sp.y_loc) + at.y}
+		req.loc = {f32(sp.x) + at.x, f32(sp.y) + at.y}
 		req.explicit_heading = sp.set_heading
 		req.heading = sp.angle
+		req.passive_tag = tag
 		eg_request_spawn(s, req)
 	}
 }
 
-// Priv_AirPowerup_Process: holding fire-air charges a power-up.
-air_powerup_process :: proc(s: ^State, h: ^Weapon_Handler, time: i32, at: Vec, weapon: i32, result: ^Weapon_Result) {
+// Priv_AirPowerup_Process: holding fire-air charges a power-up. `held` is
+// how long fire-air has been held (air_held), or under Auto Charge how long
+// it has been let go (air_idle).
+air_powerup_process :: proc(s: ^State, h: ^Weapon_Handler, time: i32, at: Vec, weapon: i32, held: i32, result: ^Weapon_Result) {
 	wd := weapon_def(s, weapon)
 	if wd.powerup_air_activation_spawn == NONE && wd.powerup_air_release_spawn == NONE {
 		return
 	}
 	p := &h.air_powerup
+	top := powerup_max_level(s, h, weapon) // powerup_air_max_power_level, save for passives
 	percent :: proc "contextless" (level, max_level: i32) -> f32 {
 		v := f32(level) / f32(max_level) * 100
 		if v < 1 {
@@ -441,8 +465,9 @@ air_powerup_process :: proc(s: ^State, h: ^Weapon_Handler, time: i32, at: Vec, w
 	}
 	switch p.state {
 	case 0:
-		if wd.powerup_air_time_until_activation <= h.air_held {
+		if wd.powerup_air_time_until_activation <= held {
 			h.air_held = 0
+			p.pace = 0
 			if wd.powerup_air_activation_spawn != NONE {
 				req := spawn_request(wd.powerup_air_activation_spawn)
 				req.owner_player = h.player
@@ -458,16 +483,16 @@ air_powerup_process :: proc(s: ^State, h: ^Weapon_Handler, time: i32, at: Vec, w
 			p.percent = 0
 		}
 	case 1:
-		if 0 < wd.powerup_air_overload_time && p.time + wd.powerup_air_overload_time < time {
+		if overload := powerup_overload_time(s, h, weapon); 0 < overload && p.time + overload < time {
 			result^ = .Overload
 			p.state = 2
 			p.time = time
 		}
-		if p.state == 1 && p.level_time + wd.powerup_air_time_between_power_level_changes < time {
+		if p.state == 1 && powerup_level_due(s, h, p, weapon, time) {
 			p.level += 1
-			p.percent = percent(p.level, wd.powerup_air_max_power_level)
-			if wd.powerup_air_max_power_level < p.level {
-				p.level = wd.powerup_air_max_power_level
+			p.percent = percent(p.level, top)
+			if top < p.level {
+				p.level = top
 				p.percent = 100
 				if wd.powerup_air_do_release_on_max_power_level {
 					p.state = 3
@@ -497,7 +522,7 @@ air_powerup_process :: proc(s: ^State, h: ^Weapon_Handler, time: i32, at: Vec, w
 			eg_request_spawn(s, req)
 			p.release_time = time
 			p.level -= 1
-			p.percent = percent(p.level, wd.powerup_air_max_power_level)
+			p.percent = percent(p.level, top)
 		}
 	}
 }

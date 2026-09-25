@@ -59,6 +59,7 @@ player_hit :: proc(s: ^State, p: ^Player, damage: f32, time: i32) {
 		loss := f32(d.shield_base_hit_percentage) * damage
 		if loss > 0 {
 			p.defence_spawned = true // this[0xcc]: took damage this level
+			player_regen_interrupt(p)
 		}
 		// G_Player::Hit (0x431688): the loss and the new value are each
 		// stored as a float (fstps) before Shields_SetPercentage.

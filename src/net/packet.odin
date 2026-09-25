@@ -156,19 +156,25 @@ decode_ack :: proc(buf: []byte) -> (seq: u8, ok: bool) {
 // Ready/Goodbye, so the guest is guaranteed to receive it before the host
 // begins stepping (net/reliable.odin's stop-and-wait blocks the host's own
 // transition on the Ack -- see game/netplay.odin).
-encode_start :: proc(buf: []byte, seq: u8, seed: u32, level: u8) -> int {
+//
+// The eighth byte is the session's flags (START_EASY: easy mode). A build
+// from before it sends seven bytes, which decode as no flags.
+START_EASY :: 0x01
+
+encode_start :: proc(buf: []byte, seq: u8, seed: u32, level: u8, flags: u8 = 0) -> int {
 	buf[0] = u8(Packet_Kind.Start)
 	buf[1] = seq
 	put_u32(buf[2:], seed)
 	buf[6] = level
-	return 7
+	buf[7] = flags
+	return 8
 }
 
-decode_start :: proc(buf: []byte) -> (seq: u8, seed: u32, level: u8, ok: bool) {
+decode_start :: proc(buf: []byte) -> (seq: u8, seed: u32, level: u8, flags: u8, ok: bool) {
 	if len(buf) < 7 || Packet_Kind(buf[0]) != .Start {
-		return 0, 0, 0, false
+		return 0, 0, 0, 0, false
 	}
-	return buf[1], get_u32(buf[2:]), buf[6], true
+	return buf[1], get_u32(buf[2:]), buf[6], len(buf) >= 8 ? buf[7] : 0, true
 }
 
 // Level_Choice carries a 0-based index into Flow.defs.levels, not a
@@ -177,18 +183,20 @@ decode_start :: proc(buf: []byte) -> (seq: u8, seed: u32, level: u8, ok: bool) {
 // resolution is needed on the wire. Unreliable and sent every lobby frame
 // the host has one picked, same redundancy-instead-of-acks reasoning as
 // Input: a dropped one is invisible since the next one due (a frame later)
-// repeats the same value.
-encode_level_choice :: proc(buf: []byte, level_index: u8) -> int {
+// repeats the same value. The host's choice of flags (Start's, START_EASY)
+// rides along the same way, for the guest's display; Start is what counts.
+encode_level_choice :: proc(buf: []byte, level_index: u8, flags: u8 = 0) -> int {
 	buf[0] = u8(Packet_Kind.Level_Choice)
 	buf[1] = level_index
-	return 2
+	buf[2] = flags
+	return 3
 }
 
-decode_level_choice :: proc(buf: []byte) -> (level_index: u8, ok: bool) {
+decode_level_choice :: proc(buf: []byte) -> (level_index: u8, flags: u8, ok: bool) {
 	if len(buf) < 2 || Packet_Kind(buf[0]) != .Level_Choice {
-		return 0, false
+		return 0, 0, false
 	}
-	return buf[1], true
+	return buf[1], len(buf) >= 3 ? buf[2] : 0, true
 }
 
 // Resync_Start (Phase 8 stage 3/4: pause on disconnect + reconnect) carries
