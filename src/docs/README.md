@@ -16,6 +16,7 @@ do, and which decisions are still open.
 | 7 — Faithful menus | **complete** — all six stages done (Main Menu, Level Select, Credits, High Scores, minimal Pause, `-classic`/netplay-lobby gating) | [phase-7-faithful-menus.md](phase-7-faithful-menus.md) |
 | 8 — Netcode enhancements | **complete** — all five stages done (diagnostics overlay, netplay level select, pause-on-disconnect, reconnect, synchronised pausing); stage 5's throttle constants are provisional pending a real-latency playtest (D26) | [phase-8-netcode-enhancements.md](phase-8-netcode-enhancements.md) |
 | Easy mode & passive upgrades | **complete** — reward screen after each level's tally, nine passives, netplay lobby toggle; `oracle:diff` still exact; several constants provisional pending a hand playtest | [passive-upgrades.md](passive-upgrades.md) |
+| New Weapons | **complete** — loadout screen at the start of every stage after the first, the Chaingun (stage 7) with its aimed charge, netplay lobby toggle; `oracle:diff` still exact; the Chaingun's numbers are provisional pending a hand playtest | [new-weapons.md](new-weapons.md) |
 | Bonus — Developer tools | not started — dev/cheat console, level editor; deferred, no exit criterion set yet | — |
 
 The overall plan lives in [../../notes/odin-rewrite-plan.md](../../notes/odin-rewrite-plan.md).

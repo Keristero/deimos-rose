@@ -1,0 +1,245 @@
+{
+    "id": "aicg",
+    "type": "wede",
+    "name": "Air - Chaingun",
+    "family": "",
+    "states": [],
+    "header": [
+        {
+            "key": "type_ID",
+            "value": "PEAA"
+        },
+        {
+            "key": "default_ID",
+            "value": "none"
+        },
+        {
+            "key": "name_STR",
+            "value": "Air - Chaingun"
+        },
+        {
+            "key": "description1_STR",
+            "value": "Fires bursts of spinning rounds. Charge it to fire aimed pairs at the nearest enemy."
+        },
+        {
+            "key": "description2_STR",
+            "value": "No Description"
+        },
+        {
+            "key": "scoreBarPreviewFace_ID",
+            "value": "wesy"
+        },
+        {
+            "key": "scoreBarPreviewFrame_INT",
+            "value": "4"
+        },
+        {
+            "key": "maxAllowed_INT",
+            "value": "1"
+        },
+        {
+            "key": "minimumLevelAvailable_INT",
+            "value": "7"
+        },
+        {
+            "key": "maximumLevelAvailable_INT",
+            "value": "9999"
+        },
+        {
+            "key": "player1AppearanceFace_ID",
+            "value": "pl1k"
+        },
+        {
+            "key": "player2AppearanceFace_ID",
+            "value": "pl2k"
+        },
+        {
+            "key": "playerGlow_COLOR",
+            "value": "606060"
+        },
+        {
+            "key": "selectionSound_ID",
+            "value": "none"
+        },
+        {
+            "key": "selectionSound_MinVolume_INT",
+            "value": "100"
+        },
+        {
+            "key": "selectionSound_MaxVolume_INT",
+            "value": "100"
+        },
+        {
+            "key": "selectionSound_Priority_INT",
+            "value": "50"
+        },
+        {
+            "key": "selectionSound_MinPitch_FLOAT",
+            "value": "1.000000"
+        },
+        {
+            "key": "selectionSound_MaxPitch_FLOAT",
+            "value": "1.000000"
+        },
+        {
+            "key": "crosshairFace_ID",
+            "value": "none"
+        },
+        {
+            "key": "crosshairFrame_INT",
+            "value": "0"
+        },
+        {
+            "key": "crosshairLockedFace_ID",
+            "value": "none"
+        },
+        {
+            "key": "crosshairLockedFrame_INT",
+            "value": "0"
+        },
+        {
+            "key": "crosshairXOffset_INT",
+            "value": "0"
+        },
+        {
+            "key": "crosshairYOffset_INT",
+            "value": "0"
+        },
+        {
+            "key": "crosshairSpawnOnActivation_ID",
+            "value": "none"
+        },
+        {
+            "key": "numAmmoInPack_INT",
+            "value": "0"
+        },
+        {
+            "key": "ammoWarnAtCount_INT",
+            "value": "0"
+        },
+        {
+            "key": "ammoWarning_STR",
+            "value": "none"
+        },
+        {
+            "key": "autoRepeat_BOOL",
+            "value": "FALSE"
+        },
+        {
+            "key": "delayBetweenLaunches_INT",
+            "value": "30"
+        },
+        {
+            "key": "delayBetweenLoadLaunches_INT",
+            "value": "0"
+        },
+        {
+            "key": "shieldIncrease_INT",
+            "value": "0"
+        },
+        {
+            "key": "livesIncrease_INT",
+            "value": "0"
+        },
+        {
+            "key": "invulnerableForTime_INT",
+            "value": "0"
+        },
+        {
+            "key": "spawn_NumUnitsToSpawn_INT",
+            "value": "1"
+        },
+        {
+            "key": "spawn_Name_STR",
+            "value": "Bullet Spawner"
+        },
+        {
+            "key": "spawn_Unit_ID",
+            "value": "cgbs"
+        },
+        {
+            "key": "spawn_XLoc_INT",
+            "value": "0"
+        },
+        {
+            "key": "spawn_YLoc_INT",
+            "value": "0"
+        },
+        {
+            "key": "spawn_SetHeading_BOOL",
+            "value": "FALSE"
+        },
+        {
+            "key": "spawn_Angle_INT",
+            "value": "0"
+        },
+        {
+            "key": "powerup_Air_TimeUntilActivation_INT",
+            "value": "15"
+        },
+        {
+            "key": "powerup_Air_ActivationSpawn_ID",
+            "value": "cgpo"
+        },
+        {
+            "key": "powerup_Air_TimeBetweenPowerLevelChanges_INT",
+            "value": "2"
+        },
+        {
+            "key": "powerup_Air_MaxPowerLevel_INT",
+            "value": "20"
+        },
+        {
+            "key": "powerup_Air_OverloadTime_INT",
+            "value": "180"
+        },
+        {
+            "key": "powerup_Air_ReleaseSpawn_ID",
+            "value": "cgpb"
+        },
+        {
+            "key": "powerup_Air_TimeBetweenReleaseSpawns_INT",
+            "value": "2"
+        },
+        {
+            "key": "powerup_Air_DoReleaseOnMaxPowerLevel_BOOL",
+            "value": "FALSE"
+        },
+        {
+            "key": "powerup_Ground_TimeUntilActivation_INT",
+            "value": "0"
+        },
+        {
+            "key": "powerup_Ground_ActivationSpawn_ID",
+            "value": "none"
+        },
+        {
+            "key": "powerup_Ground_TimeBetweenPowerLevelChanges_INT",
+            "value": "0"
+        },
+        {
+            "key": "powerup_Ground_MaxPowerLevel_INT",
+            "value": "0"
+        },
+        {
+            "key": "powerup_Ground_OverloadTime_INT",
+            "value": "0"
+        },
+        {
+            "key": "powerup_Ground_ReleaseSpawn_ID",
+            "value": "none"
+        },
+        {
+            "key": "powerup_Ground_TimeBetweenReleaseSpawns_INT",
+            "value": "0"
+        },
+        {
+            "key": "powerup_Ground_DoReleaseOnMaxPowerLevel_BOOL",
+            "value": "FALSE"
+        },
+        {
+            "key": "x_AimedRelease_BOOL",
+            "value": "TRUE"
+        }
+    ]
+}

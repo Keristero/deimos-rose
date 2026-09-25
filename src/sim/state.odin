@@ -21,13 +21,14 @@ level_id :: proc "contextless" (s: string) -> Level_ID {
 }
 
 // Session parameters fixed at start and never mutated. A film stores exactly
-// the first three plus the per-frame inputs; `easy` is not the original's,
-// and no film sets it.
+// the first three plus the per-frame inputs; `easy` and `loadout` are not
+// the original's, and no film sets them.
 Session :: struct {
 	seed:      u32,
 	level_id:  Level_ID,
 	game_type: Game_Type,
 	easy:      bool, // easy mode: a reward screen after every level (reward.odin)
+	loadout:   bool, // New Weapons: the new weapons, and a loadout screen each stage (loadout.odin)
 }
 
 // The complete simulation state. Everything that affects future frames lives
@@ -68,6 +69,7 @@ State :: struct {
 	paused:       bool,
 	pause_held:   [MAX_PLAYERS]bool, // each player's Pause bit last step, for edge detection
 	reward:       Reward,            // easy mode's reward screen, between levels
+	loadout:      Loadout,           // New Weapons' loadout screen, early in each level
 	// The first original function reached that is not ported yet, by
 	// address; 0 while the port covers everything run so far. `gaps` keeps
 	// each distinct site with the film step it was first reached at.
@@ -146,7 +148,10 @@ level_start :: proc(s: ^State) {
 	eg_reset(s, s.level)
 	bgnd_initial_spawns(s)
 
-	// The level's title notice unit, centred in the play area.
+	// The level's title notice unit, centred in the play area. The loadout
+	// screen waits for it to go.
+	s.loadout.shown = false
+	s.loadout.title = NO_REF
 	notice := s.defs.perm_objects[s.level_number + 9]
 	if notice != NONE {
 		req := spawn_request(notice)
@@ -154,7 +159,7 @@ level_start :: proc(s: ^State) {
 			s.defs.perm_floats[PF_VISIBLE_GAME_WIDTH] / 2,
 			s.defs.perm_floats[PF_VISIBLE_GAME_HEIGHT] / 2,
 		}
-		eg_request_spawn(s, req)
+		s.loadout.title = eg_request_spawn(s, req)
 	}
 }
 
@@ -228,7 +233,9 @@ level_transition :: proc(s: ^State) -> Level_Transition {
 //
 // In easy mode a counted level opens the reward screen (reward.odin) on the
 // step it is counted, and the move to the next level waits for it to close.
-// It pauses the game the same way, and a pause pauses it in turn.
+// It pauses the game the same way, and a pause pauses it in turn. New
+// Weapons' loadout screen (loadout.odin) opens early in a level the same
+// way, on the step the level's title has gone.
 session_step :: proc(s: ^State, input: Frame_Input, film: ^Film = nil) -> Level_Transition {
 	toggle := false
 	for i in 0 ..< MAX_PLAYERS {
@@ -256,11 +263,24 @@ session_step :: proc(s: ^State, input: Frame_Input, film: ^Film = nil) -> Level_
 		}
 		return level_transition(s)
 	}
+	if s.loadout.active {
+		loadout_step(s, game_input)
+		return .None
+	}
 	step(s, game_input, film)
 	if reward_due(s) && reward_begin(s, game_input) {
 		return .None
 	}
+	if loadout_due(s) && loadout_begin(s, game_input) {
+		return .None
+	}
 	return level_transition(s)
+}
+
+// Whether play stands still this step for a pause or a between-play screen:
+// the presentation holds its own effects still to match.
+session_frozen :: proc "contextless" (s: ^State) -> bool {
+	return s.paused || s.reward.active || s.loadout.active
 }
 
 // This step's presentation events start empty; step, a paused session_step
@@ -372,6 +392,28 @@ checksum :: proc "contextless" (s: ^State) -> u64 {
 				mix(&h, u64(lv))
 			}
 			mix(&h, u64(p.regen_wait) | u64(p.regen_acc) << 32)
+		}
+	}
+	// New Weapons' own state, likewise only then.
+	if s.session.loadout {
+		l := &s.loadout
+		mix(&h, u64(l.active ? 1 : 0) | u64(l.shown ? 2 : 0) | u64(l.ready_time) << 8)
+		for i in 0 ..< MAX_PLAYERS {
+			b := &l.boards[i]
+			mix(&h, u64(b.row) | u64(b.col) << 8 | u64(b.hold_row) << 16 | u64(b.hold_col) << 24 |
+				u64(b.holding ? 1 : 0) << 32 | u64(b.ready ? 1 : 0) << 33)
+			for row in b.cells {
+				for w in row {
+					mix(&h, u64(u32(w)))
+				}
+			}
+			wh := &s.players[i].weapons
+			for w in wh.loadout {
+				mix(&h, u64(u32(w)))
+			}
+			for w in wh.spare {
+				mix(&h, u64(u32(w)))
+			}
 		}
 	}
 	w := &s.world

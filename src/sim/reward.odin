@@ -73,7 +73,7 @@ reward_begin :: proc(s: ^State, input: Frame_Input) -> bool {
 	pool: [len(Passive)]Passive
 	n: i32
 	for pa in Passive {
-		if !passive_available(s.defs, pa, next) {
+		if !passive_available(s.defs, pa, next, s.session.loadout) {
 			continue
 		}
 		for &p, i in s.players {
@@ -206,8 +206,8 @@ reward_step :: proc(s: ^State, input: Frame_Input) -> bool {
 }
 
 // A menu sound: no draws, played at full volume whether or not it is
-// already playing (loop = true, as the weapon-switch sound does).
-@(private = "file")
+// already playing (loop = true, as the weapon-switch sound does). The
+// loadout screen (loadout.odin) plays the same ones.
 reward_sound :: proc "contextless" (s: ^State, id: Res_ID) {
 	if s.sounds.count < MAX_SOUND_EVENTS {
 		s.sounds.events[s.sounds.count] = {id, 100, 0, 1, true}

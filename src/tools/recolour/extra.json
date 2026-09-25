@@ -1,0 +1,6 @@
+{
+    "plates": [
+        {"from": "PL1G", "to": "PL1K", "hue_min": 70, "hue_max": 170, "saturation": 0.12, "value": 0.6},
+        {"from": "PL2G", "to": "PL2K", "hue_min": 70, "hue_max": 170, "saturation": 0.12, "value": 0.6}
+    ]
+}

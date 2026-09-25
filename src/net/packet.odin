@@ -157,9 +157,11 @@ decode_ack :: proc(buf: []byte) -> (seq: u8, ok: bool) {
 // begins stepping (net/reliable.odin's stop-and-wait blocks the host's own
 // transition on the Ack -- see game/netplay.odin).
 //
-// The eighth byte is the session's flags (START_EASY: easy mode). A build
-// from before it sends seven bytes, which decode as no flags.
+// The eighth byte is the session's flags (START_EASY: easy mode,
+// START_LOADOUT: new weapons). A build from before it sends seven bytes,
+// which decode as no flags.
 START_EASY :: 0x01
+START_LOADOUT :: 0x02
 
 encode_start :: proc(buf: []byte, seq: u8, seed: u32, level: u8, flags: u8 = 0) -> int {
 	buf[0] = u8(Packet_Kind.Start)

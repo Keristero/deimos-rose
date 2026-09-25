@@ -271,15 +271,16 @@ passive_maxed :: #force_inline proc "contextless" (levels: ^Passive_Levels, pa: 
 
 // Whether a passive may be offered on the way into level `next`: a weapon
 // passive needs its weapon in the data and flyable there (the Ion Cannon,
-// say, is gone after level 3).
-passive_available :: proc "contextless" (d: ^Defs, pa: Passive, next: i32) -> bool {
+// say, is gone after level 3). Under New Weapons (`kept`) a weapon is kept
+// once unlocked (loadout_unlocked), so its passive is offered from then on.
+passive_available :: proc "contextless" (d: ^Defs, pa: Passive, next: i32, kept := false) -> bool {
 	w := PASSIVES[pa].weapon
 	if w == NONE {
 		return true
 	}
 	for &wd in d.weapons {
 		if wd.id == w {
-			return wd.type == WEP_GROUND || (wd.minimum_level_available <= next && next <= wd.maximum_level_available)
+			return wd.type == WEP_GROUND || (wd.minimum_level_available <= next && (kept || next <= wd.maximum_level_available))
 		}
 	}
 	return false

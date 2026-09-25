@@ -42,6 +42,9 @@ main :: proc() {
 		root = "assets"
 	}
 	defs, report := data.assets_defs_load(root)
+	// New content (assets/extra) rides after the originals; only a New
+	// Weapons session reaches it (docs/new-weapons.md).
+	data.extra_defs_load(root, &defs)
 	if len(defs.levels) == 0 {
 		fmt.eprintfln("no level definitions under %v -- run `mise run assets:all`", root)
 		os.exit(1)
@@ -343,6 +346,75 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		if two {
 			state.reward.cursor[1] = 0
 			state.reward.locked[0] = true
+		}
+		flow.mode = .Playing
+	case "loadout", "loadout_2p", "loadout_placed":
+		// New Weapons' loadout screen (game/loadout.odin), played until the
+		// stage's title fades and the screen opens. New content: a visual
+		// check.
+		// - loadout: Level Select's stage 7, where the Chaingun unlocks. Five
+		//   weapons for a loadout of three, so two wait in the new row; the
+		//   cursor is on the Chaingun.
+		// - loadout_2p: the same for two. Player 1 has picked up a new weapon
+		//   and moved onto the loadout; player 2 is on READY, which is refused.
+		// - loadout_placed: stage 2, with the Bacta Gun taken away first, so
+		//   it comes back as new, straight into the free slot.
+		ps.saved.classic, ps.launch.classic, r.classic = false, false, false
+		extra_set(ps, .New_Weapons, 1)
+		two := name == "loadout_2p"
+		placed := name == "loadout_placed"
+		flow_start_session(&flow, 0x1234_5678, two ? .Co_Op : .Single, placed ? 1 : 6)
+		if placed {
+			state.players[0].weapons.loadout[1] = sim.NO_WEAPON
+		}
+		for i := 0; i < 2000 && !state.loadout.active; i += 1 {
+			_ = sim.session_step(state, {})
+		}
+		if !state.loadout.active {
+			fmt.eprintln("loadout: the screen never opened (is assets/extra there?)")
+			os.exit(1)
+		}
+		if !placed {
+			state.loadout.boards[0].col = 1
+		}
+		if two {
+			b := &state.loadout.boards[0]
+			b.holding, b.hold_row, b.hold_col = true, .Fresh, 0
+			b.row, b.col = .Slots, 1
+			state.loadout.boards[1].row = .Ready
+		}
+		flow.mode = .Playing
+	case "chaingun", "chaingun_charge":
+		// The Chaingun in play (docs/new-weapons.md), on stage 7 once its
+		// enemies are about: in chaingun, the burst a moment after a press;
+		// in chaingun_charge, the aimed volleys a moment after a charge is
+		// let go. Player 1 is handed the Chaingun and the loadout screen is
+		// skipped. New content: a visual check.
+		ps.saved.classic, ps.launch.classic, r.classic = false, false, false
+		extra_set(ps, .New_Weapons, 1)
+		flow_start_session(&flow, 0x1234_5678, .Single, 6)
+		state.loadout.shown = true
+		p := &state.players[0]
+		for &w, i in defs.weapons {
+			if w.id == sim.res_id("aicg") {
+				p.weapons.loadout[0] = i32(i)
+				sim.change_weapon(state, &p.weapons, sim.WEP_AIR, i32(i))
+				sim.player_sprite_from_weapon(state, p)
+			}
+		}
+		// An idle ship is shot down about 220 steps in.
+		warm, hold, after := 180, 4, 6
+		if name == "chaingun_charge" {
+			warm, hold, after = 120, 70, 12
+		}
+		for _ in 0 ..< warm {
+			_ = sim.session_step(state, {})
+		}
+		for _ in 0 ..< hold {
+			_ = sim.session_step(state, {{.Fire_Air}, {}})
+		}
+		for _ in 0 ..< after {
+			_ = sim.session_step(state, {})
 		}
 		flow.mode = .Playing
 	case "main_netplay":

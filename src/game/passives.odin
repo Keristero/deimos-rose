@@ -117,7 +117,7 @@ stat_text :: proc(levels: ^sim.Passive_Levels, stat: sim.Stat, weapon: sim.Res_I
 @(private = "file") SPARK_SPEED :: 3
 
 passive_particles_step :: proc(p: ^Particles, s: ^sim.State, r: ^Renderer) {
-	if !s.session.easy || s.paused || s.reward.active {
+	if !s.session.easy || sim.session_frozen(s) {
 		return
 	}
 	for &pl, i in s.players {

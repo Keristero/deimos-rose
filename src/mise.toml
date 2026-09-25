@@ -126,6 +126,7 @@ run = [
   "odin check tools/diff    $DR_COLL -vet -strict-style",
   "odin check tools/rngcheck $DR_COLL -vet -strict-style",
   "odin check tools/icons   $DR_COLL -vet -strict-style",
+  "odin check tools/recolour $DR_COLL -vet -strict-style",
 ]
 
 [tasks.test]
@@ -218,7 +219,7 @@ depends = ["build"]
 run = "bash tools/oracle/menu_compare.sh"
 
 [tasks."menu-shot"]
-description = "Render one of our own menu screens headlessly, no comparison (MENU=main [OUT=path]; MENU=restarted checks a new game starts with none of the last one's particles; DR_SHOT_HUE=63 sets the accent on preferences_extras; MENU=reward, reward_2p and level_select_easy show easy mode) -- for a quick look, or debug MENU cases from run_menu_shot"
+description = "Render one of our own menu screens headlessly, no comparison (MENU=main [OUT=path]; MENU=restarted checks a new game starts with none of the last one's particles; DR_SHOT_HUE=63 sets the accent on preferences_extras; MENU=reward, reward_2p and level_select_easy show easy mode; MENU=loadout, loadout_2p, loadout_placed, chaingun and chaingun_charge show New Weapons) -- for a quick look, or debug MENU cases from run_menu_shot"
 depends = ["build"]
 # Wrapped in xvfb-run/DISPLAY= exactly like the shots and menu-shots:compare
 # tasks -- running $DR_BUILD/deimos directly (without this) opens a real
@@ -311,8 +312,8 @@ run = "odin run tools/records $DR_COLL $DR_LINK -out:$DR_BUILD/records$DR_EXT --
 [tasks."assets:all"]
 description = "Extract media, decode records and composite the icons made from them"
 depends = ["assets:extract", "assets:records"]
-# After the extraction, not beside it: the icons are drawn from its sprites.
-run = "mise run assets:icons"
+# After the extraction, not beside it: both are drawn from its sprites.
+run = ["mise run assets:icons", "mise run assets:extra"]
 
 [tasks."assets:icons"]
 description = "Composite icons from the extracted sprites, per a recipe of layered sprite frames (RECIPE=tools/icons/passives.json OUT=assets/icons/passives by default: easy mode's 32x32 passive icons, one PNG per sim.Passive, named after it in lower case). To add one, add an entry to the recipe and rerun; MENU=reward mise run menu-shot shows them in place"
@@ -321,6 +322,15 @@ depends = ["setup"]
 run = """
 odin run tools/icons $DR_COLL $DR_LINK -out:$DR_BUILD/icons$DR_EXT -- \
   "${RECIPE:-tools/icons/passives.json}" "$DR_ASSETS" "${OUT:-$DR_ASSETS/icons/passives}"
+"""
+
+[tasks."assets:extra"]
+description = "Recolour extracted sprite plates into the new content's own (RECIPE=tools/recolour/extra.json by default: the Chaingun's dark grey ships, from the Bacta Gun's). Writes assets/extra/sprites/, which the game loads beside its own sprites; the extra tree's records in assets/extra/data are written by hand"
+depends = ["setup"]
+# CPU-side raylib image calls only: no window and no audio device are opened.
+run = """
+odin run tools/recolour $DR_COLL $DR_LINK -out:$DR_BUILD/recolour$DR_EXT -- \
+  "${RECIPE:-tools/recolour/extra.json}" "$DR_ASSETS"
 """
 
 [tasks."assets:verify"]

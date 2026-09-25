@@ -61,6 +61,10 @@ Weapon_Handler :: struct {
 	volleys_left:    i32,  // extra volleys still owed by the last shot
 	volley_pace:     i32,  // hundredths of a step towards the next one
 	ground_pace:     i32,  // hundredths of a step towards the next bomb
+	// Not the original's; used only by New Weapons (sim/loadout.odin): the
+	// air weapons held, those switched between and the rest.
+	loadout:         [LOADOUT_SLOTS]i32,
+	spare:           [MAX_SPARE]i32,
 }
 
 Weapon_Result :: enum i32 {
@@ -90,10 +94,12 @@ default_weapon :: proc "contextless" (d: ^Defs, ground: bool) -> i32 {
 	return NO_WEAPON
 }
 
-// FUN_00448890: the air weapon introduced at exactly this level.
+// FUN_00448890: the air weapon introduced at exactly this level. This and
+// the two below are the original's choices, which never see a new weapon:
+// New Weapons chooses through the loadout instead.
 level_air_weapon :: proc "contextless" (d: ^Defs, level: i32) -> i32 {
 	for &w, i in d.weapons {
-		if w.type == WEP_AIR && w.minimum_level_available == level {
+		if w.type == WEP_AIR && !w.extra && w.minimum_level_available == level {
 			return i32(i)
 		}
 	}
@@ -104,7 +110,7 @@ level_air_weapon :: proc "contextless" (d: ^Defs, level: i32) -> i32 {
 best_air_weapon :: proc "contextless" (d: ^Defs, level: i32) -> i32 {
 	best := i32(NO_WEAPON)
 	for &w, i in d.weapons {
-		if w.type != WEP_AIR || level > w.maximum_level_available || w.minimum_level_available > level {
+		if w.type != WEP_AIR || w.extra || level > w.maximum_level_available || w.minimum_level_available > level {
 			continue
 		}
 		if best == NO_WEAPON || d.weapons[best].minimum_level_available < w.minimum_level_available {
@@ -120,7 +126,7 @@ next_weapon_of_type :: proc "contextless" (d: ^Defs, type: Res_ID, current: Res_
 	first := i32(NO_WEAPON)
 	seen := false
 	for &w, i in d.weapons {
-		if w.type != type || w.minimum_level_available > level || level > w.maximum_level_available {
+		if w.type != type || w.extra || w.minimum_level_available > level || level > w.maximum_level_available {
 			continue
 		}
 		if current == NONE {
@@ -153,7 +159,13 @@ weapons_new_game :: proc(s: ^State, h: ^Weapon_Handler, player: i32, time, level
 	if g := default_weapon(s.defs, true); g != NO_WEAPON {
 		slot_reset(&h.ground, g, time)
 	}
-	if a := best_air_weapon(s.defs, level); a != NO_WEAPON {
+	h.loadout = NO_WEAPON
+	h.spare = NO_WEAPON
+	a := best_air_weapon(s.defs, level)
+	if s.session.loadout {
+		a = loadout_new_game(s, h, level)
+	}
+	if a != NO_WEAPON {
 		slot_reset(&h.air, a, time)
 	}
 }
@@ -180,7 +192,8 @@ weapons_appear :: proc(s: ^State, h: ^Weapon_Handler, level_start: bool) {
 		change_weapon(s, h, WEP_GROUND, h.queued_ground)
 		h.queued_ground = NO_WEAPON
 	}
-	next := level_start ? level_air_weapon(s.defs, s.level_number) : h.queued_air
+	// New Weapons keeps the weapon chosen: a new one waits in the loadout.
+	next := level_start && !s.session.loadout ? level_air_weapon(s.defs, s.level_number) : h.queued_air
 	if next != NO_WEAPON {
 		change_weapon(s, h, WEP_AIR, next)
 		h.queued_air = NO_WEAPON
@@ -219,6 +232,18 @@ change_weapon :: proc(s: ^State, h: ^Weapon_Handler, type: Res_ID, weapon: i32) 
 			h.queued_ground = weapon
 		}
 	}
+}
+
+// The air weapon Change_Air moves on to from `current`: the next in the
+// loadout under New Weapons, else the original's next of its type.
+air_weapon_next :: proc "contextless" (s: ^State, h: ^Weapon_Handler, current: i32) -> i32 {
+	if s.session.loadout {
+		return loadout_next(h, current)
+	}
+	if current == NO_WEAPON {
+		return NO_WEAPON
+	}
+	return next_weapon_of_type(s.defs, WEP_AIR, weapon_def(s, current).id, s.level_number)
 }
 
 // AirWeapon_GetCurrentOrQueuedWeaponRefPtr.
@@ -275,8 +300,7 @@ weapons_process :: proc(
 	}
 
 	if switch_ && !h.prev_switch {
-		lvl := s.level_number
-		if n := next_weapon_of_type(s.defs, WEP_AIR, weapon_def(s, h.air.weapon).id, lvl); n != NO_WEAPON {
+		if n := air_weapon_next(s, h, h.air.weapon); n != NO_WEAPON {
 			change_weapon(s, h, WEP_AIR, n)
 		}
 		h.appeared = true
@@ -516,10 +540,14 @@ air_powerup_process :: proc(s: ^State, h: ^Weapon_Handler, time: i32, at: Vec, w
 				h.queued_air = NO_WEAPON
 			}
 		} else if p.release_time + wd.powerup_air_time_between_release_spawns < time {
-			req := spawn_request(wd.powerup_air_release_spawn)
-			req.owner_player = h.player
-			req.loc = at
-			eg_request_spawn(s, req)
+			if wd.aimed_release {
+				aimed_release_spawn(s, h, wd, at)
+			} else {
+				req := spawn_request(wd.powerup_air_release_spawn)
+				req.owner_player = h.player
+				req.loc = at
+				eg_request_spawn(s, req)
+			}
 			p.release_time = time
 			p.level -= 1
 			p.percent = percent(p.level, top)

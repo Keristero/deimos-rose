@@ -623,3 +623,40 @@ each hook returns the original computation untouched when no passive
 applies -- `oracle:diff` stays exact, and `sim.checksum` only mixes the new
 fields in easy mode. Easy mode itself travels in `sim.Session` and the
 netplay `Start` packet's new flags byte.
+
+### D37 — New content lives in its own tree, appended after the originals
+
+New Weapons (docs/new-weapons.md) adds records and sprites the original
+never had. They live in `assets/extra`, laid out like `assets/`, rather
+than beside the extracted records. `data.extra_defs_load` appends them after
+the original definitions, and `assets_open` reads the extra sprite index
+beside the game's own.
+
+Why a separate tree:
+- `assets/` stays exactly what the extractor writes. `assets:verify` and
+  the equality test against the original (`tests/assets_test.odin`) keep
+  meaning what they did.
+- Every original unit, weapon and sprite keeps its index, so films and
+  `oracle:diff` are untouched.
+
+New content is loaded in every session, classic included. It is kept out
+of play by marking it rather than by not loading it:
+- each weapon from the extra tree has `Weapon.extra` set;
+- the original's weapon selection (`best_air_weapon`, `level_air_weapon`,
+  `next_weapon_of_type`) skips any weapon marked `extra`;
+- only a New Weapons session's loadout (`sim/loadout.odin`) hands them
+  out.
+
+A record's new behaviour goes in an `x_`-prefixed tag that only the extra
+loader reads, such as `x_AimedRelease_BOOL`. The generated `Wep_Def` stays
+the original's layout.
+
+The extra records are hand-authored source: each was cloned from its
+nearest original record and then edited. The extra sprites are derived from
+the extracted ones by `mise run assets:extra`, so they can be rebuilt like
+the rest of `assets/`.
+
+The loadout screen follows D36: it is simulation state, stepped with
+ordinary inputs. New Weapons travels in `sim.Session.loadout` and in
+`net.START_LOADOUT`, the next bit of the flags byte that `Start` and
+`Level_Choice` already carry.

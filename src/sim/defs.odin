@@ -90,6 +90,10 @@ Weapon :: struct {
 	id:        Res_ID,
 	using def: Wep_Def,
 	spawns:    []Wep_Spawn_Def, // +0x1c0
+	// Not the original's: set only on the new weapons (assets/extra,
+	// docs/new-weapons.md), which exist only in a New Weapons session.
+	extra:         bool,
+	aimed_release: bool, // the charge fires aimed volleys at the nearest enemy
 }
 
 // Weapon types (Wep_Def.type), compared as ids by the original.

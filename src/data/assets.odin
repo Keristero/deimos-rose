@@ -230,10 +230,14 @@ id_of :: proc(path: string) -> string {
 assets_open :: proc(root: string, allocator := context.allocator) -> (a: Assets) {
 	a.root = strings.clone(root, allocator)
 
-	idx: Json_Sprite_Index
-	if read_json(strings.concatenate({root, "/sprites/index.json"}, context.temp_allocator),
-		&idx, context.temp_allocator) {
-		plates := make([dynamic]Sprite_Plate, 0, len(idx.sprites), allocator)
+	// The game's plates, then the new content's (assets/extra): both
+	// indexes give image paths relative to the assets root.
+	plates := make([dynamic]Sprite_Plate, 0, 400, allocator)
+	for index in ([2]string{"/sprites/index.json", "/extra/sprites/index.json"}) {
+		idx: Json_Sprite_Index
+		if !read_json(strings.concatenate({root, index}, context.temp_allocator), &idx, context.temp_allocator) {
+			continue
+		}
 		for s in idx.sprites {
 			frames := make([]Json_Frame, len(s.frames), allocator)
 			copy(frames, s.frames)
@@ -245,6 +249,8 @@ assets_open :: proc(root: string, allocator := context.allocator) -> (a: Assets)
 				frames = frames,
 			})
 		}
+	}
+	if len(plates) > 0 {
 		a.sprites = plates[:]
 	}
 
@@ -401,8 +407,42 @@ assets_level_media :: proc(a: ^Assets, id: sim.Res_ID) -> ^Level_Media {
 
 // Builds the same `sim.Defs` as `defs_load`, from the extracted tree.
 assets_defs_load :: proc(root: string, allocator := context.allocator) -> (defs: sim.Defs, report: Defs_Report) {
-	// Units, with their states, spawn sets and rules.
 	units := make([dynamic]sim.Unit, 0, 400, allocator)
+	units_append(&units, root, &report, allocator)
+	defs.units = units[:]
+	report.units = len(units)
+
+	sprites := make([dynamic]sim.Sprite, 0, 400, allocator)
+	sprites_append(&sprites, root, allocator)
+	if len(sprites) > 0 {
+		defs.sprites = sprites[:]
+		report.sprites = len(sprites)
+	}
+
+	// Player definitions.
+	players := make([dynamic]sim.Player_Entry, 0, 2, allocator)
+	for path in record_paths(root, "plde", context.temp_allocator) {
+		jd: Json_Definition
+		if !read_json(path, &jd, context.temp_allocator) {
+			continue
+		}
+		pe := sim.Player_Entry{id = sim.res_id(id_of(path))}
+		def_fill(&pe.def, tags_from(jd.header, context.temp_allocator), &report, allocator)
+		append(&players, pe)
+	}
+	defs.players = players[:]
+
+	weapons := make([dynamic]sim.Weapon, 0, 8, allocator)
+	weapons_append(&weapons, root, false, &report, allocator)
+	defs.weapons = weapons[:]
+
+	assets_defs_load_rest(root, &defs, &report, allocator)
+	return
+}
+
+// Units, with their states, spawn sets and rules.
+@(private = "file")
+units_append :: proc(units: ^[dynamic]sim.Unit, root: string, report: ^Defs_Report, allocator := context.allocator) {
 	for path in record_paths(root, "unde", context.temp_allocator) {
 		jd: Json_Definition
 		if !read_json(path, &jd, context.temp_allocator) {
@@ -434,56 +474,82 @@ assets_defs_load :: proc(root: string, allocator := context.allocator) -> (defs:
 			}
 		}
 		d.states = states
-		append(&units, unit_from_definition(&d, &report, allocator))
+		append(units, unit_from_definition(&d, report, allocator))
 	}
-	defs.units = units[:]
-	report.units = len(units)
+}
 
-	// Sprite groups: the baked frame index is the same cut `defs_load` makes
-	// from the plates, verified against the original by `assets:verify`.
+// Sprite groups: the baked frame index is the same cut `defs_load` makes
+// from the plates, verified against the original by `assets:verify`.
+@(private = "file")
+sprites_append :: proc(sprites: ^[dynamic]sim.Sprite, root: string, allocator := context.allocator) {
 	idx: Json_Sprite_Index
-	if read_json(strings.concatenate({root, "/sprites/index.json"}, context.temp_allocator),
-		&idx, context.temp_allocator) {
-		sprites := make([dynamic]sim.Sprite, 0, len(idx.sprites), allocator)
-		for s in idx.sprites {
-			spr := sim.Sprite{id = sim.res_id_lower(sim.res_id(s.fourcc))}
-			spr.frames = make([]sim.Sprite_Frame, len(s.frames), allocator)
-			for f, i in s.frames {
-				spr.frames[i] = {i32(f.w), i32(f.h)}
-			}
-			append(&sprites, spr)
-		}
-		defs.sprites = sprites[:]
-		report.sprites = len(sprites)
+	if !read_json(strings.concatenate({root, "/sprites/index.json"}, context.temp_allocator), &idx, context.temp_allocator) {
+		return
 	}
-
-	// Player definitions.
-	players := make([dynamic]sim.Player_Entry, 0, 2, allocator)
-	for path in record_paths(root, "plde", context.temp_allocator) {
-		jd: Json_Definition
-		if !read_json(path, &jd, context.temp_allocator) {
-			continue
+	for s in idx.sprites {
+		spr := sim.Sprite{id = sim.res_id_lower(sim.res_id(s.fourcc))}
+		spr.frames = make([]sim.Sprite_Frame, len(s.frames), allocator)
+		for f, i in s.frames {
+			spr.frames[i] = {i32(f.w), i32(f.h)}
 		}
-		pe := sim.Player_Entry{id = sim.res_id(id_of(path))}
-		def_fill(&pe.def, tags_from(jd.header, context.temp_allocator), &report, allocator)
-		append(&players, pe)
+		append(sprites, spr)
 	}
-	defs.players = players[:]
+}
 
-	// Weapon definitions, whose spawn records repeat the spawn_* keys.
-	weapons := make([dynamic]sim.Weapon, 0, 8, allocator)
+// Weapon definitions, whose spawn records repeat the spawn_* keys. `extra`
+// marks them as new content, whose own keys start `x_`.
+@(private = "file")
+weapons_append :: proc(weapons: ^[dynamic]sim.Weapon, root: string, extra: bool, report: ^Defs_Report, allocator := context.allocator) {
 	for path in record_paths(root, "wede", context.temp_allocator) {
 		jd: Json_Definition
 		if !read_json(path, &jd, context.temp_allocator) {
 			continue
 		}
 		header := tags_from(jd.header, context.temp_allocator)
-		wp := sim.Weapon{id = sim.res_id(id_of(path))}
-		def_fill(&wp.def, header, &report, allocator)
-		wp.spawns = weapon_spawns(header, &report, allocator)
-		append(&weapons, wp)
+		wp := sim.Weapon{id = sim.res_id(id_of(path)), extra = extra}
+		def_fill(&wp.def, header, report, allocator)
+		wp.spawns = weapon_spawns(header, report, allocator)
+		if extra {
+			if v, ok := def_find(header, "x_AimedRelease_BOOL"); ok {
+				wp.aimed_release, _ = tag_bool(v)
+			}
+		}
+		append(weapons, wp)
 	}
+}
+
+// The new content (docs/new-weapons.md): units, weapons and sprites under
+// `<root>/extra`, laid out as the game's own tree is, added to `defs` after
+// the game's own so no original index moves. Kept out of assets_defs_load,
+// which has to match the original exactly. Returns false when there is no
+// extra tree; the game then plays without the new weapons.
+extra_defs_load :: proc(root: string, defs: ^sim.Defs, allocator := context.allocator) -> (report: Defs_Report, ok: bool) {
+	extra := strings.concatenate({root, "/extra"}, context.temp_allocator)
+	if !os.exists(extra) {
+		return
+	}
+	units := make([dynamic]sim.Unit, 0, len(defs.units) + 16, allocator)
+	append(&units, ..defs.units)
+	units_append(&units, extra, &report, allocator)
+	report.units = len(units) - len(defs.units)
+	defs.units = units[:]
+
+	weapons := make([dynamic]sim.Weapon, 0, len(defs.weapons) + 4, allocator)
+	append(&weapons, ..defs.weapons)
+	weapons_append(&weapons, extra, true, &report, allocator)
 	defs.weapons = weapons[:]
+
+	sprites := make([dynamic]sim.Sprite, 0, len(defs.sprites) + 4, allocator)
+	append(&sprites, ..defs.sprites)
+	sprites_append(&sprites, extra, allocator)
+	report.sprites = len(sprites) - len(defs.sprites)
+	defs.sprites = sprites[:]
+	return report, true
+}
+
+// Levels, the permanent tables: the rest of assets_defs_load.
+@(private = "file")
+assets_defs_load_rest :: proc(root: string, defs: ^sim.Defs, report: ^Defs_Report, allocator := context.allocator) {
 
 	// Levels, in play order.
 	levels := make([dynamic]sim.Level_Def, 0, 12, allocator)

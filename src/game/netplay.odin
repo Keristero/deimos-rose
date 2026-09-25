@@ -147,16 +147,17 @@ Netplay :: struct {
 	pending_start: bool, // set by netplay_poll on an accepted Start; consumed once per frame
 	start_seed:    u32,
 	start_level:   u8,
-	start_easy:    bool,
+	start_flags:   u8, // net.START_*
 
 	// Phase 8 stage 2: level_index is host-authoritative (the host's own
 	// nav buttons change it; the guest only ever receives it via inbound
 	// Level_Choice packets in netplay_poll) but lives in one shared field
 	// either way, since only one side at a time ever writes it.
 	level_index: int,
-	// Easy mode, host-authoritative the same way: the host's Easy_Mode
-	// extra, mirrored to the guest in every Level_Choice and fixed by Start.
-	easy:        bool,
+	// The session's extras (net.START_EASY, START_LOADOUT), host-authoritative
+	// the same way: the host's Easy_Mode and New_Weapons extras, mirrored to
+	// the guest in every Level_Choice and fixed by Start.
+	flags:       u8,
 
 	menu_host:  Text_Button,
 	menu_join:  Text_Button,
@@ -165,6 +166,7 @@ Netplay :: struct {
 	level_next: Text_Button,
 	ready_btn:  Text_Button,
 	easy_btn:   Text_Button,
+	weapons_btn: Text_Button,
 	buttons_at: f32, // cy the above were last built for; rebuilt if it ever needs to change
 
 	// Live session, once both sides are Playing (see Flow.netplay_active).
@@ -236,14 +238,22 @@ netplay_build_buttons :: proc(nl: ^Netplay, r: ^Renderer) {
 	nl.level_prev = text_button_at_x(r, "<", SCREEN_W / 2 - 110, 262)
 	nl.level_next = text_button_at_x(r, ">", SCREEN_W / 2 + 110, 262)
 	nl.ready_btn = text_button_at(r, "READY", 300)
-	nl.easy_btn = text_button_at(r, easy_label(false), EASY_Y)
+	nl.easy_btn = text_button_at_x(r, flag_label(0, net.START_EASY), EASY_X, EASY_Y)
+	nl.weapons_btn = text_button_at_x(r, flag_label(0, net.START_LOADOUT), WEAPONS_X, EASY_Y)
 }
 
-// Below the accent slider, clear of everything else on the connected screen.
+// Below the accent slider, clear of everything else on the connected
+// screen: easy mode on the left, new weapons on the right.
 @(private = "file") EASY_Y :: 440
+@(private = "file") EASY_X :: SCREEN_W / 2 - 110
+@(private = "file") WEAPONS_X :: SCREEN_W / 2 + 110
 
 @(private = "file")
-easy_label :: proc(on: bool) -> string {
+flag_label :: proc(flags, flag: u8) -> string {
+	on := flags & flag != 0
+	if flag == net.START_LOADOUT {
+		return on ? "NEW WEAPONS: ON" : "NEW WEAPONS: OFF"
+	}
 	return on ? "EASY MODE: ON" : "EASY MODE: OFF"
 }
 
@@ -278,7 +288,7 @@ netplay_lobby_update :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 	// host sends it -- possibly the same frame this side reaches Connected.
 	if nl.pending_start {
 		nl.pending_start = false
-		netplay_begin_session(fl, nl, nl.start_seed, int(nl.start_level), nl.start_easy)
+		netplay_begin_session(fl, nl, nl.start_seed, int(nl.start_level), nl.start_flags)
 	}
 	// Same reasoning as pending_start above, for a reconnecting client's
 	// inbound Resync_Start (Phase 8 stage 4).
@@ -553,7 +563,7 @@ netplay_update_connected :: proc(fl: ^Flow, nl: ^Netplay, r: ^Renderer) {
 	// the client has made" (notes/netcode-enhancements.md) -- once
 	// local_ready is set, the nav buttons stop responding.
 	if nl.role == .Host {
-		nl.easy = extra_on(fl.prefs, .Easy_Mode)
+		nl.flags = flow_session_flags(fl)
 	}
 	if nl.role == .Host && !nl.local_ready {
 		n := len(fl.defs.levels)
@@ -563,14 +573,18 @@ netplay_update_connected :: proc(fl: ^Flow, nl: ^Netplay, r: ^Renderer) {
 		if text_button_update(r, &nl.level_next, mouse, dt) {
 			nl.level_index = (nl.level_index + 1) % n
 		}
-		text_button_relabel(r, &nl.easy_btn, easy_label(nl.easy), SCREEN_W / 2, EASY_Y)
+		text_button_relabel(r, &nl.easy_btn, flag_label(nl.flags, net.START_EASY), EASY_X, EASY_Y)
 		if text_button_update(r, &nl.easy_btn, mouse, dt) {
-			extra_set(fl.prefs, .Easy_Mode, nl.easy ? 0 : 1)
+			extra_set(fl.prefs, .Easy_Mode, nl.flags & net.START_EASY != 0 ? 0 : 1)
+		}
+		text_button_relabel(r, &nl.weapons_btn, flag_label(nl.flags, net.START_LOADOUT), WEAPONS_X, EASY_Y)
+		if text_button_update(r, &nl.weapons_btn, mouse, dt) {
+			extra_set(fl.prefs, .New_Weapons, nl.flags & net.START_LOADOUT != 0 ? 0 : 1)
 		}
 	}
 	if nl.role == .Host {
 		buf: [3]byte
-		lcn := net.encode_level_choice(buf[:], u8(nl.level_index), nl.easy ? net.START_EASY : 0)
+		lcn := net.encode_level_choice(buf[:], u8(nl.level_index), nl.flags)
 		net.send(&nl.sock, nl.peer, buf[:lcn])
 	}
 
@@ -610,8 +624,8 @@ netplay_update_connected :: proc(fl: ^Flow, nl: ^Netplay, r: ^Renderer) {
 
 	if nl.role == .Host && nl.local_ready && !nl.ready_unsent && nl.remote_ready && !nl.rc.pending {
 		seed := flow_random_seed()
-		nl.start_seed, nl.start_level, nl.start_easy = seed, u8(nl.level_index), nl.easy
-		net.send_start(&nl.rc, &nl.sock, seed, nl.start_level, nl.start_easy ? net.START_EASY : 0)
+		nl.start_seed, nl.start_level, nl.start_flags = seed, u8(nl.level_index), nl.flags
+		net.send_start(&nl.rc, &nl.sock, seed, nl.start_level, nl.start_flags)
 		nl.phase = .Starting
 	}
 }
@@ -735,7 +749,7 @@ netplay_poll :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 			if net.reliable_accept(&nl.rc, &nl.sock, nl.peer, seq) {
 				nl.pending_start = true
 				nl.start_seed, nl.start_level = seed, level
-				nl.start_easy = flags & net.START_EASY != 0
+				nl.start_flags = flags
 			}
 		case .Goodbye:
 			seq, gok := net.decode_goodbye(buf[:n])
@@ -761,7 +775,7 @@ netplay_poll :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 		case .Level_Choice:
 			if idx, flags, lok := net.decode_level_choice(buf[:n]); lok {
 				nl.level_index = int(idx)
-				nl.easy = flags & net.START_EASY != 0
+				nl.flags = flags
 			}
 		case .Resync_Start:
 			seq, assigned, total, rok := net.decode_resync_start(buf[:n])
@@ -853,13 +867,13 @@ netplay_poll :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 }
 
 @(private = "file")
-netplay_begin_session :: proc(fl: ^Flow, nl: ^Netplay, seed: u32, level_index: int, easy: bool) {
+netplay_begin_session :: proc(fl: ^Flow, nl: ^Netplay, seed: u32, level_index: int, flags: u8) {
 	level_index := level_index
 	if level_index < 0 || level_index >= len(fl.defs.levels) {
 		level_index = 0
 	}
 	level := fl.defs.levels[level_index].id
-	sim.init(fl.state, sim.Session{seed = seed, level_id = level, game_type = .Co_Op, easy = easy}, fl.defs)
+	sim.init(fl.state, session_from_flags(seed, level, .Co_Op, flags), fl.defs)
 	flow_session_began(fl)
 	local_player := nl.role == .Host ? 0 : 1
 	net.rollback_session_init(&nl.rs, fl.state, local_player)
@@ -1220,12 +1234,13 @@ netplay_lobby_draw :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 			text_button_draw(r, &nl.level_prev)
 			text_button_draw(r, &nl.level_next)
 			text_button_draw(r, &nl.easy_btn)
+			text_button_draw(r, &nl.weapons_btn)
 		} else {
-			easy := easy_label(nl.easy)
+			chosen := fmt.tprintf("%s  --  %s", flag_label(nl.flags, net.START_EASY), flag_label(nl.flags, net.START_LOADOUT))
 			if nl.role == .Guest {
-				easy = fmt.tprintf("HOST HAS CHOSEN %s", easy)
+				chosen = fmt.tprintf("HOST HAS CHOSEN %s", chosen)
 			}
-			menu_draw_text(r, easy, SCREEN_W / 2, EASY_Y + 5, dim, .Centre)
+			menu_draw_text(r, chosen, SCREEN_W / 2, EASY_Y + 5, dim, .Centre)
 		}
 
 		you := fmt.tprintf("%s (YOU): %s", prefs.name_string(&nl.local_name), nl.local_ready ? "READY" : "NOT READY")

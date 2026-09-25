@@ -14,6 +14,7 @@ import "core:time"
 import rl "vendor:raylib"
 
 import "dr:data"
+import "dr:net"
 import "dr:prefs"
 import "dr:sim"
 
@@ -47,6 +48,7 @@ Flow :: struct {
 	quit:       bool, // Escape at the title screen; see main.odin's SetExitKey(.KEY_NULL)
 	root:       string,
 	defs:       ^sim.Defs,
+	extra_content: bool, // defs carries the new weapons (assets/extra)
 	state:      ^sim.State,
 	demo_index: int,       // which of de01..de04 is playing, only set in .Attract
 	film:       data.Film, // owns film.frames; film_destroy before loading another
@@ -246,6 +248,9 @@ flow_init :: proc(fl: ^Flow, root: string, defs: ^sim.Defs, state: ^sim.State, r
 	fl.root = root
 	fl.prefs = ps
 	fl.defs = defs
+	for &w in defs.weapons {
+		fl.extra_content ||= w.extra
+	}
 	fl.state = state
 	fl.mode = .Title
 	fl.highest_reached = progress_load()
@@ -445,7 +450,7 @@ flow_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 		switch {
 		case fl.state.game_over:
 			fl.mode, fl.end_timer = .Game_Over, 0
-		case fl.state.level_end.complete && !fl.state.reward.active:
+		case fl.state.level_end.complete && !sim.session_frozen(fl.state):
 			fl.mode, fl.end_timer = .Complete, 0
 		}
 		// G_LevelSelect only ever raises U_Prefs slot 3 (highest reached)
@@ -533,10 +538,10 @@ flow_sim_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Bl
 }
 
 // The presentation effects' step, after a sim step. They freeze with the
-// game: under the netplay pause and easy mode's reward screen, which both
-// stop the sim's clock while it keeps stepping.
+// game: under the netplay pause and the reward and loadout screens, which
+// all stop the sim's clock while it keeps stepping.
 flow_effects_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs, notices: ^Notices) {
-	if fl.state.paused || fl.state.reward.active {
+	if sim.session_frozen(fl.state) {
 		return
 	}
 	particles_step(particles, fl.state)
@@ -575,6 +580,29 @@ flow_random_seed :: proc() -> u32 {
 	return u32(time.to_unix_nanoseconds(time.now()))
 }
 
+// The session extras this player has on, as Start carries them: off in
+// classic mode, like every extra. New Weapons also needs the new content
+// to be there (assets/extra).
+flow_session_flags :: proc(fl: ^Flow) -> (flags: u8) {
+	if extra_on(fl.prefs, .Easy_Mode) {
+		flags |= net.START_EASY
+	}
+	if extra_on(fl.prefs, .New_Weapons) && fl.extra_content {
+		flags |= net.START_LOADOUT
+	}
+	return
+}
+
+session_from_flags :: proc(seed: u32, level: sim.Level_ID, game_type: sim.Game_Type, flags: u8) -> sim.Session {
+	return {
+		seed      = seed,
+		level_id  = level,
+		game_type = game_type,
+		easy      = flags & net.START_EASY != 0,
+		loadout   = flags & net.START_LOADOUT != 0,
+	}
+}
+
 // Called once Level Select's accept pulse finishes (game/menu_level_select.odin).
 // `level_index` is 0-based into fl.defs.levels (play order), matching
 // Level_Select.center.
@@ -582,8 +610,7 @@ flow_start_session :: proc(fl: ^Flow, seed: u32, game_type: sim.Game_Type, level
 	fl.session_start_pos = level_index + 1
 	fl.session_named = false // a local game asks for names at the end
 	level := fl.defs.levels[level_index].id
-	easy := extra_on(fl.prefs, .Easy_Mode) // off in classic mode, like every extra
-	sim.init(fl.state, sim.Session{seed = seed, level_id = level, game_type = game_type, easy = easy}, fl.defs)
+	sim.init(fl.state, session_from_flags(seed, level, game_type, flow_session_flags(fl)), fl.defs)
 	flow_session_began(fl)
 	fl.mode = .Playing
 }
@@ -661,6 +688,7 @@ flow_draw :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 	present(r, fl.state, particles, scale)
 	if fl.mode == .Playing || fl.mode == .Paused {
 		reward_draw(fl, r)
+		loadout_draw(fl, r)
 	}
 	switch fl.mode {
 	case .Paused:

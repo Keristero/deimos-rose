@@ -244,13 +244,14 @@ air_weapon_faces :: proc(s: ^sim.State, h: ^sim.Weapon_Handler) -> (out: [3]Weap
 		return {d.score_bar_preview_face, d.score_bar_preview_frame}
 	}
 	out[0] = face(s, cur)
-	next := sim.next_weapon_of_type(s.defs, sim.WEP_AIR, s.defs.weapons[cur].id, s.level_number)
+	// In a New Weapons session, the loadout's next slots (sim.air_weapon_next).
+	next := sim.air_weapon_next(s, h, cur)
 	out[1] = next == sim.NO_WEAPON ? out[0] : face(s, next)
 	if out[1] == out[0] {
 		out[1] = {sprite = sim.NONE}
 		return
 	}
-	after := next == sim.NO_WEAPON ? sim.NO_WEAPON : sim.next_weapon_of_type(s.defs, sim.WEP_AIR, s.defs.weapons[next].id, s.level_number)
+	after := sim.air_weapon_next(s, h, next)
 	out[2] = after == sim.NO_WEAPON ? out[0] : face(s, after)
 	if out[2] == out[0] || out[2] == out[1] {
 		out[2] = {sprite = sim.NONE}
