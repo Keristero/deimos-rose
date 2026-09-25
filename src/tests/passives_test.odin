@@ -1,7 +1,10 @@
 package tests
 
+import "core:encoding/json"
+import "core:fmt"
 import "core:log"
 import "core:os"
+import "core:strings"
 import "core:testing"
 import vmem "core:mem/virtual"
 
@@ -470,5 +473,45 @@ weapon_passives_shape_the_real_weapons :: proc(t: ^testing.T) {
 			continue
 		}
 		testing.expectf(t, index(&defs, w) >= 0, "%v's weapon is not in the data", pa)
+	}
+}
+
+// Every passive has an icon recipe (tools/icons/passives.json), and the icon
+// `mise run assets:icons` makes from it is in the assets tree, under the name
+// the reward screen looks for: the sim.Passive in lower case. The recipe
+// check needs nothing but the repository; the file check skips without the
+// assets tree.
+@(test)
+every_passive_has_an_icon :: proc(t: ^testing.T) {
+	text, err := os.read_entire_file("tools/icons/passives.json", context.temp_allocator)
+	if !testing.expectf(t, err == nil, "cannot read the icon recipe: %v", err) {
+		return
+	}
+	Recipe :: struct {
+		size:  int,
+		icons: []struct {
+			name: string,
+		},
+	}
+	recipe: Recipe
+	if !testing.expect(t, json.unmarshal(text, &recipe, allocator = context.temp_allocator) == nil, "the icon recipe must parse") {
+		return
+	}
+	testing.expect_value(t, recipe.size, 32)
+	assets := os.exists("assets/data/index.json")
+	if !assets {
+		log.info("icon files not checked: needs the extracted assets tree")
+	}
+	for pa in sim.Passive {
+		name := strings.to_lower(fmt.tprint(pa), context.temp_allocator)
+		found := false
+		for icon in recipe.icons {
+			found ||= icon.name == name
+		}
+		testing.expectf(t, found, "no icon recipe named %q", name)
+		if assets {
+			path := fmt.tprintf("assets/icons/passives/%s.png", name)
+			testing.expectf(t, os.exists(path), "%s is missing: run mise run assets:icons", path)
+		}
 	}
 }

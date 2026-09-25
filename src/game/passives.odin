@@ -8,50 +8,38 @@ package game
 import "core:fmt"
 import "core:math"
 import "core:math/rand"
+import "core:strings"
 
 import rl "vendor:raylib"
 
 import "dr:sim"
 
-Passive_Display :: struct {
-	name:  string,
-	icon:  sim.Res_ID, // a sprite; a weapon passive uses its weapon's own preview instead
-	frame: i32,
-}
-
-// Icons for the ship passives are the sprites nearest their meaning: the
-// ship, a charging and a charged power-up, the shield pickup.
+// The icons are assets/icons/passives/<name>.png, 32x32, composited from the
+// game's own sprites by `mise run assets:icons` (tools/icons/passives.json
+// holds the recipes), each named after its sim.Passive in lower case.
 @(rodata)
-PASSIVE_DISPLAY := [sim.Passive]Passive_Display {
-	.Improved_Manoeuvring = {"IMPROVED MANOEUVRING", {'p', 'l', '1', 'b'}, 0},
-	.Auto_Charge          = {"AUTO CHARGE", {'i', 'o', 'c', 'a'}, 2},
-	.Improved_Charge      = {"IMPROVED CHARGE", {'p', 'h', 'b', 'e'}, 2},
-	.Shield_Regen         = {"SHIELD REGENERATION", {'p', 'i', 's', 'h'}, 0},
-	.Ground_Variant_1     = {"REVERSE PLASMA BOMB", sim.NONE, 0},
-	.Weapon_1             = {"ION CANNON UPGRADE", sim.NONE, 0},
-	.Weapon_2             = {"BACTA GUN UPGRADE", sim.NONE, 0},
-	.Weapon_3             = {"REAR GUN UPGRADE", sim.NONE, 0},
-	.Weapon_4             = {"PHOTON BEAM UPGRADE", sim.NONE, 0},
+PASSIVE_NAMES := [sim.Passive]string {
+	.Improved_Manoeuvring = "IMPROVED MANOEUVRING",
+	.Auto_Charge          = "AUTO CHARGE",
+	.Improved_Charge      = "IMPROVED CHARGE",
+	.Shield_Regen         = "SHIELD REGENERATION",
+	.Ground_Variant_1     = "REVERSE PLASMA BOMB",
+	.Weapon_1             = "ION CANNON UPGRADE",
+	.Weapon_2             = "BACTA GUN UPGRADE",
+	.Weapon_3             = "REAR GUN UPGRADE",
+	.Weapon_4             = "PHOTON BEAM UPGRADE",
 }
 
-// The icon for a passive: its own sprite, or its weapon's -- the score bar
-// preview for an air weapon, the crosshair for the ground one.
-passive_icon :: proc(defs: ^sim.Defs, pa: sim.Passive) -> (sprite: sim.Res_ID, frame: i32) {
-	d := PASSIVE_DISPLAY[pa]
-	if d.icon != sim.NONE {
-		return d.icon, d.frame
+// A passive's icon, loaded on first use and cached with the other derived
+// images (a missing file is cached too, so it is tried once).
+passive_icon :: proc(t: ^Textures, pa: sim.Passive) -> (rl.Texture2D, bool) {
+	key := fmt.tprintf("icons/passives/%s", strings.to_lower(fmt.tprint(pa), context.temp_allocator))
+	if tex, ok := t.images[key]; ok {
+		return tex, tex.id != 0
 	}
-	w := sim.PASSIVES[pa].weapon
-	for &wd in defs.weapons {
-		if wd.id != w {
-			continue
-		}
-		if wd.score_bar_preview_face != sim.NONE {
-			return wd.score_bar_preview_face, wd.score_bar_preview_frame
-		}
-		return wd.crosshair_face, wd.crosshair_frame
-	}
-	return sim.NONE, 0
+	tex := rl.LoadTexture(fmt.ctprintf("%s/%s.png", t.root, key))
+	t.images[strings.clone(key)] = tex
+	return tex, tex.id != 0
 }
 
 Stat_Format :: enum {

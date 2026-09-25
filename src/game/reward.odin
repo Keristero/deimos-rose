@@ -91,7 +91,7 @@ reward_draw :: proc(fl: ^Flow, r: ^Renderer) {
 		cell := reward_cell(rw.count, k)
 		rl.DrawRectangleRec(window_rect(cell), {16, 20, 28, 230})
 		rl.DrawRectangleLinesEx(window_rect(cell), WINDOW_SCALE, {70, 80, 92, 255})
-		reward_draw_icon(r, s.defs, rw.options[k], cell)
+		reward_draw_icon(r, rw.options[k], cell)
 		// The borders of everyone on this option, nested in player order.
 		ring := 0
 		for i in 0 ..< sim.MAX_PLAYERS {
@@ -122,12 +122,12 @@ reward_draw :: proc(fl: ^Flow, r: ^Renderer) {
 		menu_draw_text(r, status, right, y, rw.locked[i] ? accent : dim, .Right)
 		y += LINE
 		if sim.passive_maxed(levels, pa) {
-			menu_draw_text(r, fmt.tprintf("%s: AT ITS HIGHEST LEVEL", PASSIVE_DISPLAY[pa].name), left, y, dim)
+			menu_draw_text(r, fmt.tprintf("%s: AT ITS HIGHEST LEVEL", PASSIVE_NAMES[pa]), left, y, dim)
 			y += LINE + LINE / 2
 			continue
 		}
 		next := levels[pa] + 1
-		menu_draw_text(r, fmt.tprintf("%s  LEVEL %d/%d", PASSIVE_DISPLAY[pa].name, next, def.levels), left, y, white)
+		menu_draw_text(r, fmt.tprintf("%s  LEVEL %d/%d", PASSIVE_NAMES[pa], next, def.levels), left, y, white)
 		y += LINE
 		if !sim.reward_selectable(s, i, rw.cursor[i]) {
 			menu_draw_text(r, "TAKEN BY THE OTHER PLAYER", left, y, dim)
@@ -149,21 +149,18 @@ reward_draw :: proc(fl: ^Flow, r: ^Renderer) {
 	}
 }
 
-// The option's icon, centred in its cell: scaled down to fit, or up by a
-// whole factor while it still does.
+// The option's icon, centred in its cell at the largest whole multiple of
+// its size, in window pixels, that fits.
 @(private = "file")
-reward_draw_icon :: proc(r: ^Renderer, defs: ^sim.Defs, pa: sim.Passive, cell: rl.Rectangle) {
-	sprite, frame := passive_icon(defs, pa)
-	tex, src, ok := frame_rect(&r.textures, sprite, frame)
-	if !ok || src.width <= 0 || src.height <= 0 {
+reward_draw_icon :: proc(r: ^Renderer, pa: sim.Passive, cell: rl.Rectangle) {
+	tex, ok := passive_icon(&r.textures, pa)
+	if !ok {
 		return
 	}
-	room := cell.width - 12
-	k := min(room / src.width, room / src.height)
-	if k > 1 {
-		k = f32(int(k))
-	}
-	w, h := src.width * k, src.height * k
-	dst := rl.Rectangle{cell.x + (cell.width - w) / 2, cell.y + (cell.height - h) / 2, w, h}
-	rl.DrawTexturePro(tex, src, window_rect(dst), {0, 0}, 0, rl.WHITE)
+	room := (cell.width - 12) * WINDOW_SCALE
+	k := max(f32(int(min(room / f32(tex.width), room / f32(tex.height)))), 1)
+	w, h := f32(tex.width) * k, f32(tex.height) * k
+	at := window_rect(cell)
+	dst := rl.Rectangle{at.x + (at.width - w) / 2, at.y + (at.height - h) / 2, w, h}
+	rl.DrawTexturePro(tex, {0, 0, f32(tex.width), f32(tex.height)}, dst, {0, 0}, 0, rl.WHITE)
 }

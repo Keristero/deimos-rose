@@ -1,0 +1,30 @@
+{"size": 32, "icons": [
+ {"name": "improved_manoeuvring", "layers": [
+  {"sprite": "pl1b", "frame": 0, "fit": 22, "x": 8,  "y": 17, "alpha": 0.35},
+  {"sprite": "pl1b", "frame": 0, "fit": 22, "x": 24, "y": 17, "alpha": 0.35},
+  {"sprite": "pl1b", "frame": 0, "fit": 24, "x": 16, "y": 15}]},
+ {"name": "auto_charge", "layers": [
+  {"sprite": "ioca", "frame": 2, "fit": 34, "x": 15, "y": 15},
+  {"sprite": "edut", "frame": 0, "fit": 14, "x": 24, "y": 24}]},
+ {"name": "improved_charge", "layers": [
+  {"sprite": "phbe", "frame": 1, "fit": 36, "x": 15, "y": 15},
+  {"sprite": "edut", "frame": 1, "fit": 11, "x": 26, "y": 26}]},
+ {"name": "shield_regen", "layers": [
+  {"sprite": "pish", "frame": 0, "fit": 28, "x": 15, "y": 15},
+  {"sprite": "edut", "frame": 1, "fit": 11, "x": 26, "y": 26}]},
+ {"name": "ground_variant_1", "layers": [
+  {"sprite": "pl1b", "frame": 0, "fit": 18, "x": 16, "y": 10},
+  {"sprite": "pbta", "frame": 1, "fit": 16, "x": 16, "y": 25}]},
+ {"name": "weapon_1", "layers": [
+  {"sprite": "wesy", "frame": 0, "fit": 26, "x": 15, "y": 15},
+  {"sprite": "edut", "frame": 1, "fit": 11, "x": 26, "y": 26}]},
+ {"name": "weapon_2", "layers": [
+  {"sprite": "wesy", "frame": 1, "fit": 26, "x": 15, "y": 15},
+  {"sprite": "edut", "frame": 1, "fit": 11, "x": 26, "y": 26}]},
+ {"name": "weapon_3", "layers": [
+  {"sprite": "wesy", "frame": 3, "fit": 26, "x": 15, "y": 15},
+  {"sprite": "edut", "frame": 1, "fit": 11, "x": 26, "y": 26}]},
+ {"name": "weapon_4", "layers": [
+  {"sprite": "wesy", "frame": 2, "fit": 26, "x": 15, "y": 15},
+  {"sprite": "edut", "frame": 1, "fit": 11, "x": 26, "y": 26}]}
+]}

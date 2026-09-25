@@ -125,6 +125,7 @@ run = [
   "odin check tools/records $DR_COLL -vet -strict-style",
   "odin check tools/diff    $DR_COLL -vet -strict-style",
   "odin check tools/rngcheck $DR_COLL -vet -strict-style",
+  "odin check tools/icons   $DR_COLL -vet -strict-style",
 ]
 
 [tasks.test]
@@ -308,8 +309,19 @@ depends = ["setup"]
 run = "odin run tools/records $DR_COLL $DR_LINK -out:$DR_BUILD/records$DR_EXT -- $DR_ASSETS"
 
 [tasks."assets:all"]
-description = "Extract media and decode records"
+description = "Extract media, decode records and composite the icons made from them"
 depends = ["assets:extract", "assets:records"]
+# After the extraction, not beside it: the icons are drawn from its sprites.
+run = "mise run assets:icons"
+
+[tasks."assets:icons"]
+description = "Composite icons from the extracted sprites, per a recipe of layered sprite frames (RECIPE=tools/icons/passives.json OUT=assets/icons/passives by default: easy mode's 32x32 passive icons, one PNG per sim.Passive, named after it in lower case). To add one, add an entry to the recipe and rerun; MENU=reward mise run menu-shot shows them in place"
+depends = ["setup"]
+# CPU-side raylib image calls only: no window and no audio device are opened.
+run = """
+odin run tools/icons $DR_COLL $DR_LINK -out:$DR_BUILD/icons$DR_EXT -- \
+  "${RECIPE:-tools/icons/passives.json}" "$DR_ASSETS" "${OUT:-$DR_ASSETS/icons/passives}"
+"""
 
 [tasks."assets:verify"]
 description = "Verify extracted assets against the manifest and the original PAKs"

@@ -42,9 +42,50 @@ left room, and what is still provisional. The cross-cutting choice is D36 in
 - **Presentation** (`game/reward.odin`, `game/passives.odin`):
   - The overlay is drawn over the dimmed play area. The HUD stays as it
     was.
+  - Each passive has a 32x32 icon composited from the game's sprites (see
+    Icons).
   - Two in-play effects: accent-coloured motes drawn in to a ship whose
     shields are regenerating, and sparks off a charge climbing past the
     weapon's own maximum.
+
+## Icons
+
+Each passive's icon is a 32x32 PNG in `assets/icons/passives/`, named after
+its `sim.Passive` in lower case (`shield_regen.png`), which is how the
+reward screen finds it. The icons are composited from the game's own
+sprites by `mise run assets:icons` (`tools/icons`), so they can be rebuilt
+from an extraction like everything else in `assets/`. `assets:all` runs the
+task after extracting.
+
+`tools/icons/passives.json` is the recipe. Each icon is a stack of layers,
+drawn bottom first. A layer is one frame of a sprite plate, with these
+fields:
+
+- `fit` scales the frame so its longer side is that many pixels.
+- `x` and `y` place its centre.
+- `flip_x` and `flip_y` flip it.
+- `alpha` fades it.
+
+The current set:
+
+| Passive | Layers |
+|---|---|
+| Improved Manoeuvring | the ship (`pl1b` 0), with two faint copies either side |
+| Auto Charge | the Ion Cannon's charge glow (`ioca` 2), with the editor's gear (`edut` 0) |
+| Improved Charge | the Photon Beam's charge glow (`phbe` 1), with a green plus (`edut` 1) |
+| Shield Regen | the shield pickup (`pish` 0), with the plus |
+| Ground Variant 1 | the ship above the plasma bomb's locked target (`pbta` 1) |
+| Weapon 1-4 | the weapon's score-bar symbol (`wesy` 0, 1, 3, 2), with the plus |
+
+To add an icon, add an entry named after the new passive and rerun the
+task. `MENU=reward mise run menu-shot` shows the icons in place.
+`RECIPE=` and `OUT=` point the task at another recipe and output folder,
+for icons that are not passives. The reward screen draws each icon at the
+largest whole multiple of its size, in window pixels, that fits its cell:
+3x at the usual cell size.
+
+`tests/passives_test.odin`'s `every_passive_has_an_icon` checks that every
+passive has a recipe entry and, when the assets tree is present, a file.
 
 ## The rules as implemented
 
@@ -177,13 +218,12 @@ Each of these is marked in the code, with what would settle it:
 - `REWARD_RESUME_DELAY` = 10 steps.
 - `LANE_SPACING` = 12 px, for a weapon with a single lane.
 - Weapon 3's `(1,2,0)`. It may be meant as `(1,2,x)`.
-- The ship passives' icons (`pl1b`, `ioca`, `phbe`, `pish`) are the
-  existing sprites closest in meaning. A weapon passive uses its weapon's
-  score-bar preview.
+- The icons' compositions (see Icons) are a first pass, not a
+  designed set.
 
 ## Verification
 
-- `mise run ci` is green, with 121 tests. The 13 in `tests/passives_test.odin`
+- `mise run ci` is green, with 122 tests. The 14 in `tests/passives_test.odin`
   cover:
   - the level format and stacking, rounding, and lane extension;
   - the reward screen's option count, navigation, lock, refuse, unlock,
@@ -193,7 +233,8 @@ Each of these is marked in the code, with what would settle it:
   - two rollback peers converging through two reward screens under latency
     and loss;
   - the shipped weapons' lanes, the backwards bomb and each passive's
-    weapon being in the data. This test is skipped without `src/assets`.
+    weapon being in the data. This test is skipped without `src/assets`;
+  - an icon recipe, and an icon file, for every passive.
 - `mise run oracle:diff` still replays all four demos exactly: with no
   passive held, every hook computes what the original does.
 - `sim.checksum` mixes the reward screen, passives and regeneration only in
