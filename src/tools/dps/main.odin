@@ -572,12 +572,18 @@ dps_run :: proc(d: ^sim.Defs, w: Weapon_Case, sc: Scenario, levels: sim.Passive_
 		return
 	}
 
-	ahead := sim.Vec{0, -AIR_RANGE}
+	centre := p.loc + (sc == .Behind ? sim.Vec{0, AIR_RANGE} : sim.Vec{0, -AIR_RANGE})
 	if w.ground {
-		d := h.crosshair.loc - p.loc
-		ahead = {d.x, -abs(d.y)}
+		// Under the crosshair, where the bombs land: ahead where it stands,
+		// behind where it stands once a passive turns the bombs round. The
+		// crosshair in use must be where ground_aim says, or the targets
+		// would stand where nothing lands.
+		fwd, back := ground_aim(s, p)
+		centre = sc == .Behind ? back : fwd
+		if at := sim.ground_fires_backwards(s, h) ? back : fwd; at != h.crosshair.loc {
+			return
+		}
 	}
-	centre := p.loc + (sc == .Behind ? sim.Vec{ahead.x, -ahead.y} : ahead)
 	offsets: []sim.Vec
 	unit := w.ground ? GROUND_TARGET : AIR_TARGET
 	switch sc {
@@ -653,6 +659,18 @@ dps_run :: proc(d: ^sim.Defs, w: Weapon_Case, sc: Scenario, levels: sim.Passive_
 		}
 	}
 	o.ok = true
+	return
+}
+
+// Where the ground crosshair stands, ahead and turned round, at the ship's
+// current reach: the sums in player.odin's crosshair update. Turned round
+// it is half the reach behind the ship, kept on screen at the bottom.
+ground_aim :: proc(s: ^sim.State, p: ^sim.Player) -> (fwd, back: sim.Vec) {
+	gw := &s.defs.weapons[p.weapons.ground.weapon]
+	half := f32(sim.halve(p.weapons.crosshair.dims.y))
+	x := f32(gw.crosshair_x_offset) + p.loc.x
+	fwd = {x, max(f32(p.crosshair_reach + gw.crosshair_y_offset) + p.loc.y, half)}
+	back = {x, min(p.loc.y - f32(p.crosshair_reach + gw.crosshair_y_offset) / 2, f32(sim.view_height(s.defs)) - half)}
 	return
 }
 

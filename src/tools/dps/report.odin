@@ -17,6 +17,8 @@ import "core:fmt"
 import "core:slice"
 import "core:strings"
 
+import "dr:sim"
+
 // A change this small is the same run give or take rounding: no effect.
 // A 0.01-point hit over 60 s is 0.0002 DPS.
 NOISE_DPS :: 0.005
@@ -47,6 +49,50 @@ mean_dps :: proc(t: Table, w: int, m: Mode, c: int) -> (d: f64) {
 		d += cell(t, w, m, sc, c).dps
 	}
 	return d / len(Scenario)
+}
+
+// A passive level's gain as a percentage of the weapon's DPS: the mean over
+// the scenarios the bare weapon reaches, with and without it. A passive that
+// turns the weapon round (Fires_Backwards) is measured behind against the
+// bare weapon's single target ahead, since it gives up ahead for behind.
+// ok is false where the bare weapon reaches nothing to compare with.
+gain_pct :: proc(sh: ^Shared, t: Table, w: int, m: Mode, c: int) -> (pct: f64, ok: bool) {
+	cfg := sh.configs[c]
+	if cfg.has && passive_turns(cfg.passive) {
+		base := cell(t, w, m, .Single, 0).dps
+		if base <= NOISE_DPS {
+			return
+		}
+		return (cell(t, w, m, .Behind, c).dps / base - 1) * 100, true
+	}
+	with, bare := 0.0, 0.0
+	for sc in Scenario {
+		if b := cell(t, w, m, sc, 0).dps; b > NOISE_DPS {
+			bare += b
+			with += cell(t, w, m, sc, c).dps
+		}
+	}
+	if bare <= 0 {
+		return
+	}
+	return (with / bare - 1) * 100, true
+}
+
+passive_turns :: proc(p: sim.Passive) -> bool {
+	for mod in sim.PASSIVES[p].mods {
+		if mod.stat == .Fires_Backwards {
+			return true
+		}
+	}
+	return false
+}
+
+gain_text :: proc(sh: ^Shared, t: Table, w: int, m: Mode, c: int) -> string {
+	pct, ok := gain_pct(sh, t, w, m, c)
+	if !ok {
+		return "&ndash;"
+	}
+	return fmt.tprintf("%+.1f%%", pct)
 }
 
 // "+12.5%", "0", or "from 0" where the baseline deals nothing.
@@ -201,7 +247,8 @@ report_text :: proc(sh: ^Shared, t: Table) {
 				for sc in Scenario {
 					fmt.printf(" %7s", change_text(t, w, m, sc, ci))
 				}
-				fmt.printfln("   (%s DPS)", signed_dps(mean_delta(t, w, m, ci)))
+				pct, ok := gain_pct(sh, t, w, m, ci)
+				fmt.printfln("   (%s DPS; gain %s)", signed_dps(mean_delta(t, w, m, ci)), ok ? fmt.tprintf("%+.1f%%", pct) : "-")
 			}
 		}
 		fmt.printfln("-- passives, DPS added averaged over every weapon and scenario:")
@@ -404,7 +451,7 @@ report_mode :: proc(b: ^strings.Builder, sh: ^Shared, t: Table, m: Mode) {
 	case .Charge:
 		fmt.sbprintf(b, "<p class=\"sub\">Only the weapons with a charge attack; the Plasma Bomb has none. Each charges to full, releases, and starts again once the release is spent.</p>\n")
 	}
-	fmt.sbprintf(b, "<h3>Weapons by DPS</h3>\n<p class=\"sub\">Ranked by the average over the four scenarios. Open a weapon for its passives, ranked by the DPS they add.</p>\n")
+	fmt.sbprintf(b, "<h3>Weapons by DPS</h3>\n<p class=\"sub\">Ranked by the average over the four scenarios. Open a weapon for its passives, ranked by the DPS they add. <em>Gain</em> is the passive's percentage on the weapon's DPS averaged over the scenarios the bare weapon reaches; for a passive that turns the weapon round, its DPS behind against the bare weapon's single target ahead.</p>\n")
 	fmt.sbprintf(b, "<div class=\"card\">\n<div class=\"head\"><span>#</span><span class=\"nm\">Weapon</span>")
 	for sc in Scenario {
 		fmt.sbprintf(b, "<span class=\"s%d\">%s</span>", int(sc), SCENARIO_NAMES[sc])
@@ -422,7 +469,7 @@ report_mode :: proc(b: ^strings.Builder, sh: ^Shared, t: Table, m: Mode) {
 		for sc in Scenario {
 			fmt.sbprintf(b, "<th class=\"n\">%s</th><th class=\"n\">Change</th>", SCENARIO_NAMES[sc])
 		}
-		fmt.sbprintf(b, "<th class=\"n\">DPS added</th></tr></thead>\n<tbody>\n")
+		fmt.sbprintf(b, "<th class=\"n\">DPS added</th><th class=\"n\">Gain</th></tr></thead>\n<tbody>\n")
 		flat := make([dynamic]string, context.temp_allocator)
 		for ci in config_order(sh, t, wi, m) {
 			if no_effect(t, wi, m, ci) {
@@ -436,7 +483,9 @@ report_mode :: proc(b: ^strings.Builder, sh: ^Shared, t: Table, m: Mode) {
 					change_class(delta(t, wi, m, sc, ci)), change_key(t, wi, m, sc, ci), change_text(t, wi, m, sc, ci))
 			}
 			md := mean_delta(t, wi, m, ci)
-			fmt.sbprintf(b, "<td class=\"n %s\" data-v=\"%.4f\">%s</td></tr>\n", change_class(md), md, signed_dps(md))
+			gp, gok := gain_pct(sh, t, wi, m, ci)
+			fmt.sbprintf(b, "<td class=\"n %s\" data-v=\"%.4f\">%s</td><td class=\"n %s\" data-v=\"%s\">%s</td></tr>\n",
+				change_class(md), md, signed_dps(md), change_class(gp), gok ? fmt.tprintf("%.4f", gp) : "", gain_text(sh, t, wi, m, ci))
 		}
 		fmt.sbprintf(b, "</tbody>\n</table>\n")
 		if len(flat) > 0 {
@@ -474,7 +523,7 @@ report_method :: proc(b: ^strings.Builder, sh: ^Shared, seconds, stage: int) {
 	fmt.sbprintf(b, "<li>Once the ship is in play it gets the weapon and at most one passive at one level. After %d steps for the crosshair to settle, the targets are spawned and %d s (%d steps) are measured. DPS is the damage over all of it.</li>\n",
 		SETTLE_STEPS, seconds, seconds * STEP_HZ)
 	fmt.sbprintf(b, "<li>The targets are copies of the BlackHawk (air) and the Laser Tank (ground). Each copy is stationary, has one state that never fires, moves or changes, and outside the wave has its shields topped back up every step. A shot that hits one is still spent as it would be against the real enemy.</li>\n")
-	fmt.sbprintf(b, "<li>Scenarios: <em>single target</em>, one target ahead; <em>cluster of 5</em>, that target and four more in a V, 40 px either side and 34 px further back; <em>target behind</em>, one target mirrored behind the ship. Air targets stand %d px from the ship. Ground targets stand where the crosshair lands the Plasma Bomb, and behind at the same distance.</li>\n",
+	fmt.sbprintf(b, "<li>Scenarios: <em>single target</em>, one target ahead; <em>cluster of 5</em>, that target and four more in a V, 40 px either side and 34 px further back; <em>target behind</em>, one target mirrored behind the ship. Air targets stand %d px from the ship. Ground targets stand under the crosshair, where the Plasma Bomb lands: ahead, and behind where it stands when Ground Variant 1 turns the bombs round (half the reach, kept on screen).</li>\n",
 		AIR_RANGE)
 	fmt.sbprintf(b, "<li><em>Wave of 9</em> is the one scenario whose targets die: three rows of three, 40 px apart across and 34 px deep, starting where the single target stands. Each has %.1f shields, a stage 9&ndash;12 enemy's, and a target shot down is replaced %d steps later. Its DPS counts only the shields taken off, so damage past a kill counts only where it carries on to another target (the Discharge Beam) or throws out shrapnel that hits one.</li>\n",
 		WAVE_SHIELDS, WAVE_RESPAWN_STEPS)
