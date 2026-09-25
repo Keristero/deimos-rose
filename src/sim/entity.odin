@@ -6,11 +6,11 @@ package sim
 // original call site (the RandomInt/RandomFloat return address) so the oracle
 // diff can name the first divergence precisely.
 
-unit_of :: #force_inline proc "contextless" (s: ^State, e: ^Entity) -> ^Unit {
+unit_of :: #force_inline proc "contextless" (s: ^State, e: Entity) -> ^Unit {
 	return &s.defs.units[e.unit]
 }
 
-state_of :: #force_inline proc "contextless" (s: ^State, e: ^Entity) -> ^Unit_State {
+state_of :: #force_inline proc "contextless" (s: ^State, e: Entity) -> ^Unit_State {
 	return &s.defs.units[e.unit].states[e.state]
 }
 
@@ -97,25 +97,30 @@ adjust_visibility_and_tinting :: proc "contextless" (o: ^Game_Object) {
 	step(&o.tint, o.tint_target, o.tint_delta)
 }
 
-// G_Entity::Reset: a pool slot made ready for a new entity.
-entity_reset :: proc "contextless" (e: ^Entity, pool_index: i32) {
-	e^ = Entity {
-		unit          = NO_LINK,
-		number        = -1,
-		group         = -1,
-		state         = -1,
-		owner         = NO_REF,
-		owner_player  = -1,
-		target_player = -1,
-		hunt_player   = -1,
+// G_Entity::Reset: a pool slot made ready for a new entity. Its Link is the
+// list's to set.
+entity_reset :: proc "contextless" (e: Entity, pool_index: i32) {
+	e.actor^ = Actor {
+		unit           = NO_LINK,
+		number         = -1,
+		group          = -1,
+		state          = -1,
+		owner_player   = -1,
+		target_player  = -1,
 		powerup_weapon = NONE,
-		pool_index    = pool_index,
+		pool_index     = pool_index,
 	}
-	object_defaults(&e.obj)
+	e.anim^ = {}
+	e.motion^ = Motion{hunt_player = -1}
+	e.owned^ = Owned{owner = NO_REF}
+	e.spawner^ = {}
+	e.effects^ = {}
+	e.tag^ = {}
+	object_defaults(e.obj)
 }
 
 // G_Entity::GetFrameForAngle.
-frame_for_angle :: proc "contextless" (s: ^State, e: ^Entity, angle: i32) -> i32 {
+frame_for_angle :: proc "contextless" (s: ^State, e: Entity, angle: i32) -> i32 {
 	st := state_of(s, e)
 	dirs := max(st.num_directions, 1)
 	f := f32(angle) / f32(360 / dirs)
@@ -132,7 +137,7 @@ frame_for_angle :: proc "contextless" (s: ^State, e: ^Entity, angle: i32) -> i32
 }
 
 // G_Entity::Priv_CheckSpawningAbilityAtStateChange.
-reset_spawn_info :: proc "contextless" (s: ^State, e: ^Entity, time: i32) {
+reset_spawn_info :: proc "contextless" (s: ^State, e: Entity, time: i32) {
 	st := state_of(s, e)
 	n := len(st.spawn_sets)
 	e.spawning = n > 0
@@ -157,7 +162,7 @@ reset_spawn_info :: proc "contextless" (s: ^State, e: ^Entity, time: i32) {
 
 // G_Entity::ChangeState. Returns whether the entity is to be deleted or
 // destroyed (the original's two out-parameters).
-change_state :: proc(s: ^State, e: ^Entity, init: bool, name: string, time: i32) -> (delete, destroy: bool) {
+change_state :: proc(s: ^State, e: Entity, init: bool, name: string, time: i32) -> (delete, destroy: bool) {
 	if name == "Delete" {
 		return true, false
 	}
@@ -253,7 +258,7 @@ change_state :: proc(s: ^State, e: ^Entity, init: bool, name: string, time: i32)
 	// keeps the old dimensions until animation or scaling marks them dirty.
 	// Faithful to the original.
 	if init || e.sprite != old_sprite || e.frame != old_frame {
-		calculate_dimensions(s, &e.obj)
+		calculate_dimensions(s, e.obj)
 	}
 	e.anim_backwards = st.do_animate_backwards
 
@@ -315,7 +320,7 @@ halve :: #force_inline proc "contextless" (n: i32) -> i32 {
 // The velocity approach shared by both branches of ChangeState: head for
 // `max_speed` along `angle`, changing speed by at most `delta` per step.
 @(private = "file")
-approach :: proc "contextless" (e: ^Entity, angle: i32, max_speed, delta: f32) {
+approach :: proc "contextless" (e: Entity, angle: i32, max_speed, delta: f32) {
 	speed := speed_from_vector(e.vel)
 	d := speed < max_speed ? max_speed - speed : speed - max_speed
 	step := delta
@@ -331,7 +336,7 @@ approach :: proc "contextless" (e: ^Entity, angle: i32, max_speed, delta: f32) {
 // G_EG_CacheOwnerLocOffsetsAndAngles: for states that follow their owner,
 // remember where the owner is and how far away (lock / link: the offset;
 // orbit: the offset, radius and angle).
-cache_owner_offsets :: proc(s: ^State, e: ^Entity) {
+cache_owner_offsets :: proc(s: ^State, e: Entity) {
 	e.owner_offset = {}
 	e.owner_loc = {}
 	st := state_of(s, e)
@@ -367,7 +372,7 @@ cache_owner_offsets :: proc(s: ^State, e: ^Entity) {
 }
 
 // G_Entity::Animate.
-entity_animate :: proc(s: ^State, e: ^Entity, time: i32) {
+entity_animate :: proc(s: ^State, e: Entity, time: i32) {
 	if !e.animating {
 		return
 	}
@@ -428,7 +433,7 @@ entity_animate :: proc(s: ^State, e: ^Entity, time: i32) {
 // coordinate for nora and sora -- so the RNG stream is the same either way,
 // but the site identifies the branch: de04 step 2065 shows a "sora" flee
 // drawing at 0x416630, so 0x4165f0 is nora.
-entity_flee :: proc(s: ^State, e: ^Entity, flee: Res_ID) {
+entity_flee :: proc(s: ^State, e: Entity, flee: Res_ID) {
 	e.fleeing = true
 	d := s.defs
 	w := d.perm_floats[PF_VISIBLE_GAME_WIDTH]

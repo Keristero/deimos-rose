@@ -182,10 +182,10 @@ player_multiplier_spawn :: proc(s: ^State, p: Player) {
 
 // G_EG_DisposeByUniqueEntityNum.
 dispose_entity_number :: proc "contextless" (s: ^State, number: i32) {
-	w := &s.world
+	w := single(s, Pool)
 	g := w.active.head
 	for g != NO_LINK {
-		i := w.groups[g].entities.head
+		i := group_at(s, g).entities.head
 		for i != NO_LINK {
 			e := entity_at(s, i)
 			if e.number == number {
@@ -193,33 +193,33 @@ dispose_entity_number :: proc "contextless" (s: ^State, number: i32) {
 				e.target_player = -1
 				return
 			}
-			i = w.entity_links[i].next
+			i = link_of(entity_links(s), i).next
 		}
-		g = w.group_links[g].next
+		g = link_of(group_links(s), g).next
 	}
 }
 
 // G_EG_DisposePlayersChildren.
 dispose_players_children :: proc "contextless" (s: ^State, player: i32) {
-	w := &s.world
+	w := single(s, Pool)
 	g := w.active.head
 	for g != NO_LINK {
-		i := w.groups[g].entities.head
+		i := group_at(s, g).entities.head
 		for i != NO_LINK {
 			e := entity_at(s, i)
 			if e.owner_player == player && state_of(s, e).can_be_deleted_on_owner_deletion {
 				e.deleted = true
 				e.target_player = -1
 			}
-			i = w.entity_links[i].next
+			i = link_of(entity_links(s), i).next
 		}
-		g = w.group_links[g].next
+		g = link_of(group_links(s), g).next
 	}
 }
 
 // FUN_0041c1b0: a player touches a pickup. Returns whether the pickup is
 // consumed (the caller then destroys it).
-player_collect :: proc(s: ^State, p: Player, e: ^Entity) -> bool {
+player_collect :: proc(s: ^State, p: Player, e: Entity) -> bool {
 	u := unit_of(s, e)
 	switch u.pickup_type {
 	case res_id("air "), res_id("grnd"):

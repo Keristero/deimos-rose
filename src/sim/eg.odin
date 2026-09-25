@@ -28,10 +28,6 @@ spawn_request :: proc "contextless" (unit: Res_ID) -> Spawn_Request {
 	return {unit = unit, owner_player = -1, owner = NO_REF, speed_scale = 1}
 }
 
-entity_at :: #force_inline proc "contextless" (s: ^State, i: i32) -> ^Entity {
-	return &s.world.entities[i]
-}
-
 // FUN_0041b700: is a reference still the entity it was taken from?
 ref_valid :: proc "contextless" (s: ^State, r: Entity_Ref) -> bool {
 	if r.index == NO_LINK {
@@ -43,23 +39,28 @@ ref_valid :: proc "contextless" (s: ^State, r: Entity_Ref) -> bool {
 
 // G_EG_ResetAtLevelStart, with FUN_0041d110 (pool), FUN_0041a7c0 (old
 // groups) and FUN_0041a5b0 (required groups from the level's placements).
-eg_reset :: proc "contextless" (s: ^State, level: ^Level_Def) {
-	w := &s.world
+eg_reset :: proc(s: ^State, level: ^Level_Def) {
+	w := single(s, Pool)
 	w.limit_warned = false
 	w.used_count = 0
 	w.free_hint = 0
 	w.entity_used = {}
-	w.groups = {}
-	w.group_links = {}
+	w.group_used = {}
+	for i in 0 ..< i32(MAX_GROUPS) {
+		if has(s.ecs, group_entity(i), Group) {
+			group_at(s, i)^ = {}
+			link_of(group_links(s), i)^ = {}
+		}
+	}
 	w.active = list_init()
 	w.required = list_init()
 	w.next_entity = FIRST_ENTITY_NUMBER
 	w.next_group = FIRST_GROUP_ID
 	w.ground_targets = 0
 
-	perm := group_alloc(w)
-	list_append(&w.active, w.group_links[:], perm)
-	g := &w.groups[perm]
+	perm := group_alloc(s)
+	list_append(&w.active, group_links(s), perm)
+	g := group_at(s, perm)
 	g.unit = PERM_GROUP_UNIT
 	g.id = w.next_group
 	w.next_group += 1
@@ -72,9 +73,9 @@ eg_reset :: proc "contextless" (s: ^State, level: ^Level_Def) {
 		if u == nil {
 			continue // "NOTE: An invalid Unit ID"
 		}
-		i := group_alloc(w)
-		list_append(&w.required, w.group_links[:], i)
-		r := &w.groups[i]
+		i := group_alloc(s)
+		list_append(&w.required, group_links(s), i)
+		r := group_at(s, i)
 		r.unit = p.unit
 		r.id = -1
 		r.heading = p.heading
@@ -92,12 +93,12 @@ eg_spawn_map_row :: proc(s: ^State, row: i32) {
 	if row < 0 {
 		return
 	}
-	w := &s.world
+	w := single(s, Pool)
 	n := w.required.count
 	c := Cursor{NO_LINK}
 	for _ in 0 ..< n {
-		i := list_next(&w.required, w.group_links[:], &c)
-		g := w.groups[i]
+		i := list_next(&w.required, group_links(s), &c)
+		g := group_at(s, i)
 		if trunc_i32(g.loc.y) != row {
 			continue
 		}
@@ -107,8 +108,8 @@ eg_spawn_map_row :: proc(s: ^State, row: i32) {
 		req.place_heading = g.heading
 		req.stationary = g.stationary
 		req.terrain_effects = g.terrain_effects
-		list_remove(&w.required, w.group_links[:], i, &c)
-		group_free(w, i)
+		list_remove(&w.required, group_links(s), i, &c)
+		group_free(s, i)
 		eg_request_spawn(s, req)
 	}
 }
@@ -140,24 +141,24 @@ group_size :: proc "contextless" (s: ^State, u: ^Unit) -> i32 {
 
 // FUN_0041b740: live entities of a unit.
 count_of_unit :: proc "contextless" (s: ^State, id: Res_ID) -> (n: i32) {
-	w := &s.world
+	w := single(s, Pool)
 	g := w.active.head
 	for g != NO_LINK {
-		e := w.groups[g].entities.head
+		e := group_at(s, g).entities.head
 		for e != NO_LINK {
 			if s.defs.units[entity_at(s, e).unit].id == id {
 				n += 1
 			}
-			e = w.entity_links[e].next
+			e = link_of(entity_links(s), e).next
 		}
-		g = w.group_links[g].next
+		g = link_of(group_links(s), g).next
 	}
 	return
 }
 
 // G_EG_RequestSpawn. Returns a reference to the first entity spawned.
 eg_request_spawn :: proc(s: ^State, req: Spawn_Request) -> Entity_Ref {
-	w := &s.world
+	w := single(s, Pool)
 	time := single(s, Clock).time
 	// Logged on entry, where the original's trace hook sits.
 	record_event(s, Event{kind = .Spawn, unit = req.unit, loc = req.loc})
@@ -186,11 +187,11 @@ eg_request_spawn :: proc(s: ^State, req: Spawn_Request) -> Entity_Ref {
 		n := w.active.count
 		gc := Cursor{NO_LINK}
 		for _ in 0 ..< n {
-			gi := list_next(&w.active, w.group_links[:], &gc)
-			m := w.groups[gi].entities.count
+			gi := list_next(&w.active, group_links(s), &gc)
+			m := group_at(s, gi).entities.count
 			ec := Cursor{NO_LINK}
 			for _ in 0 ..< m {
-				ei := list_next(&w.groups[gi].entities, w.entity_links[:], &ec)
+				ei := list_next(&group_at(s, gi).entities, entity_links(s), &ec)
 				o := entity_at(s, ei)
 				if s.defs.units[o.unit].id == req.unit && o.owner_player == req.owner_player {
 					remove_from_group(s, gi, o, false, false)
@@ -206,14 +207,14 @@ eg_request_spawn :: proc(s: ^State, req: Spawn_Request) -> Entity_Ref {
 		alone = entity_at(s, req.owner.index).group == FIRST_GROUP_ID
 	}
 	if alone {
-		gi = list_nth(&w.active, w.group_links[:], 0)
-		g := &w.groups[gi]
+		gi = list_nth(&w.active, group_links(s), 0)
+		g := group_at(s, gi)
 		g.count = count
 		g.total += count
 	} else {
-		gi = group_alloc(w)
-		list_append(&w.active, w.group_links[:], gi)
-		g := &w.groups[gi]
+		gi = group_alloc(s)
+		list_append(&w.active, group_links(s), gi)
+		g := group_at(s, gi)
 		g.unit = req.unit
 		g.count = count
 		g.total = count
@@ -224,7 +225,7 @@ eg_request_spawn :: proc(s: ^State, req: Spawn_Request) -> Entity_Ref {
 		g.id = w.next_group
 		w.next_group += 1
 	}
-	g := &w.groups[gi]
+	g := group_at(s, gi)
 	g.loc.x = req.loc.x
 	if !req.map_relative {
 		g.loc.y = req.loc.y
@@ -270,7 +271,13 @@ unit_index :: proc "contextless" (d: ^Defs, id: Res_ID) -> i32 {
 }
 
 // FUN_0041d1d0: take a pool slot. The hint is the last slot freed.
-entity_alloc :: proc "contextless" (w: ^World) -> i32 {
+//
+// A slot gets its components the first time it is taken and keeps them for
+// the session, as the original's pool keeps its preallocated objects: so no
+// allocation moves another entity's components while the step holds them,
+// and a stale Entity_Ref still reads what the slot's last entity left.
+entity_alloc :: proc(s: ^State) -> i32 {
+	w := single(s, Pool)
 	if w.used_count >= MAX_ENTITIES {
 		return NO_LINK // "DEBUG: Reached the end of preallocated entities"
 	}
@@ -288,13 +295,17 @@ entity_alloc :: proc "contextless" (w: ^World) -> i32 {
 	}
 	w.used_count += 1
 	w.entity_used[i] = true
-	entity_reset(&w.entities[i], i)
+	if !has(s.ecs, pool_entity(i), Actor) {
+		ecs_set_components(s.ecs, pool_entity(i), pool_components())
+	}
+	entity_reset(entity_at(s, i), i)
 	w.free_hint = -1
 	return i
 }
 
 // FUN_0041d2b0: release a pool slot; it becomes the next one handed out.
-entity_free :: proc "contextless" (w: ^World, i: i32) {
+entity_free :: proc "contextless" (s: ^State, i: i32) {
+	w := single(s, Pool)
 	w.free_hint = i
 	w.entity_used[i] = false
 	w.used_count -= 1
@@ -311,13 +322,13 @@ spawn_entity :: proc(
 	use_heading: bool,
 	heading: i32,
 ) -> Entity_Ref {
-	w := &s.world
-	ei := entity_alloc(w)
+	w := single(s, Pool)
+	ei := entity_alloc(s)
 	if ei == NO_LINK {
 		return NO_REF
 	}
-	g := &w.groups[gi]
-	list_append(&g.entities, w.entity_links[:], ei)
+	g := group_at(s, gi)
+	list_append(&g.entities, entity_links(s), ei)
 	e := entity_at(s, ei)
 	u := &s.defs.units[ui]
 
@@ -404,7 +415,7 @@ spawn_entity :: proc(
 		cyclic_velocity(s, e)
 	}
 	if e.stationary && u.destruct_create_obstacle {
-		debris_new(s, object_bounds(&e.obj))
+		debris_new(s, object_bounds(e.obj))
 	}
 	if st.use_parent_direction && ref_valid(s, e.owner) {
 		// Face the way the owner faces.
@@ -428,7 +439,7 @@ spawn_entity :: proc(
 }
 
 // FUN_0041c540: where in (or around) its group an entity appears.
-spawn_location :: proc "contextless" (s: ^State, g: ^Group, e: ^Entity) {
+spawn_location :: proc "contextless" (s: ^State, g: ^Group, e: Entity) {
 	u := unit_of(s, e)
 	xmin, xmax := u.x_offset_min, u.x_offset_max
 	ymin, ymax := u.y_offset_min, u.y_offset_max
@@ -469,7 +480,7 @@ spawn_location :: proc "contextless" (s: ^State, g: ^Group, e: ^Entity) {
 spawn_velocity :: proc "contextless" (
 	s: ^State,
 	g: ^Group,
-	e: ^Entity,
+	e: Entity,
 	use_heading: bool,
 	heading: i32,
 	owner: Entity_Ref,
@@ -525,7 +536,7 @@ spawn_velocity :: proc "contextless" (
 }
 
 // FUN_0041cbc0: the random drift of a cyclic-motion state.
-cyclic_velocity :: proc "contextless" (s: ^State, e: ^Entity) {
+cyclic_velocity :: proc "contextless" (s: ^State, e: Entity) {
 	speed: f32 = roll_int(s, 0, 1, 0x41cbe1) == 0 ? 1.4 : 1.0
 	whole := roll_int(s, 1, 4, 0x41cc0f)
 	frac := f32(roll_int(s, 1, 100, 0x41cc2c)) / 100

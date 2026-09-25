@@ -5,17 +5,17 @@ package sim
 // Returns true when some entity's state asks for vertical scrolling to pause.
 // Branches not ported yet mark themselves with `unported`.
 eg_process :: proc(s: ^State, time: i32) -> (pause_scrolling: bool) {
-	w := &s.world
+	w := single(s, Pool)
 	if w.active.count <= 0 {
 		return
 	}
 
 	gc := Cursor{NO_LINK}
 	for gi_n: i32 = 0; gi_n < w.active.count; gi_n += 1 {
-		gi := list_next(&w.active, w.group_links[:], &gc)
+		gi := list_next(&w.active, group_links(s), &gc)
 		ec := Cursor{NO_LINK}
-		for n: i32 = 0; n < w.groups[gi].entities.count; n += 1 {
-			ei := list_next(&w.groups[gi].entities, w.entity_links[:], &ec)
+		for n: i32 = 0; n < group_at(s, gi).entities.count; n += 1 {
+			ei := list_next(&group_at(s, gi).entities, entity_links(s), &ec)
 			if process_entity(s, ei, time) {
 				pause_scrolling = true
 			}
@@ -138,16 +138,16 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 	e.tint_target = f32(st.tint_percent)
 	e.tint_delta = f32(st.tint_delta_percent)
 	e.tint_color = color_1555(st.tint_color)
-	adjust_visibility_and_tinting(&e.obj)
+	adjust_visibility_and_tinting(e.obj)
 	e.hittable = true
 	if e.visibility < 100 && !u.hittable_when_invisible {
 		e.hittable = false
 	}
 	e.scale_target = f32(st.required_scale_percent) / 100
 	e.scale_delta = f32(st.scale_delta_percent) / 100
-	do_scaling(&e.obj)
-	calculate_dimensions(s, &e.obj)
-	glow_process(&e.obj)
+	do_scaling(e.obj)
+	calculate_dimensions(s, e.obj)
+	glow_process(e.obj)
 	if (st.use_owners_visibility || st.use_owners_scale || st.visually_reflect_owner_hits) &&
 	   ref_valid(s, e.owner) {
 		// FUN_0041b5d0: follow the owner's look -- its visibility, scale,
@@ -160,7 +160,7 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 		if st.use_owners_scale {
 			e.dims_dirty = o.dims_dirty
 			e.scale, e.scale_target, e.scale_delta = o.scale, o.scale_target, o.scale_delta
-			calculate_dimensions(s, &e.obj)
+			calculate_dimensions(s, e.obj)
 		}
 		if st.visually_reflect_owner_hits {
 			e.glowing, e.glow_falling = o.glowing, o.glow_falling
@@ -182,7 +182,7 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 		entity_destroy(s, e, -1, time)
 		return
 	}
-	if !move_and_check_position(s, &e.obj, 0x80, true) {
+	if !move_and_check_position(s, e.obj, 0x80, true) {
 		e.deleted = true
 		e.target_player = -1
 		return
@@ -204,7 +204,7 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 	if e.deleted {
 		return
 	}
-	b := object_bounds(&e.obj)
+	b := object_bounds(e.obj)
 	w, h := view_width(s.defs), view_height(s.defs)
 	if players_in_play(s) > 0 && st.collides && !u.harmless_to_players && st.collides_with_players &&
 	   b.right > -33 && b.left <= w + 32 && b.bottom >= 0 && b.top <= h {
@@ -243,7 +243,7 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 		gap := roll_int(s, st.motion_blur_min_time_between_blurs, st.motion_blur_max_time_between_blurs, 0x418d92)
 		if e.blur_time + gap < time {
 			e.blur_time = time
-			blur_spawn(s, &e.obj, st)
+			blur_spawn(s, e.obj, st)
 		}
 	}
 	if !u.harmless_to_players && u.is_ground_based && u.can_be_hit_by_player_projectile && st.is_targetable {
@@ -264,11 +264,11 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 		}
 	}
 	if !e.stationary && !e.is_air && u.collides_with_ground_obstacles {
-		if debris_hits(s, object_bounds(&e.obj)) {
+		if debris_hits(s, object_bounds(e.obj)) {
 			e.vel = {}
 			e.stationary = true
 			if u.destruct_create_obstacle {
-				debris_new(s, object_bounds(&e.obj))
+				debris_new(s, object_bounds(e.obj))
 			}
 		}
 	}
@@ -296,21 +296,21 @@ circles_collide :: proc "contextless" (a: Vec, ra: f32, b: Vec, rb: f32) -> bool
 // FUN_0041b920: collisions between a "harmless to players" entity (player
 // shots and their kin) and the entities it can hit. Candidate filtering and
 // the overlap test are ported; what a hit does is not yet.
-entity_collisions :: proc(s: ^State, e: ^Entity) {
-	w := &s.world
+entity_collisions :: proc(s: ^State, e: Entity) {
+	w := single(s, Pool)
 	u := unit_of(s, e)
-	me := object_bounds(&e.obj)
+	me := object_bounds(e.obj)
 	if u.player_projectile && me.bottom < 0 {
 		return
 	}
 	n := w.active.count
 	gc := Cursor{NO_LINK}
 	for _ in 0 ..< n {
-		gi := list_next(&w.active, w.group_links[:], &gc)
-		m := w.groups[gi].entities.count
+		gi := list_next(&w.active, group_links(s), &gc)
+		m := group_at(s, gi).entities.count
 		ec := Cursor{NO_LINK}
 		for _ in 0 ..< m {
-			oi := list_next(&w.groups[gi].entities, w.entity_links[:], &ec)
+			oi := list_next(&group_at(s, gi).entities, entity_links(s), &ec)
 			o := entity_at(s, oi)
 			ou := unit_of(s, o)
 			ost := state_of(s, o)
@@ -330,7 +330,7 @@ entity_collisions :: proc(s: ^State, e: ^Entity) {
 			} else if !(ou.can_be_hit_by_player_projectile && ou.player_projectile) {
 				continue
 			}
-			ob := object_bounds(&o.obj)
+			ob := object_bounds(o.obj)
 			if ou.player_projectile && ob.bottom < 0 {
 				continue
 			}
@@ -348,7 +348,7 @@ entity_collisions :: proc(s: ^State, e: ^Entity) {
 }
 
 // G_Entity::SpawnControl: run the current state's spawn sets.
-spawn_control :: proc(s: ^State, e: ^Entity, time: i32) {
+spawn_control :: proc(s: ^State, e: Entity, time: i32) {
 	record_event(s, Event{kind = .Spawn_Control, unit = unit_of(s, e).id, number = e.number})
 	rotate_as_required(s, e, time)
 	if !e.spawning {
@@ -398,7 +398,7 @@ spawn_control :: proc(s: ^State, e: ^Entity, time: i32) {
 // The spawn at the end of SpawnControl. A spawner fired by a weapon with a
 // passive may reshape the spawn first (passive_spawn_child).
 @(private = "file")
-spawn_child :: proc(s: ^State, e: ^Entity, set: ^Spawn_Set_Def) {
+spawn_child :: proc(s: ^State, e: Entity, set: ^Spawn_Set_Def) {
 	if e.passive_tag != 0 && e.passive_depth == 0 && passive_spawn_child(s, e, set) {
 		return
 	}
@@ -407,7 +407,7 @@ spawn_child :: proc(s: ^State, e: ^Entity, set: ^Spawn_Set_Def) {
 
 // Place the child relative to its parent, optionally rotated with the
 // parent's facing.
-spawn_child_set :: proc(s: ^State, e: ^Entity, set: ^Spawn_Set_Def) {
+spawn_child_set :: proc(s: ^State, e: Entity, set: ^Spawn_Set_Def) {
 	ci := unit_index(s.defs, set.spawn)
 	child: ^Unit = ci >= 0 ? &s.defs.units[ci] : nil
 	// Terrain effects only come from mobile parents that allow them.
@@ -471,7 +471,7 @@ spawn_child_set :: proc(s: ^State, e: ^Entity, set: ^Spawn_Set_Def) {
 }
 
 // G_Entity::GetAngleFromSpriteInfo: the heading the current frame depicts.
-angle_from_sprite :: proc "contextless" (s: ^State, e: ^Entity) -> i32 {
+angle_from_sprite :: proc "contextless" (s: ^State, e: Entity) -> i32 {
 	if e.state < 0 {
 		return 0
 	}
@@ -484,7 +484,7 @@ angle_from_sprite :: proc "contextless" (s: ^State, e: ^Entity) -> i32 {
 }
 
 // G_Entity::IsWithinGameArea: the entity's centre is on screen.
-within_game_area :: proc "contextless" (s: ^State, e: ^Entity) -> bool {
+within_game_area :: proc "contextless" (s: ^State, e: Entity) -> bool {
 	w := s.defs.perm_floats[PF_VISIBLE_GAME_WIDTH]
 	h := s.defs.perm_floats[PF_VISIBLE_GAME_HEIGHT]
 	return !(e.loc.x < 0) && !(w < e.loc.x) && !(e.loc.y < 0) && !(h < e.loc.y)
@@ -492,7 +492,7 @@ within_game_area :: proc "contextless" (s: ^State, e: ^Entity) -> bool {
 
 // G_Entity::Priv_DoRotationAsRequired: rotate unless a spawn volley is in
 // progress (the state can pause rotation while spawning).
-rotate_as_required :: proc(s: ^State, e: ^Entity, time: i32) -> bool {
+rotate_as_required :: proc(s: ^State, e: Entity, time: i32) -> bool {
 	st := state_of(s, e)
 	if !st.do_rotate_to_target {
 		e.rotating = false
@@ -523,7 +523,7 @@ rotate_as_required :: proc(s: ^State, e: ^Entity, time: i32) -> bool {
 
 // G_Entity::Priv_RotateToTargetLoc: turn one animation direction per frame
 // delay towards the hunt target, the frame encoding the heading.
-rotate_to_target :: proc(s: ^State, e: ^Entity, time: i32) -> bool {
+rotate_to_target :: proc(s: ^State, e: Entity, time: i32) -> bool {
 	st := state_of(s, e)
 	if !st.do_rotate_to_target {
 		e.rotating = false
@@ -576,7 +576,7 @@ rotate_to_target :: proc(s: ^State, e: ^Entity, time: i32) -> bool {
 }
 
 // G_Entity::DoMovementAI.
-movement_ai :: proc(s: ^State, e: ^Entity, time: i32) -> (delete, destroy: bool) {
+movement_ai :: proc(s: ^State, e: Entity, time: i32) -> (delete, destroy: bool) {
 	if e.fleeing {
 		// DoMovementAI's flee path: steer to the flee target and rotate.
 		move_to_target(s, e)
@@ -669,7 +669,7 @@ closest_active_player :: proc "contextless" (s: ^State, from: Vec) -> (loc: Vec,
 }
 
 // G_Entity::Priv_MoveToTargetLoc: accelerate toward the target, capped.
-move_to_target :: proc "contextless" (s: ^State, e: ^Entity) {
+move_to_target :: proc "contextless" (s: ^State, e: Entity) {
 	st := state_of(s, e)
 	top, delta := st.max_speed, st.delta
 	if e.fleeing {
@@ -692,7 +692,7 @@ move_to_target :: proc "contextless" (s: ^State, e: ^Entity) {
 }
 
 // G_Entity::Priv_AdjustToRequiredVelocity.
-adjust_to_required_velocity :: proc "contextless" (s: ^State, e: ^Entity) {
+adjust_to_required_velocity :: proc "contextless" (s: ^State, e: Entity) {
 	if e.stationary {
 		e.vel, e.vel_target, e.vel_delta = {}, {}, {}
 		return
@@ -760,15 +760,15 @@ move_and_check_position :: proc "contextless" (s: ^State, o: ^Game_Object, margi
 
 // FUN_0041b2d0: remove deleted entities, and groups that have emptied.
 sweep_deleted :: proc(s: ^State) {
-	w := &s.world
+	w := single(s, Pool)
 	n := w.active.count
 	gc := Cursor{NO_LINK}
 	groups: for _ in 0 ..< n {
-		gi := list_next(&w.active, w.group_links[:], &gc)
-		count := w.groups[gi].entities.count
+		gi := list_next(&w.active, group_links(s), &gc)
+		count := group_at(s, gi).entities.count
 		ec := Cursor{NO_LINK}
 		for k: i32 = 0; k < count; k += 1 {
-			ei := list_next(&w.groups[gi].entities, w.entity_links[:], &ec)
+			ei := list_next(&group_at(s, gi).entities, entity_links(s), &ec)
 			e := entity_at(s, ei)
 			if !e.deleted {
 				continue
@@ -780,7 +780,7 @@ sweep_deleted :: proc(s: ^State) {
 			// The wreck is burned into the map as the entity is swept up, so
 			// it stays where it fell and scrolls with the ground.
 			if u.destruct_draw_to_terrain {
-				stamp_object(s, &e.obj, u.casts_shadows)
+				stamp_object(s, e.obj, u.casts_shadows)
 			}
 			if e.destroyed {
 				if state_of(s, e).destroy_owner_on_destruction && ref_valid(s, e.owner) {
@@ -794,11 +794,11 @@ sweep_deleted :: proc(s: ^State) {
 				spawn_from(s, e, u.deletion_spawn)
 			}
 			group_emptied := remove_from_group(s, gi, e, e.destroyed, e.target_player != -1)
-			list_remove(&w.groups[gi].entities, w.entity_links[:], ei, &ec)
-			entity_free(w, ei)
-			if group_emptied && w.groups[gi].unit != PERM_GROUP_UNIT {
-				list_remove(&w.active, w.group_links[:], gi, &gc)
-				group_free(w, gi)
+			list_remove(&group_at(s, gi).entities, entity_links(s), ei, &ec)
+			entity_free(s, ei)
+			if group_emptied && group_at(s, gi).unit != PERM_GROUP_UNIT {
+				list_remove(&w.active, group_links(s), gi, &gc)
+				group_free(s, gi)
 				continue groups
 			}
 		}
@@ -807,8 +807,8 @@ sweep_deleted :: proc(s: ^State) {
 
 // FUN_0041ae10: account for an entity leaving its group. Returns true when
 // the group has no entities left (and is not PERM).
-remove_from_group :: proc(s: ^State, gi: i32, e: ^Entity, destroyed, by_player: bool) -> bool {
-	g := &s.world.groups[gi]
+remove_from_group :: proc(s: ^State, gi: i32, e: Entity, destroyed, by_player: bool) -> bool {
+	g := group_at(s, gi)
 	u := unit_of(s, e)
 	if e.has_spawn_info {
 		if destroyed && u.destruct_destroy_children {
@@ -849,7 +849,7 @@ remove_from_group :: proc(s: ^State, gi: i32, e: ^Entity, destroyed, by_player: 
 // state of this unit silently does nothing, which is why most shipped actions
 // look inert. Rules whose unit id is unknown are skipped (the original logs
 // "FILE: Unknown Rule Unit ID" and blanks the id, with the same effect).
-process_rules :: proc(s: ^State, e: ^Entity, time: i32) -> (delete, destroy: bool) {
+process_rules :: proc(s: ^State, e: Entity, time: i32) -> (delete, destroy: bool) {
 	st := state_of(s, e)
 	for &r in st.rules {
 		if r.unit == NONE || unit_index(s.defs, r.unit) < 0 || r.condition == 0 {
@@ -907,10 +907,10 @@ process_rules :: proc(s: ^State, e: ^Entity, time: i32) -> (delete, destroy: boo
 // entity of the unit, within `range` of `from` (0 = anywhere). "Tracking"
 // additionally needs the entity to be rotating towards its target.
 any_entity_of :: proc "contextless" (s: ^State, unit: Res_ID, from: Vec, range: i32, tracking: bool) -> bool {
-	w := &s.world
+	w := single(s, Pool)
 	g := w.active.head
 	for g != NO_LINK {
-		i := w.groups[g].entities.head
+		i := group_at(s, g).entities.head
 		for i != NO_LINK {
 			o := entity_at(s, i)
 			if s.defs.units[o.unit].id == unit && o.appear_delay < 1 && (!tracking || o.rotating) {
@@ -918,9 +918,9 @@ any_entity_of :: proc "contextless" (s: ^State, unit: Res_ID, from: Vec, range: 
 					return true
 				}
 			}
-			i = w.entity_links[i].next
+			i = link_of(entity_links(s), i).next
 		}
-		g = w.group_links[g].next
+		g = link_of(group_links(s), g).next
 	}
 	return false
 }
@@ -928,10 +928,10 @@ any_entity_of :: proc "contextless" (s: ^State, unit: Res_ID, from: Vec, range: 
 // G_EG_RuleCondition_IsAnyDestroyable{Air,Ground}EntityActive: counted by
 // the accuracy flags. Ground entities must also be within the game area.
 any_destroyable :: proc(s: ^State, air: bool) -> bool {
-	w := &s.world
+	w := single(s, Pool)
 	g := w.active.head
 	for g != NO_LINK {
-		i := w.groups[g].entities.head
+		i := group_at(s, g).entities.head
 		for i != NO_LINK {
 			o := entity_at(s, i)
 			u := &s.defs.units[o.unit]
@@ -941,9 +941,9 @@ any_destroyable :: proc(s: ^State, air: bool) -> bool {
 			if !air && u.include_in_ground_accuracy_count && within_game_area(s, o) {
 				return true
 			}
-			i = w.entity_links[i].next
+			i = link_of(entity_links(s), i).next
 		}
-		g = w.group_links[g].next
+		g = link_of(group_links(s), g).next
 	}
 	return false
 }
@@ -953,18 +953,18 @@ count_appeared :: proc "contextless" (s: ^State, unit: Res_ID) -> (n: i32) {
 	if unit == NONE {
 		return
 	}
-	w := &s.world
+	w := single(s, Pool)
 	g := w.active.head
 	for g != NO_LINK {
-		i := w.groups[g].entities.head
+		i := group_at(s, g).entities.head
 		for i != NO_LINK {
 			o := entity_at(s, i)
 			if s.defs.units[o.unit].id == unit && o.appear_delay < 1 {
 				n += 1
 			}
-			i = w.entity_links[i].next
+			i = link_of(entity_links(s), i).next
 		}
-		g = w.group_links[g].next
+		g = link_of(group_links(s), g).next
 	}
 	return
 }
@@ -972,7 +972,7 @@ count_appeared :: proc "contextless" (s: ^State, unit: Res_ID) -> (n: i32) {
 // Where an entity's owner is: the owning entity if it still exists, else the
 // owning player if in play.
 @(private = "file")
-owner_loc :: proc "contextless" (s: ^State, e: ^Entity) -> (loc: Vec, ok: bool) {
+owner_loc :: proc "contextless" (s: ^State, e: Entity) -> (loc: Vec, ok: bool) {
 	if ref_valid(s, e.owner) {
 		return entity_at(s, e.owner.index).loc, true
 	}
@@ -986,7 +986,7 @@ owner_loc :: proc "contextless" (s: ^State, e: ^Entity) -> (loc: Vec, ok: bool) 
 }
 
 // FUN_0041bd90: sit at a fixed offset from the owner.
-lock_to_owner :: proc "contextless" (s: ^State, e: ^Entity) {
+lock_to_owner :: proc "contextless" (s: ^State, e: Entity) {
 	o, ok := owner_loc(s, e)
 	if ok && (o.x != e.loc.x || o.y != e.loc.y) {
 		e.loc = {o.x + e.owner_offset.x, o.y + e.owner_offset.y}
@@ -994,7 +994,7 @@ lock_to_owner :: proc "contextless" (s: ^State, e: ^Entity) {
 }
 
 // FUN_0041be80: move by however far the owner moved since last step.
-link_to_owner :: proc "contextless" (s: ^State, e: ^Entity) {
+link_to_owner :: proc "contextless" (s: ^State, e: Entity) {
 	o, ok := owner_loc(s, e)
 	if !ok {
 		return
@@ -1006,7 +1006,7 @@ link_to_owner :: proc "contextless" (s: ^State, e: ^Entity) {
 
 // FUN_0041bf70: circle the owner, the angle advancing by the (truncated)
 // horizontal speed each step.
-orbit_owner :: proc "contextless" (s: ^State, e: ^Entity) {
+orbit_owner :: proc "contextless" (s: ^State, e: Entity) {
 	o, ok := owner_loc(s, e)
 	if !ok || (o.x == e.loc.x && o.y == e.loc.y) {
 		return
@@ -1031,7 +1031,7 @@ orbit_owner :: proc "contextless" (s: ^State, e: ^Entity) {
 
 // G_Entity::Priv_DoCyclicMotion: wander, re-drawing a speed limit each step
 // and reversing the acceleration whenever the velocity passes it.
-cyclic_motion :: proc "contextless" (s: ^State, e: ^Entity) {
+cyclic_motion :: proc "contextless" (s: ^State, e: Entity) {
 	st := state_of(s, e)
 	top := trunc_i32(st.max_speed)
 	whole := roll_int(s, halve(top), top, 0x416032)
@@ -1063,17 +1063,17 @@ cyclic_motion :: proc "contextless" (s: ^State, e: ^Entity) {
 // G_Entity::Priv_ConstrainInGameArea: bounce off the edges of the play area,
 // reversing velocity, acceleration and target velocity together. The left and
 // right edges use the full width; the top and bottom use half the height.
-constrain_in_game_area :: proc "contextless" (s: ^State, e: ^Entity) {
+constrain_in_game_area :: proc "contextless" (s: ^State, e: Entity) {
 	w, h := view_width(s.defs), view_height(s.defs)
 	flip :: proc "contextless" (v: ^f32) {
 		v^ = transmute(f32)(transmute(u32)v^ ~ 0x8000_0000)
 	}
-	bounce_x :: proc "contextless" (e: ^Entity) {
+	bounce_x :: proc "contextless" (e: Entity) {
 		flip(&e.vel.x)
 		flip(&e.vel_delta.x)
 		flip(&e.vel_target.x)
 	}
-	bounce_y :: proc "contextless" (e: ^Entity) {
+	bounce_y :: proc "contextless" (e: Entity) {
 		flip(&e.vel.y)
 		flip(&e.vel_delta.y)
 		flip(&e.vel_target.y)
@@ -1105,16 +1105,16 @@ constrain_in_game_area :: proc "contextless" (s: ^State, e: ^Entity) {
 // FUN_0041b090 / FUN_0041b1b0: when a spawner dies or is deleted, its
 // children follow if their state allows it. The group totals are decremented
 // here and again when the sweep reaches the child -- as in the original.
-children_follow :: proc(s: ^State, parent: ^Entity, destroyed: bool) {
-	w := &s.world
+children_follow :: proc(s: ^State, parent: Entity, destroyed: bool) {
+	w := single(s, Pool)
 	n := w.active.count
 	gc := Cursor{NO_LINK}
 	for _ in 0 ..< n {
-		gi := list_next(&w.active, w.group_links[:], &gc)
-		m := w.groups[gi].entities.count
+		gi := list_next(&w.active, group_links(s), &gc)
+		m := group_at(s, gi).entities.count
 		ec := Cursor{NO_LINK}
 		for _ in 0 ..< m {
-			ci := list_next(&w.groups[gi].entities, w.entity_links[:], &ec)
+			ci := list_next(&group_at(s, gi).entities, entity_links(s), &ec)
 			c := entity_at(s, ci)
 			if c == parent || c.owner.number != parent.number {
 				continue
@@ -1132,7 +1132,7 @@ children_follow :: proc(s: ^State, parent: ^Entity, destroyed: bool) {
 }
 
 // G_Entity::Priv_HoldToTarget: close on the target at the state's hold speed.
-hold_to_target :: proc "contextless" (s: ^State, e: ^Entity, target: Vec) {
+hold_to_target :: proc "contextless" (s: ^State, e: Entity, target: Vec) {
 	st := state_of(s, e)
 	top, delta := st.hold_max_speed, st.hold_delta
 	e.vel_delta.x = e.loc.x < target.x ? delta : -delta
@@ -1152,7 +1152,7 @@ hold_to_target :: proc "contextless" (s: ^State, e: ^Entity, target: Vec) {
 }
 
 // G_Entity::Priv_ReverseFromTarget: head away from the target at full speed.
-reverse_from_target :: proc "contextless" (s: ^State, e: ^Entity, target: Vec, dist: f32) {
+reverse_from_target :: proc "contextless" (s: ^State, e: Entity, target: Vec, dist: f32) {
 	d := target - e.loc
 	if dist != 0 {
 		d /= dist

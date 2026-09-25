@@ -65,7 +65,7 @@ beam_origin :: proc "contextless" (wd: ^Weapon, at: Vec) -> Vec {
 // A pulse, or a charge's release: casts the line and deals `damage` along it.
 beam_fire :: proc(s: ^State, h: ^Weapon_Handler, wd: ^Weapon, at: Vec, damage, width: f32, charged: bool, time: i32) {
 	from := beam_origin(wd, at)
-	targets: [MAX_BEAM_TARGETS]^Entity
+	targets: [MAX_BEAM_TARGETS]Entity
 	n := beam_targets(s, from, width, targets[:])
 	to_y := f32(-BEAM_OVERSHOOT)
 	left := damage
@@ -97,19 +97,19 @@ beam_fire :: proc(s: ^State, h: ^Weapon_Handler, wd: ^Weapon, at: Vec, damage, w
 // Everything across the line from `from` straight up that the beam can hit,
 // nearest first: a target's hit circle (entity_collisions' radius) within
 // half the width of the line, its centre ahead of the gun, and on screen.
-beam_targets :: proc "contextless" (s: ^State, from: Vec, width: f32, out: []^Entity) -> int {
-	w := &s.world
+beam_targets :: proc "contextless" (s: ^State, from: Vec, width: f32, out: []Entity) -> int {
+	w := single(s, Pool)
 	n := 0
 	g := w.active.head
 	for g != NO_LINK {
-		i := w.groups[g].entities.head
+		i := group_at(s, g).entities.head
 		for i != NO_LINK {
 			e := entity_at(s, i)
-			i = w.entity_links[i].next
+			i = link_of(entity_links(s), i).next
 			if n >= len(out) || !air_shot_can_hit(s, e) || e.shields <= 0 {
 				continue
 			}
-			b := object_bounds(&e.obj)
+			b := object_bounds(e.obj)
 			r := f32(halve(b.bottom - b.top))
 			if abs(e.loc.x - from.x) > r + width / 2 || e.loc.y >= from.y || e.loc.y + r < 0 {
 				continue
@@ -124,13 +124,13 @@ beam_targets :: proc "contextless" (s: ^State, from: Vec, width: f32, out: []^En
 			out[j] = e
 			n += 1
 		}
-		g = w.group_links[g].next
+		g = link_of(group_links(s), g).next
 	}
 	return n
 }
 
 @(private = "file")
-beam_before :: proc "contextless" (a, b: ^Entity) -> bool {
+beam_before :: proc "contextless" (a, b: Entity) -> bool {
 	if a.loc.y != b.loc.y {
 		return a.loc.y > b.loc.y
 	}

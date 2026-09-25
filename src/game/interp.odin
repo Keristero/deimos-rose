@@ -6,12 +6,15 @@ import "dr:sim"
 // the latest step (render.odin's build_frame). Presentation only: nothing
 // reads it back into the simulation.
 //
-// Copying the State is no longer enough on its own: the singletons live in
-// the world (D39), which a copy shares with the live state, so what the
-// renderer compares or blends from them is captured here by value.
+// The state lives in the world (D39), which a copy of the State would share
+// with the live one, so what the renderer compares or blends is captured
+// here by value.
 Interp_Prev :: struct {
-	state:       sim.State, // entities; its ecs is the live one
 	players:     [sim.MAX_PLAYERS]Interp_Player,
+	// Each pool slot's entity, by its unique number (-1 for a free slot),
+	// and its object.
+	numbers:     [sim.MAX_ENTITIES]i32,
+	objects:     [sim.MAX_ENTITIES]sim.Game_Object,
 	level:       i32,
 	played:      i32,
 	frame:       u32,
@@ -29,7 +32,13 @@ Interp_Player :: struct {
 }
 
 interp_capture :: proc(p: ^Interp_Prev, s: ^sim.State) {
-	p.state = s^
+	for used, i in sim.single(s, sim.Pool).entity_used {
+		p.numbers[i] = -1
+		if used {
+			e := sim.entity_at(s, i32(i))
+			p.numbers[i], p.objects[i] = e.number, e.obj^
+		}
+	}
 	for pl, i in sim.players_of(s) {
 		p.players[i] = {
 			active          = pl.active,

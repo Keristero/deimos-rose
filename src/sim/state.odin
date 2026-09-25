@@ -35,7 +35,8 @@ Session :: struct {
 
 // The complete simulation state. Everything that affects future frames lives
 // in the entity component system `ecs` points at (D39): the session's
-// singletons (components.odin), the players and the entity pool. The rest
+// singletons (components.odin), the players, the entity pool and its groups
+// (world.odin). The rest
 // here is not state:
 // - `session` is fixed at start;
 // - `defs` points at read-only data;
@@ -47,7 +48,6 @@ State :: struct {
 	session:      Session,
 	defs:         ^Defs,
 	ecs:          ^Ecs,
-	world:        World,
 	sounds:       Sound_Queue,    // this step's sound events, for presentation
 	particles:    Particle_Queue, // this step's particle bursts, for presentation
 	stamps:       Stamp_Queue,    // this step's marks on the terrain
@@ -410,35 +410,10 @@ step :: proc(s: ^State, input: Frame_Input, film: ^Film = nil) {
 }
 
 // Order-sensitive FNV-1a over the state, used to detect divergence between a
-// replayed film and a live run, and between rollback peers: the state's own
-// fields that matter, then the whole world.
+// replayed film and a live run, and between rollback peers: the whole world,
+// which is all of the state that matters.
 checksum :: proc(s: ^State) -> u64 {
-	h := checksum_fields(s)
+	h := hasher()
 	ecs_hash(s.ecs, &h)
 	return h.sum
-}
-
-// The first part of checksum: what it hashes outside the world. It must not
-// read the world: rollback hashes a snapshot's saved fields, whose ecs is
-// the live one (snapshot_checksum). Everything in the world, the session's
-// singletons included, is hashed whole by ecs_hash.
-@(private)
-checksum_fields :: proc "contextless" (s: ^State) -> Hasher {
-	h := hasher()
-	mix :: proc "contextless" (h: ^Hasher, v: u64) {
-		hash_u64(h, v)
-	}
-	w := &s.world
-	mix(&h, u64(w.used_count))
-	for used, i in w.entity_used {
-		if !used {
-			continue
-		}
-		e := &w.entities[i]
-		mix(&h, u64(e.number))
-		mix(&h, u64(e.state))
-		mix(&h, u64(transmute(u32)e.loc.x))
-		mix(&h, u64(transmute(u32)e.loc.y))
-	}
-	return h
 }

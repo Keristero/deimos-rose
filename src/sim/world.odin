@@ -1,11 +1,15 @@
 package sim
 
+import ecs "dr:third_party/odecs"
+
 // The entity world: G_EntityGroup's groups and G_Entity's entities.
 //
 // The original keeps entities in a pool of 1,000 preallocated objects
 // (FUN_0041d1d0) and groups in heap-allocated U_LinkedLists. Here both are
-// fixed pools inside State, so a snapshot for rollback is a plain copy, and
-// list membership is intrusive (prev/next indices). The lists reproduce
+// fixed ranges of the world's entities (ecs.odin): pool slot i is
+// pool_entity(i) and group i is group_entity(i). Which are in use, and the
+// lists, are in the Pool singleton. List membership is intrusive: each
+// member's Link component holds its neighbours' indices. The lists reproduce
 // U_LinkedList exactly: CreateAndAddLink appends at the tail, iteration runs
 // from the head, and deleting through a cursor steps the cursor back to the
 // previous link so the next step continues with the following item. Every
@@ -43,14 +47,43 @@ list_init :: proc "contextless" () -> List {
 	return {head = NO_LINK, tail = NO_LINK}
 }
 
+// The Link components of one range of the world's entities, by index from
+// the range's first.
+Links :: struct {
+	ecs:   ^Ecs,
+	first: i32,
+}
+
+entity_links :: #force_inline proc "contextless" (s: ^State) -> Links {
+	return {s.ecs, FIRST_POOL_ENTITY}
+}
+
+group_links :: #force_inline proc "contextless" (s: ^State) -> Links {
+	return {s.ecs, FIRST_GROUP_ENTITY}
+}
+
+// Member i's link. The lists take plain slices too, for tests.
+link_of :: proc {
+	link_in_world,
+	link_in_slice,
+}
+
+link_in_world :: #force_inline proc "contextless" (links: Links, i: i32) -> ^Link {
+	return get(links.ecs, ecs.EntityID(links.first + i), Link)
+}
+
+link_in_slice :: #force_inline proc "contextless" (links: []Link, i: i32) -> ^Link {
+	return &links[i]
+}
+
 // U_LinkedList::CreateAndAddLink.
-list_append :: proc "contextless" (l: ^List, links: []Link, i: i32) {
-	links[i] = {prev = l.tail, next = NO_LINK}
+list_append :: proc "contextless" (l: ^List, links: $L, i: i32) {
+	link_of(links, i)^ = {prev = l.tail, next = NO_LINK}
 	if l.head == NO_LINK {
 		l.head = i
 	}
 	if l.tail != NO_LINK {
-		links[l.tail].next = i
+		link_of(links, l.tail).next = i
 	}
 	l.tail = i
 	l.count += 1
@@ -58,35 +91,35 @@ list_append :: proc "contextless" (l: ^List, links: []Link, i: i32) {
 
 // U_LinkedList::GetNextLinkObject. Callers bound their loops by a count, as
 // the original does, so running off the end is a caller bug.
-list_next :: proc "contextless" (l: ^List, links: []Link, c: ^Cursor) -> i32 {
-	c.at = c.at == NO_LINK ? l.head : links[c.at].next
+list_next :: proc "contextless" (l: ^List, links: $L, c: ^Cursor) -> i32 {
+	c.at = c.at == NO_LINK ? l.head : link_of(links, c.at).next
 	return c.at
 }
 
 // U_LinkedList::DeleteLink(link, ref): unlinks and steps the cursor back.
-list_remove :: proc "contextless" (l: ^List, links: []Link, i: i32, c: ^Cursor = nil) {
-	lk := links[i]
+list_remove :: proc "contextless" (l: ^List, links: $L, i: i32, c: ^Cursor = nil) {
+	lk := link_of(links, i)^
 	if i == l.head {
 		l.head = lk.next
 	} else {
-		links[lk.prev].next = lk.next
+		link_of(links, lk.prev).next = lk.next
 	}
 	if i == l.tail {
 		l.tail = lk.prev
 	} else {
-		links[lk.next].prev = lk.prev
+		link_of(links, lk.next).prev = lk.prev
 	}
 	l.count -= 1
 	if c != nil {
 		c.at = i == l.head || lk.prev == NO_LINK ? NO_LINK : lk.prev
 	}
-	links[i] = {NO_LINK, NO_LINK}
+	link_of(links, i)^ = {NO_LINK, NO_LINK}
 }
 
-list_nth :: proc "contextless" (l: ^List, links: []Link, n: i32) -> i32 {
+list_nth :: proc "contextless" (l: ^List, links: $L, n: i32) -> i32 {
 	i := l.head
 	for _ in 0 ..< n {
-		i = links[i].next
+		i = link_of(links, i).next
 	}
 	return i
 }
@@ -173,9 +206,11 @@ Spawn_Info :: struct {
 MAX_STATES :: 20 // G_Entity keeps per-state arrays of 0x14 entries
 MAX_SPAWN_SETS :: 8 // the most any shipped state has is 7
 
-Entity :: struct {
-	using obj:     Game_Object,
-	link:          Link,         // membership of its group's list
+// A pool entity's components. The fields keep the original G_Entity
+// offsets; they are split by what reads them.
+
+// What the entity is and where it is in its life.
+Actor :: struct {
 	unit:          i32,          // +0x8a index into Defs.units
 	number:        i32,          // +0x92 unique entity number
 	group:         i32,          // +0x96 group id
@@ -185,53 +220,76 @@ Entity :: struct {
 	appear_delay:  i32,          // +0xa4 steps before the entity starts processing
 	last_hit:      i32,          // +0xa8
 	timer:         i32,          // +0xac current state's duration
-	anim_time:     i32,          // +0xb0 time of the last animation step
-	anim_backwards: bool,        // +0xb4
-	rotating:      bool,         // +0xb5
-	anim_done:     bool,         // +0xb6
-	spawning:      bool,         // +0xb7
-	spawn_pause:   i32,          // +0xb8
-	animating:     bool,         // +0xbc
 	killed_by_player: bool,      // +0xbe
 	deleted:       bool,         // +0xbf marked for removal
 	fleeing:       bool,         // +0xc0
 	has_depletion_state: bool,   // +0xc1 unit has a use-on-shield-depletion state
-	collision_time: i32,         // +0xc2 last collision spawn
-	collision_count: i32,        // +0xc6
 	owner_player:  i32,          // +0xca -1, or the player that spawned it
 	target_player: i32,          // +0xce
 	destroyed:     bool,         // +0xd2
-	orbit_radius:  f32,          // +0xd4
-	orbit_angle:   i32,          // +0xd8
-	sound_time:    i32,          // +0xdc last entry-sound time
-	sound_count:   i32,          // +0xe0
-	blur_time:     i32,          // +0xe4 last motion blur
-	particle_time: i32,          // +0xe8
-	particle_count: i32,         // +0xec
 	hit_state_time: i32,         // +0xf4
 	powerup_weapon: Res_ID,      // +0xf0
+	shields:       f32,          // +0x12c
+	pool_index:    i32,          // +0x140
+	entry_counts:  [MAX_STATES]i32, // +0x144 times each state was entered
+}
+
+// Stepping through the state's frames.
+Anim :: struct {
+	anim_time:     i32,          // +0xb0 time of the last animation step
+	anim_backwards: bool,        // +0xb4
+	rotating:      bool,         // +0xb5
+	anim_done:     bool,         // +0xb6
+	animating:     bool,         // +0xbc
+}
+
+// How it moves, beyond the object's location and velocity.
+Motion :: struct {
+	orbit_radius:  f32,          // +0xd4
+	orbit_angle:   i32,          // +0xd8
 	vel_prev:      Vec,          // +0xf8
 	vel_target:    Vec,          // +0x100
 	vel_delta:     Vec,          // +0x108
 	hunt_player:   i32,          // +0x110
 	hunt_target:   Vec,          // +0x114
-	owner_offset:  Vec,          // +0x11c
-	owner_loc:     Vec,          // +0x124
-	shields:       f32,          // +0x12c
 	heading:       i32,          // +0x130
 	stationary:    bool,         // +0x134
 	terrain_effects: bool,       // +0x135
-	has_spawn_info: bool,        // +0x136
+}
+
+// The entity that spawned it, and where it was.
+Owned :: struct {
+	owner_offset:  Vec,          // +0x11c
+	owner_loc:     Vec,          // +0x124
 	owner:         Entity_Ref,   // +0x138
-	pool_index:    i32,          // +0x140
-	entry_counts:  [MAX_STATES]i32, // +0x144 times each state was entered
+}
+
+// Spawning other entities.
+Spawner :: struct {
+	spawning:      bool,         // +0xb7
+	spawn_pause:   i32,          // +0xb8
+	has_spawn_info: bool,        // +0x136
 	// +0x194 holds one spawn-info list per state, but the original only ever
 	// reads or resets the current state's (both SpawnControl and
 	// Priv_CheckSpawningAbilityAtStateChange index by +0x9e, and a state
 	// change resets the new state's list), so one list is equivalent. It
-	// keeps State small enough to snapshot every frame for rollback.
+	// keeps snapshots small enough to take every frame for rollback.
 	spawn_info:    [MAX_SPAWN_SETS]Spawn_Info,
-	// Not the original's; all zero unless a passive shaped the entity.
+}
+
+// When it last made a sound, particles, a blur or a collision spawn.
+Effects :: struct {
+	collision_time: i32,         // +0xc2 last collision spawn
+	collision_count: i32,        // +0xc6
+	sound_time:    i32,          // +0xdc last entry-sound time
+	sound_count:   i32,          // +0xe0
+	blur_time:     i32,          // +0xe4 last motion blur
+	particle_time: i32,          // +0xe8
+	particle_count: i32,         // +0xec
+}
+
+// Not the original's; all zero unless a passive shaped the entity.
+Passive_Tag :: struct {
 	passive_tag:   u8,  // the weapon passive (see passive_tag)
 	passive_depth: u8,  // spawners between it and the weapon
 	spawn_pace:    i32, // 0, or its spawn sets' pace in hundredths of a step
@@ -239,9 +297,52 @@ Entity :: struct {
 	spawn_clock:   i32, // the time its spawn sets run at, when paced
 }
 
+// One pool entity: its components, as G_Entity's fields. A view, passed by
+// value; its pointers stay good for the session, since a pool slot keeps
+// its components (entity_alloc).
+Entity :: struct {
+	using obj:     ^Game_Object,
+	using actor:   ^Actor,
+	using anim:    ^Anim,
+	using motion:  ^Motion,
+	using owned:   ^Owned,
+	using spawner: ^Spawner,
+	using effects: ^Effects,
+	using tag:     ^Passive_Tag,
+}
+
+// Every pool entity's components. Its list membership is a Link.
+pool_components :: proc "contextless" () -> Component_Mask {
+	return {
+		component_id(Game_Object),
+		component_id(Actor),
+		component_id(Anim),
+		component_id(Motion),
+		component_id(Owned),
+		component_id(Spawner),
+		component_id(Effects),
+		component_id(Passive_Tag),
+		component_id(Link),
+	}
+}
+
+// Pool slot i, which must have held an entity this session.
+entity_at :: #force_inline proc "contextless" (s: ^State, i: i32) -> Entity {
+	id := pool_entity(i)
+	return {
+		obj     = get(s.ecs, id, Game_Object),
+		actor   = get(s.ecs, id, Actor),
+		anim    = get(s.ecs, id, Anim),
+		motion  = get(s.ecs, id, Motion),
+		owned   = get(s.ecs, id, Owned),
+		spawner = get(s.ecs, id, Spawner),
+		effects = get(s.ecs, id, Effects),
+		tag     = get(s.ecs, id, Passive_Tag),
+	}
+}
+
+// A group: its own component, and a Link for the active or required list.
 Group :: struct {
-	link:        Link,
-	used:        bool,
 	id:          i32,    // +0x8a
 	unit:        Res_ID, // +0x8e
 	loc:         Vec,    // +0x92
@@ -254,34 +355,49 @@ Group :: struct {
 	terrain_effects: bool, // +0xaf
 }
 
-World :: struct {
-	entities:        [MAX_ENTITIES]Entity,
+group_components :: proc "contextless" () -> Component_Mask {
+	return {component_id(Group), component_id(Link)}
+}
+
+// Group i, which must have been allocated this session.
+group_at :: #force_inline proc "contextless" (s: ^State, i: i32) -> ^Group {
+	return get(s.ecs, group_entity(i), Group)
+}
+
+// The pool's bookkeeping: G_EG's globals.
+Pool :: struct {
 	entity_used:     [MAX_ENTITIES]bool, // DAT_004e0d88, stride 10
-	entity_links:    [MAX_ENTITIES]Link,
+	group_used:      [MAX_GROUPS]bool,
 	used_count:      i32, // DAT_004e0d84
 	free_hint:       i32, // DAT_004e0d80
-
-	groups:          [MAX_GROUPS]Group,
-	group_links:     [MAX_GROUPS]Link,
 	active:          List, // DAT_004e0d70
 	required:        List, // DAT_004e0d6c: level placements not yet spawned
-
 	next_entity:     i32, // DAT_004e0d78
 	next_group:      i32, // DAT_004e0d7c
 	ground_targets:  i32, // DAT_004e34a6
 	limit_warned:    bool, // DAT_004e3499
 }
 
-group_alloc :: proc "contextless" (w: ^World) -> i32 {
-	for &g, i in w.groups {
-		if !g.used {
-			g = Group{used = true, entities = list_init()}
+// A group slot gets its components the first time it is used and keeps
+// them, so no allocation moves another group's (a group is allocated while
+// others are being walked).
+group_alloc :: proc(s: ^State) -> i32 {
+	w := single(s, Pool)
+	for used, i in w.group_used {
+		if !used {
+			w.group_used[i] = true
+			id := group_entity(i32(i))
+			if !has(s.ecs, id, Group) {
+				ecs_set_components(s.ecs, id, group_components())
+			}
+			group_at(s, i32(i))^ = Group{entities = list_init()}
 			return i32(i)
 		}
 	}
 	return NO_LINK
 }
 
-group_free :: proc "contextless" (w: ^World, i: i32) {
-	w.groups[i] = {}
+group_free :: proc "contextless" (s: ^State, i: i32) {
+	single(s, Pool).group_used[i] = false
+	group_at(s, i)^ = {}
 }

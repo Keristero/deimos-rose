@@ -708,7 +708,7 @@ weapon_spawns :: proc "contextless" (s: ^State, weapon: i32, player: i32, backwa
 
 // The damage a tagged shot deals, scaled by its passive's Projectile_Damage.
 // What it spawns carries the tag (a bomb's blast), so that is scaled too.
-passive_damage :: proc "contextless" (s: ^State, e: ^Entity, base: f32) -> f32 {
+passive_damage :: proc "contextless" (s: ^State, e: Entity, base: f32) -> f32 {
 	pa, ok := tag_passive(e.passive_tag)
 	if !ok || e.owner_player < 0 || e.owner_player >= MAX_PLAYERS {
 		return base
@@ -725,7 +725,7 @@ ACCEL_TOP :: 150
 // Right after a tagged entity spawns (spawn_entity): its passive shapes it.
 // A projectile's flight (lifetime, speed); a spawner fired straight from the
 // weapon (depth 0) its volleys.
-passive_entity_init :: proc(s: ^State, e: ^Entity, time: i32) {
+passive_entity_init :: proc(s: ^State, e: Entity, time: i32) {
 	pa, ok := tag_passive(e.passive_tag)
 	if !ok || e.owner_player < 0 || e.owner_player >= MAX_PLAYERS {
 		return
@@ -782,7 +782,7 @@ passive_entity_init :: proc(s: ^State, e: ^Entity, time: i32) {
 // volley is drawn one step, spawned the next), or a volley set's gap between
 // entities. The longest across its projectile sets.
 @(private = "file")
-spawner_volley_period :: proc "contextless" (s: ^State, e: ^Entity) -> (period: i32) {
+spawner_volley_period :: proc "contextless" (s: ^State, e: Entity) -> (period: i32) {
 	period = 1
 	for &set in state_of(s, e).spawn_sets {
 		if !unit_is_projectile(s, set.spawn) {
@@ -797,7 +797,7 @@ spawner_volley_period :: proc "contextless" (s: ^State, e: ^Entity) -> (period: 
 // spawn_control for a spawner whose volleys a passive has sped up: its
 // spawn sets run on their own clock, spawn_pace hundredths of a step per
 // step, so a 30% shorter volley delay runs them 100/70 as fast.
-passive_paced_spawn_control :: proc(s: ^State, e: ^Entity) {
+passive_paced_spawn_control :: proc(s: ^State, e: Entity) {
 	e.pace_acc += e.spawn_pace
 	for e.pace_acc >= 100 && !e.deleted {
 		e.pace_acc -= 100
@@ -809,7 +809,7 @@ passive_paced_spawn_control :: proc(s: ^State, e: ^Entity) {
 // One of a tagged spawner's spawn sets firing (spawn_child). Handles its
 // projectile sets -- extending the lanes and firing to the sides -- and
 // returns false for the rest, which spawn as they are.
-passive_spawn_child :: proc(s: ^State, e: ^Entity, set: ^Spawn_Set_Def) -> bool {
+passive_spawn_child :: proc(s: ^State, e: Entity, set: ^Spawn_Set_Def) -> bool {
 	pa, ok := tag_passive(e.passive_tag)
 	if !ok || e.owner_player < 0 || e.owner_player >= MAX_PLAYERS || !unit_is_projectile(s, set.spawn) {
 		return false
@@ -834,7 +834,7 @@ passive_spawn_child :: proc(s: ^State, e: ^Entity, set: ^Spawn_Set_Def) -> bool 
 			n += 1
 		}
 	}
-	emit :: proc(s: ^State, e: ^Entity, set: ^Spawn_Set_Def, x, y: i32, heading: i32, explicit: bool) {
+	emit :: proc(s: ^State, e: Entity, set: ^Spawn_Set_Def, x, y: i32, heading: i32, explicit: bool) {
 		alt := set^
 		alt.x_offset, alt.y_offset = x, y
 		alt.set_heading = explicit

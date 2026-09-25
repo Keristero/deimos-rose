@@ -54,13 +54,13 @@ beam_fixture :: proc(t: ^testing.T, f: ^Beam_Fixture) -> bool {
 
 // A stationary target in the air (the mine) at `loc` with `shields`.
 @(private = "file")
-beam_target :: proc(t: ^testing.T, s: ^sim.State, loc: sim.Vec, shields: f32) -> ^sim.Entity {
+beam_target :: proc(t: ^testing.T, s: ^sim.State, loc: sim.Vec, shields: f32) -> sim.Entity {
 	req := sim.spawn_request(sim.res_id("mine"))
 	req.loc = loc
 	req.stationary = true
 	r := sim.eg_request_spawn(s, req)
 	if !testing.expect(t, sim.ref_valid(s, r), "the target must spawn") {
-		return nil
+		return {}
 	}
 	e := sim.entity_at(s, r.index)
 	e.loc = loc // the unit spawns at a random offset
@@ -72,8 +72,8 @@ beam_target :: proc(t: ^testing.T, s: ^sim.State, loc: sim.Vec, shields: f32) ->
 @(private = "file")
 count_unit :: proc(s: ^sim.State, id: sim.Res_ID) -> (n: int) {
 	ui := sim.unit_index(s.defs, id)
-	for &e, i in s.world.entities {
-		if s.world.entity_used[i] && !e.deleted && e.unit == i32(ui) {
+	for used, i in sim.single(s, sim.Pool).entity_used {
+		if e := sim.entity_at(s, i32(i)); used && !e.deleted && e.unit == i32(ui) {
 			n += 1
 		}
 	}
@@ -123,7 +123,7 @@ discharge_beam_carries_leftover_damage :: proc(t: ^testing.T) {
 	near := beam_target(t, s, at + {0, -80}, 1)
 	mid := beam_target(t, s, at + {0, -160}, 1)
 	aside := beam_target(t, s, at + {60, -120}, 1)
-	if far == nil || near == nil || mid == nil || aside == nil {
+	if far.obj == nil || near.obj == nil || mid.obj == nil || aside.obj == nil {
 		return
 	}
 	shrapnel := count_unit(s, wd.beam.shrapnel)
@@ -157,7 +157,7 @@ discharge_beam_leaves_the_screen :: proc(t: ^testing.T) {
 	s := f.s
 	wd := &f.defs.weapons[f.db]
 	one := beam_target(t, s, {8, 300}, 0.5)
-	if one == nil {
+	if one.obj == nil {
 		return
 	}
 	s.beams.count = 0
@@ -181,7 +181,7 @@ discharge_beam_release_scales_with_charge :: proc(t: ^testing.T) {
 	at := sim.Vec{208, 420}
 	top := wd.powerup_air_max_power_level
 	wall := beam_target(t, s, at + {0, -100}, 100)
-	if wall == nil {
+	if wall.obj == nil {
 		return
 	}
 	s.beams.count = 0

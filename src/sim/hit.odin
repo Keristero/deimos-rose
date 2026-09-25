@@ -9,7 +9,7 @@ unit_sound :: proc "contextless" (id: Res_ID, min_vol, max_vol, prio: i32, min_p
 }
 
 // G_Entity::Hit. Returns the shield damage dealt.
-entity_hit :: proc(s: ^State, e: ^Entity, damage: f32, player: i32, time: i32) -> f32 {
+entity_hit :: proc(s: ^State, e: Entity, damage: f32, player: i32, time: i32) -> f32 {
 	if e.deleted {
 		return 0
 	}
@@ -53,7 +53,7 @@ entity_hit :: proc(s: ^State, e: ^Entity, damage: f32, player: i32, time: i32) -
 		return dealt
 	}
 	if !st.do_not_glow_on_collision {
-		glow_start(&e.obj, 0x7fff, 6, false)
+		glow_start(e.obj, 0x7fff, 6, false)
 	}
 	if u.hit_particles != NONE {
 		particle_burst(s, e.loc, u.hit_particles_color, u.hit_particles, u.is_ground_based)
@@ -79,7 +79,7 @@ entity_hit :: proc(s: ^State, e: ^Entity, damage: f32, player: i32, time: i32) -
 }
 
 // G_Entity::Priv_ChangeStateOnShieldDepletion: the first state flagged for it.
-change_state_on_depletion :: proc(s: ^State, e: ^Entity, time: i32) {
+change_state_on_depletion :: proc(s: ^State, e: Entity, time: i32) {
 	u := unit_of(s, e)
 	for &st in u.states {
 		if st.use_this_state_on_shield_depletion {
@@ -92,7 +92,7 @@ change_state_on_depletion :: proc(s: ^State, e: ^Entity, time: i32) {
 // The hit half of FUN_0041b920: a shot `e` meets a target `o`; each damages
 // the other (or its owner, when the state passes hits on). Note the second
 // check tests the *shot's* owner, not the target's -- faithful to the original.
-collide_entities :: proc(s: ^State, e, o: ^Entity, time: i32) {
+collide_entities :: proc(s: ^State, e, o: Entity, time: i32) {
 	eu, ou := unit_of(s, e), unit_of(s, o)
 	hit_owner := false
 	if state_of(s, e).pass_hits_to_owner && ref_valid(s, e.owner) {

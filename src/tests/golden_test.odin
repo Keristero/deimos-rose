@@ -137,13 +137,13 @@ golden_state_hash :: proc(s: ^sim.State) -> u64 {
 	}
 	mixb(&f, sim.single(s, sim.Reward).active)
 	mixb(&f, sim.single(s, sim.Loadout).active)
-	w := &s.world
-	for g := w.active.head; g != sim.NO_LINK; g = w.group_links[g].next {
-		grp := &w.groups[g]
+	w := sim.single(s, sim.Pool)
+	for g := w.active.head; g != sim.NO_LINK; g = sim.link_of(sim.group_links(s), g).next {
+		grp := sim.group_at(s, g)
 		mix(&f, u64(grp.id))
 		mix(&f, u64(grp.killed))
-		for i := grp.entities.head; i != sim.NO_LINK; i = w.entity_links[i].next {
-			e := &w.entities[i]
+		for i := grp.entities.head; i != sim.NO_LINK; i = sim.link_of(sim.entity_links(s), i).next {
+			e := sim.entity_at(s, i)
 			mix(&f, u64(i))
 			mix(&f, u64(e.unit))
 			mix(&f, u64(e.number))
@@ -151,7 +151,7 @@ golden_state_hash :: proc(s: ^sim.State) -> u64 {
 			mixf(&f, e.shields)
 			mixb(&f, e.deleted)
 			mix(&f, u64(e.owner_player))
-			mix_obj(&f, &e.obj)
+			mix_obj(&f, e.obj)
 		}
 	}
 	return f.h

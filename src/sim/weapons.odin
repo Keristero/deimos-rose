@@ -380,10 +380,10 @@ weapons_process :: proc(
 
 // G_EG_ChangeStateOnWeaponPowerupReleaseByUniqueEntityNum.
 powerup_release :: proc(s: ^State, entity: i32, time: i32) {
-	w := &s.world
+	w := single(s, Pool)
 	g := w.active.head
 	for g != NO_LINK {
-		i := w.groups[g].entities.head
+		i := group_at(s, g).entities.head
 		for i != NO_LINK {
 			if e := entity_at(s, i); e.number == entity {
 				// G_Entity::ChangeToWeaponPowerupReleaseState: the first state
@@ -396,9 +396,9 @@ powerup_release :: proc(s: ^State, entity: i32, time: i32) {
 				}
 				return
 			}
-			i = w.entity_links[i].next
+			i = link_of(entity_links(s), i).next
 		}
-		g = w.group_links[g].next
+		g = link_of(group_links(s), g).next
 	}
 }
 

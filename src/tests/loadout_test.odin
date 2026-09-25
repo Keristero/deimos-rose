@@ -363,8 +363,8 @@ aimed_volley_turns_towards_an_air_enemy :: proc(t: ^testing.T) {
 
 	shot := sim.unit_index(&defs, defs.weapons[cg].powerup_air_release_spawn)
 	before := make(map[i32]bool, context.temp_allocator)
-	for &e, i in s.world.entities {
-		if s.world.entity_used[i] && e.unit == shot {
+	for used, i in sim.single(s, sim.Pool).entity_used {
+		if e := sim.entity_at(s, i32(i)); used && e.unit == shot {
 			before[e.number] = true
 		}
 	}
@@ -372,11 +372,11 @@ aimed_volley_turns_towards_an_air_enemy :: proc(t: ^testing.T) {
 	aim := sim.aimed_intercept(target.loc - at, target.vel, defs.units[shot].initial_speed_max)
 	want := sim.invert_angle(sim.angle_from_vector(aim))
 	testing.expect(t, want > 20 && want < 70, "the aim must be up and to the right")
-	shots: [dynamic]^sim.Entity
+	shots: [dynamic]sim.Entity
 	shots.allocator = context.temp_allocator
-	for &e, i in s.world.entities {
-		if s.world.entity_used[i] && e.unit == shot && !before[e.number] {
-			append(&shots, &e)
+	for used, i in sim.single(s, sim.Pool).entity_used {
+		if e := sim.entity_at(s, i32(i)); used && e.unit == shot && !before[e.number] {
+			append(&shots, e)
 		}
 	}
 	if !testing.expect_value(t, len(shots), 2) {

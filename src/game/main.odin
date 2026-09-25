@@ -688,7 +688,7 @@ run_shots :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, blurs: ^Bl
 			name := fmt.ctprintf("%s-%04d.png", path, i)
 			rl.ExportImage(img, name)
 			rl.UnloadImage(img)
-			fmt.printfln("wrote %s  (step %v, %v entities)", name, i, s.world.used_count)
+			fmt.printfln("wrote %s  (step %v, %v entities)", name, i, sim.single(s, sim.Pool).used_count)
 			next += 1
 		}
 		sim.step(s, {}, film)
@@ -706,17 +706,17 @@ draw_debug :: proc(s: ^sim.State, report: ^data.Defs_Report) {
 	rl.DrawText(
 		fmt.ctprintf(
 			"frame %v  time %v  entities %v  scroll %v\nplayer shields %.0f lives %v score %v\ndefs: %v units %v sprites %v levels",
-			sim.frame_of(s), sim.single(s, sim.Clock).time, s.world.used_count, sim.single(s, sim.Bgnd).view_top,
+			sim.frame_of(s), sim.single(s, sim.Clock).time, sim.single(s, sim.Pool).used_count, sim.single(s, sim.Bgnd).view_top,
 			sim.player_at(s, 0).shields, sim.player_at(s, 0).lives, sim.player_at(s, 0).score,
 			report.units, report.sprites, report.levels,
 		),
 		8, 8, 14, rl.Color{150, 230, 150, 255},
 	)
-	for used, i in s.world.entity_used {
+	for used, i in sim.single(s, sim.Pool).entity_used {
 		if !used {
 			continue
 		}
-		b := sim.object_bounds(&s.world.entities[i].obj)
+		b := sim.object_bounds(sim.entity_at(s, i32(i)).obj)
 		rl.DrawRectangleLines((b.left + VIEW_X) * WINDOW_SCALE, b.top * WINDOW_SCALE,
 			(b.right - b.left) * WINDOW_SCALE, (b.bottom - b.top) * WINDOW_SCALE,
 			rl.Color{220, 170, 90, 120})

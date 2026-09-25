@@ -73,6 +73,7 @@ register_core_components :: proc "contextless" () {
 	component_register(Level_End, 1)
 	component_register(Reward, 1)
 	component_register(Loadout, 1)
+	component_register(Pool, 1)
 	// Every object: the players, their crosshairs and the entity pool.
 	component_register(Game_Object, MAX_ENTITIES)
 	// The players.
@@ -83,6 +84,18 @@ register_core_components :: proc "contextless" () {
 	component_register(Passive_State, MAX_PLAYERS)
 	component_register(Weapon_Handler, MAX_PLAYERS)
 	component_register(Crosshair, MAX_PLAYERS)
+	// The entity pool.
+	component_register(Actor, MAX_ENTITIES)
+	component_register(Anim, MAX_ENTITIES)
+	component_register(Motion, MAX_ENTITIES)
+	component_register(Owned, MAX_ENTITIES)
+	component_register(Spawner, MAX_ENTITIES)
+	component_register(Effects, MAX_ENTITIES)
+	component_register(Passive_Tag, MAX_ENTITIES)
+	// The groups.
+	component_register(Group, MAX_GROUPS)
+	// List membership, for pool entities and groups alike.
+	component_register(Link, max(MAX_GROUPS, MAX_ENTITIES))
 }
 
 // Gives the session entity its singletons, zeroed.
@@ -102,6 +115,7 @@ add_singletons :: proc(s: ^State) {
 		component_id(Level_End),
 		component_id(Reward),
 		component_id(Loadout),
+		component_id(Pool),
 	})
 }
 

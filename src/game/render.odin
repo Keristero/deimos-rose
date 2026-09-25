@@ -489,7 +489,7 @@ draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shad
 // sprite, since the bomb's sprite "bgbu" is shared with an air weapon's
 // bullet. Marks drawn into the terrain (craters) keep their colours.
 @(private = "file")
-shot_accent :: proc(r: ^Renderer, s: ^sim.State, e: ^sim.Entity) -> Draw_Accent {
+shot_accent :: proc(r: ^Renderer, s: ^sim.State, e: sim.Entity) -> Draw_Accent {
 	if e.owner_player < 0 || int(e.owner_player) >= sim.MAX_PLAYERS || e.draw_to_terrain {
 		return {}
 	}
@@ -564,16 +564,14 @@ build_frame :: proc(r: ^Renderer, s: ^sim.State, blurs: ^Blurs, notices: ^Notice
 	}
 	bg := sim.single(s, sim.Bgnd)
 	r.view_top, r.side_scroll = f32(bg.view_top), f32(bg.side_scroll)
-	pv: ^sim.State
 	if prev != nil {
-		pv = &prev.state
 		r.view_top = interp(f32(prev.view_top), r.view_top, r.interp_alpha)
 		r.side_scroll = interp(f32(prev.side_scroll), r.side_scroll, r.interp_alpha)
 	}
-	w := &s.world
-	for g := w.active.head; g != sim.NO_LINK; g = w.group_links[g].next {
-		for i := w.groups[g].entities.head; i != sim.NO_LINK; i = w.entity_links[i].next {
-			e := &w.entities[i]
+	w := sim.single(s, sim.Pool)
+	for g := w.active.head; g != sim.NO_LINK; g = sim.link_of(sim.group_links(s), g).next {
+		for i := sim.group_at(s, g).entities.head; i != sim.NO_LINK; i = sim.link_of(sim.entity_links(s), i).next {
+			e := sim.entity_at(s, i)
 			// G_EG_BuildDrawList draws neither an entity nor its shadow
 			// until its appear delay (+0xa4) has run out; units waiting
 			// just off the field would otherwise show there, or cast a
@@ -585,16 +583,16 @@ build_frame :: proc(r: ^Renderer, s: ^sim.State, blurs: ^Blurs, notices: ^Notice
 			// The same slot holding the same entity a step ago (numbers are
 			// unique, so a reused slot does not match).
 			before: ^sim.Game_Object
-			if pv != nil && pv.world.entity_used[i] && pv.world.entities[i].number == e.number {
-				before = &pv.world.entities[i].obj
+			if prev != nil && prev.numbers[i] == e.number {
+				before = &prev.objects[i]
 			}
-			draw_object(r, s, &e.obj, u.casts_shadows, before, shot_accent(r, s, e))
+			draw_object(r, s, e.obj, u.casts_shadows, before, shot_accent(r, s, e))
 		}
 	}
 	for p, k in sim.players_of(s) {
 		if p.active && p.state == .Playing {
 			before: ^sim.Game_Object
-			if pv != nil && prev.players[k].active && prev.players[k].state == .Playing {
+			if prev != nil && prev.players[k].active && prev.players[k].state == .Playing {
 				before = &prev.players[k].obj
 			}
 			// G_Player::BuildDrawList draws the ground weapon's crosshair

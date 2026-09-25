@@ -241,6 +241,17 @@ Ecs :: struct {
 	world:      ^ecs.World,
 	allocator:  runtime.Allocator,
 	archetypes: map[Component_Mask]^ecs.Archetype,
+	// Each component's column in the archetype it was last read from, so
+	// a read finds it without searching the archetype's signature. An
+	// archetype lives as long as its world, so an entry never outlives its
+	// archetype.
+	columns:    [MAX_COMPONENTS]Column_Cache,
+}
+
+@(private = "file")
+Column_Cache :: struct {
+	arch: ^ecs.Archetype,
+	col:  i32, // -1: the archetype does not have the component
 }
 
 ecs_create :: proc(allocator := context.allocator) -> ^Ecs {
@@ -282,17 +293,26 @@ ecs_clear :: proc(e: ^Ecs) {
 
 // T on entity id, or nil. The pointer is good until the next structural
 // change to the entity's archetype (D39).
-get :: #force_inline proc "contextless" (e: ^Ecs, id: ecs.EntityID, $T: typeid) -> ^T {
+get :: #force_inline proc "contextless" (e: ^Ecs, id: ecs.EntityID, $T: typeid) -> ^T #no_bounds_check {
 	rec := &e.world.records[u64(id) & ecs.ENTITY_INDEX_MASK]
 	arch := rec.archetype
-	cid := cid_of(int(component_slot(T)^))
-	for c, i in arch.signature {
-		if c == cid {
-			col := &arch.columns[arch.column_indices[i]]
-			return cast(^T)&col.data[rec.row * size_of(T)]
+	slot := component_slot(T)^
+	cache := &e.columns[slot]
+	if cache.arch != arch {
+		cache^ = {arch, -1}
+		cid := cid_of(int(slot))
+		for c, i in arch.signature {
+			if c == cid {
+				cache.col = i32(arch.column_indices[i])
+				break
+			}
 		}
 	}
-	return nil
+	if cache.col < 0 {
+		return nil
+	}
+	col := &arch.columns[cache.col]
+	return cast(^T)(uintptr(raw_data(col.data)) + uintptr(rec.row * size_of(T)))
 }
 
 has :: #force_inline proc "contextless" (e: ^Ecs, id: ecs.EntityID, $T: typeid) -> bool {

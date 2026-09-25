@@ -37,17 +37,17 @@ aimed_release_spawn :: proc(s: ^State, h: ^Weapon_Handler, wd: ^Weapon, at: Vec)
 }
 
 // The nearest entity to `at` that a player's air shot can hit, on screen.
-aimed_target :: proc "contextless" (s: ^State, at: Vec) -> (target: ^Entity, ok: bool) {
-	w := &s.world
+aimed_target :: proc "contextless" (s: ^State, at: Vec) -> (target: Entity, ok: bool) {
+	w := single(s, Pool)
 	width := s.defs.perm_floats[PF_VISIBLE_GAME_WIDTH]
 	height := s.defs.perm_floats[PF_VISIBLE_GAME_HEIGHT]
 	best: f32
 	g := w.active.head
 	for g != NO_LINK {
-		i := w.groups[g].entities.head
+		i := group_at(s, g).entities.head
 		for i != NO_LINK {
 			e := entity_at(s, i)
-			i = w.entity_links[i].next
+			i = link_of(entity_links(s), i).next
 			if !air_shot_can_hit(s, e) {
 				continue
 			}
@@ -59,14 +59,14 @@ aimed_target :: proc "contextless" (s: ^State, at: Vec) -> (target: ^Entity, ok:
 				target, best, ok = e, dist, true
 			}
 		}
-		g = w.group_links[g].next
+		g = link_of(group_links(s), g).next
 	}
 	return
 }
 
 // Whether a player's air shot can hit `e`: the candidates entity_collisions
 // would test a player projectile against, bar the overlap itself.
-air_shot_can_hit :: proc "contextless" (s: ^State, e: ^Entity) -> bool {
+air_shot_can_hit :: proc "contextless" (s: ^State, e: Entity) -> bool {
 	if e.deleted || !e.hittable || e.state < 0 || e.appear_delay >= 1 {
 		return false
 	}

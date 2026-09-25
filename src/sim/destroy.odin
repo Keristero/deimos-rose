@@ -80,7 +80,7 @@ media_surface :: proc "contextless" (s: ^State, x, y: i32) -> i32 {
 // Call sites are not in source order: the trace shows an "smra" unit (the
 // only kind that ships, with "smal") drawing at 0x415afe, the first
 // RandomInt in the function, so the compiler emitted that branch first.
-can_spawn_on_media :: proc(s: ^State, e: ^Entity) -> bool {
+can_spawn_on_media :: proc(s: ^State, e: Entity) -> bool {
 	u := unit_of(s, e)
 	if !u.is_ground_based || u.do_death_spawn_on_any_media {
 		return true
@@ -121,7 +121,7 @@ can_spawn_on_media :: proc(s: ^State, e: ^Entity) -> bool {
 }
 
 // A spawn left behind by an entity: at its location, owned by it.
-spawn_from :: proc(s: ^State, e: ^Entity, unit: Res_ID) {
+spawn_from :: proc(s: ^State, e: Entity, unit: Res_ID) {
 	req := spawn_request(unit)
 	req.loc = e.loc
 	req.owner_player = e.owner_player
@@ -130,15 +130,15 @@ spawn_from :: proc(s: ^State, e: ^Entity, unit: Res_ID) {
 }
 
 // G_Entity::Destroy. `player` is who destroyed it, or -1.
-entity_destroy :: proc(s: ^State, e: ^Entity, player: i32, time: i32) {
+entity_destroy :: proc(s: ^State, e: Entity, player: i32, time: i32) {
 	if e.deleted {
 		return
 	}
 	u := unit_of(s, e)
 	record_event(s, Event{kind = .Destroy, unit = u.id, number = e.number, loc = e.loc})
-	glow_stop(&e.obj)
+	glow_stop(e.obj)
 	if !e.is_air && u.destruct_create_obstacle {
-		debris_new(s, object_bounds(&e.obj))
+		debris_new(s, object_bounds(e.obj))
 	}
 	if u.destruct_particle != NONE {
 		particle_burst(s, e.loc, u.destruct_particle_color, u.destruct_particle, u.is_ground_based)
@@ -174,7 +174,7 @@ entity_destroy :: proc(s: ^State, e: ^Entity, player: i32, time: i32) {
 // against the cumulative percentages in perm floats 0xd1..0xd9, picking one
 // of perm objects 0x19..0x22 (RandomBonus_1..10).
 @(private = "file")
-release_random_bonus :: proc(s: ^State, e: ^Entity) {
+release_random_bonus :: proc(s: ^State, e: Entity) {
 	pf := s.defs.perm_floats
 	pct :: proc "contextless" (pf: [PERM_FLOATS]f32, i: int) -> i32 {
 		return trunc_i32(pf[i])

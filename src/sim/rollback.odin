@@ -85,7 +85,7 @@ snapshot_checksum :: proc(r: ^Snapshot_Ring, frame: u32) -> (sum: u64, ok: bool)
 	if slot == nil {
 		return 0, false
 	}
-	h := checksum_fields(&slot.fields)
+	h := hasher()
 	hash_bytes(&h, raw_data(slot.world), len(slot.world))
 	return h.sum, true
 }
