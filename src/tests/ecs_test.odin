@@ -179,7 +179,8 @@ schedule_keeps_registration_order_except_where_named :: proc(t: ^testing.T) {
 	order, ok := sim.schedule(items, context.temp_allocator)
 	testing.expect(t, ok)
 	testing.expect_value(t, len(order), 4)
-	want := []int{0, 2, 3, 1}
+	// d goes ahead of b, which needs it; c keeps its place.
+	want := []int{0, 3, 1, 2}
 	for w, i in want {
 		testing.expect_value(t, order[i], w)
 	}
@@ -193,4 +194,38 @@ schedule_rejects_a_cycle :: proc(t: ^testing.T) {
 	items := []sim.Order_Item{{name = "a", after = {"b"}}, {name = "b", after = {"a"}}}
 	_, ok := sim.schedule(items, context.temp_allocator)
 	testing.expect(t, !ok)
+}
+
+@(test)
+schedule_places_an_item_before_what_it_names :: proc(t: ^testing.T) {
+	items := []sim.Order_Item{{name = "a"}, {name = "b"}, {name = "c", before = {"a"}}, {name = "d", before = {"gone"}}}
+	order, ok := sim.schedule(items, context.temp_allocator)
+	testing.expect(t, ok)
+	want := []int{2, 0, 1, 3}
+	for w, i in want {
+		testing.expect_value(t, order[i], w)
+	}
+	unknown := sim.schedule_unknown(items, context.temp_allocator)
+	testing.expect_value(t, len(unknown), 1)
+}
+
+// Every system and stage the registry holds places itself only against
+// others it holds: a name nobody has is a typo, since a plugin's systems
+// are registered whether it is enabled or not.
+@(test)
+registered_systems_name_only_registered_systems :: proc(t: ^testing.T) {
+	items := make([dynamic]sim.Order_Item, context.temp_allocator)
+	for sys in sim.registered_systems() {
+		append(&items, sim.Order_Item{sys.name, sys.after, sys.before})
+	}
+	testing.expect_value(t, len(sim.schedule_unknown(items[:], context.temp_allocator)), 0)
+	_, ok := sim.schedule(items[:], context.temp_allocator)
+	testing.expect(t, ok, "the systems' order has a cycle")
+	clear(&items)
+	for st in sim.registered_entity_stages() {
+		append(&items, sim.Order_Item{st.name, st.after, st.before})
+	}
+	testing.expect_value(t, len(sim.schedule_unknown(items[:], context.temp_allocator)), 0)
+	_, ok = sim.schedule(items[:], context.temp_allocator)
+	testing.expect(t, ok, "the entity stages' order has a cycle")
 }

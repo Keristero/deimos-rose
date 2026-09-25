@@ -48,6 +48,7 @@ State :: struct {
 	session:      Session,
 	defs:         ^Defs,
 	ecs:          ^Ecs,
+	schedule:     Schedule, // the systems this session runs, in order (systems.odin)
 	sounds:       Sound_Queue,    // this step's sound events, for presentation
 	particles:    Particle_Queue, // this step's particle bursts, for presentation
 	stamps:       Stamp_Queue,    // this step's marks on the terrain
@@ -109,6 +110,7 @@ init :: proc(s: ^State, session: Session, defs: ^Defs, log: ^Draw_Log = nil, eve
 	s.defs = defs
 	s.events = events
 	s.draws = log
+	schedule_build(&s.schedule)
 	add_singletons(s)
 	for i in 0 ..< i32(MAX_PLAYERS) {
 		ecs_set_components(s.ecs, player_entity(i), player_components())
@@ -289,44 +291,74 @@ level_transition :: proc(s: ^State) -> Level_Transition {
 // Weapons' loadout screen (loadout.odin) opens early in a level the same
 // way, on the step the level's title has gone.
 session_step :: proc(s: ^State, input: Frame_Input, film: ^Film = nil) -> Level_Transition {
+	st := Step{input = input, film = film}
+	run_systems(s, &st, {.Step, .Session})
+	return st.transition
+}
+
+// The netplay pause: either player's Pause press toggles it, and while it
+// holds only the frame count moves. The game never sees the Pause button.
+netplay_pause_system :: proc(s: ^State, step: ^Step) {
+	pause := single(s, Pause)
 	toggle := false
 	for i in 0 ..< MAX_PLAYERS {
-		held := .Pause in input[i]
-		if held && !single(s, Pause).held[i] {
+		held := .Pause in step.input[i]
+		if held && !pause.held[i] {
 			toggle = true // both pressing on the same frame still toggles once
 		}
-		single(s, Pause).held[i] = held
+		pause.held[i] = held
 	}
 	if toggle {
-		single(s, Pause).paused = !single(s, Pause).paused
+		pause.paused = !pause.paused
 	}
-	if single(s, Pause).paused {
+	if pause.paused {
 		clear_step_events(s) // nothing happened this step; do not replay last step's
 		single(s, Clock).frame += 1
-		return .None
+		step.done = true
+		return
 	}
-	game_input := input
-	for &b in game_input {
+	for &b in step.input {
 		b -= {.Pause}
 	}
-	if single(s, Reward).active {
-		if reward_step(s, game_input) {
-			return .None
-		}
-		return level_transition(s)
+}
+
+// Easy mode's reward screen, while it is open, takes the step; once it
+// closes the level moves on.
+reward_screen_system :: proc(s: ^State, step: ^Step) {
+	if !single(s, Reward).active {
+		return
 	}
+	if reward_step(s, step.input) {
+		step.done = true
+	} else {
+		step.frozen = true
+	}
+}
+
+// New Weapons' loadout screen, while it is open, takes the step.
+loadout_screen_system :: proc(s: ^State, step: ^Step) {
 	if single(s, Loadout).active {
-		loadout_step(s, game_input)
-		return .None
+		loadout_step(s, step.input)
+		step.done = true
 	}
-	step(s, game_input, film)
-	if reward_due(s) && reward_begin(s, game_input) {
-		return .None
+}
+
+// A counted level opens the reward screen in easy mode.
+reward_open_system :: proc(s: ^State, step: ^Step) {
+	if reward_due(s) && reward_begin(s, step.input) {
+		step.done = true
 	}
-	if loadout_due(s) && loadout_begin(s, game_input) {
-		return .None
+}
+
+// The level's title gone, the loadout screen opens with New Weapons.
+loadout_open_system :: proc(s: ^State, step: ^Step) {
+	if loadout_due(s) && loadout_begin(s, step.input) {
+		step.done = true
 	}
-	return level_transition(s)
+}
+
+level_transition_system :: proc(s: ^State, step: ^Step) {
+	step.transition = level_transition(s)
 }
 
 // Whether play stands still this step for a pause or a between-play screen:
@@ -350,61 +382,102 @@ clear_step_events :: proc "contextless" (s: ^State) {
 // `input` drives live play; with a film, players read the film instead,
 // one frame per step they spend in play.
 step :: proc(s: ^State, input: Frame_Input, film: ^Film = nil) {
+	st := Step{input = input, film = film}
+	run_systems(s, &st, {.Step})
+}
+
+step_events_system :: proc(s: ^State, step: ^Step) {
 	clear_step_events(s)
+}
+
+first_player_system :: proc(s: ^State, step: ^Step) {
 	if !single(s, Game_Status).player1_seen_playing && player_at(s, 0).state == .Playing {
 		single(s, Game_Status).player1_seen_playing = true
 	}
-	// G_Notice_Process, G_Particle_Process and G_MotionBlur_Process do not
-	// draw; G_Debris_Process moves the ground wreckage with the scroll.
-	notice_process(s)
-	debris_process(s)
-	for i in 0 ..< MAX_PLAYERS {
-		player_process(s, player_at(s, i), single(s, Clock).time, input[i], film)
-	}
-	// G_ScoreBar_Process is presentation.
+}
 
-	any_in_game := false
+// G_Notice_Process. Like G_Particle_Process and G_MotionBlur_Process beside
+// it, it does not draw.
+notices_system :: proc(s: ^State, step: ^Step) {
+	notice_process(s)
+}
+
+// G_Debris_Process moves the ground wreckage with the scroll.
+debris_system :: proc(s: ^State, step: ^Step) {
+	debris_process(s)
+}
+
+// G_ScoreBar_Process, which follows, is presentation.
+players_system :: proc(s: ^State, step: ^Step) {
+	for i in 0 ..< MAX_PLAYERS {
+		player_process(s, player_at(s, i), single(s, Clock).time, step.input[i], step.film)
+	}
+}
+
+game_over_system :: proc(s: ^State, step: ^Step) {
 	for p in players_of(s) {
 		if p.active {
-			any_in_game = true
+			return
 		}
 	}
-	if !any_in_game {
-		single(s, Game_Status).game_over = true
-		// FUN_00420280 LAB_0042037a: the first step no player is left in
-		// game spawns the Notice_GameOver banner (perm object 0x18) once, at
-		// screen centre -- the same position formula level_end_begin uses
-		// for Notice_LevelEnd/AllLevelsCompleted. Confirmed 0x18 is
-		// Notice_GameOver, not guessed: assets/data/idli/gaob.json lists
-		// perm objects in order, and index 0x16 Notice_LevelEnd / 0x17
-		// Notice_AllLevelsCompleted / 0x18 Notice_GameOver / 0x19
-		// RandomBonus_1 lines up exactly with level_end.odin's own 0x16/0x17
-		// and destroy.odin's 0x19..0x22 RandomBonus comment. This spawn
-		// draws from the RNG like any other, so a real session that runs out
-		// of lives needs it for the replay to stay in sync -- no shipped
-		// demo film reaches game over, so oracle:diff never exercised this
-		// gap before.
-		if !single(s, Game_Status).game_over_notice {
-			notice := s.defs.perm_objects[0x18]
-			if notice != NONE {
-				req := spawn_request(notice)
-				req.loc = {
-					s.defs.perm_floats[PF_VISIBLE_GAME_WIDTH] / 2,
-					s.defs.perm_floats[PF_VISIBLE_GAME_HEIGHT] / 2,
-				}
-				eg_request_spawn(s, req)
+	single(s, Game_Status).game_over = true
+	// FUN_00420280 LAB_0042037a: the first step no player is left in
+	// game spawns the Notice_GameOver banner (perm object 0x18) once, at
+	// screen centre -- the same position formula level_end_begin uses
+	// for Notice_LevelEnd/AllLevelsCompleted. Confirmed 0x18 is
+	// Notice_GameOver, not guessed: assets/data/idli/gaob.json lists
+	// perm objects in order, and index 0x16 Notice_LevelEnd / 0x17
+	// Notice_AllLevelsCompleted / 0x18 Notice_GameOver / 0x19
+	// RandomBonus_1 lines up exactly with level_end.odin's own 0x16/0x17
+	// and destroy.odin's 0x19..0x22 RandomBonus comment. This spawn
+	// draws from the RNG like any other, so a real session that runs out
+	// of lives needs it for the replay to stay in sync -- no shipped
+	// demo film reaches game over, so oracle:diff never exercised this
+	// gap before.
+	if !single(s, Game_Status).game_over_notice {
+		notice := s.defs.perm_objects[0x18]
+		if notice != NONE {
+			req := spawn_request(notice)
+			req.loc = {
+				s.defs.perm_floats[PF_VISIBLE_GAME_WIDTH] / 2,
+				s.defs.perm_floats[PF_VISIBLE_GAME_HEIGHT] / 2,
 			}
-			single(s, Game_Status).game_over_notice = true
+			eg_request_spawn(s, req)
 		}
+		single(s, Game_Status).game_over_notice = true
 	}
-	if bgnd_process(s) {
+}
+
+background_system :: proc(s: ^State, step: ^Step) {
+	step.level_done = bgnd_process(s)
+}
+
+// The G_Bgnd_Process() == 1 branch.
+level_end_system :: proc(s: ^State, step: ^Step) {
+	if step.level_done {
 		level_end_step(s, single(s, Clock).time)
 	}
-	if eg_process(s, single(s, Clock).time) {
+}
+
+entities_system :: proc(s: ^State, step: ^Step) {
+	step.pause_scrolling = eg_process(s, single(s, Clock).time)
+}
+
+// The end of G_EG_Process.
+sweep_system :: proc(s: ^State, step: ^Step) {
+	sweep_deleted(s)
+}
+
+// An entity whose state pauses vertical scrolling holds the background.
+scroll_hold_system :: proc(s: ^State, step: ^Step) {
+	if step.pause_scrolling {
 		bgnd_stop(s)
 	} else {
 		bgnd_resume(s)
 	}
+}
+
+clock_system :: proc(s: ^State, step: ^Step) {
 	single(s, Clock).time += 1
 	single(s, Clock).frame += 1
 }

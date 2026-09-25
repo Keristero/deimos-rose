@@ -1,61 +1,66 @@
 package sim
 
-// G_EG_Process: one step for every entity, in group order.
+// G_EG_Process: one step for every entity, in group order, each through
+// every entity stage (systems.odin) before the next. The sweep of deleted
+// entities that ends G_EG_Process is its own system (sweep_system).
 //
 // Returns true when some entity's state asks for vertical scrolling to pause.
 // Branches not ported yet mark themselves with `unported`.
 eg_process :: proc(s: ^State, time: i32) -> (pause_scrolling: bool) {
 	w := single(s, Pool)
-	if w.active.count <= 0 {
-		return
-	}
-
 	gc := Cursor{NO_LINK}
 	for gi_n: i32 = 0; gi_n < w.active.count; gi_n += 1 {
 		gi := list_next(&w.active, group_links(s), &gc)
 		ec := Cursor{NO_LINK}
 		for n: i32 = 0; n < group_at(s, gi).entities.count; n += 1 {
 			ei := list_next(&group_at(s, gi).entities, entity_links(s), &ec)
-			if process_entity(s, ei, time) {
+			e := entity_at(s, ei)
+			es := Entity_Step{time = time, u = unit_of(s, e), st = state_of(s, e)}
+			run_entity_stages(s, e, &es)
+			if es.pause {
 				pause_scrolling = true
 			}
 		}
 	}
-	sweep_deleted(s)
 	return
 }
 
-// The body of G_EG_Process's inner loop for one entity.
-@(private = "file")
-process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
-	e := entity_at(s, ei)
-	st := state_of(s, e)
-	u := unit_of(s, e)
+// The body of G_EG_Process's inner loop, stage by stage. A stage that ends
+// the entity's step returns false, where the original returns.
 
+// An entity waits out its appear delay before anything else happens to it.
+appear_stage :: proc(s: ^State, e: Entity, es: ^Entity_Step) -> bool {
 	e.appear_delay -= 1
 	if e.appear_delay >= 1 {
-		e.state_time = time
-		return
+		e.state_time = es.time
+		return false
 	}
+	return true
+}
 
-	// State particles.
-	if st.particles != NONE {
-		due := false
-		if !st.particles_repeat {
-			due = e.particle_count == 0
-		} else {
-			due = e.particle_time == 0 || e.particle_time + st.particles_repeat_delay <= time
-		}
-		if due {
-			if st.particles_max_num_bursts == 0 || e.particle_count < st.particles_max_num_bursts {
-				particle_burst(s, e.loc, st.particles_color, st.particles, u.is_ground_based)
-			}
-			e.particle_count += 1
-			e.particle_time = time
-		}
+state_particles_stage :: proc(s: ^State, e: Entity, es: ^Entity_Step) -> bool {
+	st := es.st
+	if st.particles == NONE {
+		return true
 	}
+	due := false
+	if !st.particles_repeat {
+		due = e.particle_count == 0
+	} else {
+		due = e.particle_time == 0 || e.particle_time + st.particles_repeat_delay <= es.time
+	}
+	if due {
+		if st.particles_max_num_bursts == 0 || e.particle_count < st.particles_max_num_bursts {
+			particle_burst(s, e.loc, st.particles_color, st.particles, es.u.is_ground_based)
+		}
+		e.particle_count += 1
+		e.particle_time = es.time
+	}
+	return true
+}
 
-	// State entry sound.
+entry_sound_stage :: proc(s: ^State, e: Entity, es: ^Entity_Step) -> bool {
+	st := es.st
 	play := false
 	if st.entry_sound != NONE {
 		if !st.sound_loop {
@@ -64,7 +69,7 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 			} else if st.sound_repeat_on_state_change {
 				play = e.sound_count == 0
 			}
-		} else if e.sound_time == 0 || e.sound_time + st.sound_loop_delay <= time {
+		} else if e.sound_time == 0 || e.sound_time + st.sound_loop_delay <= es.time {
 			play = true
 		}
 	}
@@ -84,54 +89,61 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 			sound_play(s, state_sound(st), true)
 		}
 		e.sound_count += 1
-		e.sound_time = time
+		e.sound_time = es.time
 	}
+	return true
+}
 
-	// The state timer.
-	if time == e.state_time + e.timer {
-		to := st.on_timer_change_to
-		switch {
-		case to == "Delete":
-			e.deleted = true
-			e.target_player = -1
-			return
-		case to == "Destroy":
-			entity_destroy(s, e, -1, time)
-			return
-		case to != "" && to != "none":
-			del, des := change_state(s, e, false, to, time)
-			if del {
-				e.deleted = true
-				e.target_player = -1
-				return
-			}
-			if des {
-				entity_destroy(s, e, -1, time)
-				return
-			}
-			st = state_of(s, e)
+// The state timer.
+state_timer_stage :: proc(s: ^State, e: Entity, es: ^Entity_Step) -> bool {
+	if es.time != e.state_time + e.timer {
+		return true
+	}
+	to := es.st.on_timer_change_to
+	switch {
+	case to == "Delete":
+		entity_delete(e)
+		return false
+	case to == "Destroy":
+		entity_destroy(s, e, -1, es.time)
+		return false
+	case to != "" && to != "none":
+		del, des := change_state(s, e, false, to, es.time)
+		if !entity_carry_on(s, e, del, des, es.time) {
+			return false
 		}
+		es.st = state_of(s, e)
 	}
+	return true
+}
 
-	if st.pause_vertical_scrolling {
-		pause = true
+scroll_pause_stage :: proc(s: ^State, e: Entity, es: ^Entity_Step) -> bool {
+	if es.st.pause_vertical_scrolling {
+		es.pause = true
 	}
-	entity_animate(s, e, time)
+	return true
+}
 
-	if len(st.rules) > 0 {
-		del, des := process_rules(s, e, time)
-		if del {
-			e.deleted = true
-			e.target_player = -1
-			return
-		}
-		if des {
-			entity_destroy(s, e, -1, time)
-			return
-		}
-		st = state_of(s, e)
+animate_stage :: proc(s: ^State, e: Entity, es: ^Entity_Step) -> bool {
+	entity_animate(s, e, es.time)
+	return true
+}
+
+rules_stage :: proc(s: ^State, e: Entity, es: ^Entity_Step) -> bool {
+	if len(es.st.rules) == 0 {
+		return true
 	}
+	del, des := process_rules(s, e, es.time)
+	if !entity_carry_on(s, e, del, des, es.time) {
+		return false
+	}
+	es.st = state_of(s, e)
+	return true
+}
 
+// The state's look: visibility, tint, scale, size and glow.
+appearance_stage :: proc(s: ^State, e: Entity, es: ^Entity_Step) -> bool {
+	st := es.st
 	e.visibility_target = f32(st.required_visibility_percent)
 	e.visibility_delta = f32(st.visibility_delta_percent)
 	e.colorise = st.do_colorise
@@ -140,7 +152,7 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 	e.tint_color = color_1555(st.tint_color)
 	adjust_visibility_and_tinting(e.obj)
 	e.hittable = true
-	if e.visibility < 100 && !u.hittable_when_invisible {
+	if e.visibility < 100 && !es.u.hittable_when_invisible {
 		e.hittable = false
 	}
 	e.scale_target = f32(st.required_scale_percent) / 100
@@ -148,63 +160,84 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 	do_scaling(e.obj)
 	calculate_dimensions(s, e.obj)
 	glow_process(e.obj)
-	if (st.use_owners_visibility || st.use_owners_scale || st.visually_reflect_owner_hits) &&
-	   ref_valid(s, e.owner) {
-		// FUN_0041b5d0: follow the owner's look -- its visibility, scale,
-		// and (visuallyReflectOwnerHits) its hit glow, so a turret's dome
-		// flashes with its base.
-		o := entity_at(s, e.owner.index)
-		if st.use_owners_visibility {
-			e.visibility = o.visibility
-		}
-		if st.use_owners_scale {
-			e.dims_dirty = o.dims_dirty
-			e.scale, e.scale_target, e.scale_delta = o.scale, o.scale_target, o.scale_delta
-			calculate_dimensions(s, e.obj)
-		}
-		if st.visually_reflect_owner_hits {
-			e.glowing, e.glow_falling = o.glowing, o.glow_falling
-			e.glow_amount, e.glow_speed, e.glow_color = o.glow_amount, o.glow_speed, o.glow_color
-		}
-	}
+	return true
+}
 
-	if st.destruct_if_vertical_scrolling_not_paused && single(s, Bgnd).speed != 0 {
-		entity_destroy(s, e, -1, time)
-		return
+// FUN_0041b5d0: follow the owner's look -- its visibility, scale, and
+// (visuallyReflectOwnerHits) its hit glow, so a turret's dome flashes with
+// its base.
+owner_look_stage :: proc(s: ^State, e: Entity, es: ^Entity_Step) -> bool {
+	st := es.st
+	if !(st.use_owners_visibility || st.use_owners_scale || st.visually_reflect_owner_hits) || !ref_valid(s, e.owner) {
+		return true
 	}
-	del, des := movement_ai(s, e, time)
-	if del {
-		e.deleted = true
-		e.target_player = -1
-		return
+	o := entity_at(s, e.owner.index)
+	if st.use_owners_visibility {
+		e.visibility = o.visibility
 	}
-	if des {
-		entity_destroy(s, e, -1, time)
-		return
+	if st.use_owners_scale {
+		e.dims_dirty = o.dims_dirty
+		e.scale, e.scale_target, e.scale_delta = o.scale, o.scale_target, o.scale_delta
+		calculate_dimensions(s, e.obj)
 	}
+	if st.visually_reflect_owner_hits {
+		e.glowing, e.glow_falling = o.glowing, o.glow_falling
+		e.glow_amount, e.glow_speed, e.glow_color = o.glow_amount, o.glow_speed, o.glow_color
+	}
+	return true
+}
+
+scroll_destruct_stage :: proc(s: ^State, e: Entity, es: ^Entity_Step) -> bool {
+	if es.st.destruct_if_vertical_scrolling_not_paused && single(s, Bgnd).speed != 0 {
+		entity_destroy(s, e, -1, es.time)
+		return false
+	}
+	return true
+}
+
+movement_ai_stage :: proc(s: ^State, e: Entity, es: ^Entity_Step) -> bool {
+	del, des := movement_ai(s, e, es.time)
+	return entity_carry_on(s, e, del, des, es.time)
+}
+
+move_stage :: proc(s: ^State, e: Entity, es: ^Entity_Step) -> bool {
 	if !move_and_check_position(s, e.obj, 0x80, true) {
-		e.deleted = true
-		e.target_player = -1
-		return
+		entity_delete(e)
+		return false
 	}
-	if st.lock_to_owner_loc {
+	return true
+}
+
+follow_owner_stage :: proc(s: ^State, e: Entity, es: ^Entity_Step) -> bool {
+	if es.st.lock_to_owner_loc {
 		lock_to_owner(s, e)
 	}
-	if st.link_to_owner_loc {
+	if es.st.link_to_owner_loc {
 		link_to_owner(s, e)
 	}
-	if st.orbit_owner {
+	if es.st.orbit_owner {
 		orbit_owner(s, e)
 	}
+	return true
+}
+
+// SpawnControl, and the bounds the later stages test against.
+spawn_stage :: proc(s: ^State, e: Entity, es: ^Entity_Step) -> bool {
 	if e.spawn_pace == 0 {
-		spawn_control(s, e, time)
+		spawn_control(s, e, es.time)
 	} else {
 		passive_paced_spawn_control(s, e)
 	}
 	if e.deleted {
-		return
+		return false
 	}
-	b := object_bounds(e.obj)
+	es.bounds = object_bounds(e.obj)
+	return true
+}
+
+// Touching a player: both take damage, or the player collects a pickup.
+player_contact_stage :: proc(s: ^State, e: Entity, es: ^Entity_Step) -> bool {
+	st, u, b := es.st, es.u, es.bounds
 	w, h := view_width(s.defs), view_height(s.defs)
 	if players_in_play(s) > 0 && st.collides && !u.harmless_to_players && st.collides_with_players &&
 	   b.right > -33 && b.left <= w + 32 && b.bottom >= 0 && b.top <= h {
@@ -236,46 +269,84 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 			}
 		}
 	}
-	if e.deleted {
-		return
-	}
+	return !e.deleted
+}
+
+motion_blur_stage :: proc(s: ^State, e: Entity, es: ^Entity_Step) -> bool {
+	st := es.st
 	if st.motion_blur_required && e.sprite != NONE {
 		gap := roll_int(s, st.motion_blur_min_time_between_blurs, st.motion_blur_max_time_between_blurs, 0x418d92)
-		if e.blur_time + gap < time {
-			e.blur_time = time
+		if e.blur_time + gap < es.time {
+			e.blur_time = es.time
 			blur_spawn(s, e.obj, st)
 		}
 	}
-	if !u.harmless_to_players && u.is_ground_based && u.can_be_hit_by_player_projectile && st.is_targetable {
-		// A ground target under a player's crosshair locks it, which turns
-		// it from its normal frame to the locked one (red for "plbo").
-		// G_EG_Process 0x418220 tests each player in play whose crosshair
-		// is not locked yet this step against the bounds taken after
-		// SpawnControl (b above): left <= x < right, top <= y < bottom.
-		// weapons_process unlocks it again every step.
-		for p in players_of(s) {
-			if p.state != .Playing || p.weapons.crosshair_locked {
-				continue
-			}
-			c := p.weapons.crosshair.loc
-			if f32(b.left) <= c.x && c.x < f32(b.right) && f32(b.top) <= c.y && c.y < f32(b.bottom) {
-				crosshair_hilite(s, p.weapons, true)
-			}
+	return true
+}
+
+// A ground target under a player's crosshair locks it, which turns it from
+// its normal frame to the locked one (red for "plbo"). G_EG_Process 0x418220
+// tests each player in play whose crosshair is not locked yet this step
+// against the bounds taken after SpawnControl: left <= x < right,
+// top <= y < bottom. weapons_process unlocks it again every step.
+crosshair_lock_stage :: proc(s: ^State, e: Entity, es: ^Entity_Step) -> bool {
+	u, b := es.u, es.bounds
+	if u.harmless_to_players || !u.is_ground_based || !u.can_be_hit_by_player_projectile || !es.st.is_targetable {
+		return true
+	}
+	for p in players_of(s) {
+		if p.state != .Playing || p.weapons.crosshair_locked {
+			continue
+		}
+		c := p.weapons.crosshair.loc
+		if f32(b.left) <= c.x && c.x < f32(b.right) && f32(b.top) <= c.y && c.y < f32(b.bottom) {
+			crosshair_hilite(s, p.weapons, true)
 		}
 	}
-	if !e.stationary && !e.is_air && u.collides_with_ground_obstacles {
+	return true
+}
+
+// A ground unit that runs into wreckage stops there.
+ground_obstacles_stage :: proc(s: ^State, e: Entity, es: ^Entity_Step) -> bool {
+	if !e.stationary && !e.is_air && es.u.collides_with_ground_obstacles {
 		if debris_hits(s, object_bounds(e.obj)) {
 			e.vel = {}
 			e.stationary = true
-			if u.destruct_create_obstacle {
+			if es.u.destruct_create_obstacle {
 				debris_new(s, object_bounds(e.obj))
 			}
 		}
 	}
-	if !e.deleted && st.collides {
+	return true
+}
+
+shot_collisions_stage :: proc(s: ^State, e: Entity, es: ^Entity_Step) -> bool {
+	if !e.deleted && es.st.collides {
 		entity_collisions(s, e)
 	}
-	return
+	return true
+}
+
+// What G_EG_Process does with a change of state's two out-parameters:
+// delete or destroy the entity, ending its step, or carry on.
+@(private = "file")
+entity_carry_on :: proc(s: ^State, e: Entity, del, des: bool, time: i32) -> bool {
+	if del {
+		entity_delete(e)
+		return false
+	}
+	if des {
+		entity_destroy(s, e, -1, time)
+		return false
+	}
+	return true
+}
+
+// Marks the entity for the sweep.
+@(private = "file")
+entity_delete :: proc "contextless" (e: Entity) {
+	e.deleted = true
+	e.target_player = -1
 }
 
 players_in_play :: proc "contextless" (s: ^State) -> (n: i32) {
