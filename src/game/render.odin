@@ -246,6 +246,8 @@ Renderer :: struct {
 	// draw_terrain.
 	view_top:    f32,
 	side_scroll: f32,
+	// The render systems this renderer runs, built on its first frame.
+	render_schedule: Render_Schedule,
 }
 
 // Past this many pixels in one step, something jumped (a respawn, a new
@@ -320,41 +322,20 @@ tint_color :: proc "contextless" (c: u16, amount: i32) -> rl.Color {
 	}
 }
 
-// G_GameObject::Priv_Draw: the sprite, then a tint pass while `tint` is above
-// zero, then a glow pass while glowing. Nothing draws while the object is
-// fully invisible.
-//
-// Terrain-drawn objects are placed in map space: shifted 32 right and down by
-// the scroll. Everything else slides with the view's sideways scroll, which a
-// player pushes by holding left or right.
-//
-// G_GameObject::Priv_Draw draws up to three passes -- the sprite, a tint while
-// `tint` is above zero, and a glow while glowing -- and Priv_DrawShadow adds a
-// silhouette underneath. Nothing draws while the object is fully invisible.
-//
-// `prev` is the same object as it was a step ago, when interpolating and it
-// existed then; nil draws it exactly where it is.
-//
-// `accent` recolours the sprite (a player's crosshair or shots) or rings it
-// with an outline (their ship); the zero value draws it as it is.
-Draw_Accent :: struct {
-	hue:      f32,
-	recolour: bool,
-	trim:     bool, // a ship: its silver/gold trim (ship_trim) in the accent
-	outline:  bool,
-	lighten:  f32, // with recolour: towards white (the unlocked crosshair)
+// Where an object's sprite lands this frame: its frame of the sprite, its
+// rectangle and its layer. Not ok when nothing of it draws.
+Placed :: struct {
+	texture: rl.Texture2D,
+	src:     rl.Rectangle,
+	dst:     rl.Rectangle,
+	layer:   int,
+	x, y:    f32, // the point the frame is centred on
 }
 
-draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shadow: bool, prev: ^sim.Game_Object = nil, accent := Draw_Accent{}) {
-	tex, src, ok := frame_rect(&r.textures, o.sprite, o.frame)
-	if r.dump && (!ok || o.visibility <= 0) {
-		id := o.sprite
-		fmt.printfln("  SKIPPED %v frame %v at %.1f,%.1f  vis %.0f  %s",
-			string(id[:]), o.frame, o.loc.x, o.loc.y, o.visibility,
-			o.sprite == sim.NONE ? "no sprite" : !ok ? "no such frame" : "invisible")
-	}
-	if o.visibility <= 0 || o.sprite == sim.NONE || !ok {
-		return
+object_place :: proc(r: ^Renderer, o: ^sim.Game_Object, prev: ^sim.Game_Object = nil) -> (p: Placed, ok: bool) {
+	tex, src, found := frame_rect(&r.textures, o.sprite, o.frame)
+	if o.visibility <= 0 || o.sprite == sim.NONE || !found {
+		return {}, false
 	}
 	// Whole pixels, as the original draws -- unless interpolating, where
 	// the in-between position is the point, and the 2x canvas shows it.
@@ -372,19 +353,61 @@ draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shad
 	} else if o.scrolls_sideways {
 		x -= r.side_scroll
 	}
-	// U_Sprite_Draw centres the frame on the point, halving as the
-	// simulation does.
-	place :: proc(x, y: f32, src: rl.Rectangle, scale: f32) -> rl.Rectangle {
-		w := i32(src.width * scale)
-		h := i32(src.height * scale)
-		return {x - f32(sim.halve(w)), y - f32(sim.halve(h)), f32(w), f32(h)}
-	}
-	dst := place(x, y, src, o.scale)
 	// G_GameObject::Priv_Draw: draw_to_terrain objects skip the drawLayer_ID
 	// switch entirely and always land in layer 1, ahead of the terrain --
 	// live tank tracks and craters (stateDrawToTerrain), not the permanent
 	// wrecks stamp_object burns into the map at destruction.
 	layer := o.draw_to_terrain ? 1 : layer_of(o.draw_layer, o.is_air)
+	return {tex, src, place_rect(x, y, src, o.scale), layer, x, y}, true
+}
+
+// U_Sprite_Draw centres the frame on the point, halving as the simulation
+// does.
+place_rect :: proc(x, y: f32, src: rl.Rectangle, scale: f32) -> rl.Rectangle {
+	w := i32(src.width * scale)
+	h := i32(src.height * scale)
+	return {x - f32(sim.halve(w)), y - f32(sim.halve(h)), f32(w), f32(h)}
+}
+
+// G_GameObject::Priv_Draw: the sprite, then a tint pass while `tint` is above
+// zero, then a glow pass while glowing. Nothing draws while the object is
+// fully invisible.
+//
+// Terrain-drawn objects are placed in map space: shifted 32 right and down by
+// the scroll. Everything else slides with the view's sideways scroll, which a
+// player pushes by holding left or right.
+//
+// G_GameObject::Priv_Draw draws up to three passes -- the sprite, a tint while
+// `tint` is above zero, and a glow while glowing -- and Priv_DrawShadow adds a
+// silhouette underneath. Nothing draws while the object is fully invisible.
+//
+// `prev` is the same object as it was a step ago, when interpolating and it
+// existed then; nil draws it exactly where it is.
+//
+// `accent` recolours the sprite (a player's crosshair or shots) or its trim
+// (their ship); the zero value draws it as it is.
+Draw_Accent :: struct {
+	hue:      f32,
+	recolour: bool,
+	trim:     bool, // a ship: its silver/gold trim (ship_trim) in the accent
+	lighten:  f32, // with recolour: towards white (the unlocked crosshair)
+}
+
+draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shadow: bool, prev: ^sim.Game_Object = nil, accent := Draw_Accent{}) {
+	if r.dump {
+		_, _, ok := frame_rect(&r.textures, o.sprite, o.frame)
+		if !ok || o.visibility <= 0 {
+			id := o.sprite
+			fmt.printfln("  SKIPPED %v frame %v at %.1f,%.1f  vis %.0f  %s",
+				string(id[:]), o.frame, o.loc.x, o.loc.y, o.visibility,
+				o.sprite == sim.NONE ? "no sprite" : !ok ? "no such frame" : "invisible")
+		}
+	}
+	place, ok := object_place(r, o, prev)
+	if !ok {
+		return
+	}
+	tex, src, dst, layer, x, y := place.texture, place.src, place.dst, place.layer, place.x, place.y
 
 	if r.dump || r.find != "" {
 		id := o.sprite
@@ -415,7 +438,7 @@ draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shad
 			ox, oy = pf[0x32] * o.scale, pf[0x33] * o.scale
 		}
 		blend := max(i32(32 - o.visibility * 32 / 100), 20)
-		sh := place(x + f32(sim.trunc_i32(ox)), y + f32(sim.trunc_i32(oy)), src, sscale)
+		sh := place_rect(x + f32(sim.trunc_i32(ox)), y + f32(sim.trunc_i32(oy)), src, sscale)
 		push_item(r, shadow_layer_of(o.draw_layer, o.is_air), Item {
 			texture = tex,
 			src     = src,
@@ -425,19 +448,6 @@ draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shad
 	}
 
 	alpha := u8(clamp(o.visibility, 0, 100) * 255 / 100)
-	if accent.outline {
-		// The ship's own shape in its accent, one pixel out in each of
-		// the eight directions, underneath the ship itself.
-		for d in ([8][2]f32{{-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}}) {
-			o := dst
-			o.x += d.x
-			o.y += d.y
-			push_item(r, layer, Item {
-				texture = tex, src = src, dst = o, tint = {255, 255, 255, alpha},
-				effect = .Silhouette, hue = accent.hue, sat = ACCENT_SATURATION,
-			})
-		}
-	}
 	// A colorised object (doColorise, +0x52) skips its own sprite: only the
 	// tint pass below draws, flat, in its shape (Priv_Draw). The ground
 	// bomb's glow "glow" frame 4 is one -- drawn plain it was a wide grey
@@ -488,7 +498,6 @@ draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shad
 // flash "pbhf", and the launch flash "pblf". Keyed by unit rather than
 // sprite, since the bomb's sprite "bgbu" is shared with an air weapon's
 // bullet. Marks drawn into the terrain (craters) keep their colours.
-@(private = "file")
 shot_accent :: proc(r: ^Renderer, s: ^sim.State, e: sim.Entity) -> Draw_Accent {
 	if e.owner_player < 0 || int(e.owner_player) >= sim.MAX_PLAYERS || e.draw_to_terrain {
 		return {}
@@ -541,83 +550,10 @@ ground_units_add :: proc(r: ^Renderer, defs: ^sim.Defs, id: sim.Res_ID) {
 	}
 }
 
-// FUN_00420740: entities, both players, then motion blur ghosts, then the
-// notice banner. The score bar is drawn separately, straight to the score
-// bar panel rather than through a layer (see scorebar_draw). The original
-// draws motion blur after the players (G_MotionBlur_BuildDrawList runs in
-// Process, ahead of entities and players in the build order); the ordering
-// doesn't matter here since every draw only ever appends to its own layer's
-// list.
+// FUN_00420740, as the session's render systems (render_systems.odin).
 build_frame :: proc(r: ^Renderer, s: ^sim.State, blurs: ^Blurs, notices: ^Notices) {
-	for &l in r.layers {
-		clear(&l)
-	}
-	terrain_prepare(r, s)
-	terrain_stamp(r, s)
-	scorebar_process(&r.scorebar, s)
-	prev := r.interp_prev
-	info := sim.single(s, sim.Level_Info)
-	if prev != nil && (prev.level != info.number || prev.played != info.played || prev.frame > sim.frame_of(s)) {
-		// A different level, or a new session: nothing on screen was there
-		// a step ago.
-		prev = nil
-	}
-	bg := sim.single(s, sim.Bgnd)
-	r.view_top, r.side_scroll = f32(bg.view_top), f32(bg.side_scroll)
-	if prev != nil {
-		r.view_top = interp(f32(prev.view_top), r.view_top, r.interp_alpha)
-		r.side_scroll = interp(f32(prev.side_scroll), r.side_scroll, r.interp_alpha)
-	}
-	w := sim.single(s, sim.Pool)
-	for g := w.active.head; g != sim.NO_LINK; g = sim.link_of(sim.group_links(s), g).next {
-		for i := sim.group_at(s, g).entities.head; i != sim.NO_LINK; i = sim.link_of(sim.entity_links(s), i).next {
-			e := sim.entity_at(s, i)
-			// G_EG_BuildDrawList draws neither an entity nor its shadow
-			// until its appear delay (+0xa4) has run out; units waiting
-			// just off the field would otherwise show there, or cast a
-			// shadow onto it.
-			if e.appear_delay >= 1 {
-				continue
-			}
-			u := &s.defs.units[e.unit]
-			// The same slot holding the same entity a step ago (numbers are
-			// unique, so a reused slot does not match).
-			before: ^sim.Game_Object
-			if prev != nil && prev.numbers[i] == e.number {
-				before = &prev.objects[i]
-			}
-			draw_object(r, s, e.obj, u.casts_shadows, before, shot_accent(r, s, e))
-		}
-	}
-	for p, k in sim.players_of(s) {
-		if p.active && p.state == .Playing {
-			before: ^sim.Game_Object
-			if prev != nil && prev.players[k].active && prev.players[k].state == .Playing {
-				before = &prev.players[k].obj
-			}
-			// G_Player::BuildDrawList draws the ground weapon's crosshair
-			// first (G_WeaponHandler::BuildDrawList, 0x447ad0: only once
-			// crosshair_shown, +0x117), then the ship. No shadow: the
-			// handler's Process clears the crosshair's +0x38 every step.
-			ac := r.accents[k]
-			if p.weapons.crosshair_shown && !ac.hide_crosshair {
-				cbefore: ^sim.Game_Object
-				if before != nil && prev.players[k].crosshair_shown {
-					cbefore = &prev.players[k].crosshair
-				}
-				// Locked keeps its own red, so a lock still shows. Unlocked
-				// is the accent washed towards white, so that even a red
-				// accent reads differently from the lock.
-				recolour := ac.on && !p.weapons.crosshair_locked
-				draw_object(r, s, p.weapons.crosshair, false, cbefore, {hue = ac.hue, recolour = recolour, lighten = CROSSHAIR_LIGHTEN})
-			}
-			draw_object(r, s, p.obj, true, before, {hue = ac.hue, trim = ac.on, outline = ac.outline})
-		}
-	}
-	for &o in blurs.live {
-		draw_object(r, s, &o, false)
-	}
-	notices_draw(r, notices)
+	f := Frame{blurs = blurs, notices = notices}
+	run_render_systems(r, s, &f)
 }
 
 // One item at its final screen rectangle, through ACCENT_SHADER when it

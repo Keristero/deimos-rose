@@ -101,7 +101,10 @@ stages: [MAX_STAGES]Entity_Stage
 @(private = "file")
 stage_count: int
 
-// Called from `@(init)` procedures only, like component_register.
+// Called from `@(init)` procedures only, like component_register. The
+// `after` and `before` lists are kept, not copied, so they must outlive the
+// call: package variables, not slice literals, which live on the caller's
+// stack.
 system_register :: proc(sys: System) {
 	assert(system_count < MAX_SYSTEMS, "sim: too many systems")
 	systems[system_count] = sys
