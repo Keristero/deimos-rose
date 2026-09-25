@@ -1,0 +1,12 @@
+{
+    // work/wine/prefix/dosdevices/z: links to / (Wine's Z: drive, which the
+    // oracle tools need), so any search that follows symlinks crawls the whole
+    // filesystem: VS Code's package.json scan once ran at ~11 cores until killed.
+    "search.followSymlinks": false,
+    "search.exclude": {
+        "work/wine": true
+    },
+    "files.watcherExclude": {
+        "**/work/wine/**": true
+    }
+}
