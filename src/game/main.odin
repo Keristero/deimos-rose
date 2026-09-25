@@ -104,6 +104,7 @@ main :: proc() {
 
 	state := new(sim.State)
 	defer free(state)
+	defer sim.destroy(state)
 
 	// DR_MENU_SHOT=<name> renders one named menu screen and writes a single
 	// PNG to DR_SHOT, then exits -- the menu equivalent of DR_SHOT below, for

@@ -32,7 +32,6 @@ package game
 // only the simulation state itself is ever corrected.
 
 import "core:fmt"
-import "core:mem"
 import "core:strings"
 import "core:time"
 
@@ -933,9 +932,10 @@ netplay_enter_waiting_reconnect :: proc(nl: ^Netplay) {
 netplay_begin_resync_send :: proc(fl: ^Flow, nl: ^Netplay) {
 	nl.resync_peer = nl.peer
 	assigned := u8(1 - nl.rs.local_player)
-	nl.resync_total = size_of(sim.State)
-	nl.resync_buf = make([]byte, nl.resync_total)
-	mem.copy(raw_data(nl.resync_buf), fl.state, nl.resync_total)
+	buf := make([dynamic]byte)
+	sim.state_write(fl.state, &buf)
+	nl.resync_buf = buf[:]
+	nl.resync_total = len(buf)
 	nl.resync_chunks = (nl.resync_total + net.STATE_CHUNK_SIZE - 1) / net.STATE_CHUNK_SIZE
 	nl.resync_acked = make([]bool, nl.resync_chunks)
 	nl.resync_acked_count = 0
@@ -1015,18 +1015,18 @@ netplay_begin_resync_receive :: proc(nl: ^Netplay) {
 	nl.recv_last_progress = time.now()
 }
 
-// Raw byte-for-byte restore of fl.state, then the pointer fixup: defs is
-// this process's own (never sent), level is re-resolved from the
-// session.level_id value that *did* survive the copy (sim.level_by_id --
-// the same lookup sim.init itself uses), and events (debug-only, always nil
-// in normal play) is force-nilled rather than trusted as a live pointer from
-// the sender's address space.
+// Restores fl.state from the sender's sim.state_write. The state keeps this
+// process's own definitions (never sent) and event log.
 @(private = "file")
 netplay_finish_resync_receive :: proc(fl: ^Flow, nl: ^Netplay) {
-	mem.copy(fl.state, raw_data(nl.recv_buf), nl.recv_total)
 	fl.state.defs = fl.defs
-	fl.state.level = sim.level_by_id(fl.defs, fl.state.session.level_id)
 	fl.state.events = nil
+	if fl.state.ecs == nil {
+		fl.state.ecs = sim.ecs_create()
+	}
+	if !sim.state_read(fl.state, nl.recv_buf) {
+		fmt.eprintln("netplay: the game state received is not from this build")
+	}
 	delete(nl.recv_buf)
 	nl.recv_buf = nil
 	delete(nl.recv_got)

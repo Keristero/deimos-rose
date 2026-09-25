@@ -79,6 +79,7 @@ classic_selection_never_picks_new_weapons :: proc(t: ^testing.T) {
 		current = defs.weapons[next].id
 	}
 	s := new(sim.State, context.temp_allocator)
+	defer sim.destroy(s)
 	sim.init(s, sim.Session{seed = 3, level_id = defs.levels[0].id, game_type = .Single}, defs)
 	for _ in 0 ..< 10_000 {
 		if sim.session_step(s, {}) != .None {
@@ -93,6 +94,7 @@ classic_selection_never_picks_new_weapons :: proc(t: ^testing.T) {
 no_loadout_screen_on_the_first_level :: proc(t: ^testing.T) {
 	defs := loadout_defs()
 	s := new(sim.State, context.temp_allocator)
+	defer sim.destroy(s)
 	sim.init(s, sim.Session{seed = 3, level_id = defs.levels[0].id, game_type = .Single, loadout = true}, defs)
 	h := &s.players[0].weapons
 	testing.expect_value(t, h.loadout, [sim.LOADOUT_SLOTS]i32{WAIR, sim.NO_WEAPON, sim.NO_WEAPON})
@@ -110,6 +112,7 @@ no_loadout_screen_on_the_first_level :: proc(t: ^testing.T) {
 loadout_screen_places_new_weapons :: proc(t: ^testing.T) {
 	defs := loadout_defs()
 	s := new(sim.State, context.temp_allocator)
+	defer sim.destroy(s)
 	sim.init(s, sim.Session{seed = 3, level_id = defs.levels[0].id, game_type = .Single, loadout = true}, defs)
 	if !testing.expect(t, play_to_loadout(s), "the loadout screen must open on level 2") {
 		return
@@ -186,6 +189,7 @@ loadout_screen_places_new_weapons :: proc(t: ^testing.T) {
 loadout_keeps_the_weapon_flown :: proc(t: ^testing.T) {
 	defs := loadout_defs()
 	s := new(sim.State, context.temp_allocator)
+	defer sim.destroy(s)
 	sim.init(s, sim.Session{seed = 3, level_id = defs.levels[0].id, game_type = .Single, loadout = true}, defs)
 	if !testing.expect(t, play_to_loadout(s)) {
 		return
@@ -287,6 +291,7 @@ chaingun_loads_as_new_content :: proc(t: ^testing.T) {
 	}
 
 	s := new(sim.State, context.temp_allocator)
+	defer sim.destroy(s)
 	sim.init(s, sim.Session{seed = 1, level_id = defs.levels[6].id, game_type = .Single, loadout = true}, &defs)
 	title := s.loadout.title
 	testing.expect(t, sim.ref_valid(s, title), "stage 7 must show its title")
@@ -337,6 +342,7 @@ aimed_volley_turns_towards_an_air_enemy :: proc(t: ^testing.T) {
 	// Stage 1 once the ship is in play (the mine is spawned only then), and
 	// before anything else is in the air.
 	s := new(sim.State, context.temp_allocator)
+	defer sim.destroy(s)
 	sim.init(s, sim.Session{seed = 1, level_id = defs.levels[0].id, game_type = .Single, loadout = true}, &defs)
 	for i := 0; i < 300 && s.players[0].state != .Playing; i += 1 {
 		sim.session_step(s, {})

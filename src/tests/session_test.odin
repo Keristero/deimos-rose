@@ -29,6 +29,7 @@ play_session :: proc(defs: ^sim.Defs, start: sim.Level_ID, max_steps: int, alloc
 		levels_seen = make([dynamic]i32, allocator),
 	}
 	s := new(sim.State)
+	defer sim.destroy(s)
 	defer free(s)
 	sim.init(s, sim.Session{seed = 7, level_id = start, game_type = .Single}, defs)
 	append(&r.levels_seen, s.level_number)

@@ -184,6 +184,7 @@ golden_demo :: proc(defs: ^sim.Defs, name: string, allocator := context.allocato
 	film := data.film_to_sim(f)
 	log := sim.Draw_Log{draws = make([]sim.Draw, 400_000, allocator)}
 	s := new(sim.State, allocator)
+	defer sim.destroy(s)
 	sim.init(s, film.session, defs, &log)
 	r = {name = name, checkpoints = make([dynamic]u64, allocator)}
 	max_steps := 4 * len(film.frames) + 10_000
@@ -222,6 +223,7 @@ GOLDEN_SESSIONS := [?]Golden_Session {
 golden_session :: proc(defs: ^sim.Defs, g: Golden_Session, allocator := context.allocator) -> Golden_Run {
 	log := sim.Draw_Log{draws = make([]sim.Draw, 1_000_000, allocator)}
 	s := new(sim.State, allocator)
+	defer sim.destroy(s)
 	session := sim.Session {
 		seed      = g.seed,
 		level_id  = defs.levels[g.level].id,

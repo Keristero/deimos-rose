@@ -107,6 +107,8 @@ film_converts_to_a_sim_replay :: proc(t: ^testing.T) {
 	replay.session.level_id = sim.level_id("le01")
 	defs := synthetic_defs()
 	a, b := new(sim.State), new(sim.State)
+	defer sim.destroy(a)
+	defer sim.destroy(b)
 	defer free(a)
 	defer free(b)
 	sim.replay(a, &replay, defs)

@@ -62,6 +62,7 @@ main :: proc() {
 
 	state := new(sim.State)
 	defer free(state)
+	defer sim.destroy(state)
 	for id in os.args[3:] {
 		if !clip(&r, &defs, state, root, id, out_dir) {
 			os.exit(1)

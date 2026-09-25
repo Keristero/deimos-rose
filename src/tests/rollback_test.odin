@@ -24,6 +24,7 @@ rollback_resimulation_matches_uninterrupted_play :: proc(t: ^testing.T) {
 	// Reference: an uninterrupted run, one checksum recorded per step.
 	ref := make([]u64, len(inputs), context.temp_allocator)
 	reference := new(sim.State, context.temp_allocator)
+	defer sim.destroy(reference)
 	sim.init(reference, session, defs)
 	for in_, i in inputs {
 		sim.step(reference, in_)
@@ -38,6 +39,7 @@ rollback_resimulation_matches_uninterrupted_play :: proc(t: ^testing.T) {
 	defer sim.snapshot_ring_destroy(&ring, context.temp_allocator)
 
 	s := new(sim.State, context.temp_allocator)
+	defer sim.destroy(s)
 	sim.init(s, session, defs)
 	for i in 0 ..< 30 {
 		sim.step(s, inputs[i])
@@ -74,6 +76,44 @@ snapshot_restore_rejects_a_never_saved_frame :: proc(t: ^testing.T) {
 
 	defs := synthetic_defs()
 	s := new(sim.State, context.temp_allocator)
+	defer sim.destroy(s)
 	sim.init(s, sim.Session{seed = 1, level_id = sim.level_id("le01"), game_type = .Single}, defs)
 	testing.expect(t, !sim.snapshot_restore(&ring, s, 0), "an empty ring has nothing to restore")
+}
+
+// Reconnection sends a whole state with state_write; the reader must carry
+// on exactly as the writer does, and a snapshot's checksum must be the
+// state's.
+@(test)
+a_written_state_reads_back_and_plays_on_identically :: proc(t: ^testing.T) {
+	defs := synthetic_defs()
+	a := new(sim.State, context.temp_allocator)
+	defer sim.destroy(a)
+	b := new(sim.State, context.temp_allocator)
+	defer sim.destroy(b)
+	sim.init(a, sim.Session{seed = 11, level_id = sim.level_id("le01"), game_type = .Co_Op}, defs)
+	sim.init(b, sim.Session{seed = 99, level_id = sim.level_id("le01"), game_type = .Single}, defs)
+	press := sim.Frame_Input{{.Fire_Ground, .Left}, {.Fire_Air}}
+	for _ in 0 ..< 40 {
+		sim.session_step(a, press)
+	}
+	ring: sim.Snapshot_Ring
+	sim.snapshot_ring_init(&ring, 4, context.temp_allocator)
+	defer sim.snapshot_ring_destroy(&ring, context.temp_allocator)
+	sim.snapshot_save(&ring, a)
+	sum, ok := sim.snapshot_checksum(&ring, a.frame)
+	testing.expect(t, ok)
+	testing.expect_value(t, sum, sim.checksum(a))
+
+	buf := make([dynamic]byte, context.temp_allocator)
+	sim.state_write(a, &buf)
+	testing.expect(t, sim.state_read(b, buf[:]))
+	testing.expect_value(t, sim.checksum(b), sim.checksum(a))
+	testing.expect(t, b.defs == defs && b.level == a.level)
+	for i in 0 ..< 40 {
+		sim.session_step(a, press)
+		sim.session_step(b, press)
+		testing.expectf(t, sim.checksum(a) == sim.checksum(b), "step %d after reading: diverged", i + 1)
+	}
+	testing.expect(t, !sim.state_read(b, buf[:len(buf) - 1]))
 }

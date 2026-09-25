@@ -44,6 +44,7 @@ beam_fixture :: proc(t: ^testing.T, f: ^Beam_Fixture) -> bool {
 		return false
 	}
 	f.s = new(sim.State, alloc)
+	context.allocator = alloc // the state's world goes in the arena too
 	sim.init(f.s, sim.Session{seed = 1, level_id = f.defs.levels[0].id, game_type = .Single, loadout = true}, &f.defs)
 	for i := 0; i < 300 && f.s.players[0].state != .Playing; i += 1 {
 		sim.session_step(f.s, {})

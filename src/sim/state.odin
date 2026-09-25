@@ -1,5 +1,7 @@
 package sim
 
+import "base:runtime"
+
 // Game_Type mirrors the original's G_Game_Type enum, which G_Film records
 // alongside the seed and level so a replay reconstructs the same session.
 //
@@ -32,11 +34,14 @@ Session :: struct {
 }
 
 // The complete simulation state. Everything that affects future frames lives
-// here and nowhere else, so that save/restore for rollback is a plain copy.
-// `defs` points at read-only data and is not part of the state proper.
+// here and in the entity component system `ecs` points at (D39), and
+// nowhere else. `defs` points at read-only data and is not part of the state
+// proper. state_write and state_read copy a state, for rollback and
+// reconnection.
 State :: struct {
 	session:      Session,
 	defs:         ^Defs,
+	ecs:          ^Ecs,
 	level:        ^Level_Def,
 	level_number: i32,        // DAT_004e482e
 	time:         i32,        // DAT_004e4836: game steps this level
@@ -105,8 +110,18 @@ unported :: proc "contextless" (s: ^State, site: Site) {
 
 // G_Game_Play's set-up for one session: srand(seed), both players, the
 // first level.
+//
+// The state's world is made on first use and kept, emptied, for the next
+// session; destroy frees it.
 init :: proc(s: ^State, session: Session, defs: ^Defs, log: ^Draw_Log = nil, events: ^Event_Log = nil) {
+	world := s.ecs
 	s^ = State{}
+	if world == nil {
+		world = ecs_create()
+	} else {
+		ecs_clear(world)
+	}
+	s.ecs = world
 	s.session = session
 	s.defs = defs
 	s.events = events
@@ -121,6 +136,58 @@ init :: proc(s: ^State, session: Session, defs: ^Defs, log: ^Draw_Log = nil, eve
 		player_setup(s, &s.players[i], i32(i), session.game_type)
 	}
 	level_start(s)
+}
+
+destroy :: proc(s: ^State) {
+	ecs_destroy(s.ecs)
+	s.ecs = nil
+}
+
+// Appends everything a copy of s needs to buf: the state's own fields and
+// its world. Pointers are written as they are and state_read replaces them,
+// so a copy can go to another process.
+state_write :: proc(s: ^State, buf: ^[dynamic]byte) {
+	start := len(buf)
+	append(buf, ..([^]u8)(s)[:size_of(State)])
+	// Addresses mean nothing to the reader; send zeroes.
+	fields := ([^]u8)(&buf[start])
+	for off in ([?]uintptr{offset_of(State, defs), offset_of(State, ecs), offset_of(State, level), offset_of(State, events), offset_of(State, rng) + offset_of(Rand, log)}) {
+		runtime.mem_zero(&fields[off], size_of(rawptr))
+	}
+	ecs_write(s.ecs, buf)
+}
+
+// Makes s the state state_write wrote into data. s keeps its own world,
+// definitions, draw log and event log. Fails, changing nothing, if data is
+// not a state from this build.
+state_read :: proc(s: ^State, data: []byte) -> bool {
+	if len(data) < size_of(State) {
+		return false
+	}
+	plain := new(State)
+	defer free(plain)
+	runtime.mem_copy_non_overlapping(plain, raw_data(data), size_of(State))
+	rest, ok := ecs_read(s.ecs, data[size_of(State):])
+	if !ok || len(rest) != 0 {
+		return false
+	}
+	restore_plain(s, plain)
+	return true
+}
+
+// s^ = plain, keeping what s points at. The level is looked up again: it
+// points into this process's definitions.
+@(private)
+restore_plain :: proc(s: ^State, plain: ^State) {
+	defs, world, events, log := s.defs, s.ecs, s.events, s.rng.log
+	s^ = plain^
+	s.defs, s.ecs, s.events, s.rng.log = defs, world, events, log
+	s.level = nil
+	for &l in defs.levels {
+		if l.number == s.level_number {
+			s.level = &l
+		}
+	}
 }
 
 // FUN_0041fc80: the start of a level.
@@ -359,16 +426,20 @@ step :: proc(s: ^State, input: Frame_Input, film: ^Film = nil) {
 }
 
 // Order-sensitive FNV-1a over the state, used to detect divergence between a
-// replayed film and a live run, and between rollback peers.
-checksum :: proc "contextless" (s: ^State) -> u64 {
-	h: u64 = 0xcbf29ce484222325
-	mix :: proc "contextless" (h: ^u64, v: u64) {
-		x := v
-		for _ in 0 ..< 8 {
-			h^ ~= x & 0xff
-			h^ *= 0x100000001b3
-			x >>= 8
-		}
+// replayed film and a live run, and between rollback peers: the state's own
+// fields that matter, then the whole world.
+checksum :: proc(s: ^State) -> u64 {
+	h := checksum_fields(s)
+	ecs_hash(s.ecs, &h)
+	return h.sum
+}
+
+// The first part of checksum: what it hashes outside the world.
+@(private)
+checksum_fields :: proc "contextless" (s: ^State) -> Hasher {
+	h := hasher()
+	mix :: proc "contextless" (h: ^Hasher, v: u64) {
+		hash_u64(h, v)
 	}
 	mix(&h, u64(s.time))
 	mix(&h, u64(s.rng.next))

@@ -549,6 +549,7 @@ policy_fire :: proc(s: ^sim.State, h: ^sim.Weapon_Handler, pol: Policy, k: int) 
 dps_run :: proc(d: ^sim.Defs, w: Weapon_Case, sc: Scenario, levels: sim.Passive_Levels, pol: Policy, steps: int) -> (o: Outcome) {
 	s := new(sim.State)
 	defer free(s)
+	defer sim.destroy(s)
 	sim.init(s, sim.Session{seed = SEED, level_id = d.levels[0].id, game_type = .Single}, d)
 	p := &s.players[0]
 	for i := 0; i < ENTRY_STEPS && p.state != .Playing; i += 1 {

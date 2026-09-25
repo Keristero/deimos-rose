@@ -151,6 +151,7 @@ sounded :: proc(s: ^sim.State, id: sim.Res_ID) -> bool {
 no_reward_screen_outside_easy_mode :: proc(t: ^testing.T) {
 	defs := two_level_defs()
 	s := new(sim.State, context.temp_allocator)
+	defer sim.destroy(s)
 	sim.init(s, sim.Session{seed = 3, level_id = defs.levels[0].id, game_type = .Co_Op}, defs)
 	testing.expect_value(t, play_to_level_end(s), sim.Level_Transition.Advanced)
 	testing.expect(t, !s.reward.active)
@@ -161,6 +162,7 @@ no_reward_screen_outside_easy_mode :: proc(t: ^testing.T) {
 reward_screen_takes_every_players_choice :: proc(t: ^testing.T) {
 	defs := two_level_defs()
 	s := new(sim.State, context.temp_allocator)
+	defer sim.destroy(s)
 	sim.init(s, sim.Session{seed = 3, level_id = defs.levels[0].id, game_type = .Co_Op, easy = true}, defs)
 	testing.expect_value(t, play_to_level_end(s), sim.Level_Transition.None)
 	rw := &s.reward
@@ -235,6 +237,7 @@ reward_screen_takes_every_players_choice :: proc(t: ^testing.T) {
 no_reward_screen_after_the_last_level :: proc(t: ^testing.T) {
 	defs := two_level_defs(1)
 	s := new(sim.State, context.temp_allocator)
+	defer sim.destroy(s)
 	sim.init(s, sim.Session{seed = 3, level_id = defs.levels[0].id, game_type = .Single, easy = true}, defs)
 	testing.expect_value(t, play_to_level_end(s), sim.Level_Transition.All_Complete)
 	testing.expect(t, !s.reward.active)
@@ -244,6 +247,7 @@ no_reward_screen_after_the_last_level :: proc(t: ^testing.T) {
 reward_options_are_one_more_than_the_players :: proc(t: ^testing.T) {
 	defs := two_level_defs()
 	s := new(sim.State, context.temp_allocator)
+	defer sim.destroy(s)
 	sim.init(s, sim.Session{seed = 11, level_id = defs.levels[0].id, game_type = .Single, easy = true}, defs)
 	play_to_level_end(s)
 	testing.expect(t, s.reward.active)
@@ -261,6 +265,7 @@ reward_options_are_one_more_than_the_players :: proc(t: ^testing.T) {
 shields_regenerate_after_the_recharge_delay :: proc(t: ^testing.T) {
 	defs := two_level_defs()
 	s := new(sim.State, context.temp_allocator)
+	defer sim.destroy(s)
 	sim.init(s, sim.Session{seed = 1, level_id = defs.levels[0].id, game_type = .Single, easy = true}, defs)
 	p := &s.players[0]
 	p.state = .Playing
@@ -312,6 +317,7 @@ rollback_session_converges_through_the_reward_screen :: proc(t: ^testing.T) {
 	}
 
 	states := [2]^sim.State{new(sim.State, context.temp_allocator), new(sim.State, context.temp_allocator)}
+	defer for st in states { sim.destroy(st) }
 	rs: [2]net.Rollback_Session
 	for p in 0 ..< 2 {
 		sim.init(states[p], session, defs)
@@ -395,6 +401,7 @@ weapon_passives_shape_the_real_weapons :: proc(t: ^testing.T) {
 		return
 	}
 	s := new(sim.State, context.temp_allocator)
+	defer sim.destroy(s)
 	sim.init(s, sim.Session{seed = 1, level_id = defs.levels[0].id, game_type = .Single, easy = true}, &defs)
 
 	index :: proc(d: ^sim.Defs, id: sim.Res_ID) -> i32 {

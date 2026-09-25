@@ -30,7 +30,9 @@ rollback_session_converges_under_latency_and_loss :: proc(t: ^testing.T) {
 	}
 
 	state_a := new(sim.State, context.temp_allocator)
+	defer sim.destroy(state_a)
 	state_b := new(sim.State, context.temp_allocator)
+	defer sim.destroy(state_b)
 	sim.init(state_a, session, defs)
 	sim.init(state_b, session, defs)
 
@@ -158,6 +160,7 @@ rollback_session_converges_under_latency_and_loss :: proc(t: ^testing.T) {
 rollback_session_local_window_caps_to_what_has_actually_been_played :: proc(t: ^testing.T) {
 	defs := synthetic_defs()
 	state := new(sim.State, context.temp_allocator)
+	defer sim.destroy(state)
 	sim.init(state, sim.Session{seed = 1, level_id = sim.level_id("le01"), game_type = .Single}, defs)
 
 	rs: net.Rollback_Session
@@ -196,6 +199,7 @@ rollback_session_local_window_caps_to_what_has_actually_been_played :: proc(t: ^
 rollback_session_frame_advantage_tracks_the_confirmed_remote_frame :: proc(t: ^testing.T) {
 	defs := synthetic_defs()
 	state := new(sim.State, context.temp_allocator)
+	defer sim.destroy(state)
 	sim.init(state, sim.Session{seed = 1, level_id = sim.level_id("le01"), game_type = .Co_Op}, defs)
 
 	rs: net.Rollback_Session
@@ -238,6 +242,7 @@ rollback_session_frame_advantage_tracks_the_confirmed_remote_frame :: proc(t: ^t
 rollback_session_should_stall_throttles_only_once_over_threshold :: proc(t: ^testing.T) {
 	defs := synthetic_defs()
 	state := new(sim.State, context.temp_allocator)
+	defer sim.destroy(state)
 	sim.init(state, sim.Session{seed = 1, level_id = sim.level_id("le01"), game_type = .Co_Op}, defs)
 
 	rs: net.Rollback_Session
@@ -326,6 +331,7 @@ rollback_session_converges_across_level_changes_and_pauses :: proc(t: ^testing.T
 	hold(inputs[0][:], 560)
 
 	states := [2]^sim.State{new(sim.State, context.temp_allocator), new(sim.State, context.temp_allocator)}
+	defer for st in states { sim.destroy(st) }
 	rs: [2]net.Rollback_Session
 	for p in 0 ..< 2 {
 		sim.init(states[p], session, defs)

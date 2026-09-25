@@ -1,38 +1,57 @@
 package sim
 
-// Phase 6, stage 1: a fixed-depth ring of full-state snapshots. State (see the
-// struct comment in state.odin) is entirely fixed-size fields plus two
-// pointers into read-only/debug data, so `slot = s^` is already a complete,
-// alias-free copy -- no custom clone logic is needed here, only somewhere to
-// put the copies and a way to find one again by frame number.
+// Phase 6, stage 1: a fixed-depth ring of full-state snapshots. A snapshot
+// is the state's own fields, copied, plus its world written out by
+// ecs_write (D39); restoring copies the fields back and reads the world in.
+// The buffers are kept and reused, so a warm ring saves without allocating.
 //
 // Indexing by `frame % depth` (rather than tracking a write cursor) means
 // restore can go straight to the right slot without scanning, at the cost of
 // only being able to ask for a frame that is still within the last `depth`
 // steps -- exactly the rollback window a caller needs anyway.
 
+Snapshot :: struct {
+	fields:  State,
+	world:   [dynamic]byte,
+	written: bool, // holds a real snapshot, not just zero value
+}
+
 Snapshot_Ring :: struct {
-	slots:   []State,
-	written: []bool, // slots[i] holds a real snapshot, not just zero value
+	slots: []Snapshot,
 }
 
 snapshot_ring_init :: proc(r: ^Snapshot_Ring, depth: int, allocator := context.allocator) {
-	r.slots = make([]State, depth, allocator)
-	r.written = make([]bool, depth, allocator)
+	r.slots = make([]Snapshot, depth, allocator)
+	for &slot in r.slots {
+		slot.world = make([dynamic]byte, allocator)
+	}
 }
 
 snapshot_ring_destroy :: proc(r: ^Snapshot_Ring, allocator := context.allocator) {
+	for &slot in r.slots {
+		delete(slot.world)
+	}
 	delete(r.slots, allocator)
-	delete(r.written, allocator)
 	r^ = {}
 }
 
 // Records s as the snapshot for its current frame, overwriting whichever
 // older snapshot last landed in that slot.
 snapshot_save :: proc(r: ^Snapshot_Ring, s: ^State) {
-	i := s.frame % u32(len(r.slots))
-	r.slots[i] = s^
-	r.written[i] = true
+	slot := &r.slots[s.frame % u32(len(r.slots))]
+	slot.fields = s^
+	clear(&slot.world)
+	ecs_write(s.ecs, &slot.world)
+	slot.written = true
+}
+
+@(private = "file")
+snapshot_find :: proc(r: ^Snapshot_Ring, frame: u32) -> ^Snapshot {
+	slot := &r.slots[frame % u32(len(r.slots))]
+	if !slot.written || slot.fields.frame != frame {
+		return nil
+	}
+	return slot
 }
 
 // Restores s to the snapshot recorded for `frame`. Returns false, leaving s
@@ -41,22 +60,29 @@ snapshot_save :: proc(r: ^Snapshot_Ring, s: ^State) {
 // frames in the past). `written` distinguishes a real frame-0 snapshot from
 // an untouched slot, which would otherwise also read as frame 0.
 snapshot_restore :: proc(r: ^Snapshot_Ring, s: ^State, frame: u32) -> bool {
-	i := frame % u32(len(r.slots))
-	if !r.written[i] || r.slots[i].frame != frame {
+	slot := snapshot_find(r, frame)
+	if slot == nil {
 		return false
 	}
-	s^ = r.slots[i]
+	if _, ok := ecs_read(s.ecs, slot.world[:]); !ok {
+		return false
+	}
+	restore_plain(s, &slot.fields)
 	return true
 }
 
-// The checksum of whatever snapshot is recorded for `frame`, without copying
-// the whole state out first -- desync detection (net/desync.odin) only ever
-// needs the digest, and it already reflects the latest resimulation, since
+// The checksum of whatever snapshot is recorded for `frame`, without
+// restoring it first -- desync detection (net/desync.odin) only ever needs
+// the digest, and it already reflects the latest resimulation, since
 // snapshot_save overwrites the slot every time a rollback replays past it.
+// The world's bytes are the ones ecs_hash would hash, so this equals
+// checksum() of the state as it was.
 snapshot_checksum :: proc(r: ^Snapshot_Ring, frame: u32) -> (sum: u64, ok: bool) {
-	i := frame % u32(len(r.slots))
-	if !r.written[i] || r.slots[i].frame != frame {
+	slot := snapshot_find(r, frame)
+	if slot == nil {
 		return 0, false
 	}
-	return checksum(&r.slots[i]), true
+	h := checksum_fields(&slot.fields)
+	hash_bytes(&h, raw_data(slot.world), len(slot.world))
+	return h.sum, true
 }

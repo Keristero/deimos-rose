@@ -63,6 +63,7 @@ sim_is_deterministic :: proc(t: ^testing.T) {
 	}
 	run :: proc(session: sim.Session, defs: ^sim.Defs, inputs: []sim.Frame_Input) -> u64 {
 		s := new(sim.State)
+		defer sim.destroy(s)
 		defer free(s)
 		sim.init(s, session, defs)
 		for in_ in inputs {
@@ -77,6 +78,8 @@ sim_is_deterministic :: proc(t: ^testing.T) {
 different_seeds_diverge :: proc(t: ^testing.T) {
 	defs := synthetic_defs()
 	s1, s2 := new(sim.State), new(sim.State)
+	defer sim.destroy(s1)
+	defer sim.destroy(s2)
 	defer free(s1)
 	defer free(s2)
 	sim.init(s1, sim.Session{seed = 1, level_id = sim.level_id("le01"), game_type = .Single}, defs)
@@ -88,6 +91,7 @@ different_seeds_diverge :: proc(t: ^testing.T) {
 coop_activates_two_players :: proc(t: ^testing.T) {
 	defs := synthetic_defs()
 	s := new(sim.State)
+	defer sim.destroy(s)
 	defer free(s)
 	sim.init(s, sim.Session{seed = 7, level_id = sim.level_id("le01"), game_type = .Co_Op}, defs)
 	testing.expect(t, s.players[0].active && s.players[1].active, "co-op needs both players")
@@ -103,6 +107,7 @@ players_enter_then_read_the_film :: proc(t: ^testing.T) {
 	frames := make([]sim.Frame_Input, 10, context.temp_allocator)
 	film := sim.Film{session = {seed = 5, level_id = sim.level_id("le01"), game_type = .Single}, frames = frames}
 	s := new(sim.State)
+	defer sim.destroy(s)
 	defer free(s)
 	sim.init(s, film.session, defs)
 	testing.expect_value(t, s.players[0].state, sim.Player_State.Entering)
@@ -128,6 +133,7 @@ level_start_draws_the_nag_timer :: proc(t: ^testing.T) {
 	buf: [8]sim.Draw
 	log := sim.Draw_Log{draws = buf[:]}
 	s := new(sim.State)
+	defer sim.destroy(s)
 	defer free(s)
 	sim.init(s, sim.Session{seed = 0x469c2, level_id = sim.level_id("le01"), game_type = .Single}, defs, &log)
 	got := sim.draw_log_entries(&log)
@@ -177,6 +183,7 @@ level_end_tally_scores_the_ground_accuracy :: proc(t: ^testing.T) {
 	defs.perm_floats[0xc7] = 100  // smallest step
 	defs.perm_floats[0xc8] = 0.02 // 2% of the bonus per tick
 	s := new(sim.State)
+	defer sim.destroy(s)
 	defer free(s)
 	sim.init(s, sim.Session{seed = 3, level_id = sim.level_id("le01"), game_type = .Single}, defs)
 	s.accuracy_targets, s.accuracy_destroyed = 50, 47 // 94%
@@ -202,6 +209,7 @@ level_advance_starts_the_next_level_unfinished :: proc(t: ^testing.T) {
 	}
 	defs.levels = levels
 	s := new(sim.State)
+	defer sim.destroy(s)
 	defer free(s)
 	sim.init(s, sim.Session{seed = 3, level_id = sim.level_id("le01"), game_type = .Single}, defs)
 	s.level_ending = true
@@ -225,6 +233,7 @@ money_counter_converts_money_at_the_level_multiplier :: proc(t: ^testing.T) {
 	defs.perm_floats[0xc7] = 1
 	defs.perm_floats[0xc8] = 0.02
 	s := new(sim.State)
+	defer sim.destroy(s)
 	defer free(s)
 	sim.init(s, sim.Session{seed = 3, level_id = sim.level_id("le01"), game_type = .Single}, defs)
 	p := &s.players[0]
@@ -243,6 +252,7 @@ money_counter_converts_money_at_the_level_multiplier :: proc(t: ^testing.T) {
 notice_plays_its_sound_once_the_delay_elapses :: proc(t: ^testing.T) {
 	defs := synthetic_defs()
 	s := new(sim.State)
+	defer sim.destroy(s)
 	defer free(s)
 	sim.init(s, sim.Session{seed = 1, level_id = sim.level_id("le01"), game_type = .Single}, defs)
 
@@ -277,6 +287,7 @@ notice_plays_its_sound_once_the_delay_elapses :: proc(t: ^testing.T) {
 destruct_notice_never_draws_a_sound :: proc(t: ^testing.T) {
 	defs := synthetic_defs()
 	s := new(sim.State)
+	defer sim.destroy(s)
 	defer free(s)
 	sim.init(s, sim.Session{seed = 3, level_id = sim.level_id("le01"), game_type = .Single}, defs)
 
@@ -305,6 +316,7 @@ multiplier_carries_into_the_next_level :: proc(t: ^testing.T) {
 	defs.perm_objects[0x24] = x3
 	events := sim.Event_Log{events = make([]sim.Event, 256, context.temp_allocator)}
 	s := new(sim.State)
+	defer sim.destroy(s)
 	defer free(s)
 	sim.init(s, sim.Session{seed = 3, level_id = sim.level_id("le01"), game_type = .Single}, defs, events = &events)
 	p := &s.players[0]
