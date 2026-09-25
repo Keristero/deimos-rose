@@ -7,14 +7,17 @@
 // Every run is a fresh sim.State on a copy of the stage with nothing placed
 // in it. Once the ship is in play the run gives it the weapon and the
 // passive levels under test, lets the crosshair settle, and then spawns
-// targets where the weapon aims: a stand-in enemy that never moves, fires
-// or dies. Its shields are topped back up after every step, and the damage
-// is what was taken off them. Two scenarios: one target, and a cluster of
-// five around the same point.
+// targets: a stand-in enemy that never moves, fires or dies. Its shields are
+// topped back up after every step, and the damage is what was taken off
+// them. Three scenarios: one target ahead, a cluster of five ahead, and one
+// target behind.
 //
-// A weapon is fired under every input policy weapon_policies lists (taps at
-// each cadence, holding, charging and releasing) and the best of them is its
-// DPS, so every number is what a perfect player would get from that loadout.
+// A weapon is fired under every input policy weapon_policies lists, and the
+// report keeps two sets: primary fire (the best of the taps, and of holding
+// where holding fires), and charge shots (charging to full and releasing).
+// Either way the DPS is the damage over the whole measured time, so a charge
+// shot's includes the time spent charging it. Every number is what a
+// perfect player would get from that loadout.
 // Every run uses the same seed, so a passive's gain is paired with the
 // baseline it is measured against.
 //
@@ -38,8 +41,10 @@ import "dr:sim"
 SEED :: 0x5eed_d95
 STEP_HZ :: 30
 
-// Where the targets stand. Air targets are this far straight ahead of the
-// ship; ground targets stand on the crosshair, where the bombs land.
+// Where the targets stand. Air targets are this far straight ahead of (or
+// behind) the ship. Ground targets are as far from it as the crosshair,
+// where the bombs land: ahead, or behind -- where Ground Variant 1 turns the
+// bombs to.
 // Provisional: picked to be well inside every air weapon's reach (the Bacta
 // Gun's is the shortest, 240 px).
 AIR_RANGE :: 120
@@ -73,11 +78,24 @@ TAP_MAX :: 40
 Scenario :: enum u8 {
 	Single,
 	Cluster,
+	Behind,
 }
 
 SCENARIO_NAMES := [Scenario]string {
-	.Single  = "single target",
-	.Cluster = "cluster of 5",
+	.Single  = "Single target",
+	.Cluster = "Cluster of 5",
+	.Behind  = "Target behind",
+}
+
+// The two sets the report keeps.
+Mode :: enum u8 {
+	Primary, // taps, and holding where it fires; never a charge
+	Charge,  // charge to full, release, repeat
+}
+
+MODE_NAMES := [Mode]string {
+	.Primary = "Primary fire",
+	.Charge  = "Charge shots",
 }
 
 Policy_Kind :: enum u8 {
@@ -118,20 +136,20 @@ Outcome :: struct {
 	ok:     bool,
 	damage: f64, // over the measured steps, all targets together
 	hits:   i32,
+	// A charge began while measuring: under Auto Charge a slow enough tap
+	// lets one build, and that run is not primary fire.
+	charged: bool,
 }
 
 Best :: struct {
-	dps:     f64,
-	hits:    f64, // hits a second, all targets together
-	policy:  Policy,
-	by_kind: [Policy_Kind]Kind_Best, // the best of each kind of policy
-}
-
-Kind_Best :: struct {
 	tried:  bool,
 	dps:    f64,
+	hits:   f64, // hits a second, all targets together
 	policy: Policy,
 }
+
+// Per weapon, mode, scenario and loadout.
+Table :: [][Mode][Scenario][]Best
 
 Shared :: struct {
 	defs:     ^sim.Defs,
@@ -477,13 +495,22 @@ dps_run :: proc(d: ^sim.Defs, w: Weapon_Case, sc: Scenario, levels: sim.Passive_
 	sim.player_sprite_from_weapon(s, p)
 	for _ in 0 ..< SETTLE_STEPS {
 		sim.session_step(s, {})
+		// Every run starts uncharged. Under Auto Charge a charge builds while
+		// fire is let go, so the idle count is kept at 0 as if fire were held,
+		// without the shots that holding would put in the air.
+		h.air_idle = 0
 	}
 	if (w.ground ? h.ground.weapon : h.air.weapon) != w.index {
 		return
 	}
 
-	centre := w.ground ? h.crosshair.loc : p.loc + {0, -AIR_RANGE}
-	offsets := sc == .Single ? CLUSTER[:1] : CLUSTER[:]
+	ahead := sim.Vec{0, -AIR_RANGE}
+	if w.ground {
+		d := h.crosshair.loc - p.loc
+		ahead = {d.x, -abs(d.y)}
+	}
+	centre := p.loc + (sc == .Behind ? sim.Vec{ahead.x, -ahead.y} : ahead)
+	offsets := sc == .Cluster ? CLUSTER[:] : CLUSTER[:1]
 	targets: [len(CLUSTER)]sim.Entity_Ref
 	anchors: [len(CLUSTER)]sim.Vec
 	for off, i in offsets {
@@ -507,6 +534,9 @@ dps_run :: proc(d: ^sim.Defs, w: Weapon_Case, sc: Scenario, levels: sim.Passive_
 			b += {button}
 		}
 		sim.session_step(s, {b, {}})
+		// The air weapon charges under Auto Charge while the Plasma Bomb is
+		// fired, but its shots cannot reach a ground target.
+		o.charged ||= !w.ground && h.air_powerup.state != 0
 		for i in 0 ..< len(offsets) {
 			if !sim.ref_valid(s, targets[i]) {
 				return
@@ -524,27 +554,28 @@ dps_run :: proc(d: ^sim.Defs, w: Weapon_Case, sc: Scenario, levels: sim.Passive_
 	return
 }
 
-// For each weapon, scenario and loadout, the best policy's DPS.
-dps_best :: proc(sh: ^Shared, alloc := context.allocator) -> [][Scenario][]Best {
-	out := make([][Scenario][]Best, len(sh.weapons), alloc)
+// For each weapon, mode, scenario and loadout, the best policy's DPS.
+dps_best :: proc(sh: ^Shared, alloc := context.allocator) -> Table {
+	out := make(Table, len(sh.weapons), alloc)
 	for &w in out {
-		for &sc in w {
-			sc = make([]Best, len(sh.configs), alloc)
-			for &b in sc {
-				b.dps = -1
+		for &m in w {
+			for &sc in m {
+				sc = make([]Best, len(sh.configs), alloc)
 			}
 		}
 	}
 	secs := f64(sh.steps) / STEP_HZ
 	for j, i in sh.jobs {
 		o := sh.outcomes[i]
-		b := &out[j.weapon][j.scenario][j.config]
-		dps := o.damage / secs
-		if dps > b.dps {
-			b.dps, b.hits, b.policy = dps, f64(o.hits) / secs, j.policy
+		mode := Mode.Primary
+		if j.policy.kind == .Charge {
+			mode = .Charge
+		} else if o.charged {
+			continue
 		}
-		if k := &b.by_kind[j.policy.kind]; !k.tried || dps > k.dps {
-			k^ = {true, dps, j.policy}
+		b := &out[j.weapon][mode][j.scenario][j.config]
+		if dps := o.damage / secs; !b.tried || dps > b.dps {
+			b^ = {true, dps, f64(o.hits) / secs, j.policy}
 		}
 	}
 	return out
