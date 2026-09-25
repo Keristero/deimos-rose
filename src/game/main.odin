@@ -343,7 +343,7 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 			fmt.eprintln("reward: no options to offer")
 			os.exit(1)
 		}
-		state.players[0].passives[sim.single(state, sim.Reward).options[0]] = 1
+		sim.player_at(state, 0).passives[sim.single(state, sim.Reward).options[0]] = 1
 		if two {
 			sim.single(state, sim.Reward).cursor[1] = 0
 			sim.single(state, sim.Reward).locked[0] = true
@@ -366,7 +366,7 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		placed := name == "loadout_placed"
 		flow_start_session(&flow, 0x1234_5678, two ? .Co_Op : .Single, placed ? 1 : 6)
 		if placed {
-			state.players[0].weapons.loadout[1] = sim.NO_WEAPON
+			sim.player_at(state, 0).weapons.loadout[1] = sim.NO_WEAPON
 		}
 		for i := 0; i < 2000 && !sim.single(state, sim.Loadout).active; i += 1 {
 			_ = sim.session_step(state, {})
@@ -399,11 +399,11 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		beam := strings.has_prefix(name, "discharge")
 		flow_start_session(&flow, 0x1234_5678, .Single, beam ? 9 : 6)
 		sim.single(state, sim.Loadout).shown = true
-		p := &state.players[0]
+		p := sim.player_at(state, 0)
 		for &w, i in defs.weapons {
 			if w.id == sim.res_id(beam ? "aidb" : "aicg") {
 				p.weapons.loadout[0] = i32(i)
-				sim.change_weapon(state, &p.weapons, sim.WEP_AIR, i32(i))
+				sim.change_weapon(state, p.weapons, sim.WEP_AIR, i32(i))
 				sim.player_sprite_from_weapon(state, p)
 			}
 		}
@@ -707,7 +707,7 @@ draw_debug :: proc(s: ^sim.State, report: ^data.Defs_Report) {
 		fmt.ctprintf(
 			"frame %v  time %v  entities %v  scroll %v\nplayer shields %.0f lives %v score %v\ndefs: %v units %v sprites %v levels",
 			sim.frame_of(s), sim.single(s, sim.Clock).time, s.world.used_count, sim.single(s, sim.Bgnd).view_top,
-			s.players[0].shields, s.players[0].lives, s.players[0].score,
+			sim.player_at(s, 0).shields, sim.player_at(s, 0).lives, sim.player_at(s, 0).score,
 			report.units, report.sprites, report.levels,
 		),
 		8, 8, 14, rl.Color{150, 230, 150, 255},
@@ -721,7 +721,7 @@ draw_debug :: proc(s: ^sim.State, report: ^data.Defs_Report) {
 			(b.right - b.left) * WINDOW_SCALE, (b.bottom - b.top) * WINDOW_SCALE,
 			rl.Color{220, 170, 90, 120})
 	}
-	b := sim.object_bounds(&s.players[0].obj)
+	b := sim.object_bounds(sim.player_at(s, 0).obj)
 	rl.DrawRectangleLines((b.left + VIEW_X) * WINDOW_SCALE, b.top * WINDOW_SCALE,
 		(b.right - b.left) * WINDOW_SCALE, (b.bottom - b.top) * WINDOW_SCALE,
 		rl.Color{120, 200, 255, 160})

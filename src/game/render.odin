@@ -591,11 +591,11 @@ build_frame :: proc(r: ^Renderer, s: ^sim.State, blurs: ^Blurs, notices: ^Notice
 			draw_object(r, s, &e.obj, u.casts_shadows, before, shot_accent(r, s, e))
 		}
 	}
-	for &p, k in s.players {
+	for p, k in sim.players_of(s) {
 		if p.active && p.state == .Playing {
 			before: ^sim.Game_Object
-			if pv != nil && pv.players[k].active && pv.players[k].state == .Playing {
-				before = &pv.players[k].obj
+			if pv != nil && prev.players[k].active && prev.players[k].state == .Playing {
+				before = &prev.players[k].obj
 			}
 			// G_Player::BuildDrawList draws the ground weapon's crosshair
 			// first (G_WeaponHandler::BuildDrawList, 0x447ad0: only once
@@ -604,16 +604,16 @@ build_frame :: proc(r: ^Renderer, s: ^sim.State, blurs: ^Blurs, notices: ^Notice
 			ac := r.accents[k]
 			if p.weapons.crosshair_shown && !ac.hide_crosshair {
 				cbefore: ^sim.Game_Object
-				if before != nil && pv.players[k].weapons.crosshair_shown {
-					cbefore = &pv.players[k].weapons.crosshair
+				if before != nil && prev.players[k].crosshair_shown {
+					cbefore = &prev.players[k].crosshair
 				}
 				// Locked keeps its own red, so a lock still shows. Unlocked
 				// is the accent washed towards white, so that even a red
 				// accent reads differently from the lock.
 				recolour := ac.on && !p.weapons.crosshair_locked
-				draw_object(r, s, &p.weapons.crosshair, false, cbefore, {hue = ac.hue, recolour = recolour, lighten = CROSSHAIR_LIGHTEN})
+				draw_object(r, s, p.weapons.crosshair, false, cbefore, {hue = ac.hue, recolour = recolour, lighten = CROSSHAIR_LIGHTEN})
 			}
-			draw_object(r, s, &p.obj, true, before, {hue = ac.hue, trim = ac.on, outline = ac.outline})
+			draw_object(r, s, p.obj, true, before, {hue = ac.hue, trim = ac.on, outline = ac.outline})
 		}
 	}
 	for &o in blurs.live {

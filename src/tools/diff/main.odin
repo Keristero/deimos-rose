@@ -173,7 +173,7 @@ main :: proc() {
 		sim.init(state, film.session, &defs, &log, len(t.events) > 0 ? &events : nil)
 		for i := 0; i < max_steps && !sim.film_finished(state, &film); i += 1 {
 			if len(t.players) > 0 {
-				for &p in state.players {
+				for p in sim.players_of(state) {
 					append(&snaps, oracle.Player_Snapshot {
 						frame   = u32(sim.single(state, sim.Film_Cursor).reads[0]),
 						player  = p.number,

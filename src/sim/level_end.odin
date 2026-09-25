@@ -54,14 +54,14 @@ level_end_step :: proc(s: ^State, time: i32) {
 	// second one offset below the first, and run them until both finish.
 	all_done := true
 	offset := false
-	for &p in s.players {
-		if p.active && !money_counter_active(&p) {
-			offset = money_counter_start(s, &p, time, offset)
+	for p in players_of(s) {
+		if p.active && !money_counter_active(p) {
+			offset = money_counter_start(s, p, time, offset)
 			all_done = false
 		}
 	}
-	for &p in s.players {
-		if p.active && !money_counter_process(s, &p, time) {
+	for p in players_of(s) {
+		if p.active && !money_counter_process(s, p, time) {
 			all_done = false
 		}
 	}
@@ -88,7 +88,7 @@ level_end_begin :: proc(s: ^State, time: i32) {
 	}
 	l.started = true
 	l.started_time = time
-	for &p in s.players {
+	for p in players_of(s) {
 		if p.active {
 			p.invulnerable = true
 		}
@@ -196,8 +196,8 @@ level_end_process :: proc(s: ^State, time: i32) -> bool {
 			if l.bonus < 0 {
 				l.bonus = 0
 			}
-			for &p in s.players {
-				player_score(s, &p, l.bonus_step, false)
+			for p in players_of(s) {
+				player_score(s, p, l.bonus_step, false)
 			}
 			level_end_sound(s, 0x14, 0x32)
 		}
@@ -237,8 +237,8 @@ level_end_process :: proc(s: ^State, time: i32) -> bool {
 			return false
 		}
 		l.perfect_count += 1
-		for &p in s.players {
-			player_score(s, &p, pf(s, 0xcd), true)
+		for p in players_of(s) {
+			player_score(s, p, pf(s, 0xcd), true)
 		}
 		if pf(s, 0xd0) <= l.perfect_count {
 			l.perfect = false
@@ -263,7 +263,7 @@ level_end_sound :: proc "contextless" (s: ^State, perm: int, priority: i32) {
 // G_Player::MoneyCounter_Start: the money the player is carrying converts to
 // score at a per-level multiplier. Returns whether a counter was started, so
 // the caller offsets the second player's readout below the first.
-money_counter_start :: proc(s: ^State, p: ^Player, time: i32, offset: bool) -> bool {
+money_counter_start :: proc(s: ^State, p: Player, time: i32, offset: bool) -> bool {
 	if !p.active {
 		return false
 	}
@@ -292,13 +292,13 @@ money_counter_start :: proc(s: ^State, p: ^Player, time: i32, offset: bool) -> b
 	return true
 }
 
-money_counter_active :: proc "contextless" (p: ^Player) -> bool {
+money_counter_active :: proc "contextless" (p: Player) -> bool {
 	return p.counter.state != 0
 }
 
 // G_Player::MoneyCounter_Process. Returns true once this player's counter has
 // finished.
-money_counter_process :: proc(s: ^State, p: ^Player, time: i32) -> bool {
+money_counter_process :: proc(s: ^State, p: Player, time: i32) -> bool {
 	m := &p.counter
 	switch m.state {
 	case 0:

@@ -67,7 +67,7 @@ scorebar_process :: proc(v: ^Scorebar_View, s: ^sim.State) {
 	pf := &s.defs.perm_floats
 	if !v.primed || sim.single(s, sim.Level_Info).number != v.level || sim.single(s, sim.Clock).time < v.time {
 		v^ = {primed = true, level = sim.single(s, sim.Level_Info).number, time = sim.single(s, sim.Clock).time}
-		for &p, i in s.players[:2] {
+		for p, i in sim.players_of(s) {
 			v.players[i].active = p.active
 			v.players[i].was_active = p.active
 		}
@@ -75,7 +75,7 @@ scorebar_process :: proc(v: ^Scorebar_View, s: ^sim.State) {
 	}
 	for v.time < sim.single(s, sim.Clock).time {
 		v.time += 1
-		for &p, i in s.players[:2] {
+		for p, i in sim.players_of(s) {
 			sp := &v.players[i]
 			if !p.active || p.state == .Gone {
 				if sp.was_active {
@@ -119,7 +119,7 @@ scorebar_draw :: proc(r: ^Renderer, s: ^sim.State, scale: f32) {
 	pf := &s.defs.perm_floats
 	text := &r.textures.assets.text
 	for pn in 0 ..< 2 {
-		p := &s.players[pn]
+		p := sim.player_at(s, pn)
 		sp := &v.players[pn]
 		faded := i32(-1)
 		if !sp.active {
@@ -151,7 +151,7 @@ scorebar_draw :: proc(r: ^Renderer, s: ^sim.State, scale: f32) {
 		// Air weapons: current, next, the one after (AirWeapon_GetScoreBarInfo);
 		// only an active player's are drawn.
 		if sp.active {
-			faces := air_weapon_faces(s, &p.weapons)
+			faces := air_weapon_faces(s, p.weapons)
 			for f, slot in faces {
 				if f.sprite == sim.NONE {
 					continue
@@ -233,7 +233,7 @@ Weapon_Face :: struct {
 // G_WeaponHandler::AirWeapon_GetScoreBarInfo: the current (or queued) air
 // weapon's face, then the next two available on this level, each dropped
 // ("none") when it repeats one already shown.
-air_weapon_faces :: proc(s: ^sim.State, h: ^sim.Weapon_Handler) -> (out: [3]Weapon_Face) {
+air_weapon_faces :: proc(s: ^sim.State, h: sim.Weapons) -> (out: [3]Weapon_Face) {
 	out = {{sprite = sim.NONE}, {sprite = sim.NONE}, {sprite = sim.NONE}}
 	cur := sim.air_weapon_shown(h)
 	if cur == sim.NO_WEAPON {

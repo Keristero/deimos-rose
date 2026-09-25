@@ -133,7 +133,7 @@ loadout_draw_panel :: proc(fl: ^Flow, r: ^Renderer, i: int, b: ^sim.Loadout_Boar
 			w := b.cells[row][col]
 			// Until the screen closes the player's handler still has only
 			// what they held before it.
-			fresh := w != sim.NO_WEAPON && !sim.loadout_holds(&s.players[i].weapons, w)
+			fresh := w != sim.NO_WEAPON && !sim.loadout_holds(sim.player_at(s, i).weapons, w)
 			fill, edge := rl.Color{16, 20, 28, 230}, rl.Color{70, 80, 92, 255}
 			if fresh {
 				fill, edge = {header.r / 3, header.g / 3, header.b / 3, 230}, header

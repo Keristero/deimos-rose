@@ -10,7 +10,8 @@ import "dr:sim"
 // the world (D39), which a copy shares with the live state, so what the
 // renderer compares or blends from them is captured here by value.
 Interp_Prev :: struct {
-	state:       sim.State, // players and entities; its ecs is the live one
+	state:       sim.State, // entities; its ecs is the live one
+	players:     [sim.MAX_PLAYERS]Interp_Player,
 	level:       i32,
 	played:      i32,
 	frame:       u32,
@@ -18,8 +19,26 @@ Interp_Prev :: struct {
 	side_scroll: i32,
 }
 
+// What build_frame blends a ship and its crosshair from.
+Interp_Player :: struct {
+	active:          bool,
+	state:           sim.Player_State,
+	obj:             sim.Game_Object,
+	crosshair:       sim.Game_Object,
+	crosshair_shown: bool,
+}
+
 interp_capture :: proc(p: ^Interp_Prev, s: ^sim.State) {
 	p.state = s^
+	for pl, i in sim.players_of(s) {
+		p.players[i] = {
+			active          = pl.active,
+			state           = pl.state,
+			obj             = pl.obj^,
+			crosshair       = pl.weapons.crosshair^,
+			crosshair_shown = pl.weapons.crosshair_shown,
+		}
+	}
 	info := sim.single(s, sim.Level_Info)
 	p.level, p.played = info.number, info.played
 	p.frame = sim.frame_of(s)

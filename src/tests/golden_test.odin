@@ -110,10 +110,10 @@ golden_state_hash :: proc(s: ^sim.State) -> u64 {
 	mixb(&f, sim.single(s, sim.Pause).paused)
 	mix(&f, u64(sim.single(s, sim.Bgnd).view_top))
 	mix(&f, u64(sim.single(s, sim.Bgnd).side_scroll))
-	for &p in s.players {
+	for p in sim.players_of(s) {
 		mixb(&f, p.active)
 		mix(&f, u64(p.state))
-		mix_obj(&f, &p.obj)
+		mix_obj(&f, p.obj)
 		mixf(&f, p.shields)
 		mix(&f, u64(p.money))
 		mix(&f, u64(p.score))
@@ -123,7 +123,7 @@ golden_state_hash :: proc(s: ^sim.State) -> u64 {
 		for lv in p.passives {
 			mix(&f, u64(lv))
 		}
-		wh := &p.weapons
+		wh := p.weapons
 		mix(&f, u64(wh.air.weapon))
 		mix(&f, u64(wh.ground.weapon))
 		mix(&f, u64(wh.air_powerup.state))
@@ -263,7 +263,7 @@ golden_session :: proc(defs: ^sim.Defs, g: Golden_Session, allocator := context.
 		}
 		// Kept in play as session_test.odin keeps its players: the flags
 		// alone, every step (a new level clears invulnerable).
-		for &p in s.players {
+		for p in sim.players_of(s) {
 			p.invulnerable_always = true
 			p.invulnerable = true
 		}

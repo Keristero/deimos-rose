@@ -241,7 +241,7 @@ pause_key_pressed :: proc(fl: ^Flow) -> bool {
 	if binding_pressed(&fl.prefs.saved.bindings[0], .Pause) {
 		return true
 	}
-	return fl.state.players[1].active && binding_pressed(&fl.prefs.saved.bindings[1], .Pause)
+	return sim.player_at(fl.state, 1).active && binding_pressed(&fl.prefs.saved.bindings[1], .Pause)
 }
 
 flow_init :: proc(fl: ^Flow, root: string, defs: ^sim.Defs, state: ^sim.State, r: ^Renderer, ps: ^Prefs_State) {
@@ -377,7 +377,7 @@ flow_finish_session :: proc(fl: ^Flow) {
 	// original reports both slots from G_Game_Play (0x41e690) whatever
 	// their state, an unused one with its score of 0.
 	for i in 0 ..< sim.MAX_PLAYERS {
-		scores[i] = int(fl.state.players[i].score)
+		scores[i] = int(sim.player_at(fl.state, i).score)
 		active[i] = fl.state.session.game_type != .Single || i == 0
 	}
 	if sim.level_def(fl.state) != nil {
@@ -432,7 +432,7 @@ flow_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 			// (player_setup: `game_type != .Single || number == 0`), and
 			// had no keys at all until Preferences gave them bindings.
 			input := sim.Frame_Input{gather_input(&fl.prefs.saved.bindings[0]), {}}
-			if fl.state.players[1].active {
+			if sim.player_at(fl.state, 1).active {
 				input[1] = gather_input(&fl.prefs.saved.bindings[1])
 			}
 			// A local session pauses through flow (.Paused, the original's

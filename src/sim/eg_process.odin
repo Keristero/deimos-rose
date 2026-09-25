@@ -208,11 +208,11 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 	w, h := view_width(s.defs), view_height(s.defs)
 	if players_in_play(s) > 0 && st.collides && !u.harmless_to_players && st.collides_with_players &&
 	   b.right > -33 && b.left <= w + 32 && b.bottom >= 0 && b.top <= h {
-		for &p in s.players {
+		for p in players_of(s) {
 			if p.state != .Playing || e.deleted {
 				continue
 			}
-			pb := object_bounds(&p.obj)
+			pb := object_bounds(p.obj)
 			if !(pb.top <= b.bottom && b.top <= pb.bottom && pb.left <= b.right && b.left <= pb.right) {
 				continue
 			}
@@ -229,8 +229,8 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 				if !hit_owner {
 					entity_hit(s, e, s.defs.perm_floats[0xa1], p.number, single(s, Clock).time)
 				}
-				player_hit(s, &p, u.damage, single(s, Clock).time)
-			} else if player_collect(s, &p, e) {
+				player_hit(s, p, u.damage, single(s, Clock).time)
+			} else if player_collect(s, p, e) {
 				entity_destroy(s, e, p.number, single(s, Clock).time)
 				e.killed_by_player = true
 			}
@@ -253,13 +253,13 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 		// is not locked yet this step against the bounds taken after
 		// SpawnControl (b above): left <= x < right, top <= y < bottom.
 		// weapons_process unlocks it again every step.
-		for &p in s.players {
+		for p in players_of(s) {
 			if p.state != .Playing || p.weapons.crosshair_locked {
 				continue
 			}
 			c := p.weapons.crosshair.loc
 			if f32(b.left) <= c.x && c.x < f32(b.right) && f32(b.top) <= c.y && c.y < f32(b.bottom) {
-				crosshair_hilite(s, &p.weapons, true)
+				crosshair_hilite(s, p.weapons, true)
 			}
 		}
 	}
@@ -279,7 +279,7 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 }
 
 players_in_play :: proc "contextless" (s: ^State) -> (n: i32) {
-	for &p in s.players {
+	for p in players_of(s) {
 		if p.state == .Playing {
 			n += 1
 		}
@@ -654,7 +654,7 @@ movement_ai :: proc(s: ^State, e: ^Entity, time: i32) -> (delete, destroy: bool)
 // integer-truncated distance. Ties keep the lower-numbered player.
 closest_active_player :: proc "contextless" (s: ^State, from: Vec) -> (loc: Vec, dist: f32, player: i32, found: bool) {
 	player = -1
-	for &p, i in s.players {
+	for p, i in players_of(s) {
 		if p.state != .Playing {
 			continue
 		}
@@ -977,7 +977,7 @@ owner_loc :: proc "contextless" (s: ^State, e: ^Entity) -> (loc: Vec, ok: bool) 
 		return entity_at(s, e.owner.index).loc, true
 	}
 	if e.owner_player != -1 {
-		p := &s.players[e.owner_player]
+		p := player_at(s, e.owner_player)
 		if p.state == .Playing {
 			return p.loc, true
 		}

@@ -50,9 +50,7 @@ Weapon_Handler :: struct {
 	aux:             [MAX_AUX]Weapon_Slot, // +0x73 (a list in the original)
 	aux_count:       i32,
 	ground:          Weapon_Slot, // +0x77
-	crosshair:       Game_Object, // +0x8d
-	crosshair_shown: bool, // +0x117
-	crosshair_locked: bool, // +0x118
+	// +0x8d: the crosshair, its own entity (Weapons).
 	player:          i32,  // +0x119
 	fade_in:         f32,  // +0x11d perm float 0x95
 	fade_out:        f32,  // +0x121 perm float 0x96
@@ -65,6 +63,32 @@ Weapon_Handler :: struct {
 	// air weapons held, those switched between and the rest.
 	loadout:         [LOADOUT_SLOTS]i32,
 	spare:           [MAX_SPARE]i32,
+}
+
+// The crosshair entity's own component; its Game_Object is the rest of it.
+Crosshair :: struct {
+	crosshair_shown:  bool, // +0x117
+	crosshair_locked: bool, // +0x118
+}
+
+// A player's weapon handler and crosshair, found once (weapons_of).
+Weapons :: struct {
+	using handler: ^Weapon_Handler,
+	crosshair:     ^Game_Object,
+	using aim:     ^Crosshair,
+}
+
+crosshair_components :: proc "contextless" () -> Component_Mask {
+	return {component_id(Game_Object), component_id(Crosshair)}
+}
+
+weapons_of :: proc "contextless" (s: ^State, i: i32) -> Weapons {
+	e := s.ecs
+	return {
+		handler   = get(e, player_entity(i), Weapon_Handler),
+		crosshair = get(e, crosshair_entity(i), Game_Object),
+		aim       = get(e, crosshair_entity(i), Crosshair),
+	}
 }
 
 Weapon_Result :: enum i32 {
@@ -145,7 +169,7 @@ next_weapon_of_type :: proc "contextless" (d: ^Defs, type: Res_ID, current: Res_
 }
 
 // G_WeaponHandler::SetUpAtNewGameStart.
-weapons_new_game :: proc(s: ^State, h: ^Weapon_Handler, player: i32, time, level: i32) {
+weapons_new_game :: proc(s: ^State, h: Weapons, player: i32, time, level: i32) {
 	h.queued_air = NO_WEAPON
 	h.queued_ground = NO_WEAPON
 	weapons_appear(s, h, false)
@@ -153,7 +177,7 @@ weapons_new_game :: proc(s: ^State, h: ^Weapon_Handler, player: i32, time, level
 	h.player = player
 	h.fade_in = s.defs.perm_floats[0x95]
 	h.fade_out = s.defs.perm_floats[0x96]
-	object_defaults(&h.crosshair)
+	object_defaults(h.crosshair)
 	h.crosshair.draw_layer = {'p', 'l', 'u', 'i'}
 	h.aux_count = 0
 	if g := default_weapon(s.defs, true); g != NO_WEAPON {
@@ -171,7 +195,7 @@ weapons_new_game :: proc(s: ^State, h: ^Weapon_Handler, player: i32, time, level
 }
 
 // G_WeaponHandler::SetUpForAppearance.
-weapons_appear :: proc(s: ^State, h: ^Weapon_Handler, level_start: bool) {
+weapons_appear :: proc(s: ^State, h: Weapons, level_start: bool) {
 	h.loc = {}
 	h.prev_ground, h.prev_air, h.prev_switch = false, false, false
 	h.appeared = true
@@ -205,7 +229,7 @@ weapons_appear :: proc(s: ^State, h: ^Weapon_Handler, level_start: bool) {
 }
 
 // G_WeaponHandler::ChangeWeapon.
-change_weapon :: proc(s: ^State, h: ^Weapon_Handler, type: Res_ID, weapon: i32) {
+change_weapon :: proc(s: ^State, h: Weapons, type: Res_ID, weapon: i32) {
 	switch type {
 	case WEP_AUX:
 		unported(s, 0x447130) // auxiliary weapon list
@@ -236,7 +260,7 @@ change_weapon :: proc(s: ^State, h: ^Weapon_Handler, type: Res_ID, weapon: i32) 
 
 // The air weapon Change_Air moves on to from `current`: the next in the
 // loadout under New Weapons, else the original's next of its type.
-air_weapon_next :: proc "contextless" (s: ^State, h: ^Weapon_Handler, current: i32) -> i32 {
+air_weapon_next :: proc "contextless" (s: ^State, h: Weapons, current: i32) -> i32 {
 	if s.session.loadout {
 		return loadout_next(h, current)
 	}
@@ -247,12 +271,12 @@ air_weapon_next :: proc "contextless" (s: ^State, h: ^Weapon_Handler, current: i
 }
 
 // AirWeapon_GetCurrentOrQueuedWeaponRefPtr.
-air_weapon_shown :: proc "contextless" (h: ^Weapon_Handler) -> i32 {
+air_weapon_shown :: proc "contextless" (h: Weapons) -> i32 {
 	return h.queued_air != NO_WEAPON ? h.queued_air : h.air.weapon
 }
 
 // G_WeaponHandler::Crosshair_Hilite.
-crosshair_hilite :: proc "contextless" (s: ^State, h: ^Weapon_Handler, on: bool) {
+crosshair_hilite :: proc "contextless" (s: ^State, h: Weapons, on: bool) {
 	if !h.crosshair_shown {
 		return
 	}
@@ -266,7 +290,7 @@ crosshair_hilite :: proc "contextless" (s: ^State, h: ^Weapon_Handler, on: bool)
 // 0x40). Returns the power-up result and whether the air weapon changed.
 weapons_process :: proc(
 	s: ^State,
-	h: ^Weapon_Handler,
+	h: Weapons,
 	at: Vec,
 	ground, air, switch_: bool,
 	time: i32,
@@ -331,9 +355,9 @@ weapons_process :: proc(
 	h.crosshair.sprite = gw.crosshair_face
 	h.crosshair.frame = gw.crosshair_frame
 	h.crosshair_locked = false
-	calculate_dimensions(s, &h.crosshair)
+	calculate_dimensions(s, h.crosshair)
 	if h.crosshair.sprite != NONE {
-		adjust_visibility_and_tinting(&h.crosshair)
+		adjust_visibility_and_tinting(h.crosshair)
 	}
 	if fire_ground {
 		spawn_ground(s, h, at)
@@ -379,7 +403,7 @@ powerup_release :: proc(s: ^State, entity: i32, time: i32) {
 }
 
 // Priv_CheckSpawning_Air. Under Auto Charge holding fire-air autofires.
-check_spawning_air :: proc "contextless" (s: ^State, h: ^Weapon_Handler, time: i32) -> bool {
+check_spawning_air :: proc "contextless" (s: ^State, h: Weapons, time: i32) -> bool {
 	wd := weapon_def(s, h.air.weapon)
 	if h.air.last + air_firing_delay(s, h, h.air.weapon) < time {
 		if !(!wd.auto_repeat && !air_auto_charge(s, h) && h.prev_air) {
@@ -393,7 +417,7 @@ check_spawning_air :: proc "contextless" (s: ^State, h: ^Weapon_Handler, time: i
 }
 
 // Priv_CheckSpawning_Auxilary.
-check_spawning_aux :: proc "contextless" (s: ^State, h: ^Weapon_Handler, time: i32) -> (any: bool) {
+check_spawning_aux :: proc "contextless" (s: ^State, h: Weapons, time: i32) -> (any: bool) {
 	for &a in h.aux[:h.aux_count] {
 		wd := weapon_def(s, a.weapon)
 		if a.last + wd.delay_between_launches < time && !(!wd.auto_repeat && h.prev_air) {
@@ -407,7 +431,7 @@ check_spawning_aux :: proc "contextless" (s: ^State, h: ^Weapon_Handler, time: i
 }
 
 // Priv_CheckSpawning_Ground: start a burst of bombs, one more per level.
-check_spawning_ground :: proc "contextless" (s: ^State, h: ^Weapon_Handler, time: i32) -> bool {
+check_spawning_ground :: proc "contextless" (s: ^State, h: Weapons, time: i32) -> bool {
 	wd := weapon_def(s, h.ground.weapon)
 	if !(h.ground.last + wd.delay_between_launches < time) {
 		return false
@@ -426,7 +450,7 @@ check_spawning_ground :: proc "contextless" (s: ^State, h: ^Weapon_Handler, time
 // Priv_Spawn_Ground: each spawn record of the ground weapon, its speed scaled
 // by the crosshair's distance, then the crosshair's activation spawn. A
 // passive may add lanes, or turn the weapon behind the ship (weapon_spawns).
-spawn_ground :: proc(s: ^State, h: ^Weapon_Handler, at: Vec) {
+spawn_ground :: proc(s: ^State, h: Weapons, at: Vec) {
 	wd := weapon_def(s, h.ground.weapon)
 	backwards := ground_fires_backwards(s, h)
 	tag := weapon_passive_tag(s, h.player, h.ground.weapon)
@@ -451,7 +475,7 @@ spawn_ground :: proc(s: ^State, h: ^Weapon_Handler, at: Vec) {
 }
 
 // Priv_Spawn_Air.
-spawn_air :: proc(s: ^State, h: ^Weapon_Handler, at: Vec) {
+spawn_air :: proc(s: ^State, h: Weapons, at: Vec) {
 	if h.air.pending <= 0 {
 		return
 	}
@@ -474,7 +498,7 @@ spawn_air :: proc(s: ^State, h: ^Weapon_Handler, at: Vec) {
 // Priv_AirPowerup_Process: holding fire-air charges a power-up. `held` is
 // how long fire-air has been held (air_held), or under Auto Charge how long
 // it has been let go (air_idle).
-air_powerup_process :: proc(s: ^State, h: ^Weapon_Handler, time: i32, at: Vec, weapon: i32, held: i32, result: ^Weapon_Result) {
+air_powerup_process :: proc(s: ^State, h: Weapons, time: i32, at: Vec, weapon: i32, held: i32, result: ^Weapon_Result) {
 	wd := weapon_def(s, weapon)
 	if wd.powerup_air_activation_spawn == NONE && wd.powerup_air_release_spawn == NONE {
 		return

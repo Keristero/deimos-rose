@@ -114,7 +114,7 @@ reward_draw :: proc(fl: ^Flow, r: ^Renderer) {
 			continue
 		}
 		pa := rw.options[rw.cursor[i]]
-		levels := &s.players[i].passives
+		levels := sim.passive_levels(s, i)
 		def := &sim.PASSIVES[pa]
 		accent := reward_accent(r.accents[i].hue, true)
 		menu_draw_text(r, reward_player_label(fl, i), left, y, accent)

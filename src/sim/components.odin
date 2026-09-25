@@ -73,6 +73,16 @@ register_core_components :: proc "contextless" () {
 	component_register(Level_End, 1)
 	component_register(Reward, 1)
 	component_register(Loadout, 1)
+	// Every object: the players, their crosshairs and the entity pool.
+	component_register(Game_Object, MAX_ENTITIES)
+	// The players.
+	component_register(Ship, MAX_PLAYERS)
+	component_register(Purse, MAX_PLAYERS)
+	component_register(Hull, MAX_PLAYERS)
+	component_register(Overload, MAX_PLAYERS)
+	component_register(Passive_State, MAX_PLAYERS)
+	component_register(Weapon_Handler, MAX_PLAYERS)
+	component_register(Crosshair, MAX_PLAYERS)
 }
 
 // Gives the session entity its singletons, zeroed.

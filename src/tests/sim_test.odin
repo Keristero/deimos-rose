@@ -94,9 +94,9 @@ coop_activates_two_players :: proc(t: ^testing.T) {
 	defer sim.destroy(s)
 	defer free(s)
 	sim.init(s, sim.Session{seed = 7, level_id = sim.level_id("le01"), game_type = .Co_Op}, defs)
-	testing.expect(t, s.players[0].active && s.players[1].active, "co-op needs both players")
+	testing.expect(t, sim.player_at(s, 0).active && sim.player_at(s, 1).active, "co-op needs both players")
 	sim.init(s, sim.Session{seed = 7, level_id = sim.level_id("le01"), game_type = .Single}, defs)
-	testing.expect(t, s.players[0].active && !s.players[1].active, "single is one player")
+	testing.expect(t, sim.player_at(s, 0).active && !sim.player_at(s, 1).active, "single is one player")
 }
 
 @(test)
@@ -110,14 +110,14 @@ players_enter_then_read_the_film :: proc(t: ^testing.T) {
 	defer sim.destroy(s)
 	defer free(s)
 	sim.init(s, film.session, defs)
-	testing.expect_value(t, s.players[0].state, sim.Player_State.Entering)
+	testing.expect_value(t, sim.player_at(s, 0).state, sim.Player_State.Entering)
 	for _ in 0 ..< 4 {
 		sim.step(s, {}, &film)
 	}
 	// entry_initial_delay 3: appears once time > 0 + 3, i.e. at time 4.
 	testing.expect_value(t, sim.single(s, sim.Film_Cursor).reads[0], i32(0))
 	sim.step(s, {}, &film)
-	testing.expect_value(t, s.players[0].state, sim.Player_State.Playing)
+	testing.expect_value(t, sim.player_at(s, 0).state, sim.Player_State.Playing)
 	testing.expect_value(t, sim.single(s, sim.Film_Cursor).reads[0], i32(1))
 
 	sim.replay(s, &film, defs)
@@ -194,7 +194,7 @@ level_end_tally_scores_the_ground_accuracy :: proc(t: ^testing.T) {
 	testing.expect_value(t, sim.single(s, sim.Level_End).bonus, i32(1000))
 	testing.expect_value(t, sim.single(s, sim.Level_End).bonus_step, i32(100))
 	testing.expect_value(t, sim.single(s, sim.Level_End).state, i32(1))
-	testing.expect(t, s.players[0].invulnerable, "players are safe once the level is over")
+	testing.expect(t, sim.player_at(s, 0).invulnerable, "players are safe once the level is over")
 }
 
 @(test)
@@ -236,7 +236,7 @@ money_counter_converts_money_at_the_level_multiplier :: proc(t: ^testing.T) {
 	defer sim.destroy(s)
 	defer free(s)
 	sim.init(s, sim.Session{seed = 3, level_id = sim.level_id("le01"), game_type = .Single}, defs)
-	p := &s.players[0]
+	p := sim.player_at(s, 0)
 	p.money = 10
 	testing.expect(t, sim.money_counter_start(s, p, sim.single(s, sim.Clock).time, false))
 	testing.expect(t, sim.money_counter_active(p))
@@ -319,7 +319,7 @@ multiplier_carries_into_the_next_level :: proc(t: ^testing.T) {
 	defer sim.destroy(s)
 	defer free(s)
 	sim.init(s, sim.Session{seed = 3, level_id = sim.level_id("le01"), game_type = .Single}, defs, events = &events)
-	p := &s.players[0]
+	p := sim.player_at(s, 0)
 	p.multiplier = 3
 
 	sim.single(s, sim.Level_Info).ending = true
@@ -347,7 +347,8 @@ multiplier_carries_into_the_next_level :: proc(t: ^testing.T) {
 shields_round_to_eighths_as_the_originals_offset_store_does :: proc(t: ^testing.T) {
 	// The original keeps shields as pct + 1324366 in a single-precision
 	// float (0x431a30), whose spacing there is 1/8.
-	p: sim.Player
+	hull: sim.Hull
+	p := sim.Player{hull = &hull}
 	cases := [][2]f32{
 		{100, 100}, // whole numbers are exact
 		{96.7, 96.75}, // 773.6 eighths round up
@@ -357,7 +358,7 @@ shields_round_to_eighths_as_the_originals_offset_store_does :: proc(t: ^testing.
 		{-3.3, -3.25},
 	}
 	for c in cases {
-		sim.shields_set(&p, c[0])
+		sim.shields_set(p, c[0])
 		testing.expectf(t, p.shields == c[1], "shields_set(%v) = %v, want %v", c[0], p.shields, c[1])
 	}
 }

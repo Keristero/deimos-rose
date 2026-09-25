@@ -12,8 +12,9 @@ Player_State :: enum i32 {
 	Playing  = 4, // only now does the player read input (Priv_GetInputs)
 }
 
-Player :: struct {
-	using obj:     Game_Object,
+// A player is its ship entity, with these components, plus its crosshair
+// (a second entity; see Weapons). Offsets are into the original's G_Player.
+Ship :: struct {
 	def:           i32,          // +0x8a index into Defs.players
 	active:        bool,         // +0xb8 in the game at all
 	appeared:      bool,         // +0xb9
@@ -21,48 +22,113 @@ Player :: struct {
 	state_time:    i32,          // +0xbe
 	number:        i32,          // +0xc2 G_Game_PlayerNum
 	game_type:     Game_Type,    // +0xc6
-	lives:         i32,          // +0x8e (stored + 0x1524dcef in the original)
-	next_life_score: i32,        // +0x92
-	life_step:     i32,          // +0x96
 	speed:         f32,          // +0x9a maximum speed
-	shields:       f32,          // +0x9e as a percentage
-	money:         i32,          // +0xa2
-	score:         i32,          // +0xa6 (stored + 0x5532a3e in the original)
-	multiplier:    i32,          // +0xaa
-	multiplier_entity: i32,      // +0xae the icon's unique entity number
 	invulnerable:  bool,         // +0xca
 	// +0xcb: invulnerability that does not wear off. Only the console
 	// cheat in FUN_00421970 sets it; the end of a level does not.
 	invulnerable_always: bool,
-	shield_warned: bool,         // +0xcd
 	hit_time:      i32,          // +0x1fd
 	hit_spawn_time: i32,         // +0x201
 	frame_time:    i32,          // +0xce time of the last banking frame change
 	defence_spawned: bool,       // +0xcc
 	inputs:        Buttons,      // +0x1f6 this step's inputs
 	crosshair_reach: i32,        // +0x205 how far the crosshair is pushed out
-	overloaded:    bool,         // +0x209 air power-up overload in progress
+	nag_time:      i32,          // +0x22b unregistered-copy nag timer
+}
+
+// Lives, score and money.
+Purse :: struct {
+	lives:         i32,          // +0x8e (stored + 0x1524dcef in the original)
+	next_life_score: i32,        // +0x92
+	life_step:     i32,          // +0x96
+	money:         i32,          // +0xa2
+	score:         i32,          // +0xa6 (stored + 0x5532a3e in the original)
+	multiplier:    i32,          // +0xaa
+	multiplier_entity: i32,      // +0xae the icon's unique entity number
+	counter:       Money_Counter, // +0xd2 the end-of-level money readout
+}
+
+Hull :: struct {
+	shields:       f32,          // +0x9e as a percentage
+	shield_warned: bool,         // +0xcd
+}
+
+// The air power-up overload.
+Overload :: struct {
+	overloaded:    bool,         // +0x209 overload in progress
 	overload_rising: bool,       // +0x20a
 	overload_time: i32,          // +0x20f
 	overload_interval: i32,      // +0x213
 	overload_warnings: i32,      // +0x217
-	nag_time:      i32,          // +0x22b unregistered-copy nag timer
-	counter:       Money_Counter, // +0xd2 the end-of-level money readout
-	weapons:       Weapon_Handler, // +0x235
-	// Not the original's: easy mode's passive upgrades (sim/passives.odin).
-	// They last the session, not the level.
+}
+
+// Not the original's: easy mode's passive upgrades (sim/passives.odin).
+// They last the session, not the level.
+Passive_State :: struct {
 	passives:      Passive_Levels,
 	regen_wait:    i32, // steps since the last damage, towards Recharge_Delay
 	regen_acc:     i32, // eighths of a percent towards the next, times step_hz
 }
 
-player_def :: #force_inline proc "contextless" (s: ^State, p: ^Player) -> ^Player_Def {
+// One player's components, found once (player_at). Good for the step it
+// was found in (D39).
+Player :: struct {
+	using obj:     ^Game_Object,
+	using ship:    ^Ship,
+	using purse:   ^Purse,
+	using hull:    ^Hull,
+	using surge:   ^Overload,
+	using upgrades: ^Passive_State,
+	weapons:       Weapons,
+}
+
+player_components :: proc "contextless" () -> Component_Mask {
+	return {
+		component_id(Game_Object),
+		component_id(Ship),
+		component_id(Purse),
+		component_id(Hull),
+		component_id(Overload),
+		component_id(Passive_State),
+		component_id(Weapon_Handler),
+	}
+}
+
+// Both players, in order.
+players_of :: proc "contextless" (s: ^State) -> (all: [MAX_PLAYERS]Player) {
+	for &p, i in all {
+		p = player_at(s, i)
+	}
+	return
+}
+
+// A player's passive levels, for code that changes them in place.
+passive_levels :: proc "contextless" (s: ^State, i: $I) -> ^Passive_Levels {
+	return &get(s.ecs, player_entity(i32(i)), Passive_State).passives
+}
+
+player_at :: proc "contextless" (s: ^State, index: $I) -> Player {
+	i := i32(index)
+	id := player_entity(i)
+	e := s.ecs
+	return {
+		obj      = get(e, id, Game_Object),
+		ship     = get(e, id, Ship),
+		purse    = get(e, id, Purse),
+		hull     = get(e, id, Hull),
+		surge    = get(e, id, Overload),
+		upgrades = get(e, id, Passive_State),
+		weapons  = weapons_of(s, i),
+	}
+}
+
+player_def :: #force_inline proc "contextless" (s: ^State, p: Player) -> ^Player_Def {
 	return &s.defs.players[p.def].def
 }
 
 // G_Player::SetUpAtNewGameStart (the parts that affect play).
-player_setup :: proc (s: ^State, p: ^Player, number: i32, game_type: Game_Type) {
-	object_defaults(&p.obj)
+player_setup :: proc (s: ^State, p: Player, number: i32, game_type: Game_Type) {
+	object_defaults(p.obj)
 	p.number = number
 	p.game_type = game_type
 	p.def = player_def_index(s.defs, s.defs.perm_objects[number])
@@ -82,7 +148,7 @@ player_setup :: proc (s: ^State, p: ^Player, number: i32, game_type: Game_Type) 
 	p.passives = {}
 	player_regen_interrupt(p)
 	player_shields_reset(s, p, true)
-	weapons_new_game(s, &p.weapons, number, single(s, Clock).time, single(s, Level_Info).number)
+	weapons_new_game(s, p.weapons, number, single(s, Clock).time, single(s, Level_Info).number)
 	p.speed = player_def(s, p).active_default_max_speed
 	if p.active {
 		p.state, p.state_time = .Entering, single(s, Clock).time
@@ -93,14 +159,14 @@ player_setup :: proc (s: ^State, p: ^Player, number: i32, game_type: Game_Type) 
 }
 
 // G_Player::Priv_SetSpriteFaceAccordingToAirWeapon.
-player_sprite_from_weapon :: proc "contextless" (s: ^State, p: ^Player) {
-	w := weapon_def(s, air_weapon_shown(&p.weapons))
+player_sprite_from_weapon :: proc "contextless" (s: ^State, p: Player) {
+	w := weapon_def(s, air_weapon_shown(p.weapons))
 	p.sprite = p.number == 0 ? w.player1_appearance_face : w.player2_appearance_face
 	p.dims_dirty = true
 }
 
 // G_Player::Priv_ResetSpriteInfo.
-player_reset_sprite :: proc "contextless" (s: ^State, p: ^Player) {
+player_reset_sprite :: proc "contextless" (s: ^State, p: Player) {
 	player_sprite_from_weapon(s, p)
 	p.frame = 0
 	p.frame_time = 0
@@ -108,21 +174,21 @@ player_reset_sprite :: proc "contextless" (s: ^State, p: ^Player) {
 }
 
 // G_Player::ResetAtLevelStart.
-player_level_reset :: proc (s: ^State, p: ^Player, time: i32) {
+player_level_reset :: proc (s: ^State, p: Player, time: i32) {
 	if !p.active {
 		return
 	}
 	p.defence_spawned = false
-	weapons_appear(s, &p.weapons, true)
+	weapons_appear(s, p.weapons, true)
 	p.appeared = false
-	glow_stop(&p.obj) // Glow_Stop
+	glow_stop(p.obj) // Glow_Stop
 	p.money = 0       // Money_Reset
 	p.counter = {fade = 0x20} // MoneyCounter_Reset: hidden until it fades in
 	player_shields_reset(s, p, true)
 	player_regen_interrupt(p)
 	overload_clear(p)
 	player_reset_sprite(s, p)
-	calculate_dimensions(s, &p.obj)
+	calculate_dimensions(s, p.obj)
 	player_reset_position(s, p)
 	p.state, p.state_time = .Entering, time
 	p.visibility = s.defs.perm_floats[PF_PLAYER_APPEARS_INITIAL]
@@ -137,7 +203,7 @@ player_level_reset :: proc (s: ^State, p: ^Player, time: i32) {
 }
 
 // G_Player::Priv_ResetPosition.
-player_reset_position :: proc "contextless" (s: ^State, p: ^Player) {
+player_reset_position :: proc "contextless" (s: ^State, p: Player) {
 	d := player_def(s, p)
 	if p.game_type == .Single {
 		p.loc = {f32(d.entry_solo_start_x), f32(d.entry_solo_start_y)}
@@ -148,12 +214,12 @@ player_reset_position :: proc "contextless" (s: ^State, p: ^Player) {
 }
 
 // G_Player::Priv_Appear.
-player_appear :: proc(s: ^State, p: ^Player, time: i32) {
+player_appear :: proc(s: ^State, p: Player, time: i32) {
 	if !p.active {
 		return
 	}
 	player_reset_sprite(s, p)
-	calculate_dimensions(s, &p.obj)
+	calculate_dimensions(s, p.obj)
 	player_reset_position(s, p)
 	// The overload state is cleared here, but not the shields and not
 	// invulnerability: a player is invulnerable from the moment it is
@@ -180,11 +246,11 @@ player_appear :: proc(s: ^State, p: ^Player, time: i32) {
 	// still holds the last one's x2..x10 and needs its icon back: eg_reset
 	// disposed it. After a death the multiplier is 1 and nothing spawns.
 	player_multiplier_spawn(s, p)
-	weapons_appear(s, &p.weapons, false)
+	weapons_appear(s, p.weapons, false)
 }
 
 // G_Player::Priv_ProcessState.
-player_process_state :: proc(s: ^State, p: ^Player, time: i32) {
+player_process_state :: proc(s: ^State, p: Player, time: i32) {
 	if !p.active {
 		return
 	}
@@ -225,7 +291,7 @@ player_process_state :: proc(s: ^State, p: ^Player, time: i32) {
 }
 
 // G_Player::Process: input and state so far.
-player_process :: proc(s: ^State, p: ^Player, time: i32, input: Buttons, film: ^Film) {
+player_process :: proc(s: ^State, p: Player, time: i32, input: Buttons, film: ^Film) {
 	if !p.active {
 		return
 	}
@@ -265,19 +331,19 @@ player_process :: proc(s: ^State, p: ^Player, time: i32, input: Buttons, film: ^
 			p.inputs = input
 		}
 	}
-	do_scaling(&p.obj)
+	do_scaling(p.obj)
 	player_overload_process(s, p, time)
-	adjust_visibility_and_tinting(&p.obj)
+	adjust_visibility_and_tinting(p.obj)
 	if p.appeared && p.visibility == p.visibility_target {
 		p.appeared = false
 	}
-	calculate_dimensions(s, &p.obj)
-	glow_process(&p.obj)
+	calculate_dimensions(s, p.obj)
+	glow_process(p.obj)
 	if p.state != .Playing {
 		return
 	}
 	if p.scale == 1 {
-		result, changed := weapons_process(s, &p.weapons, p.loc,
+		result, changed := weapons_process(s, p.weapons, p.loc,
 			.Fire_Ground in p.inputs, .Fire_Air in p.inputs, .Change_Air in p.inputs, time)
 		if changed {
 			player_sprite_from_weapon(s, p)
@@ -304,7 +370,7 @@ player_process :: proc(s: ^State, p: ^Player, time: i32, input: Buttons, film: ^
 // The movement half of G_Player::Process: accelerate with the controls,
 // decelerate without them, bank, move, clamp to the play area and steer the
 // crosshair.
-player_move :: proc(s: ^State, p: ^Player, time: i32) {
+player_move :: proc(s: ^State, p: Player, time: i32) {
 	d := player_def(s, p)
 	up, right := .Up in p.inputs, .Right in p.inputs
 	down, left := .Down in p.inputs, .Left in p.inputs
@@ -409,7 +475,7 @@ player_move :: proc(s: ^State, p: ^Player, time: i32) {
 	if p.weapons.crosshair_shown {
 		// A ground weapon firing backwards is pulled in by pushing against
 		// the top of the screen instead of the bottom.
-		backwards := ground_fires_backwards(s, &p.weapons)
+		backwards := ground_fires_backwards(s, p.weapons)
 		pull, pinned := down, at_bottom
 		if backwards {
 			pull, pinned = up, at_top
@@ -428,7 +494,7 @@ player_move :: proc(s: ^State, p: ^Player, time: i32) {
 			}
 		}
 		gw := weapon_def(s, p.weapons.ground.weapon)
-		c := &p.weapons.crosshair
+		c := p.weapons.crosshair
 		loc := Vec{f32(gw.crosshair_x_offset) + p.loc.x, f32(p.crosshair_reach) + f32(gw.crosshair_y_offset) + p.loc.y}
 		half := halve(c.dims.y)
 		if backwards {
@@ -444,6 +510,6 @@ player_move :: proc(s: ^State, p: ^Player, time: i32) {
 	}
 }
 
-player_in_play :: #force_inline proc "contextless" (p: ^Player) -> bool {
+player_in_play :: #force_inline proc "contextless" (p: Player) -> bool {
 	return p.state == .Playing
 }

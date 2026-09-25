@@ -216,12 +216,17 @@ layout_elems :: proc(elem: ^runtime.Type_Info, elem_size, count, base: int) -> b
 // never recycles one that is never destroyed, so these are their ids.
 SESSION_ENTITY :: ecs.EntityID(1)
 FIRST_PLAYER_ENTITY :: 2
-FIRST_GROUP_ENTITY :: FIRST_PLAYER_ENTITY + MAX_PLAYERS
+FIRST_CROSSHAIR_ENTITY :: FIRST_PLAYER_ENTITY + MAX_PLAYERS
+FIRST_GROUP_ENTITY :: FIRST_CROSSHAIR_ENTITY + MAX_PLAYERS
 FIRST_POOL_ENTITY :: FIRST_GROUP_ENTITY + MAX_GROUPS
 FIXED_ENTITIES :: FIRST_POOL_ENTITY + MAX_ENTITIES - 1
 
 player_entity :: #force_inline proc "contextless" (i: i32) -> ecs.EntityID {
 	return ecs.EntityID(FIRST_PLAYER_ENTITY + i)
+}
+
+crosshair_entity :: #force_inline proc "contextless" (i: i32) -> ecs.EntityID {
+	return ecs.EntityID(FIRST_CROSSHAIR_ENTITY + i)
 }
 
 group_entity :: #force_inline proc "contextless" (i: i32) -> ecs.EntityID {
@@ -314,8 +319,8 @@ components_of :: proc "contextless" (e: ^Ecs, id: ecs.EntityID) -> (m: Component
 // component, so no in-between archetype is made.
 //
 // Each archetype reserves rows for as many entities as could ever share it
-// (Component_Type.rows) when it is made, so no later move reallocates its
-// columns: a pointer to one entity's component stays good while another
+// (the least Component_Type.rows of its components) when it is made, so no
+// later move reallocates its columns: a pointer to one entity's component stays good while another
 // entity spawns into the same archetype, which the sim does mid-step.
 ecs_set_components :: proc(e: ^Ecs, id: ecs.EntityID, mask: Component_Mask) {
 	w := e.world
@@ -325,12 +330,13 @@ ecs_set_components :: proc(e: ^Ecs, id: ecs.EntityID, mask: Component_Mask) {
 	if !found {
 		sig: [MAX_COMPONENTS]ecs.ComponentID
 		n := 0
-		rows := 0
+		rows := max(int)
 		for c in mask {
 			sig[n] = cid_of(c)
 			n += 1
-			rows = max(rows, catalog[c].rows)
+			rows = min(rows, catalog[c].rows)
 		}
+		rows = mask == {} ? 0 : rows
 		to = ecs.get_or_create_archetype(w, sig[:n])
 		for &col in to.columns {
 			reserve(&col.data, rows * col.elem_size)

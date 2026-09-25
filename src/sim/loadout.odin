@@ -136,10 +136,10 @@ loadout_begin :: proc(s: ^State, input: Frame_Input) -> bool {
 	title := l.title
 	l^ = {shown = true, title = title}
 	any := false
-	for &p, i in s.players {
-		l.choosing[i] = reward_chooser(&p)
+	for p, i in players_of(s) {
+		l.choosing[i] = reward_chooser(p)
 		if l.choosing[i] {
-			loadout_board_init(s, &l.boards[i], &p.weapons)
+			loadout_board_init(s, &l.boards[i], p.weapons)
 			any = true
 		}
 	}
@@ -306,7 +306,7 @@ loadout_step :: proc(s: ^State, input: Frame_Input) -> bool {
 	}
 	for i in 0 ..< MAX_PLAYERS {
 		if l.choosing[i] {
-			loadout_apply(s, &s.players[i], &l.boards[i])
+			loadout_apply(s, player_at(s, i), &l.boards[i])
 		}
 	}
 	l.active = false
@@ -315,8 +315,8 @@ loadout_step :: proc(s: ^State, input: Frame_Input) -> bool {
 
 // Hands a board's choices to the player. The weapon flown is kept if it is
 // still in the loadout, else the first slot's is taken up.
-loadout_apply :: proc(s: ^State, p: ^Player, b: ^Loadout_Board) {
-	h := &p.weapons
+loadout_apply :: proc(s: ^State, p: Player, b: ^Loadout_Board) {
+	h := p.weapons
 	h.spare = NO_WEAPON
 	n := 0
 	for w in b.cells[.Spare][:b.width[.Spare]] {

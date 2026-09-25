@@ -59,7 +59,7 @@ level_end_draw :: proc(r: ^Renderer, s: ^sim.State, scale: f32) {
 		text_preset_draw(r, text[data.Text_Preset.GroundAccuracyCount], line, VIEW_X, scale, l.fade)
 	}
 
-	for &p in s.players {
+	for p in sim.players_of(s) {
 		m := &p.counter
 		if p.state != .Playing || m.state == 0 || m.fade >= 0x20 {
 			continue

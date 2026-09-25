@@ -46,10 +46,10 @@ beam_fixture :: proc(t: ^testing.T, f: ^Beam_Fixture) -> bool {
 	f.s = new(sim.State, alloc)
 	context.allocator = alloc // the state's world goes in the arena too
 	sim.init(f.s, sim.Session{seed = 1, level_id = f.defs.levels[0].id, game_type = .Single, loadout = true}, &f.defs)
-	for i := 0; i < 300 && f.s.players[0].state != .Playing; i += 1 {
+	for i := 0; i < 300 && sim.player_at(f.s, 0).state != .Playing; i += 1 {
 		sim.session_step(f.s, {})
 	}
-	return testing.expect(t, f.s.players[0].state == .Playing, "the ship must be in play")
+	return testing.expect(t, sim.player_at(f.s, 0).state == .Playing, "the ship must be in play")
 }
 
 // A stationary target in the air (the mine) at `loc` with `shields`.
@@ -116,7 +116,7 @@ discharge_beam_carries_leftover_damage :: proc(t: ^testing.T) {
 		return
 	}
 	s := f.s
-	h := &s.players[0].weapons
+	h := sim.player_at(s, 0).weapons
 	wd := &f.defs.weapons[f.db]
 	at := sim.Vec{208, 420}
 	far := beam_target(t, s, at + {0, -240}, 5)
@@ -161,7 +161,7 @@ discharge_beam_leaves_the_screen :: proc(t: ^testing.T) {
 		return
 	}
 	s.beams.count = 0
-	sim.beam_fire(s, &s.players[0].weapons, wd, {8, 420}, 2, wd.beam.width, false, sim.single(s, sim.Clock).time)
+	sim.beam_fire(s, sim.player_at(s, 0).weapons, wd, {8, 420}, 2, wd.beam.width, false, sim.single(s, sim.Clock).time)
 	testing.expect(t, one.deleted)
 	testing.expect(t, s.beams.count == 1 && s.beams.events[0].to_y < 0)
 }
@@ -176,7 +176,7 @@ discharge_beam_release_scales_with_charge :: proc(t: ^testing.T) {
 		return
 	}
 	s := f.s
-	h := &s.players[0].weapons
+	h := sim.player_at(s, 0).weapons
 	wd := &f.defs.weapons[f.db]
 	at := sim.Vec{208, 420}
 	top := wd.powerup_air_max_power_level
@@ -204,9 +204,9 @@ discharge_beam_fires_from_the_button :: proc(t: ^testing.T) {
 		return
 	}
 	s := f.s
-	p := &s.players[0]
+	p := sim.player_at(s, 0)
 	p.weapons.loadout[0] = f.db
-	sim.change_weapon(s, &p.weapons, sim.WEP_AIR, f.db)
+	sim.change_weapon(s, p.weapons, sim.WEP_AIR, f.db)
 	pulses, charged := 0, 0
 	for i in 0 ..< 120 {
 		sim.session_step(s, {i < 100 ? {.Fire_Air} : {}, {}})

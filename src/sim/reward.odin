@@ -44,7 +44,7 @@ reward_grid_columns :: proc "contextless" (count: i32) -> i32 {
 	return clamp(count, 1, REWARD_MAX_COLUMNS)
 }
 
-reward_chooser :: #force_inline proc "contextless" (p: ^Player) -> bool {
+reward_chooser :: #force_inline proc "contextless" (p: Player) -> bool {
 	return p.active && p.state != .Gone
 }
 
@@ -62,8 +62,8 @@ reward_begin :: proc(s: ^State, input: Frame_Input) -> bool {
 	r := single(s, Reward)
 	r^ = {}
 	choosers: i32
-	for &p, i in s.players {
-		r.choosing[i] = reward_chooser(&p)
+	for p, i in players_of(s) {
+		r.choosing[i] = reward_chooser(p)
 		choosers += r.choosing[i] ? 1 : 0
 	}
 	if choosers == 0 {
@@ -76,7 +76,7 @@ reward_begin :: proc(s: ^State, input: Frame_Input) -> bool {
 		if !passive_available(s.defs, pa, next, s.session.loadout) {
 			continue
 		}
-		for &p, i in s.players {
+		for p, i in players_of(s) {
 			if r.choosing[i] && !passive_maxed(&p.passives, pa) {
 				pool[n] = pa
 				n += 1
@@ -107,7 +107,7 @@ reward_begin :: proc(s: ^State, input: Frame_Input) -> bool {
 // them, and not locked by another player.
 reward_selectable :: proc "contextless" (s: ^State, player: int, k: i32) -> bool {
 	r := single(s, Reward)
-	if k < 0 || k >= r.count || passive_maxed(&s.players[player].passives, r.options[k]) {
+	if k < 0 || k >= r.count || passive_maxed(passive_levels(s, player), r.options[k]) {
 		return false
 	}
 	for j in 0 ..< MAX_PLAYERS {
@@ -198,7 +198,7 @@ reward_step :: proc(s: ^State, input: Frame_Input) -> bool {
 	}
 	for i in 0 ..< MAX_PLAYERS {
 		if r.choosing[i] && r.locked[i] {
-			s.players[i].passives[r.options[r.cursor[i]]] += 1
+			player_at(s, i).passives[r.options[r.cursor[i]]] += 1
 		}
 	}
 	r.active = false

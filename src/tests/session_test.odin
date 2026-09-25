@@ -35,7 +35,7 @@ play_session :: proc(defs: ^sim.Defs, start: sim.Level_ID, max_steps: int, alloc
 	append(&r.levels_seen, sim.single(s, sim.Level_Info).number)
 	steps: i32 = 0
 	for _ in 0 ..< max_steps {
-		for &p in s.players {
+		for p in sim.players_of(s) {
 			p.invulnerable_always = true
 			p.invulnerable = true
 		}

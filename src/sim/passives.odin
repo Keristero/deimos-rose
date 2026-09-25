@@ -271,7 +271,7 @@ scale_f32 :: proc "contextless" (base: f32, pct: i32) -> f32 {
 }
 
 player_stat :: #force_inline proc "contextless" (s: ^State, player: i32, stat: Stat, weapon: Res_ID = NONE) -> Stat_Total {
-	return stat_total(&s.players[player].passives, stat, weapon)
+	return stat_total(passive_levels(s, player), stat, weapon)
 }
 
 // A weapon stat for the weapon at index `weapon` in Defs.weapons.
@@ -279,7 +279,7 @@ weapon_stat :: proc "contextless" (s: ^State, player: i32, weapon: i32, stat: St
 	if weapon == NO_WEAPON || player < 0 {
 		return {}
 	}
-	return stat_total(&s.players[player].passives, stat, s.defs.weapons[weapon].id)
+	return stat_total(passive_levels(s, player), stat, s.defs.weapons[weapon].id)
 }
 
 passive_maxed :: #force_inline proc "contextless" (levels: ^Passive_Levels, pa: Passive) -> bool {
@@ -324,7 +324,7 @@ weapon_passive_tag :: proc "contextless" (s: ^State, player: i32, weapon: i32) -
 	}
 	id := s.defs.weapons[weapon].id
 	for &def, pa in PASSIVES {
-		if def.weapon == id && s.players[player].passives[pa] > 0 {
+		if def.weapon == id && player_at(s, player).passives[pa] > 0 {
 			return passive_tag(pa)
 		}
 	}
@@ -341,7 +341,7 @@ step_hz :: #force_inline proc "contextless" (s: ^State) -> i32 {
 // Ship passives.
 
 // active_velocity_delta, scaled by Maneuverability.
-player_acceleration :: proc "contextless" (s: ^State, p: ^Player, base: f32) -> f32 {
+player_acceleration :: proc "contextless" (s: ^State, p: Player, base: f32) -> f32 {
 	return scale_f32(base, player_stat(s, p.number, .Maneuverability).percent)
 }
 
@@ -355,7 +355,7 @@ RISKY_REWARD_SECONDS :: 20
 @(private = "file") SITE_RISKY_Y :: Site(0xe0000002)
 
 // Once a step for a player in play: shield regeneration and the risky reward.
-player_passives_process :: proc(s: ^State, p: ^Player, time: i32) {
+player_passives_process :: proc(s: ^State, p: Player, time: i32) {
 	if p.state != .Playing {
 		return
 	}
@@ -376,7 +376,7 @@ player_passives_process :: proc(s: ^State, p: ^Player, time: i32) {
 // eight times the rate per step, and each step_hz of it is one eighth, so a
 // rate of r percent a second is exactly r percent every step_hz steps.
 @(private = "file")
-player_regen_process :: proc(s: ^State, p: ^Player) {
+player_regen_process :: proc(s: ^State, p: Player) {
 	if !player_stat(s, p.number, .Shield_Regenerates).enabled {
 		return
 	}
@@ -397,12 +397,12 @@ player_regen_process :: proc(s: ^State, p: ^Player) {
 }
 
 // Damage restarts the wait before shields regenerate.
-player_regen_interrupt :: #force_inline proc "contextless" (p: ^Player) {
+player_regen_interrupt :: #force_inline proc "contextless" (p: Player) {
 	p.regen_wait, p.regen_acc = 0, 0
 }
 
 // For presentation: whether the ship's shields are refilling this step.
-player_regenerating :: proc "contextless" (s: ^State, p: ^Player) -> bool {
+player_regenerating :: proc "contextless" (s: ^State, p: Player) -> bool {
 	if p.state != .Playing || p.shields >= 100 || !player_stat(s, p.number, .Shield_Regenerates).enabled {
 		return false
 	}
@@ -411,8 +411,8 @@ player_regenerating :: proc "contextless" (s: ^State, p: ^Player) -> bool {
 
 // For presentation: how far an air charge has climbed past the weapon's own
 // maximum, 0 at or below it and 1 at the raised one.
-player_overcharge :: proc "contextless" (s: ^State, p: ^Player) -> f32 {
-	h := &p.weapons
+player_overcharge :: proc "contextless" (s: ^State, p: Player) -> f32 {
+	h := p.weapons
 	if h.air_powerup.state != 1 && h.air_powerup.state != 2 || h.air.weapon == NO_WEAPON {
 		return 0
 	}
@@ -713,7 +713,7 @@ passive_damage :: proc "contextless" (s: ^State, e: ^Entity, base: f32) -> f32 {
 	if !ok || e.owner_player < 0 || e.owner_player >= MAX_PLAYERS {
 		return base
 	}
-	return scale_f32(base, stat_total(&s.players[e.owner_player].passives, .Projectile_Damage, PASSIVES[pa].weapon).percent)
+	return scale_f32(base, stat_total(passive_levels(s, e.owner_player), .Projectile_Damage, PASSIVES[pa].weapon).percent)
 }
 
 // Accelerating shots leave at the scaled initial speed and speed up by
@@ -730,7 +730,7 @@ passive_entity_init :: proc(s: ^State, e: ^Entity, time: i32) {
 	if !ok || e.owner_player < 0 || e.owner_player >= MAX_PLAYERS {
 		return
 	}
-	levels := &s.players[e.owner_player].passives
+	levels := passive_levels(s, e.owner_player)
 	w := PASSIVES[pa].weapon
 	u := unit_of(s, e)
 	if u.player_projectile {
@@ -814,7 +814,7 @@ passive_spawn_child :: proc(s: ^State, e: ^Entity, set: ^Spawn_Set_Def) -> bool 
 	if !ok || e.owner_player < 0 || e.owner_player >= MAX_PLAYERS || !unit_is_projectile(s, set.spawn) {
 		return false
 	}
-	levels := &s.players[e.owner_player].passives
+	levels := passive_levels(s, e.owner_player)
 	w := PASSIVES[pa].weapon
 	extra := stat_total(levels, .Extra_Projectiles, w).extra
 	side := stat_total(levels, .Side_Firing_Volley, w).enabled

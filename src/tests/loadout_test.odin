@@ -96,7 +96,7 @@ no_loadout_screen_on_the_first_level :: proc(t: ^testing.T) {
 	s := new(sim.State, context.temp_allocator)
 	defer sim.destroy(s)
 	sim.init(s, sim.Session{seed = 3, level_id = defs.levels[0].id, game_type = .Single, loadout = true}, defs)
-	h := &s.players[0].weapons
+	h := sim.player_at(s, 0).weapons
 	testing.expect_value(t, h.loadout, [sim.LOADOUT_SLOTS]i32{WAIR, sim.NO_WEAPON, sim.NO_WEAPON})
 	testing.expect_value(t, h.air.weapon, WAIR)
 	for _ in 0 ..< 10_000 {
@@ -173,7 +173,7 @@ loadout_screen_places_new_weapons :: proc(t: ^testing.T) {
 		sim.session_step(s, {})
 	}
 	testing.expect(t, !sim.single(s, sim.Loadout).active, "the screen must close once everyone is ready")
-	h := &s.players[0].weapons
+	h := sim.player_at(s, 0).weapons
 	testing.expect_value(t, h.loadout, [sim.LOADOUT_SLOTS]i32{WAI4, WAI2, WAI3})
 	testing.expect_value(t, h.spare[0], WAIR)
 	// The weapon flown went to the spares, so the first slot's is taken up.
@@ -214,7 +214,7 @@ loadout_keeps_the_weapon_flown :: proc(t: ^testing.T) {
 	for i := 0; sim.single(s, sim.Loadout).active && i < sim.REWARD_RESUME_DELAY + 2; i += 1 {
 		sim.session_step(s, {})
 	}
-	h := &s.players[0].weapons
+	h := sim.player_at(s, 0).weapons
 	testing.expect_value(t, h.loadout, [sim.LOADOUT_SLOTS]i32{WAIR, WAI4, WAI3})
 	testing.expect_value(t, h.spare[0], WAI2)
 	testing.expect_value(t, sim.air_weapon_shown(h), WAIR)
@@ -344,7 +344,7 @@ aimed_volley_turns_towards_an_air_enemy :: proc(t: ^testing.T) {
 	s := new(sim.State, context.temp_allocator)
 	defer sim.destroy(s)
 	sim.init(s, sim.Session{seed = 1, level_id = defs.levels[0].id, game_type = .Single, loadout = true}, &defs)
-	for i := 0; i < 300 && s.players[0].state != .Playing; i += 1 {
+	for i := 0; i < 300 && sim.player_at(s, 0).state != .Playing; i += 1 {
 		sim.session_step(s, {})
 	}
 	at := sim.Vec{208, 400}
@@ -368,7 +368,7 @@ aimed_volley_turns_towards_an_air_enemy :: proc(t: ^testing.T) {
 			before[e.number] = true
 		}
 	}
-	sim.aimed_release_spawn(s, &s.players[0].weapons, &defs.weapons[cg], at)
+	sim.aimed_release_spawn(s, sim.player_at(s, 0).weapons.handler, &defs.weapons[cg], at)
 	aim := sim.aimed_intercept(target.loc - at, target.vel, defs.units[shot].initial_speed_max)
 	want := sim.invert_angle(sim.angle_from_vector(aim))
 	testing.expect(t, want > 20 && want < 70, "the aim must be up and to the right")

@@ -47,7 +47,6 @@ State :: struct {
 	session:      Session,
 	defs:         ^Defs,
 	ecs:          ^Ecs,
-	players:      [MAX_PLAYERS]Player,
 	world:        World,
 	sounds:       Sound_Queue,    // this step's sound events, for presentation
 	particles:    Particle_Queue, // this step's particle bursts, for presentation
@@ -111,6 +110,10 @@ init :: proc(s: ^State, session: Session, defs: ^Defs, log: ^Draw_Log = nil, eve
 	s.events = events
 	s.draws = log
 	add_singletons(s)
+	for i in 0 ..< i32(MAX_PLAYERS) {
+		ecs_set_components(s.ecs, player_entity(i), player_components())
+		ecs_set_components(s.ecs, crosshair_entity(i), crosshair_components())
+	}
 	single(s, Rng).next = session.seed
 	level := level_by_id(defs, session.level_id)
 	if level == nil {
@@ -118,8 +121,8 @@ init :: proc(s: ^State, session: Session, defs: ^Defs, log: ^Draw_Log = nil, eve
 		return
 	}
 	single(s, Level_Info).number = level.number
-	for i in 0 ..< MAX_PLAYERS {
-		player_setup(s, &s.players[i], i32(i), session.game_type)
+	for i in 0 ..< i32(MAX_PLAYERS) {
+		player_setup(s, player_at(s, i), i, session.game_type)
 	}
 	level_start(s)
 }
@@ -188,8 +191,8 @@ level_start :: proc(s: ^State) {
 	acc.reward_this_level = acc.perfect_level
 	acc.perfect_level = false
 	single(s, Level_Info).played += 1
-	for &p in s.players {
-		player_level_reset(s, &p, 0)
+	for p in players_of(s) {
+		player_level_reset(s, p, 0)
 	}
 	single(s, Debris).count = 0 // G_Debris_ResetAtLevelStart
 	bgnd_reset(s, level_def(s))
@@ -348,7 +351,7 @@ clear_step_events :: proc "contextless" (s: ^State) {
 // one frame per step they spend in play.
 step :: proc(s: ^State, input: Frame_Input, film: ^Film = nil) {
 	clear_step_events(s)
-	if !single(s, Game_Status).player1_seen_playing && s.players[0].state == .Playing {
+	if !single(s, Game_Status).player1_seen_playing && player_at(s, 0).state == .Playing {
 		single(s, Game_Status).player1_seen_playing = true
 	}
 	// G_Notice_Process, G_Particle_Process and G_MotionBlur_Process do not
@@ -356,12 +359,12 @@ step :: proc(s: ^State, input: Frame_Input, film: ^Film = nil) {
 	notice_process(s)
 	debris_process(s)
 	for i in 0 ..< MAX_PLAYERS {
-		player_process(s, &s.players[i], single(s, Clock).time, input[i], film)
+		player_process(s, player_at(s, i), single(s, Clock).time, input[i], film)
 	}
 	// G_ScoreBar_Process is presentation.
 
 	any_in_game := false
-	for &p in s.players {
+	for p in players_of(s) {
 		if p.active {
 			any_in_game = true
 		}
@@ -424,33 +427,6 @@ checksum_fields :: proc "contextless" (s: ^State) -> Hasher {
 	h := hasher()
 	mix :: proc "contextless" (h: ^Hasher, v: u64) {
 		hash_u64(h, v)
-	}
-	for &p in s.players {
-		mix(&h, u64(p.active ? 1 : 0))
-		mix(&h, u64(p.state))
-		mix(&h, u64(transmute(u32)p.loc.x))
-		mix(&h, u64(transmute(u32)p.loc.y))
-	}
-	// Easy mode's own state. Only then: a session without it hashes as it
-	// always has.
-	if s.session.easy {
-		for &p in s.players {
-			for lv in p.passives {
-				mix(&h, u64(lv))
-			}
-			mix(&h, u64(p.regen_wait) | u64(p.regen_acc) << 32)
-		}
-	}
-	// New Weapons' own state, likewise only then.
-	if s.session.loadout {
-		for &p in s.players {
-			for w in p.weapons.loadout {
-				mix(&h, u64(u32(w)))
-			}
-			for w in p.weapons.spare {
-				mix(&h, u64(u32(w)))
-			}
-		}
 	}
 	w := &s.world
 	mix(&h, u64(w.used_count))

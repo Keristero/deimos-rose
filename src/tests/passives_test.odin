@@ -222,11 +222,11 @@ reward_screen_takes_every_players_choice :: proc(t: ^testing.T) {
 	testing.expect_value(t, tr, sim.Level_Transition.Advanced)
 	testing.expect(t, !rw.active)
 	testing.expect_value(t, sim.single(s, sim.Level_Info).number, 2)
-	testing.expect_value(t, s.players[0].passives[want0], 1)
-	testing.expect_value(t, s.players[1].passives[want1], 1)
+	testing.expect_value(t, sim.player_at(s, 0).passives[want0], 1)
+	testing.expect_value(t, sim.player_at(s, 1).passives[want1], 1)
 	total := 0
-	for p in s.players {
-		for lv in p.passives {
+	for i in 0 ..< sim.MAX_PLAYERS {
+		for lv in sim.passive_levels(s, i) {
 			total += int(lv)
 		}
 	}
@@ -255,7 +255,7 @@ reward_options_are_one_more_than_the_players :: proc(t: ^testing.T) {
 	testing.expect(t, !sim.single(s, sim.Reward).choosing[1], "an absent player does not choose")
 	// A passive already at its top level for the only chooser is not offered.
 	sim.init(s, sim.Session{seed = 11, level_id = defs.levels[0].id, game_type = .Single, easy = true}, defs)
-	s.players[0].passives = #partial {.Improved_Manoeuvring = 2, .Auto_Charge = 2, .Improved_Charge = 3}
+	sim.player_at(s, 0).passives = #partial {.Improved_Manoeuvring = 2, .Auto_Charge = 2, .Improved_Charge = 3}
 	play_to_level_end(s)
 	testing.expect_value(t, sim.single(s, sim.Reward).count, 1)
 	testing.expect_value(t, sim.single(s, sim.Reward).options[0], sim.Passive.Shield_Regen)
@@ -267,7 +267,7 @@ shields_regenerate_after_the_recharge_delay :: proc(t: ^testing.T) {
 	s := new(sim.State, context.temp_allocator)
 	defer sim.destroy(s)
 	sim.init(s, sim.Session{seed = 1, level_id = defs.levels[0].id, game_type = .Single, easy = true}, defs)
-	p := &s.players[0]
+	p := sim.player_at(s, 0)
 	p.state = .Playing
 	p.shields = 50
 	p.passives[.Shield_Regen] = 1 // after 30 s, 1% a second
@@ -351,7 +351,9 @@ rollback_session_converges_through_the_reward_screen :: proc(t: ^testing.T) {
 		}
 		for p in 0 ..< 2 {
 			net.rollback_session_advance(&rs[p], inputs[p][i])
-			if i % 5 == 4 {
+			// Drop every fifth send, but not the last: nothing sends after
+			// it, so each side would end on its own guess at that frame.
+			if i % 5 == 4 && i < FRAMES - 1 {
 				continue
 			}
 			win: [WINDOW]sim.Buttons
@@ -374,13 +376,13 @@ rollback_session_converges_through_the_reward_screen :: proc(t: ^testing.T) {
 	testing.expect(t, reward_frames > 0, "test never opened the reward screen")
 	for p in 0 ..< 2 {
 		taken := 0
-		for lv in states[0].players[p].passives {
+		for lv in sim.player_at(states[0], p).passives {
 			taken += int(lv)
 		}
 		testing.expectf(t, taken == 2, "player %d took %d passives over two reward screens", p + 1, taken)
 	}
-	testing.expect_value(t, states[0].players[0].passives, states[1].players[0].passives)
-	testing.expect_value(t, states[0].players[1].passives, states[1].players[1].passives)
+	testing.expect_value(t, sim.player_at(states[0], 0).passives, sim.player_at(states[1], 0).passives)
+	testing.expect_value(t, sim.player_at(states[0], 1).passives, sim.player_at(states[1], 1).passives)
 	testing.expect_value(t, sim.single(states[0], sim.Level_Info).number, sim.single(states[1], sim.Level_Info).number)
 	testing.expect_value(t, sim.checksum(states[0]), sim.checksum(states[1]))
 }
@@ -422,7 +424,7 @@ weapon_passives_shape_the_real_weapons :: proc(t: ^testing.T) {
 		return
 	}
 	out, before: [64]sim.Weapon_Spawn
-	p := &s.players[0]
+	p := sim.player_at(s, 0)
 
 	ion := index(&defs, sim.WEAPON_ION_CANNON)
 	if !testing.expect(t, ion >= 0, "no Ion Cannon in the data") {

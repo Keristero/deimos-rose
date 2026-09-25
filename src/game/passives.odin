@@ -121,11 +121,11 @@ passive_particles_step :: proc(p: ^Particles, s: ^sim.State, r: ^Renderer) {
 	if !s.session.easy || sim.session_frozen(s) {
 		return
 	}
-	for &pl, i in s.players {
+	for pl, i in sim.players_of(s) {
 		if pl.state != .Playing {
 			continue
 		}
-		if sim.player_regenerating(s, &pl) && sim.single(s, sim.Clock).time % REGEN_EVERY == 0 {
+		if sim.player_regenerating(s, pl) && sim.single(s, sim.Clock).time % REGEN_EVERY == 0 {
 			a := rand.float32() * 2 * math.PI
 			from := pl.loc + sim.Vec{math.cos(a), math.sin(a)} * REGEN_RADIUS
 			shade := colour5(accent_color(int(r.accents[i].hue)))
@@ -138,7 +138,7 @@ passive_particles_step :: proc(p: ^Particles, s: ^sim.State, r: ^Renderer) {
 				fade   = REGEN_FADE,
 			})
 		}
-		if over := sim.player_overcharge(s, &pl); over > 0 {
+		if over := sim.player_overcharge(s, pl); over > 0 {
 			n := int(math.ceil(over * SPARK_MAX))
 			for _ in 0 ..< n {
 				a := rand.float32() * 2 * math.PI

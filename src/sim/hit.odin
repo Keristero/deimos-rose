@@ -43,7 +43,7 @@ entity_hit :: proc(s: ^State, e: ^Entity, damage: f32, player: i32, time: i32) -
 	}
 	if e.shields <= 0 {
 		if player >= 0 && player < MAX_PLAYERS {
-			player_score(s, &s.players[player], u.score, false)
+			player_score(s, player_at(s, player), u.score, false)
 		}
 		if !e.has_depletion_state {
 			entity_destroy(s, e, player, time)
@@ -114,7 +114,7 @@ collide_entities :: proc(s: ^State, e, o: ^Entity, time: i32) {
 
 // G_Player::Score_Adjust. `flat` bonuses bypass the multiplier and reset the
 // extra-life step.
-player_score :: proc(s: ^State, p: ^Player, n: i32, flat: bool) {
+player_score :: proc(s: ^State, p: Player, n: i32, flat: bool) {
 	if !p.active {
 		return
 	}
@@ -135,7 +135,7 @@ player_score :: proc(s: ^State, p: ^Player, n: i32, flat: bool) {
 }
 
 // G_Player::Lives_Add.
-player_add_life :: proc(s: ^State, p: ^Player, announce: bool) {
+player_add_life :: proc(s: ^State, p: Player, announce: bool) {
 	if !p.active {
 		return
 	}

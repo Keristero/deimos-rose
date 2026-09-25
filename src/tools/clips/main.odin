@@ -105,12 +105,12 @@ clip :: proc(r: ^game.Renderer, defs: ^sim.Defs, state: ^sim.State, root, id, ou
 	game.flow_start_session(&fl, SEED, .Single, max(int(wd.minimum_level_available) - 1, 0))
 	sim.single(state, sim.Loadout).shown = true
 	fl.mode = .Playing
-	p := &state.players[0]
+	p := sim.player_at(state, 0)
 	if ground {
-		sim.change_weapon(state, &p.weapons, sim.WEP_GROUND, i32(wi))
+		sim.change_weapon(state, p.weapons, sim.WEP_GROUND, i32(wi))
 	} else {
 		p.weapons.loadout[0] = i32(wi)
-		sim.change_weapon(state, &p.weapons, sim.WEP_AIR, i32(wi))
+		sim.change_weapon(state, p.weapons, sim.WEP_AIR, i32(wi))
 		sim.player_sprite_from_weapon(state, p)
 	}
 

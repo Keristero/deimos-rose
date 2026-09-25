@@ -344,7 +344,7 @@ cache_owner_offsets :: proc(s: ^State, e: ^Entity) {
 		owner = entity_at(s, e.owner.index).loc
 		found = true
 	} else if e.owner_player != -1 {
-		p := &s.players[e.owner_player]
+		p := player_at(s, e.owner_player)
 		if p.state == .Playing {
 			owner, found = p.loc, true
 		}

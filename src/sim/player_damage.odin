@@ -18,12 +18,12 @@ package sim
 // back off exactly. Whole numbers pass through unchanged; a hit's fractional
 // loss does not. Adding and subtracting in f32 rounds the sum once, as the
 // store does.
-shields_set :: proc "contextless" (p: ^Player, pct: f32) {
+shields_set :: proc "contextless" (p: Player, pct: f32) {
 	p.shields = (pct + SHIELDS_OFFSET) - SHIELDS_OFFSET
 }
 
 // G_Player::Shields_Reset.
-player_shields_reset :: proc "contextless" (s: ^State, p: ^Player, full: bool) {
+player_shields_reset :: proc "contextless" (s: ^State, p: Player, full: bool) {
 	if p.active && full {
 		shields_set(p, f32(player_def(s, p).default_shield_percentage))
 	} else if !p.active {
@@ -35,7 +35,7 @@ player_shields_reset :: proc "contextless" (s: ^State, p: ^Player, full: bool) {
 }
 
 // G_Player::Shields_IncreasePercentage.
-player_shields_add :: proc "contextless" (s: ^State, p: ^Player, pct: f32) {
+player_shields_add :: proc "contextless" (s: ^State, p: Player, pct: f32) {
 	if !p.active || pct == 0 {
 		return
 	}
@@ -49,7 +49,7 @@ player_shields_add :: proc "contextless" (s: ^State, p: ^Player, pct: f32) {
 }
 
 // G_Player::Hit.
-player_hit :: proc(s: ^State, p: ^Player, damage: f32, time: i32) {
+player_hit :: proc(s: ^State, p: Player, damage: f32, time: i32) {
 	d := player_def(s, p)
 	if p.state != .Playing || p.hit_time + d.shield_hit_delay > time {
 		return
@@ -69,7 +69,7 @@ player_hit :: proc(s: ^State, p: ^Player, damage: f32, time: i32) {
 		player_destroy(s, p, time)
 		return
 	}
-	glow_start(&p.obj, color_1555(d.hit_glow_color), d.hit_glow_speed, false)
+	glow_start(p.obj, color_1555(d.hit_glow_color), d.hit_glow_speed, false)
 	if damage <= 0 {
 		return
 	}
@@ -93,7 +93,7 @@ player_hit :: proc(s: ^State, p: ^Player, damage: f32, time: i32) {
 }
 
 // G_Player::Destroy: the player dies, spilling its money as coins.
-player_destroy :: proc(s: ^State, p: ^Player, time: i32) {
+player_destroy :: proc(s: ^State, p: Player, time: i32) {
 	dispose_players_children(s, p.number)
 	d := player_def(s, p)
 	if d.death_spawn != NONE {
@@ -131,7 +131,7 @@ player_destroy :: proc(s: ^State, p: ^Player, time: i32) {
 }
 
 // G_Player::Multiplier_Advance: 1, 2, 3, 4, 5, then 10.
-player_multiplier_advance :: proc(s: ^State, p: ^Player) {
+player_multiplier_advance :: proc(s: ^State, p: Player) {
 	if p.state != .Playing {
 		return
 	}
@@ -148,7 +148,7 @@ player_multiplier_advance :: proc(s: ^State, p: ^Player) {
 
 // G_Player::Priv_Multiplier_SpawnForCurrentMultiplier: the icon that shows
 // the current multiplier (perm objects 0x23..0x27).
-player_multiplier_spawn :: proc(s: ^State, p: ^Player) {
+player_multiplier_spawn :: proc(s: ^State, p: Player) {
 	if p.state != .Playing {
 		return
 	}
@@ -219,7 +219,7 @@ dispose_players_children :: proc "contextless" (s: ^State, player: i32) {
 
 // FUN_0041c1b0: a player touches a pickup. Returns whether the pickup is
 // consumed (the caller then destroys it).
-player_collect :: proc(s: ^State, p: ^Player, e: ^Entity) -> bool {
+player_collect :: proc(s: ^State, p: Player, e: ^Entity) -> bool {
 	u := unit_of(s, e)
 	switch u.pickup_type {
 	case res_id("air "), res_id("grnd"):
@@ -238,7 +238,7 @@ player_collect :: proc(s: ^State, p: ^Player, e: ^Entity) -> bool {
 	case res_id("coin"):
 		if u.pickup_value != 0 {
 			p.money += u.pickup_value
-			glow_start(&p.obj, 0x7fff, 6, false) // a white flash (FUN_0041c1b0)
+			glow_start(p.obj, 0x7fff, 6, false) // a white flash (FUN_0041c1b0)
 		}
 	case res_id("mult"):
 		player_multiplier_advance(s, p)
@@ -249,7 +249,7 @@ player_collect :: proc(s: ^State, p: ^Player, e: ^Entity) -> bool {
 // G_Player::PowerupOverload_Process: while an air power-up is overloaded the
 // player flashes and a warning sounds at a shrinking interval; after
 // `powerupOverload_NumWarnings` warnings the player is destroyed.
-player_overload_process :: proc(s: ^State, p: ^Player, time: i32) {
+player_overload_process :: proc(s: ^State, p: Player, time: i32) {
 	if p.state != .Playing {
 		if p.overloaded {
 			overload_clear(p)
@@ -302,7 +302,7 @@ player_overload_process :: proc(s: ^State, p: ^Player, time: i32) {
 }
 
 // G_Player::PowerupOverload_Reset.
-overload_clear :: proc "contextless" (p: ^Player) {
+overload_clear :: proc "contextless" (p: Player) {
 	p.overloaded = false
 	p.overload_rising = false
 	p.overload_time = 0
@@ -314,7 +314,7 @@ overload_clear :: proc "contextless" (p: ^Player) {
 }
 
 // The overload start in G_Player::Process, when the weapon handler reports it.
-player_overload_begin :: proc "contextless" (s: ^State, p: ^Player, time: i32) {
+player_overload_begin :: proc "contextless" (s: ^State, p: Player, time: i32) {
 	d := player_def(s, p)
 	p.overloaded = true
 	p.overload_rising = true

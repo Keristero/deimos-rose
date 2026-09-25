@@ -551,7 +551,7 @@ dps_run :: proc(d: ^sim.Defs, w: Weapon_Case, sc: Scenario, levels: sim.Passive_
 	defer free(s)
 	defer sim.destroy(s)
 	sim.init(s, sim.Session{seed = SEED, level_id = d.levels[0].id, game_type = .Single}, d)
-	p := &s.players[0]
+	p := sim.player_at(s, 0)
 	for i := 0; i < ENTRY_STEPS && p.state != .Playing; i += 1 {
 		sim.session_step(s, {})
 	}
@@ -559,7 +559,7 @@ dps_run :: proc(d: ^sim.Defs, w: Weapon_Case, sc: Scenario, levels: sim.Passive_
 		return
 	}
 	p.passives = levels
-	h := &p.weapons
+	h := p.weapons
 	sim.change_weapon(s, h, w.ground ? sim.WEP_GROUND : sim.WEP_AIR, w.index)
 	sim.player_sprite_from_weapon(s, p)
 	for _ in 0 ..< SETTLE_STEPS {
@@ -666,7 +666,7 @@ dps_run :: proc(d: ^sim.Defs, w: Weapon_Case, sc: Scenario, levels: sim.Passive_
 // Where the ground crosshair stands, ahead and turned round, at the ship's
 // current reach: the sums in player.odin's crosshair update. Turned round
 // it is half the reach behind the ship, kept on screen at the bottom.
-ground_aim :: proc(s: ^sim.State, p: ^sim.Player) -> (fwd, back: sim.Vec) {
+ground_aim :: proc(s: ^sim.State, p: sim.Player) -> (fwd, back: sim.Vec) {
 	gw := &s.defs.weapons[p.weapons.ground.weapon]
 	half := f32(sim.halve(p.weapons.crosshair.dims.y))
 	x := f32(gw.crosshair_x_offset) + p.loc.x
