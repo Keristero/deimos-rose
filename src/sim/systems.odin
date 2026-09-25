@@ -10,11 +10,12 @@ import "base:runtime"
 // order is the original's. The core registers its systems in
 // register_core_systems; a plugin registers its own from its own @(init).
 //
-// A step's entities are processed entity by entity, as G_EG_Process does:
-// every stage for one entity, then every stage for the next. The stages
-// are systems of their own kind (Entity_Stage), run in their own order for
-// each entity. Running one stage over all entities before the next would
-// change the order of the random draws, and so everything after.
+// A step's players and entities are processed one at a time, as
+// G_Player::Process and G_EG_Process do: every stage for one, then every
+// stage for the next. The stages are systems of their own kinds
+// (Player_Stage, Entity_Stage), run in their own order for each player or
+// entity. Running one stage over all of them before the next would change
+// the order of the random draws, and so everything after.
 
 MAX_SYSTEMS :: 64
 MAX_STAGES :: 64
@@ -51,6 +52,21 @@ System :: struct {
 	while_frozen: bool,
 }
 
+// One player's pass through the stages.
+Player_Step :: struct {
+	time:  i32,
+	input: Buttons,
+	film:  ^Film,
+}
+
+// A stage returns false when the player is done for this step.
+Player_Stage :: struct {
+	name:   string,
+	after:  []string,
+	before: []string,
+	run:    proc(s: ^State, p: Player, ps: ^Player_Step) -> bool,
+}
+
 // One entity's pass through the stages, and what the stages hand each
 // other.
 Entity_Step :: struct {
@@ -77,6 +93,10 @@ systems: [MAX_SYSTEMS]System
 @(private = "file")
 system_count: int
 @(private = "file")
+player_stages: [MAX_STAGES]Player_Stage
+@(private = "file")
+player_stage_count: int
+@(private = "file")
 stages: [MAX_STAGES]Entity_Stage
 @(private = "file")
 stage_count: int
@@ -86,6 +106,12 @@ system_register :: proc(sys: System) {
 	assert(system_count < MAX_SYSTEMS, "sim: too many systems")
 	systems[system_count] = sys
 	system_count += 1
+}
+
+player_stage_register :: proc(stage: Player_Stage) {
+	assert(player_stage_count < MAX_STAGES, "sim: too many player stages")
+	player_stages[player_stage_count] = stage
+	player_stage_count += 1
 }
 
 entity_stage_register :: proc(stage: Entity_Stage) {
@@ -98,6 +124,10 @@ registered_systems :: proc "contextless" () -> []System {
 	return systems[:system_count]
 }
 
+registered_player_stages :: proc "contextless" () -> []Player_Stage {
+	return player_stages[:player_stage_count]
+}
+
 registered_entity_stages :: proc "contextless" () -> []Entity_Stage {
 	return stages[:stage_count]
 }
@@ -105,34 +135,34 @@ registered_entity_stages :: proc "contextless" () -> []Entity_Stage {
 // The systems and stages a session runs, in order, by registry index.
 // Fixed for the session, so it is the same on every peer.
 Schedule :: struct {
-	systems:      [MAX_SYSTEMS]u8,
-	system_count: u8,
-	stages:       [MAX_STAGES]u8,
-	stage_count:  u8,
+	systems:            [MAX_SYSTEMS]u8,
+	system_count:       u8,
+	player_stages:      [MAX_STAGES]u8,
+	player_stage_count: u8,
+	stages:             [MAX_STAGES]u8,
+	stage_count:        u8,
 }
 
 // Orders the registered systems and stages. A cycle is a bug in whoever
 // registered them, found the first time any session starts.
 schedule_build :: proc(sched: ^Schedule) {
-	items := make([]Order_Item, max(system_count, stage_count), context.temp_allocator)
-	for sys, i in systems[:system_count] {
-		items[i] = {sys.name, sys.after, sys.before}
+	sched.system_count = order_registered(systems[:system_count], sched.systems[:])
+	sched.player_stage_count = order_registered(player_stages[:player_stage_count], sched.player_stages[:])
+	sched.stage_count = order_registered(stages[:stage_count], sched.stages[:])
+}
+
+@(private = "file")
+order_registered :: proc(registered: []$T, out: []u8) -> u8 {
+	items := make([]Order_Item, len(registered), context.temp_allocator)
+	for r, i in registered {
+		items[i] = {r.name, r.after, r.before}
 	}
-	order, ok := schedule(items[:system_count], context.temp_allocator)
-	assert(ok, "sim: the systems' order has a cycle")
+	order, ok := schedule(items, context.temp_allocator)
+	assert(ok, "sim: a cycle in the order of the registered systems")
 	for idx, i in order {
-		sched.systems[i] = u8(idx)
+		out[i] = u8(idx)
 	}
-	sched.system_count = u8(system_count)
-	for st, i in stages[:stage_count] {
-		items[i] = {st.name, st.after, st.before}
-	}
-	order, ok = schedule(items[:stage_count], context.temp_allocator)
-	assert(ok, "sim: the entity stages' order has a cycle")
-	for idx, i in order {
-		sched.stages[i] = u8(idx)
-	}
-	sched.stage_count = u8(stage_count)
+	return u8(len(order))
 }
 
 // Runs the session's systems of the given kinds, in order.
@@ -144,6 +174,16 @@ run_systems :: proc(s: ^State, step: ^Step, kinds: bit_set[System_Kind]) {
 		}
 		sys.run(s, step)
 		if step.done {
+			return
+		}
+	}
+}
+
+// Runs the session's player stages on one player, in order, until one says
+// the player is done.
+run_player_stages :: proc(s: ^State, p: Player, ps: ^Player_Step) {
+	for idx in s.schedule.player_stages[:s.schedule.player_stage_count] {
+		if !player_stages[idx].run(s, p, ps) {
 			return
 		}
 	}
@@ -183,6 +223,15 @@ register_core_systems :: proc "contextless" () {
 	system_register({name = "reward_open", kind = .Session, run = reward_open_system})
 	system_register({name = "loadout_open", kind = .Session, run = loadout_open_system})
 	system_register({name = "level_transition", kind = .Session, run = level_transition_system, while_frozen = true})
+
+	// G_Player::Process for one player, in the original's order.
+	player_stage_register({name = "defence_bonus", run = defence_bonus_stage})
+	player_stage_register({name = "player_state", run = player_state_stage})
+	player_stage_register({name = "read_input", run = read_input_stage})
+	player_stage_register({name = "player_look", run = player_look_stage})
+	player_stage_register({name = "fire", run = fire_stage})
+	player_stage_register({name = "player_passives", run = player_passives_stage})
+	player_stage_register({name = "player_move", run = player_move_stage})
 
 	// G_EG_Process's body for one entity, in the original's order.
 	entity_stage_register({name = "appear", run = appear_stage})

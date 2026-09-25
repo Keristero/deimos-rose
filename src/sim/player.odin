@@ -290,15 +290,21 @@ player_process_state :: proc(s: ^State, p: Player, time: i32) {
 	}
 }
 
-// G_Player::Process: input and state so far.
+// G_Player::Process, stage by stage (systems.odin). Only an active player
+// is processed, and only one in play fires and moves.
 player_process :: proc(s: ^State, p: Player, time: i32, input: Buttons, film: ^Film) {
 	if !p.active {
 		return
 	}
-	// The defence bonus, before Priv_ProcessState: once the level is ending
-	// (DAT_004e4855), a player who took no damage this level (this[0xcc]
-	// still clear) gets the "Notice - Defence Bonus" at their ship and
-	// level * perm float 0xb8 points. Setting the flag makes it once only.
+	ps := Player_Step{time = time, input = input, film = film}
+	run_player_stages(s, p, &ps)
+}
+
+// The defence bonus, before Priv_ProcessState: once the level is ending
+// (DAT_004e4855), a player who took no damage this level (this[0xcc] still
+// clear) gets the "Notice - Defence Bonus" at their ship and level * perm
+// float 0xb8 points. Setting the flag makes it once only.
+defence_bonus_stage :: proc(s: ^State, p: Player, ps: ^Player_Step) -> bool {
 	if single(s, Level_Info).ending && !p.defence_spawned {
 		p.defence_spawned = true
 		if d := player_def(s, p); d.active_defence_bonus_object != NONE {
@@ -309,62 +315,89 @@ player_process :: proc(s: ^State, p: Player, time: i32, input: Buttons, film: ^F
 		}
 		player_score(s, p, single(s, Level_Info).number * trunc_i32(s.defs.perm_floats[0xb8]), false)
 	}
-	player_process_state(s, p, time)
-	// Priv_GetInputs: only a player in play reads input, so a film is
-	// consumed one frame per step spent in state 4 -- not one per step.
-	if p.state == .Playing {
-		p.inputs = {}
-		if film != nil {
-			n := single(s, Film_Cursor).reads[p.number]
-			if int(n) < len(film.frames) {
-				p.inputs = film.frames[n][p.number]
-			}
-			// G_Film::GetInputs reads while cursor <= frames, so it is
-			// called frames + 1 times; the last read yields nothing.
-			if int(n) <= len(film.frames) {
-				single(s, Film_Cursor).reads[p.number] += 1
-			}
-			if p.number == 0 && s.draws != nil {
-				s.draws.frame = u32(single(s, Film_Cursor).reads[0])
-			}
-		} else {
-			p.inputs = input
-		}
+	return true
+}
+
+player_state_stage :: proc(s: ^State, p: Player, ps: ^Player_Step) -> bool {
+	player_process_state(s, p, ps.time)
+	return true
+}
+
+// Priv_GetInputs: only a player in play reads input, so a film is consumed
+// one frame per step spent in state 4 -- not one per step.
+read_input_stage :: proc(s: ^State, p: Player, ps: ^Player_Step) -> bool {
+	if p.state != .Playing {
+		return true
 	}
+	p.inputs = {}
+	if ps.film != nil {
+		n := single(s, Film_Cursor).reads[p.number]
+		if int(n) < len(ps.film.frames) {
+			p.inputs = ps.film.frames[n][p.number]
+		}
+		// G_Film::GetInputs reads while cursor <= frames, so it is
+		// called frames + 1 times; the last read yields nothing.
+		if int(n) <= len(ps.film.frames) {
+			single(s, Film_Cursor).reads[p.number] += 1
+		}
+		if p.number == 0 && s.draws != nil {
+			s.draws.frame = u32(single(s, Film_Cursor).reads[0])
+		}
+	} else {
+		p.inputs = ps.input
+	}
+	return true
+}
+
+// Scale, overload glow, visibility, size and glow. A player out of play
+// stops here.
+player_look_stage :: proc(s: ^State, p: Player, ps: ^Player_Step) -> bool {
 	do_scaling(p.obj)
-	player_overload_process(s, p, time)
+	player_overload_process(s, p, ps.time)
 	adjust_visibility_and_tinting(p.obj)
 	if p.appeared && p.visibility == p.visibility_target {
 		p.appeared = false
 	}
 	calculate_dimensions(s, p.obj)
 	glow_process(p.obj)
-	if p.state != .Playing {
-		return
+	return p.state == .Playing
+}
+
+// The weapons fire, at full size only; holding a charge too long overloads.
+fire_stage :: proc(s: ^State, p: Player, ps: ^Player_Step) -> bool {
+	if p.scale != 1 {
+		return true
 	}
-	if p.scale == 1 {
-		result, changed := weapons_process(s, p.weapons, p.loc,
-			.Fire_Ground in p.inputs, .Fire_Air in p.inputs, .Change_Air in p.inputs, time)
-		if changed {
-			player_sprite_from_weapon(s, p)
-		}
-		switch result {
-		case .Overload:
-			if p.state == .Playing && !single(s, Level_Info).ending && !p.overloaded {
-				player_overload_begin(s, p, time)
-			}
-		case .Released:
-			p.overloaded = false
-			p.overload_rising = false
-			p.overload_time, p.overload_interval, p.overload_warnings = 0, 0, 0
-			p.colorise = false
-			p.tint, p.tint_target, p.tint_delta = 0, 0, 0
-			p.tint_color = 0x7fff
-		case .None:
-		}
+	result, changed := weapons_process(s, p.weapons, p.loc,
+		.Fire_Ground in p.inputs, .Fire_Air in p.inputs, .Change_Air in p.inputs, ps.time)
+	if changed {
+		player_sprite_from_weapon(s, p)
 	}
-	player_passives_process(s, p, time)
-	player_move(s, p, time)
+	switch result {
+	case .Overload:
+		if p.state == .Playing && !single(s, Level_Info).ending && !p.overloaded {
+			player_overload_begin(s, p, ps.time)
+		}
+	case .Released:
+		p.overloaded = false
+		p.overload_rising = false
+		p.overload_time, p.overload_interval, p.overload_warnings = 0, 0, 0
+		p.colorise = false
+		p.tint, p.tint_target, p.tint_delta = 0, 0, 0
+		p.tint_color = 0x7fff
+	case .None:
+	}
+	return true
+}
+
+player_passives_stage :: proc(s: ^State, p: Player, ps: ^Player_Step) -> bool {
+	player_passives_process(s, p, ps.time)
+	return true
+}
+
+player_move_stage :: proc(s: ^State, p: Player, ps: ^Player_Step) -> bool {
+	player_move(s, p, ps.time)
+	return true
 }
 
 // The movement half of G_Player::Process: accelerate with the controls,

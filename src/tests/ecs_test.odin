@@ -222,6 +222,13 @@ registered_systems_name_only_registered_systems :: proc(t: ^testing.T) {
 	_, ok := sim.schedule(items[:], context.temp_allocator)
 	testing.expect(t, ok, "the systems' order has a cycle")
 	clear(&items)
+	for st in sim.registered_player_stages() {
+		append(&items, sim.Order_Item{st.name, st.after, st.before})
+	}
+	testing.expect_value(t, len(sim.schedule_unknown(items[:], context.temp_allocator)), 0)
+	_, ok = sim.schedule(items[:], context.temp_allocator)
+	testing.expect(t, ok, "the player stages' order has a cycle")
+	clear(&items)
 	for st in sim.registered_entity_stages() {
 		append(&items, sim.Order_Item{st.name, st.after, st.before})
 	}
