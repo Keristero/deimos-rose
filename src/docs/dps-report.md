@@ -15,6 +15,13 @@ Options:
 - `OUT=` sets the output directory.
 - `DPS_SECONDS=` sets the play measured per run (60 by default).
 - `DPS_STAGE=` sets the stage (7 by default).
+- `WEAPON=` measures one weapon alone, e.g.
+  `WEAPON='Rear Gun' mise run dps:report`. Case does not matter; an
+  unknown name lists the ones there are. It writes
+  `dps-YYYY-MM-DD-rear-gun.html` beside the full report rather than over
+  it, leaves out a set the weapon has nothing in (the Plasma Bomb's charge
+  shots), and takes about a second. Its numbers are the full report's for
+  that weapon, run for run: same seed, same jobs.
 
 A run takes about 8 s across 32 cores, which is 29,064 runs of 60 s of
 play each.

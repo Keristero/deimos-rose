@@ -362,13 +362,13 @@ odin run tools/recolour $DR_COLL $DR_LINK -out:$DR_BUILD/recolour$DR_EXT -- \
 """
 
 [tasks."dps:report"]
-description = "Measure every weapon's damage per second in the simulation alone -- against one target ahead, a cluster of five, one target behind and a killable wave of nine, bare and with each passive at each level, as primary fire and as charge shots -- and write a dated HTML report (OUT=../work/reports by default; DPS_SECONDS=60 of play per run, DPS_STAGE=7). See docs/dps-report.md"
+description = "Measure every weapon's damage per second in the simulation alone -- against one target ahead, a cluster of five, one target behind and a killable wave of nine, bare and with each passive at each level, as primary fire and as charge shots -- and write a dated HTML report (OUT=../work/reports by default; DPS_SECONDS=60 of play per run, DPS_STAGE=7). WEAPON='Rear Gun' measures that weapon alone and writes dps-<date>-rear-gun.html; the weapons are Ion Cannon, Bacta Gun, Rear Gun, Photon Beam, Chaingun, Discharge Beam and Plasma Bomb (case does not matter). See docs/dps-report.md"
 depends = ["setup"]
 # The sim only: no window, no audio device. Runs spread over every core.
 run = """
 odin build tools/dps $DR_COLL $DR_LINK -o:speed -out:$DR_BUILD/dps$DR_EXT && \
   "$DR_BUILD/dps$DR_EXT" "$DR_ASSETS" "${OUT:-$DR_SRC/../work/reports}" \
-  -seconds:${DPS_SECONDS:-60} -stage:${DPS_STAGE:-7}
+  -seconds:${DPS_SECONDS:-60} -stage:${DPS_STAGE:-7} ${WEAPON:+"-weapon:$WEAPON"}
 """
 
 [tasks."assets:verify"]

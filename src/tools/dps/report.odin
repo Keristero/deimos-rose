@@ -181,6 +181,9 @@ overall_order :: proc(sh: ^Shared, t: Table, m: Mode) -> []Overall {
 
 report_text :: proc(sh: ^Shared, t: Table) {
 	for m in Mode {
+		if len(weapon_order(sh, t, m)) == 0 {
+			continue
+		}
 		fmt.printfln("== %s (DPS over the whole run; best policy)", MODE_NAMES[m])
 		fmt.printfln("%-14s %22s %22s %22s %22s", "weapon", "single", "cluster", "behind", "wave")
 		for w in weapon_order(sh, t, m) {
@@ -356,15 +359,20 @@ report_html :: proc(sh: ^Shared, t: Table, date: string, seconds, stage: int) ->
 	b := strings.builder_make()
 	fmt.sbprintf(&b, "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n")
 	fmt.sbprintf(&b, "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n")
-	fmt.sbprintf(&b, "<title>Deimos Rose DPS %s</title>\n", date)
+	// A report on one weapon (-weapon) says which in its title.
+	of := len(sh.weapons) == 1 ? fmt.tprintf(": %s", esc(sh.weapons[0].name)) : ""
+	fmt.sbprintf(&b, "<title>Deimos Rose DPS %s%s</title>\n", date, of)
 	fmt.sbprintf(&b, "<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600&display=swap\">\n")
 	fmt.sbprintf(&b, "<style>%s</style>\n</head>\n<body>\n<main>\n", CSS)
-	fmt.sbprintf(&b, "<h1>Deimos Rose DPS report</h1>\n<p class=\"sub\">%s &middot; stage %d &middot; %d s of play per run &middot; %d runs</p>\n",
-		date, stage, seconds, len(sh.jobs))
+	fmt.sbprintf(&b, "<h1>Deimos Rose DPS report%s</h1>\n<p class=\"sub\">%s &middot; stage %d &middot; %d s of play per run &middot; %d runs</p>\n",
+		of, date, stage, seconds, len(sh.jobs))
 	fmt.sbprintf(&b, "<p class=\"sub\">Two sets, each over the same four scenarios: primary fire, which never builds a charge, and charge shots, which charge to full, release and repeat. Every DPS is the damage dealt over the whole %d s, divided by %d, so a charge shot's DPS includes the time spent charging it.</p>\n",
 		seconds, seconds)
 	fmt.sbprintf(&b, "<nav class=\"modes\">")
 	for m in Mode {
+		if len(weapon_order(sh, t, m)) == 0 {
+			continue
+		}
 		fmt.sbprintf(&b, "<a href=\"#%s\">%s</a>", MODE_ANCHORS[m], MODE_NAMES[m])
 	}
 	fmt.sbprintf(&b, "<a href=\"#method\">How it was measured</a></nav>\n")
@@ -378,6 +386,10 @@ report_html :: proc(sh: ^Shared, t: Table, date: string, seconds, stage: int) ->
 
 report_mode :: proc(b: ^strings.Builder, sh: ^Shared, t: Table, m: Mode) {
 	order := weapon_order(sh, t, m)
+	if len(order) == 0 {
+		// One weapon, and it has nothing in this set.
+		return
+	}
 	top := 0.0
 	for wi in order {
 		for sc in Scenario {
@@ -435,8 +447,8 @@ report_mode :: proc(b: ^strings.Builder, sh: ^Shared, t: Table, m: Mode) {
 	fmt.sbprintf(b, "</div>\n")
 
 	fmt.sbprintf(b, "<h3>Passives, averaged</h3>\n")
-	fmt.sbprintf(b, "<p class=\"sub\">The DPS each passive level adds, averaged over the %d weapons above and the four scenarios. A weapon passive changes only its own weapon, so that average spreads its gain over weapons it cannot touch; the next column averages over only the weapons it changes.</p>\n",
-		len(order))
+	fmt.sbprintf(b, "<p class=\"sub\">The DPS each passive level adds, averaged over the %s above and the four scenarios. A weapon passive changes only its own weapon, so that average spreads its gain over weapons it cannot touch; the next column averages over only the weapons it changes.</p>\n",
+		len(order) == 1 ? "weapon" : fmt.tprintf("%d weapons", len(order)))
 	fmt.sbprintf(b, "<div class=\"card scroll\">\n<table>\n<thead><tr><th>#</th><th>Passive</th><th class=\"n\">Average added</th><th class=\"n\">Where it applies</th><th class=\"n\">Weapons changed</th><th>Adds most to</th></tr></thead>\n<tbody>\n")
 	for o, rank in overall_order(sh, t, m) {
 		most := "&ndash;"

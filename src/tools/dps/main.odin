@@ -2,7 +2,11 @@
 // was read): how much damage each weapon deals, and how much each passive at
 // each of its levels adds to it, measured in the simulation alone.
 //
-//   dps <assets root> <out dir> [-seconds:N] [-stage:N] [-threads:N]
+//   dps <assets root> <out dir> [-seconds:N] [-stage:N] [-threads:N] [-weapon:NAME]
+//
+// -weapon limits the runs to one weapon, named as the report names it
+// ("Rear Gun"; case does not matter), and writes dps-YYYY-MM-DD-rear-gun.html
+// so the full report is not overwritten.
 //
 // Every run is a fresh sim.State on a copy of the stage with nothing placed
 // in it. Once the ship is in play the run gives it the weapon and the
@@ -182,13 +186,18 @@ Shared :: struct {
 
 main :: proc() {
 	if len(os.args) < 3 {
-		fmt.eprintln("usage: dps <assets root> <out dir> [-seconds:N] [-stage:N] [-threads:N]")
+		fmt.eprintln("usage: dps <assets root> <out dir> [-seconds:N] [-stage:N] [-threads:N] [-weapon:NAME]")
 		os.exit(2)
 	}
 	root, out_dir := os.args[1], os.args[2]
 	seconds, stage, threads := 60, 7, os.get_processor_core_count()
+	only := ""
 	for a in os.args[3:] {
 		key, _, val := strings.partition(a, ":")
+		if key == "-weapon" {
+			only = strings.trim_space(val)
+			continue
+		}
 		n, ok := strconv.parse_int(val)
 		if !ok || n < 1 {
 			fmt.eprintfln("dps: bad option %s", a)
@@ -232,6 +241,12 @@ main :: proc() {
 		steps = seconds * STEP_HZ,
 	}
 	sh.weapons = dps_weapons(&defs, alloc)
+	if only != "" {
+		ok: bool
+		if sh.weapons, ok = dps_only(sh.weapons, only); !ok {
+			os.exit(2)
+		}
+	}
 	sh.configs = dps_configs(alloc)
 	sh.jobs = dps_jobs(&sh, alloc)
 	sh.outcomes = make([]Outcome, len(sh.jobs), alloc)
@@ -267,7 +282,12 @@ main :: proc() {
 		fmt.eprintfln("dps: cannot make %s: %v", out_dir, err)
 		os.exit(1)
 	}
-	path := fmt.aprintf("%s/dps-%s.html", out_dir, date, allocator = alloc)
+	suffix := ""
+	if only != "" {
+		slug, _ := strings.replace_all(strings.to_lower(sh.weapons[0].name, context.temp_allocator), " ", "-", context.temp_allocator)
+		suffix = fmt.tprintf("-%s", slug)
+	}
+	path := fmt.aprintf("%s/dps-%s%s.html", out_dir, date, suffix, allocator = alloc)
 	if err := os.write_entire_file(path, transmute([]u8)html); err != nil {
 		fmt.eprintfln("dps: cannot write %s: %v", path, err)
 		os.exit(1)
@@ -404,6 +424,21 @@ dps_weapons :: proc(d: ^sim.Defs, alloc := context.allocator) -> []Weapon_Case {
 		return a.unlock != b.unlock ? a.unlock < b.unlock : a.index < b.index
 	})
 	return out[:]
+}
+
+// The one weapon named, as a slice of `ws`; or, naming none of them, a
+// message listing the names there are.
+dps_only :: proc(ws: []Weapon_Case, name: string) -> ([]Weapon_Case, bool) {
+	for &w, i in ws {
+		if strings.equal_fold(w.name, name) {
+			return ws[i:i + 1], true
+		}
+	}
+	fmt.eprintfln("dps: no weapon %q; the weapons are:", name)
+	for w in ws {
+		fmt.eprintfln("    %s", w.name)
+	}
+	return nil, false
 }
 
 // The baseline, then every level of every passive.
