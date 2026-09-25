@@ -698,3 +698,32 @@ so the beam can hit exactly what an air shot can.
 The weapon still charges through the ordinary power-up state machine. A
 beam weapon's release calls `beam_release` in place of the release spawn
 timing, so Improved Charge and Auto Charge apply unchanged.
+
+### D39 — The simulation's state lives in odecs, created once in a fixed order
+
+notes/ecs-refactor.md moves the sim to an entity component system: data in
+components, behaviour in systems, and new content in plugins that add their
+own of each. The ECS is odecs (NateTheGreatt/odecs), vendored unmodified in
+`third_party/odecs/` and held to the purity rule (D3).
+
+Why odecs rather than our own:
+- it is a small, plain Odin archetype ECS with typed queries, so systems
+  read as ordinary loops over component columns;
+- it takes an allocator, so a world can live in the session's arena like
+  the rest of the state;
+- it is MIT and small enough (about 3,500 lines) to vendor and read.
+
+odecs was not written for rollback, so the sim uses it under three rules:
+- **Every entity is created at world creation, in a fixed order, and never
+  destroyed.** The original has fixed pools (1,000 entities, 1,024 groups),
+  and `Entity_Ref` identifies a slot plus a spawn number. Spawning adds
+  components to a slot, and freeing removes them. So entity ids are the
+  same in every world, on every machine, and after every restore.
+- **No behaviour depends on archetype or row order.** odecs moves rows
+  when components come and go, and the rows' order depends on history. The
+  original's update order is its linked lists (groups in activation order,
+  entities in group order), and the RNG draws depend on it, so those lists
+  stay, as components, and anything order-sensitive walks them.
+- **Pointers into odecs never outlive a structural change.** Columns are
+  byte arrays that grow and swap-remove. A system that adds or removes
+  components re-fetches what it holds.
