@@ -75,7 +75,8 @@ weapon number five and unlocks at stage 7. Its ship is dark grey:
 
 - **Standard attack.** A press spawns `cgbs`, a spawner cloned from the
   turrets' `rgbs`. The spawner fires 10 of `cgbu`, the turrets' spinning
-  rice round, 2 steps apart. Each round draws its heading within ±8°
+  rice round, 2 steps apart. It draws `CGBU`, a copy of the round's `jgbu`
+  plate made 2.5 times as opaque (see Content). Each round draws its heading within ±8°
   (`initialHeadingTolerance`). The weapon's delay between launches is 30
   steps, where the others' is shorter.
 - **Charge attack.** Holding fire charges as the original's weapons do,
@@ -290,6 +291,12 @@ extra sprite index beside the game's own.
   recipe in `tools/recolour/extra.json`) writes the dark grey ships from the
   extracted Bacta Gun plates. Pixels in the green hue band keep 12% of their
   saturation and 60% of their value. `assets:all` runs it after extracting.
+- **Rounds.** `jgbu` is white at full value, a bright core in a halo
+  mostly 3-45% opaque, so a tint can only darken it. `tools/recolour`'s
+  `alpha` scale writes `CGBU` with every pixel 2.5 times as opaque.
+  `cgbu` and `cgpb` draw it, so both the standard and charge rounds stand
+  out against sand. Before and after were compared on `MENU=chaingun` and
+  `chaingun_charge`.
 - **Glows.** The charge glow and its particles reuse `jgli`, tinted
   A8A8A8, rather than a new plate.
 - **The Discharge Beam's records.** `pbbf` (the Photon Beam's muzzle

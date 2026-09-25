@@ -353,7 +353,7 @@ odin run tools/icons $DR_COLL $DR_LINK -out:$DR_BUILD/icons$DR_EXT -- \
 """
 
 [tasks."assets:extra"]
-description = "Recolour extracted sprite plates into the new content's own (RECIPE=tools/recolour/extra.json by default: the Chaingun's dark grey ships, from the Bacta Gun's). Writes assets/extra/sprites/, which the game loads beside its own sprites; the extra tree's records in assets/extra/data are written by hand"
+description = "Recolour extracted sprite plates into the new content's own (RECIPE=tools/recolour/extra.json by default: the Chaingun's dark grey ships, from the Bacta Gun's, and its brighter rounds). Writes assets/extra/sprites/, which the game loads beside its own sprites; the extra tree's records in assets/extra/data are written by hand"
 depends = ["setup"]
 # CPU-side raylib image calls only: no window and no audio device are opened.
 run = """

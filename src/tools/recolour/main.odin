@@ -8,7 +8,9 @@
 // A recipe lists plates to write. Each takes a plate of sprites/index.json,
 // and every pixel whose hue lies in [hue_min, hue_max] (degrees) has its
 // saturation and value scaled, and its hue turned by hue_shift (degrees,
-// 0 if left out); everything else, and the alpha, is kept:
+// 0 if left out); everything else is kept. `alpha`, if given, scales every
+// visible pixel's opacity, in the band or not: a white glow already at full
+// value can only look brighter by being more opaque (the Chaingun's rounds).
 //
 //   {"plates": [
 //     {"from": "PL1G", "to": "PL1K", "hue_min": 70, "hue_max": 170,
@@ -41,6 +43,7 @@ Plate :: struct {
 	saturation: f32,
 	value:      f32,
 	hue_shift:  f32,
+	alpha:      f32, // 0 (left out) keeps the alpha
 }
 
 Recipe :: struct {
@@ -130,6 +133,10 @@ main :: proc() {
 recolour :: proc(c: rl.Color, p: ^Plate) -> rl.Color {
 	if c.a == 0 {
 		return c
+	}
+	c := c
+	if p.alpha > 0 {
+		c.a = u8(clamp(f32(c.a) * p.alpha + 0.5, 1, 255))
 	}
 	hsv := rl.ColorToHSV(c)
 	if hsv.y < 0.05 || hsv.x < p.hue_min || hsv.x > p.hue_max {
