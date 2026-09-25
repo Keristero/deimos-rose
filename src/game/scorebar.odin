@@ -65,15 +65,15 @@ blend_alpha :: proc(blend: i32) -> u8 {
 // so a shot that presents only some steps still eases every one).
 scorebar_process :: proc(v: ^Scorebar_View, s: ^sim.State) {
 	pf := &s.defs.perm_floats
-	if !v.primed || s.level_number != v.level || s.time < v.time {
-		v^ = {primed = true, level = s.level_number, time = s.time}
+	if !v.primed || sim.single(s, sim.Level_Info).number != v.level || sim.single(s, sim.Clock).time < v.time {
+		v^ = {primed = true, level = sim.single(s, sim.Level_Info).number, time = sim.single(s, sim.Clock).time}
 		for &p, i in s.players[:2] {
 			v.players[i].active = p.active
 			v.players[i].was_active = p.active
 		}
 		return
 	}
-	for v.time < s.time {
+	for v.time < sim.single(s, sim.Clock).time {
 		v.time += 1
 		for &p, i in s.players[:2] {
 			sp := &v.players[i]

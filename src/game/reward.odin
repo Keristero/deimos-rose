@@ -76,7 +76,7 @@ window_rect :: proc(r: rl.Rectangle) -> rl.Rectangle {
 
 reward_draw :: proc(fl: ^Flow, r: ^Renderer) {
 	s := fl.state
-	rw := &s.reward
+	rw := sim.single(s, sim.Reward)
 	if !rw.active {
 		return
 	}

@@ -50,7 +50,7 @@ particle_burst :: proc "contextless" (s: ^State, loc: Vec, color: Color, size: R
 	}
 	ev := Particle_Event{loc = loc, color = color, size = size, ground = ground}
 	for i in 0 ..< n {
-		ev.shades[i] = u8(random_int(&s.rng, 0, 4, 0x42ee00))
+		ev.shades[i] = u8(roll_int(s, 0, 4, 0x42ee00))
 	}
 	record_event(s, Event{kind = .Burst, unit = size, loc = loc})
 	q := &s.particles
@@ -63,7 +63,7 @@ particle_burst :: proc "contextless" (s: ^State, loc: Vec, color: Color, size: R
 // G_Bgnd_MediaMask_GetSurfaceAtLoc: 1 for water, 0 otherwise. `x`, `y` are
 // map pixels.
 media_surface :: proc "contextless" (s: ^State, x, y: i32) -> i32 {
-	l := s.level
+	l := level_def(s)
 	if l.media_scale < 1 {
 		return 0
 	}
@@ -86,7 +86,7 @@ can_spawn_on_media :: proc(s: ^State, e: ^Entity) -> bool {
 		return true
 	}
 	x := trunc_i32(e.loc.x) + 32
-	y := s.bgnd.view_top + trunc_i32(e.loc.y)
+	y := single(s, Bgnd).view_top + trunc_i32(e.loc.y)
 	if media_surface(s, x, y) != 1 {
 		return true
 	}
@@ -95,9 +95,9 @@ can_spawn_on_media :: proc(s: ^State, e: ^Entity) -> bool {
 	case res_id("med "):
 		splash = s.defs.perm_objects[8]
 	case res_id("lara"):
-		splash = s.defs.perm_objects[random_int(&s.rng, 0, 1, 0x415ba7) == 0 ? 9 : 8]
+		splash = s.defs.perm_objects[roll_int(s, 0, 1, 0x415ba7) == 0 ? 9 : 8]
 	case res_id("mera"):
-		switch random_int(&s.rng, 0, 2, 0x415b4e) {
+		switch roll_int(s, 0, 2, 0x415b4e) {
 		case 0:
 			splash = s.defs.perm_objects[6]
 		case 1:
@@ -106,7 +106,7 @@ can_spawn_on_media :: proc(s: ^State, e: ^Entity) -> bool {
 			splash = s.defs.perm_objects[8]
 		}
 	case res_id("smra"):
-		splash = s.defs.perm_objects[random_int(&s.rng, 0, 1, 0x415afe) == 0 ? 7 : 6]
+		splash = s.defs.perm_objects[roll_int(s, 0, 1, 0x415afe) == 0 ? 7 : 6]
 	case res_id("larg"):
 		splash = s.defs.perm_objects[9]
 	case res_id("smal"):
@@ -163,7 +163,7 @@ entity_destroy :: proc(s: ^State, e: ^Entity, player: i32, time: i32) {
 	e.target_player = player
 	e.destroyed = true
 	if u.include_in_ground_accuracy_count {
-		s.accuracy_destroyed += 1
+		single(s, Accuracy).destroyed += 1
 	}
 	if u.destruct_release_random_bonus {
 		release_random_bonus(s, e)
@@ -179,15 +179,15 @@ release_random_bonus :: proc(s: ^State, e: ^Entity) {
 	pct :: proc "contextless" (pf: [PERM_FLOATS]f32, i: int) -> i32 {
 		return trunc_i32(pf[i])
 	}
-	r := random_int(&s.rng, 0, 100, 0x415427)
+	r := roll_int(s, 0, 100, 0x415427)
 	bonus := NONE
 	idx := -1
 	switch {
 	case r < pct(pf, 0xd1):
-		if s.accuracy_reward_this_level {
+		if single(s, Accuracy).reward_this_level {
 			if r < pct(pf, 0xda) {
 				bonus = s.defs.perm_objects[0x1e]
-				s.accuracy_reward_this_level = false
+				single(s, Accuracy).reward_this_level = false
 			} else {
 				bonus = s.defs.perm_objects[0x19]
 			}
@@ -208,7 +208,7 @@ release_random_bonus :: proc(s: ^State, e: ^Entity) {
 		idx = 0x1f
 	case r < pct(pf, 0xd8):
 		bonus = s.defs.perm_objects[0x20]
-	case s.level_number < pct(pf, 0xdb):
+	case single(s, Level_Info).number < pct(pf, 0xdb):
 		idx = 0x20
 	case r < pct(pf, 0xd9):
 		idx = 0x21

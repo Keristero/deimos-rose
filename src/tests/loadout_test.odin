@@ -52,7 +52,7 @@ WAI4 :: 4
 play_to_loadout :: proc(s: ^sim.State) -> bool {
 	for _ in 0 ..< 10_000 {
 		sim.session_step(s, {})
-		if s.loadout.active {
+		if sim.single(s, sim.Loadout).active {
 			return true
 		}
 	}
@@ -85,9 +85,9 @@ classic_selection_never_picks_new_weapons :: proc(t: ^testing.T) {
 		if sim.session_step(s, {}) != .None {
 			break
 		}
-		testing.expect(t, !s.loadout.active, "a loadout screen outside New Weapons")
+		testing.expect(t, !sim.single(s, sim.Loadout).active, "a loadout screen outside New Weapons")
 	}
-	testing.expect_value(t, s.level_number, 2)
+	testing.expect_value(t, sim.single(s, sim.Level_Info).number, 2)
 }
 
 @(test)
@@ -103,9 +103,9 @@ no_loadout_screen_on_the_first_level :: proc(t: ^testing.T) {
 		if sim.session_step(s, {}) != .None {
 			break
 		}
-		testing.expect(t, !s.loadout.active, "a loadout screen on the first level")
+		testing.expect(t, !sim.single(s, sim.Loadout).active, "a loadout screen on the first level")
 	}
-	testing.expect_value(t, s.level_number, 2)
+	testing.expect_value(t, sim.single(s, sim.Level_Info).number, 2)
 }
 
 @(test)
@@ -117,9 +117,9 @@ loadout_screen_places_new_weapons :: proc(t: ^testing.T) {
 	if !testing.expect(t, play_to_loadout(s), "the loadout screen must open on level 2") {
 		return
 	}
-	testing.expect_value(t, s.level_number, 2)
-	testing.expect(t, !s.loadout.choosing[1], "player 2 is not playing")
-	b := &s.loadout.boards[0]
+	testing.expect_value(t, sim.single(s, sim.Level_Info).number, 2)
+	testing.expect(t, !sim.single(s, sim.Loadout).choosing[1], "player 2 is not playing")
+	b := &sim.single(s, sim.Loadout).boards[0]
 	// Two new weapons go straight into the free slots; the third waits.
 	testing.expect_value(t, [3]i32{b.cells[.Slots][0], b.cells[.Slots][1], b.cells[.Slots][2]}, [3]i32{WAIR, WAI2, WAI3})
 	testing.expect_value(t, b.width[.Fresh], 1)
@@ -128,7 +128,7 @@ loadout_screen_places_new_weapons :: proc(t: ^testing.T) {
 	testing.expect_value(t, b.row, sim.Loadout_Row.Fresh)
 	testing.expect(t, !sim.loadout_can_ready(b))
 
-	time := s.time
+	time := sim.single(s, sim.Clock).time
 	// Pick up the new weapon, and a Fire_Ground puts it back.
 	press(s, {.Fire_Air})
 	testing.expect(t, b.holding)
@@ -167,12 +167,12 @@ loadout_screen_places_new_weapons :: proc(t: ^testing.T) {
 	testing.expect(t, !b.ready)
 	press(s, {.Fire_Air})
 	testing.expect(t, b.ready)
-	testing.expect_value(t, s.time, time) // the game stands still
+	testing.expect_value(t, sim.single(s, sim.Clock).time, time) // the game stands still
 
-	for i := 0; s.loadout.active && i < sim.REWARD_RESUME_DELAY + 2; i += 1 {
+	for i := 0; sim.single(s, sim.Loadout).active && i < sim.REWARD_RESUME_DELAY + 2; i += 1 {
 		sim.session_step(s, {})
 	}
-	testing.expect(t, !s.loadout.active, "the screen must close once everyone is ready")
+	testing.expect(t, !sim.single(s, sim.Loadout).active, "the screen must close once everyone is ready")
 	h := &s.players[0].weapons
 	testing.expect_value(t, h.loadout, [sim.LOADOUT_SLOTS]i32{WAI4, WAI2, WAI3})
 	testing.expect_value(t, h.spare[0], WAIR)
@@ -181,7 +181,7 @@ loadout_screen_places_new_weapons :: proc(t: ^testing.T) {
 	// The screen is shown once a stage.
 	for _ in 0 ..< 200 {
 		sim.session_step(s, {})
-		testing.expect(t, !s.loadout.active, "the loadout screen opened twice")
+		testing.expect(t, !sim.single(s, sim.Loadout).active, "the loadout screen opened twice")
 	}
 }
 
@@ -196,7 +196,7 @@ loadout_keeps_the_weapon_flown :: proc(t: ^testing.T) {
 	}
 	// Put the new weapon over the second slot and ready: the first slot's
 	// weapon, flown all along, stays selected rather than the new one.
-	b := &s.loadout.boards[0]
+	b := &sim.single(s, sim.Loadout).boards[0]
 	press(s, {.Fire_Air})
 	press(s, {.Down})
 	press(s, {.Right})
@@ -211,7 +211,7 @@ loadout_keeps_the_weapon_flown :: proc(t: ^testing.T) {
 	if !testing.expect(t, b.ready) {
 		return
 	}
-	for i := 0; s.loadout.active && i < sim.REWARD_RESUME_DELAY + 2; i += 1 {
+	for i := 0; sim.single(s, sim.Loadout).active && i < sim.REWARD_RESUME_DELAY + 2; i += 1 {
 		sim.session_step(s, {})
 	}
 	h := &s.players[0].weapons
@@ -293,18 +293,18 @@ chaingun_loads_as_new_content :: proc(t: ^testing.T) {
 	s := new(sim.State, context.temp_allocator)
 	defer sim.destroy(s)
 	sim.init(s, sim.Session{seed = 1, level_id = defs.levels[6].id, game_type = .Single, loadout = true}, &defs)
-	title := s.loadout.title
+	title := sim.single(s, sim.Loadout).title
 	testing.expect(t, sim.ref_valid(s, title), "stage 7 must show its title")
 	steps := 0
-	for ; steps < 2000 && !s.loadout.active; steps += 1 {
+	for ; steps < 2000 && !sim.single(s, sim.Loadout).active; steps += 1 {
 		sim.session_step(s, {})
 	}
-	if !testing.expect(t, s.loadout.active, "the loadout screen must open") {
+	if !testing.expect(t, sim.single(s, sim.Loadout).active, "the loadout screen must open") {
 		return
 	}
 	testing.expect(t, !sim.ref_valid(s, title), "the screen must wait for the title")
 	testing.expect(t, steps > 30)
-	b := &s.loadout.boards[0]
+	b := &sim.single(s, sim.Loadout).boards[0]
 	fresh := b.cells[.Fresh][:b.width[.Fresh]]
 	found := false
 	for c in fresh {

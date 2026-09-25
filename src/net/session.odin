@@ -101,7 +101,7 @@ resolve_remote_input :: proc(rs: ^Rollback_Session, frame: u32) -> sim.Buttons {
 // input (always exact) and the remote player's input (confirmed if it has
 // arrived, predicted otherwise). Call once per fixed-step tick.
 rollback_session_advance :: proc(rs: ^Rollback_Session, local_input: sim.Buttons) {
-	frame := rs.state.frame
+	frame := sim.frame_of(rs.state)
 	input_log_set(&rs.local_log, frame, local_input, true)
 	remote_input := resolve_remote_input(rs, frame)
 
@@ -129,7 +129,7 @@ rollback_session_receive :: proc(rs: ^Rollback_Session, pkt: Input_Packet) {
 		if slot.confirmed {
 			continue // a real peer never sends a different value for a frame twice
 		}
-		wrong_guess := frame <= rs.state.frame && slot.buttons != pkt.frames[i]
+		wrong_guess := frame <= sim.frame_of(rs.state) && slot.buttons != pkt.frames[i]
 		input_log_set(&rs.remote_log, frame, pkt.frames[i], true)
 		if int(frame) > rs.remote_confirmed_frame {
 			rs.remote_confirmed_frame = int(frame)
@@ -154,10 +154,10 @@ rollback_session_frame_advantage :: proc(rs: ^Rollback_Session) -> int {
 	if rs.remote_confirmed_frame < 0 {
 		return 0
 	}
-	return int(rs.state.frame) - rs.remote_confirmed_frame - 1
+	return int(sim.frame_of(rs.state)) - rs.remote_confirmed_frame - 1
 }
 
-// Phase 8 stage 5: whether the tick about to run at rs.state.frame should be
+// Phase 8 stage 5: whether the tick about to run at rs.state's frame should be
 // skipped entirely -- no sim advance -- so a peer confirmed to be running
 // behind (frame_advantage above) gets a chance to close the gap, rather than
 // the rollback prediction window growing without bound. Below threshold,
@@ -175,7 +175,7 @@ rollback_session_should_stall :: proc(rs: ^Rollback_Session, threshold, min_ever
 	}
 	over := advantage - threshold
 	every := max(threshold - over, min_every)
-	return rs.state.frame % u32(every) == 0
+	return sim.frame_of(rs.state) % u32(every) == 0
 }
 
 @(private = "file")
@@ -183,13 +183,13 @@ rollback_to :: proc(rs: ^Rollback_Session, frame: u32) {
 	if frame == 0 {
 		return // nothing precedes the first frame; nothing to roll back to
 	}
-	target := rs.state.frame // how far the mispredicted run had already reached
+	target := sim.frame_of(rs.state) // how far the mispredicted run had already reached
 	if !sim.snapshot_restore(&rs.ring, rs.state, frame - 1) {
 		return // frame-1 has aged out of the ring -- beyond ROLLBACK_DEPTH back, unrecoverable here
 	}
 	rs.rollback_count += 1
-	for rs.state.frame < target {
-		f := rs.state.frame
+	for sim.frame_of(rs.state) < target {
+		f := sim.frame_of(rs.state)
 		local := input_log_get(&rs.local_log, f).buttons // local input is never mispredicted
 		remote := resolve_remote_input(rs, f)
 		input: sim.Frame_Input
@@ -217,10 +217,10 @@ rollback_session_checksum_at :: proc(rs: ^Rollback_Session, frame: u32) -> (sum:
 // Input packet) -- the redundancy that lets that packet tolerate loss.
 // Returns the frame number of out[0] and how many entries were written.
 rollback_session_local_window :: proc(rs: ^Rollback_Session, window: int, out: []sim.Buttons) -> (start_frame: u32, count: int) {
-	if rs.state.frame == 0 {
+	if sim.frame_of(rs.state) == 0 {
 		return 0, 0 // nothing simulated yet
 	}
-	last := rs.state.frame - 1 // the most recent frame recorded by advance
+	last := sim.frame_of(rs.state) - 1 // the most recent frame recorded by advance
 	count = min(window, len(out), int(last) + 1)
 	start_frame = last + 1 - u32(count)
 	for i in 0 ..< count {

@@ -14,7 +14,7 @@ Film :: struct {
 // A film is finished once every player in it has read past its last frame
 // (G_Film::IsFinished), i.e. made frames + 1 reads.
 film_finished :: proc "contextless" (s: ^State, film: ^Film) -> bool {
-	return int(s.film_cursor[0]) > len(film.frames)
+	return int(single(s, Film_Cursor).reads[0]) > len(film.frames)
 }
 
 // Replay a film into `s` (State is large: callers own it, usually on the heap).

@@ -45,7 +45,7 @@ rollback_resimulation_matches_uninterrupted_play :: proc(t: ^testing.T) {
 		sim.step(s, inputs[i])
 		sim.snapshot_save(&ring, s)
 	}
-	testing.expect_value(t, s.frame, u32(30))
+	testing.expect_value(t, sim.frame_of(s), u32(30))
 
 	// Frame 1 is 29 frames behind frame 30, well outside the 16-deep ring:
 	// restoring it must fail and must not touch s.
@@ -55,7 +55,7 @@ rollback_resimulation_matches_uninterrupted_play :: proc(t: ^testing.T) {
 
 	// Frame 20 is only 10 frames behind and must still be there.
 	testing.expect(t, sim.snapshot_restore(&ring, s, 20), "frame 20 should still be in the ring")
-	testing.expect_value(t, s.frame, u32(20))
+	testing.expect_value(t, sim.frame_of(s), u32(20))
 	testing.expect_value(t, sim.checksum(s), ref[19])
 
 	// Resimulating from the restored frame 20 with the same inputs must
@@ -101,7 +101,7 @@ a_written_state_reads_back_and_plays_on_identically :: proc(t: ^testing.T) {
 	sim.snapshot_ring_init(&ring, 4, context.temp_allocator)
 	defer sim.snapshot_ring_destroy(&ring, context.temp_allocator)
 	sim.snapshot_save(&ring, a)
-	sum, ok := sim.snapshot_checksum(&ring, a.frame)
+	sum, ok := sim.snapshot_checksum(&ring, sim.frame_of(a))
 	testing.expect(t, ok)
 	testing.expect_value(t, sum, sim.checksum(a))
 
@@ -109,7 +109,7 @@ a_written_state_reads_back_and_plays_on_identically :: proc(t: ^testing.T) {
 	sim.state_write(a, &buf)
 	testing.expect(t, sim.state_read(b, buf[:]))
 	testing.expect_value(t, sim.checksum(b), sim.checksum(a))
-	testing.expect(t, b.defs == defs && b.level == a.level)
+	testing.expect(t, b.defs == defs && sim.level_def(b) == sim.level_def(a))
 	for i in 0 ..< 40 {
 		sim.session_step(a, press)
 		sim.session_step(b, press)

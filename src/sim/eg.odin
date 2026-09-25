@@ -122,7 +122,7 @@ group_size :: proc "contextless" (s: ^State, u: ^Unit) -> i32 {
 	}
 	n := lo
 	if lo != hi {
-		n = random_int(&s.rng, lo, hi, 0x41b68b)
+		n = roll_int(s, lo, hi, 0x41b68b)
 	}
 	count := n
 	for _ in 0 ..< n {
@@ -130,7 +130,7 @@ group_size :: proc "contextless" (s: ^State, u: ^Unit) -> i32 {
 		if p == 100 {
 			continue
 		}
-		if p != 0 && random_int(&s.rng, 0, 100, 0x41b6c6) <= p {
+		if p != 0 && roll_int(s, 0, 100, 0x41b6c6) <= p {
 			continue
 		}
 		count -= 1
@@ -158,7 +158,7 @@ count_of_unit :: proc "contextless" (s: ^State, id: Res_ID) -> (n: i32) {
 // G_EG_RequestSpawn. Returns a reference to the first entity spawned.
 eg_request_spawn :: proc(s: ^State, req: Spawn_Request) -> Entity_Ref {
 	w := &s.world
-	time := s.time
+	time := single(s, Clock).time
 	// Logged on entry, where the original's trace hook sits.
 	record_event(s, Event{kind = .Spawn, unit = req.unit, loc = req.loc})
 	ui := unit_index(s.defs, req.unit)
@@ -171,7 +171,7 @@ eg_request_spawn :: proc(s: ^State, req: Spawn_Request) -> Entity_Ref {
 		return NO_REF
 	}
 	// DAT_004e34aa is on unless toggled from the debug console.
-	if u.can_be_spawned_only_when_players_active && !(players_in_play(s) > 0 && !s.level_ending) {
+	if u.can_be_spawned_only_when_players_active && !(players_in_play(s) > 0 && !single(s, Level_Info).ending) {
 		return NO_REF
 	}
 	if u.do_not_spawn_if_type_already_exists && count_of_unit(s, req.unit) != 0 {
@@ -201,11 +201,11 @@ eg_request_spawn :: proc(s: ^State, req: Spawn_Request) -> Entity_Ref {
 
 	// A single entity with no owner outside the PERM group joins PERM.
 	gi: i32
-	single := count == 1
-	if single && req.owner.index != NO_LINK {
-		single = entity_at(s, req.owner.index).group == FIRST_GROUP_ID
+	alone := count == 1
+	if alone && req.owner.index != NO_LINK {
+		alone = entity_at(s, req.owner.index).group == FIRST_GROUP_ID
 	}
-	if single {
+	if alone {
 		gi = list_nth(&w.active, w.group_links[:], 0)
 		g := &w.groups[gi]
 		g.count = count
@@ -229,7 +229,7 @@ eg_request_spawn :: proc(s: ^State, req: Spawn_Request) -> Entity_Ref {
 	if !req.map_relative {
 		g.loc.y = req.loc.y
 	} else {
-		g.loc.y = f32(-(s.bgnd.view_top - trunc_i32(req.loc.y)))
+		g.loc.y = f32(-(single(s, Bgnd).view_top - trunc_i32(req.loc.y)))
 	}
 	heading: i32
 	use_heading: bool
@@ -355,7 +355,7 @@ spawn_entity :: proc(
 	e.vel_delta = {}
 	e.shields = u.shields_base_amount
 	if u.shields_level_increment > 0 {
-		e.shields = f32(s.level_number - 1) * u.shields_level_increment + e.shields
+		e.shields = f32(single(s, Level_Info).number - 1) * u.shields_level_increment + e.shields
 		if u.shields_max_amount < e.shields {
 			e.shields = u.shields_max_amount
 		}
@@ -366,7 +366,7 @@ spawn_entity :: proc(
 		h = u.initial_heading
 	} else if tol := u.initial_heading_tolerance; tol != 0 {
 		half := halve(tol)
-		h = heading + random_int(&s.rng, -half, half, 0x41aba1)
+		h = heading + roll_int(s, -half, half, 0x41aba1)
 		if h < 0 {
 			h += 360
 		} else if h > 359 {
@@ -396,7 +396,7 @@ spawn_entity :: proc(
 	if u.group_delay_min == u.group_delay_max {
 		delay^ += u.group_delay_min
 	} else {
-		delay^ += random_int(&s.rng, u.group_delay_min, u.group_delay_max, 0x41acc6)
+		delay^ += roll_int(s, u.group_delay_min, u.group_delay_max, 0x41acc6)
 	}
 	e.appear_delay = delay^
 
@@ -418,7 +418,7 @@ spawn_entity :: proc(
 		}
 	}
 	if u.include_in_ground_accuracy_count {
-		s.accuracy_targets += 1 // G_Game_GroundAccuracy_AddTarget
+		single(s, Accuracy).targets += 1 // G_Game_GroundAccuracy_AddTarget
 		w.ground_targets += 1
 	}
 	if e.passive_tag != 0 {
@@ -441,7 +441,7 @@ spawn_location :: proc "contextless" (s: ^State, g: ^Group, e: ^Entity) {
 			if xmax < xmin {
 				lo, hi = xmax, xmin
 			}
-			loc.x = f32(random_int(&s.rng, trunc_i32(lo), trunc_i32(hi), 0x41c718)) + g.loc.x
+			loc.x = f32(roll_int(s, trunc_i32(lo), trunc_i32(hi), 0x41c718)) + g.loc.x
 		}
 		if ymin == ymax {
 			loc.y = g.loc.y + ymin
@@ -450,15 +450,15 @@ spawn_location :: proc "contextless" (s: ^State, g: ^Group, e: ^Entity) {
 			if ymax < ymin {
 				lo, hi = ymax, ymin
 			}
-			loc.y = f32(random_int(&s.rng, trunc_i32(lo), trunc_i32(hi), 0x41c7e8)) + g.loc.y
+			loc.y = f32(roll_int(s, trunc_i32(lo), trunc_i32(hi), 0x41c7e8)) + g.loc.y
 		}
 	} else {
 		// Both ranges open: a point on (or within) an ellipse.
-		v := vector_from_angle(random_int(&s.rng, 0, 359, 0x41c5c1))
+		v := vector_from_angle(roll_int(s, 0, 359, 0x41c5c1))
 		if !u.randomise_initial_loc {
 			loc = {v.x * abs(xmax) + g.loc.x, v.y * abs(ymax) + g.loc.y}
 		} else {
-			r := random_float(&s.rng, 0, abs(xmax), 0x41c5ff)
+			r := roll_float(s, 0, abs(xmax), 0x41c5ff)
 			loc = {v.x * r + g.loc.x, v.y * r + g.loc.y}
 		}
 	}
@@ -480,7 +480,7 @@ spawn_velocity :: proc "contextless" (
 		return
 	}
 	u := unit_of(s, e)
-	speed := random_float(&s.rng, u.initial_speed_min, u.initial_speed_max, 0x41c8c4)
+	speed := roll_float(s, u.initial_speed_min, u.initial_speed_max, 0x41c8c4)
 	angle: i32
 	if use_heading || u.initial_heading_set_in_editor {
 		angle = invert_angle(heading)
@@ -502,7 +502,7 @@ spawn_velocity :: proc "contextless" (
 		}
 		if ok && u.initial_heading_tolerance != 0 {
 			half := halve(u.initial_heading_tolerance)
-			a += random_int(&s.rng, -half, half, 0x41caaa)
+			a += roll_int(s, -half, half, 0x41caaa)
 			if a < 0 {
 				a += 360
 			} else if a > 359 {
@@ -526,17 +526,17 @@ spawn_velocity :: proc "contextless" (
 
 // FUN_0041cbc0: the random drift of a cyclic-motion state.
 cyclic_velocity :: proc "contextless" (s: ^State, e: ^Entity) {
-	speed: f32 = random_int(&s.rng, 0, 1, 0x41cbe1) == 0 ? 1.4 : 1.0
-	whole := random_int(&s.rng, 1, 4, 0x41cc0f)
-	frac := f32(random_int(&s.rng, 1, 100, 0x41cc2c)) / 100
+	speed: f32 = roll_int(s, 0, 1, 0x41cbe1) == 0 ? 1.4 : 1.0
+	whole := roll_int(s, 1, 4, 0x41cc0f)
+	frac := f32(roll_int(s, 1, 100, 0x41cc2c)) / 100
 	x := f32(whole) + frac
-	if random_int(&s.rng, 0, 1, 0x41cc58) != 0 {
+	if roll_int(s, 0, 1, 0x41cc58) != 0 {
 		x = -x
 	}
-	y := f32(random_int(&s.rng, 1, 4, 0x41cc7d)) + frac
+	y := f32(roll_int(s, 1, 4, 0x41cc7d)) + frac
 	quarter := f32(view_height(s.defs) / 4)
 	if quarter < e.loc.y {
-		if random_int(&s.rng, 0, 1, 0x41cd11) != 0 {
+		if roll_int(s, 0, 1, 0x41cd11) != 0 {
 			y = -y
 		}
 	}

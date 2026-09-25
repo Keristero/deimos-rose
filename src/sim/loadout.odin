@@ -124,15 +124,15 @@ loadout_next :: proc "contextless" (h: ^Weapon_Handler, current: i32) -> i32 {
 // Weapons session past its first stage, this stage's title gone, and the
 // stage still being played.
 loadout_due :: proc "contextless" (s: ^State) -> bool {
-	l := &s.loadout
-	return s.session.loadout && !l.active && !l.shown && s.level_number > 1 && !ref_valid(s, l.title) &&
-		!s.level_ending && !s.level_end.complete && !s.game_over
+	l := single(s, Loadout)
+	return s.session.loadout && !l.active && !l.shown && single(s, Level_Info).number > 1 && !ref_valid(s, l.title) &&
+		!single(s, Level_Info).ending && !single(s, Level_End).complete && !single(s, Game_Status).game_over
 }
 
 // Opens the loadout screen for every player still in the game. false, and
 // no screen, when nobody is.
 loadout_begin :: proc(s: ^State, input: Frame_Input) -> bool {
-	l := &s.loadout
+	l := single(s, Loadout)
 	title := l.title
 	l^ = {shown = true, title = title}
 	any := false
@@ -157,7 +157,7 @@ loadout_board_init :: proc "contextless" (s: ^State, b: ^Loadout_Board, h: ^Weap
 		row = NO_WEAPON
 	}
 	fresh: [LOADOUT_CELLS]i32
-	n := loadout_unlocks(s, h, s.level_number, fresh[:])
+	n := loadout_unlocks(s, h, single(s, Level_Info).number, fresh[:])
 	held: i32
 	for w, k in h.loadout {
 		b.cells[.Slots][k] = w
@@ -243,8 +243,8 @@ loadout_move :: proc "contextless" (b: ^Loadout_Board, pressed: Buttons) {
 // readies up. Fire_Ground puts a weapon back, or takes a ready back.
 loadout_step :: proc(s: ^State, input: Frame_Input) -> bool {
 	clear_step_events(s)
-	s.frame += 1
-	l := &s.loadout
+	single(s, Clock).frame += 1
+	l := single(s, Loadout)
 	for i in 0 ..< MAX_PLAYERS {
 		pressed := input[i] - l.held[i]
 		l.held[i] = input[i]

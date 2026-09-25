@@ -128,7 +128,7 @@ discharge_beam_carries_leftover_damage :: proc(t: ^testing.T) {
 	}
 	shrapnel := count_unit(s, wd.beam.shrapnel)
 	s.beams.count = 0
-	sim.beam_fire(s, h, wd, at, 2.5, wd.beam.width, false, s.time)
+	sim.beam_fire(s, h, wd, at, 2.5, wd.beam.width, false, sim.single(s, sim.Clock).time)
 	testing.expect(t, near.deleted, "the first target must die")
 	testing.expect(t, mid.deleted, "the leftover must kill the second")
 	testing.expect(t, !far.deleted && abs(far.shields - 4.5) < 1e-4, "the third takes the last 0.5")
@@ -141,7 +141,7 @@ discharge_beam_carries_leftover_damage :: proc(t: ^testing.T) {
 	}
 	// Again on the same step: the hit delay protects the third, and the
 	// beam stops there without dealing anything.
-	sim.beam_fire(s, h, wd, at, 2.5, wd.beam.width, false, s.time)
+	sim.beam_fire(s, h, wd, at, 2.5, wd.beam.width, false, sim.single(s, sim.Clock).time)
 	testing.expect(t, abs(far.shields - 4.5) < 1e-4)
 	testing.expect_value(t, s.beams.events[1].to_y, far.loc.y)
 }
@@ -161,7 +161,7 @@ discharge_beam_leaves_the_screen :: proc(t: ^testing.T) {
 		return
 	}
 	s.beams.count = 0
-	sim.beam_fire(s, &s.players[0].weapons, wd, {8, 420}, 2, wd.beam.width, false, s.time)
+	sim.beam_fire(s, &s.players[0].weapons, wd, {8, 420}, 2, wd.beam.width, false, sim.single(s, sim.Clock).time)
 	testing.expect(t, one.deleted)
 	testing.expect(t, s.beams.count == 1 && s.beams.events[0].to_y < 0)
 }
@@ -185,12 +185,12 @@ discharge_beam_release_scales_with_charge :: proc(t: ^testing.T) {
 		return
 	}
 	s.beams.count = 0
-	sim.beam_release(s, h, wd, at, top, s.time)
+	sim.beam_release(s, h, wd, at, top, sim.single(s, sim.Clock).time)
 	testing.expect(t, abs(100 - wall.shields - wd.beam.release_damage) < 1e-3, "a full charge deals the release damage")
 	testing.expect(t, s.beams.count == 1 && s.beams.events[0].charged && s.beams.events[0].width == wd.beam.release_width)
 	wall.last_hit = -100
 	before := wall.shields
-	sim.beam_release(s, h, wd, at, top / 2, s.time)
+	sim.beam_release(s, h, wd, at, top / 2, sim.single(s, sim.Clock).time)
 	testing.expect(t, abs(before - wall.shields - wd.beam.release_damage / 2) < 1e-3, "half a charge deals half")
 }
 

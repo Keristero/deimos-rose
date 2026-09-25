@@ -145,7 +145,7 @@ beam_explode :: proc(s: ^State, wd: ^Weapon, loc: Vec, player: i32) {
 	if wd.beam.shrapnel == NONE || n <= 0 {
 		return
 	}
-	base := random_int(&s.rng, 0, 359, SITE_SHRAPNEL)
+	base := roll_int(s, 0, 359, SITE_SHRAPNEL)
 	for k in 0 ..< n {
 		req := spawn_request(wd.beam.shrapnel)
 		req.owner_player = player

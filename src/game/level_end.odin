@@ -36,7 +36,7 @@ game_string :: proc(r: ^Renderer, i: int) -> string {
 
 level_end_draw :: proc(r: ^Renderer, s: ^sim.State, scale: f32) {
 	text := &r.textures.assets.text
-	l := &s.level_end
+	l := sim.single(s, sim.Level_End)
 	if l.state != 0 && l.fade < 0x20 {
 		acc := game_string(r, GS_ACCURACY)
 		line: string

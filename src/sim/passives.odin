@@ -360,13 +360,13 @@ player_passives_process :: proc(s: ^State, p: ^Player, time: i32) {
 		return
 	}
 	player_regen_process(s, p)
-	if player_stat(s, p.number, .Risky_Reward).enabled && !s.level_ending &&
+	if player_stat(s, p.number, .Risky_Reward).enabled && !single(s, Level_Info).ending &&
 	   time > 0 && time % (RISKY_REWARD_SECONDS * step_hz(s)) == 0 {
 		w, h := view_width(s.defs), view_height(s.defs)
 		req := spawn_request(RISKY_REWARD_UNIT)
 		req.loc = {
-			f32(random_int(&s.rng, RISKY_REWARD_MARGIN, w - RISKY_REWARD_MARGIN, SITE_RISKY_X)),
-			f32(random_int(&s.rng, RISKY_REWARD_MARGIN, h * 2 / 3, SITE_RISKY_Y)),
+			f32(roll_int(s, RISKY_REWARD_MARGIN, w - RISKY_REWARD_MARGIN, SITE_RISKY_X)),
+			f32(roll_int(s, RISKY_REWARD_MARGIN, h * 2 / 3, SITE_RISKY_Y)),
 		}
 		eg_request_spawn(s, req)
 	}

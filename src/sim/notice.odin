@@ -64,12 +64,12 @@ notice_request_destruct :: proc "contextless" (s: ^State, text: string) {
 
 @(private = "file")
 notice_show :: proc "contextless" (s: ^State, text: string, sound: Sound_Settings, delay: i32) {
-	if s.notice.pending {
+	if single(s, Notice_State).pending {
 		return
 	}
-	s.notice.sound = sound
-	s.notice.delay = delay
-	s.notice.pending = true
+	single(s, Notice_State).sound = sound
+	single(s, Notice_State).delay = delay
+	single(s, Notice_State).pending = true
 	q := &s.notices
 	if q.count < MAX_NOTICE_EVENTS {
 		q.events[q.count] = {text}
@@ -81,20 +81,20 @@ notice_show :: proc "contextless" (s: ^State, text: string, sound: Sound_Setting
 // sound (if any) exactly once, then hold the slot briefly before releasing
 // it for the next request.
 notice_process :: proc "contextless" (s: ^State) {
-	if !s.notice.pending {
+	if !single(s, Notice_State).pending {
 		return
 	}
-	if s.notice.delay > 0 {
-		s.notice.delay -= 1
+	if single(s, Notice_State).delay > 0 {
+		single(s, Notice_State).delay -= 1
 		return
 	}
-	if s.notice.delay == 0 {
-		if s.notice.sound.id != NONE {
-			sound_play(s, s.notice.sound, true)
+	if single(s, Notice_State).delay == 0 {
+		if single(s, Notice_State).sound.id != NONE {
+			sound_play(s, single(s, Notice_State).sound, true)
 		}
 	}
-	s.notice.delay -= 1
-	if s.notice.delay <= -NOTICE_HOLD_FRAMES {
-		s.notice.pending = false
+	single(s, Notice_State).delay -= 1
+	if single(s, Notice_State).delay <= -NOTICE_HOLD_FRAMES {
+		single(s, Notice_State).pending = false
 	}
 }

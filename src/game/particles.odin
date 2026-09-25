@@ -91,7 +91,7 @@ particles_step :: proc(p: ^Particles, s: ^sim.State) {
 	}
 	gravity := pf[PF_GRAVITY]
 	rate := max(sim.trunc_i32(pf[PF_FADE_RATE]), 1)
-	scroll := f32(s.bgnd.scrolled)
+	scroll := f32(sim.single(s, sim.Bgnd).scrolled)
 	n := 0
 	for pt in p.live {
 		pt := pt

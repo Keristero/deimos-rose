@@ -145,12 +145,12 @@ reset_spawn_info :: proc "contextless" (s: ^State, e: ^Entity, time: i32) {
 			e.spawn_pause = 0
 			continue
 		}
-		info.delay = random_int(&s.rng, set.rate_min, set.rate_max, 0x416e24)
+		info.delay = roll_int(s, set.rate_min, set.rate_max, 0x416e24)
 		info.last = time
-		info.volley = random_int(&s.rng, set.num_in_volley_min, set.num_in_volley_max, 0x416e3e)
+		info.volley = roll_int(s, set.num_in_volley_min, set.num_in_volley_max, 0x416e3e)
 		info.active = info.delay >= 0 && info.volley > 0
 		info.left = info.volley
-		info.gap = random_int(&s.rng, set.delay_between_entities_min, set.delay_between_entities_max, 0x416e71)
+		info.gap = roll_int(s, set.delay_between_entities_min, set.delay_between_entities_max, 0x416e71)
 		e.spawn_pause = set.time_to_pause_rotation_after_spawning
 	}
 }
@@ -201,7 +201,7 @@ change_state :: proc(s: ^State, e: ^Entity, init: bool, name: string, time: i32)
 	e.particle_count = 0
 	e.anim_done = false
 	st := state_of(s, e)
-	e.timer = random_int(&s.rng, st.on_timer_min, st.on_timer_max, 0x41374b)
+	e.timer = roll_int(s, st.on_timer_min, st.on_timer_max, 0x41374b)
 
 	// Pickups show the weapon they carry instead of the state's sprite.
 	powerup := Res_ID{}
@@ -219,7 +219,7 @@ change_state :: proc(s: ^State, e: ^Entity, init: bool, name: string, time: i32)
 		e.sprite = st.sprite_face
 		if init || e.sprite != old_sprite {
 			if !u.initial_heading_set_in_editor {
-				e.frame = random_int(&s.rng, st.sprite_frame_min, st.sprite_frame_max, 0x41382d)
+				e.frame = roll_int(s, st.sprite_frame_min, st.sprite_frame_max, 0x41382d)
 			} else {
 				e.frame = frame_for_angle(s, e, e.heading)
 			}
@@ -239,7 +239,7 @@ change_state :: proc(s: ^State, e: ^Entity, init: bool, name: string, time: i32)
 		scale := u.initial_scale_percent
 		if tol := u.initial_scale_percent_tolerance; tol != 0 {
 			half := halve(tol)
-			scale += random_int(&s.rng, -half, half, 0x4138f4)
+			scale += roll_int(s, -half, half, 0x4138f4)
 			if scale < 0 {
 				scale = 0
 			}
@@ -409,7 +409,7 @@ entity_animate :: proc(s: ^State, e: ^Entity, time: i32) {
 			}
 		}
 	} else {
-		e.frame = random_int(&s.rng, first, last, 0x4149db)
+		e.frame = roll_int(s, first, last, 0x4149db)
 	}
 	e.anim_time = time
 	e.dims_dirty = true
@@ -439,9 +439,9 @@ entity_flee :: proc(s: ^State, e: ^Entity, flee: Res_ID) {
 	case res_id("cega"): // centre
 		e.hunt_target = {w / 2, h / 2}
 	case res_id("nora"): // north, random x
-		e.hunt_target = {random_float(&s.rng, 0, w, 0x4165f0), north}
+		e.hunt_target = {roll_float(s, 0, w, 0x4165f0), north}
 	case res_id("sora"): // south, random x
-		e.hunt_target = {random_float(&s.rng, 0, w, 0x416630), south}
+		e.hunt_target = {roll_float(s, 0, w, 0x416630), south}
 	case res_id("noce"): // north, centred
 		e.hunt_target = {w / 2, north}
 	case res_id("soce"): // south, centred

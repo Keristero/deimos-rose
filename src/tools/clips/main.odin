@@ -103,7 +103,7 @@ clip :: proc(r: ^game.Renderer, defs: ^sim.Defs, state: ^sim.State, root, id, ou
 	notices: game.Notices
 
 	game.flow_start_session(&fl, SEED, .Single, max(int(wd.minimum_level_available) - 1, 0))
-	state.loadout.shown = true
+	sim.single(state, sim.Loadout).shown = true
 	fl.mode = .Playing
 	p := &state.players[0]
 	if ground {

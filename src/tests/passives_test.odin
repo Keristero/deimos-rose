@@ -130,7 +130,7 @@ two_level_defs :: proc(levels_n := 2) -> ^sim.Defs {
 @(private = "file")
 play_to_level_end :: proc(s: ^sim.State) -> sim.Level_Transition {
 	for _ in 0 ..< 10_000 {
-		if tr := sim.session_step(s, {}); tr != .None || s.reward.active {
+		if tr := sim.session_step(s, {}); tr != .None || sim.single(s, sim.Reward).active {
 			return tr
 		}
 	}
@@ -154,8 +154,8 @@ no_reward_screen_outside_easy_mode :: proc(t: ^testing.T) {
 	defer sim.destroy(s)
 	sim.init(s, sim.Session{seed = 3, level_id = defs.levels[0].id, game_type = .Co_Op}, defs)
 	testing.expect_value(t, play_to_level_end(s), sim.Level_Transition.Advanced)
-	testing.expect(t, !s.reward.active)
-	testing.expect_value(t, s.level_number, 2)
+	testing.expect(t, !sim.single(s, sim.Reward).active)
+	testing.expect_value(t, sim.single(s, sim.Level_Info).number, 2)
 }
 
 @(test)
@@ -165,7 +165,7 @@ reward_screen_takes_every_players_choice :: proc(t: ^testing.T) {
 	defer sim.destroy(s)
 	sim.init(s, sim.Session{seed = 3, level_id = defs.levels[0].id, game_type = .Co_Op, easy = true}, defs)
 	testing.expect_value(t, play_to_level_end(s), sim.Level_Transition.None)
-	rw := &s.reward
+	rw := sim.single(s, sim.Reward)
 	if !testing.expect(t, rw.active, "the reward screen must open after the tally") {
 		return
 	}
@@ -181,10 +181,10 @@ reward_screen_takes_every_players_choice :: proc(t: ^testing.T) {
 	testing.expect_value(t, rw.cursor[0], 0)
 	testing.expect_value(t, rw.cursor[1], 2)
 
-	time, frame := s.time, s.frame
+	time, frame := sim.single(s, sim.Clock).time, sim.frame_of(s)
 	press :: proc(s: ^sim.State, a, b: sim.Buttons) -> sim.Level_Transition {
 		tr := sim.session_step(s, {a, b})
-		if tr == .None && s.reward.active {
+		if tr == .None && sim.single(s, sim.Reward).active {
 			tr = sim.session_step(s, {}) // let go, for the next press edge
 		}
 		return tr
@@ -211,8 +211,8 @@ reward_screen_takes_every_players_choice :: proc(t: ^testing.T) {
 	press(s, {.Left}, {})
 	testing.expect_value(t, rw.cursor[0], 2)
 	want0, want1 := rw.options[2], rw.options[1]
-	testing.expect_value(t, s.time, time) // the game stands still
-	testing.expect(t, s.frame > frame, "the frame count still moves")
+	testing.expect_value(t, sim.single(s, sim.Clock).time, time) // the game stands still
+	testing.expect(t, sim.frame_of(s) > frame, "the frame count still moves")
 
 	tr := press(s, {.Fire_Air}, {})
 	for i := 0; tr == .None && i < sim.REWARD_RESUME_DELAY + 2; i += 1 {
@@ -221,7 +221,7 @@ reward_screen_takes_every_players_choice :: proc(t: ^testing.T) {
 	}
 	testing.expect_value(t, tr, sim.Level_Transition.Advanced)
 	testing.expect(t, !rw.active)
-	testing.expect_value(t, s.level_number, 2)
+	testing.expect_value(t, sim.single(s, sim.Level_Info).number, 2)
 	testing.expect_value(t, s.players[0].passives[want0], 1)
 	testing.expect_value(t, s.players[1].passives[want1], 1)
 	total := 0
@@ -240,7 +240,7 @@ no_reward_screen_after_the_last_level :: proc(t: ^testing.T) {
 	defer sim.destroy(s)
 	sim.init(s, sim.Session{seed = 3, level_id = defs.levels[0].id, game_type = .Single, easy = true}, defs)
 	testing.expect_value(t, play_to_level_end(s), sim.Level_Transition.All_Complete)
-	testing.expect(t, !s.reward.active)
+	testing.expect(t, !sim.single(s, sim.Reward).active)
 }
 
 @(test)
@@ -250,15 +250,15 @@ reward_options_are_one_more_than_the_players :: proc(t: ^testing.T) {
 	defer sim.destroy(s)
 	sim.init(s, sim.Session{seed = 11, level_id = defs.levels[0].id, game_type = .Single, easy = true}, defs)
 	play_to_level_end(s)
-	testing.expect(t, s.reward.active)
-	testing.expect_value(t, s.reward.count, 2)
-	testing.expect(t, !s.reward.choosing[1], "an absent player does not choose")
+	testing.expect(t, sim.single(s, sim.Reward).active)
+	testing.expect_value(t, sim.single(s, sim.Reward).count, 2)
+	testing.expect(t, !sim.single(s, sim.Reward).choosing[1], "an absent player does not choose")
 	// A passive already at its top level for the only chooser is not offered.
 	sim.init(s, sim.Session{seed = 11, level_id = defs.levels[0].id, game_type = .Single, easy = true}, defs)
 	s.players[0].passives = #partial {.Improved_Manoeuvring = 2, .Auto_Charge = 2, .Improved_Charge = 3}
 	play_to_level_end(s)
-	testing.expect_value(t, s.reward.count, 1)
-	testing.expect_value(t, s.reward.options[0], sim.Passive.Shield_Regen)
+	testing.expect_value(t, sim.single(s, sim.Reward).count, 1)
+	testing.expect_value(t, sim.single(s, sim.Reward).options[0], sim.Passive.Shield_Regen)
 }
 
 @(test)
@@ -363,10 +363,10 @@ rollback_session_converges_through_the_reward_screen :: proc(t: ^testing.T) {
 				append(&queues[1 - p], Delivery{i + LATENCY, pkt})
 			}
 		}
-		if states[0].reward.active {
+		if sim.single(states[0], sim.Reward).active {
 			reward_frames += 1
 		}
-		max_level = max(max_level, states[0].level_number)
+		max_level = max(max_level, sim.single(states[0], sim.Level_Info).number)
 	}
 
 	testing.expect(t, rs[0].rollback_count > 0 && rs[1].rollback_count > 0, "test never exercised a rollback")
@@ -381,7 +381,7 @@ rollback_session_converges_through_the_reward_screen :: proc(t: ^testing.T) {
 	}
 	testing.expect_value(t, states[0].players[0].passives, states[1].players[0].passives)
 	testing.expect_value(t, states[0].players[1].passives, states[1].players[1].passives)
-	testing.expect_value(t, states[0].level_number, states[1].level_number)
+	testing.expect_value(t, sim.single(states[0], sim.Level_Info).number, sim.single(states[1], sim.Level_Info).number)
 	testing.expect_value(t, sim.checksum(states[0]), sim.checksum(states[1]))
 }
 

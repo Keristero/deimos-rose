@@ -903,7 +903,7 @@ netplay_name_session :: proc(fl: ^Flow, nl: ^Netplay, local_player: int) {
 // so a reconnecting client can always just use the ordinary "Join Game" flow
 // against this machine's address, with no special foreknowledge of who
 // survived. The Rollback_Session and fl.state are left completely alone:
-// net/session.odin operates purely in terms of state.frame, so simulation
+// net/session.odin operates purely in terms of sim.frame_of(state), so simulation
 // can resume exactly where it was once a peer reappears, with no rewind.
 @(private = "file")
 netplay_enter_waiting_reconnect :: proc(nl: ^Netplay) {
@@ -1040,7 +1040,7 @@ netplay_finish_resync_receive :: proc(fl: ^Flow, nl: ^Netplay) {
 	fl.mode = .Playing
 	nl.link_state = .Live
 	nl.last_peer_seen = time.now()
-	fmt.eprintfln("netplay: reconnected as player %d at frame %d", nl.recv_assigned_player, fl.state.frame) // tools/netplay/loopback_check.sh-style marker for a future reconnect smoke check
+	fmt.eprintfln("netplay: reconnected as player %d at frame %d", nl.recv_assigned_player, sim.frame_of(fl.state)) // tools/netplay/loopback_check.sh-style marker for a future reconnect smoke check
 }
 
 // Phase 8 stage 3: bottom-right/banner text for a frozen .Playing session --
@@ -1131,8 +1131,8 @@ netplay_playing_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blu
 		net.send(&nl.sock, nl.peer, buf[:n])
 	}
 
-	if fl.state.frame >= NETPLAY_CHECKSUM_LAG {
-		cf := fl.state.frame - NETPLAY_CHECKSUM_LAG
+	if sim.frame_of(fl.state) >= NETPLAY_CHECKSUM_LAG {
+		cf := sim.frame_of(fl.state) - NETPLAY_CHECKSUM_LAG
 		if sum, ok := net.rollback_session_checksum_at(&nl.rs, cf); ok {
 			net.desync_monitor_record(&nl.desync, cf, sum)
 			buf: [13]byte

@@ -16,16 +16,16 @@ Debris :: struct {
 
 // G_Debris_New.
 debris_new :: proc "contextless" (s: ^State, r: Rect) {
-	if s.debris.count < MAX_DEBRIS {
-		s.debris.rects[s.debris.count] = r
-		s.debris.count += 1
+	if single(s, Debris).count < MAX_DEBRIS {
+		single(s, Debris).rects[single(s, Debris).count] = r
+		single(s, Debris).count += 1
 	}
 }
 
 // G_Debris_Process: ride the scroll.
 debris_process :: proc "contextless" (s: ^State) {
-	d := s.bgnd.scrolled
-	for &r in s.debris.rects[:s.debris.count] {
+	d := single(s, Bgnd).scrolled
+	for &r in single(s, Debris).rects[:single(s, Debris).count] {
 		r.top += d
 		r.bottom += d
 	}
@@ -33,7 +33,7 @@ debris_process :: proc "contextless" (s: ^State) {
 
 // G_Debris_CheckCollision.
 debris_hits :: proc "contextless" (s: ^State, r: Rect) -> bool {
-	for &d in s.debris.rects[:s.debris.count] {
+	for &d in single(s, Debris).rects[:single(s, Debris).count] {
 		if d.top <= r.bottom && r.top <= d.bottom && d.left <= r.right && r.left <= d.right {
 			return true
 		}

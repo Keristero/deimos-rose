@@ -125,7 +125,7 @@ passive_particles_step :: proc(p: ^Particles, s: ^sim.State, r: ^Renderer) {
 		if pl.state != .Playing {
 			continue
 		}
-		if sim.player_regenerating(s, &pl) && s.time % REGEN_EVERY == 0 {
+		if sim.player_regenerating(s, &pl) && sim.single(s, sim.Clock).time % REGEN_EVERY == 0 {
 			a := rand.float32() * 2 * math.PI
 			from := pl.loc + sim.Vec{math.cos(a), math.sin(a)} * REGEN_RADIUS
 			shade := colour5(accent_color(int(r.accents[i].hue)))

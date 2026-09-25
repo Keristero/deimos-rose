@@ -36,7 +36,7 @@ view_height :: proc "contextless" (d: ^Defs) -> i32 {
 // holds left or right, to 32 pixels either way, and simply stays where it was
 // left -- there is no recentring. Both players push the same view.
 bgnd_adjust_side_scroll :: proc "contextless" (s: ^State, right: bool) {
-	b := &s.bgnd
+	b := single(s, Bgnd)
 	b.side_scroll_dir = 0
 	if right {
 		b.side_scroll += 1
@@ -57,7 +57,7 @@ bgnd_adjust_side_scroll :: proc "contextless" (s: ^State, right: bool) {
 
 // G_Bgnd_ResetAtLevelStart.
 bgnd_reset :: proc "contextless" (s: ^State, level: ^Level_Def) {
-	b := &s.bgnd
+	b := single(s, Bgnd)
 	h := view_height(s.defs)
 	b^ = Bgnd{speed = 1}
 	b.map_bottom = level.background.bottom
@@ -69,7 +69,7 @@ bgnd_reset :: proc "contextless" (s: ^State, level: ^Level_Def) {
 // G_Bgnd_DoInitialMapSpawns: everything from the bottom of the map to 65 rows
 // above the view.
 bgnd_initial_spawns :: proc(s: ^State) {
-	b := &s.bgnd
+	b := single(s, Bgnd)
 	n := b.view_bottom - (b.view_top - 65)
 	for i in 0 ..< n {
 		eg_spawn_map_row(s, b.view_bottom - i)
@@ -82,7 +82,7 @@ bgnd_initial_spawns :: proc(s: ^State) {
 // buffer covers the whole map in every level, so the clamp never fires (the
 // trace shows the view scrolling from 3120 without interruption).
 bgnd_scroll :: proc "contextless" (s: ^State) {
-	b := &s.bgnd
+	b := single(s, Bgnd)
 	before := b.view_top
 	if b.speed == 0 {
 		b.scrolled = 0
@@ -100,7 +100,7 @@ bgnd_scroll :: proc "contextless" (s: ^State) {
 
 // G_Bgnd_Process. Returns true on the step the top of the map is reached.
 bgnd_process :: proc(s: ^State) -> (level_done: bool) {
-	b := &s.bgnd
+	b := single(s, Bgnd)
 	bgnd_scroll(s)
 	if b.speed == 0 {
 		return b.finished
@@ -116,11 +116,11 @@ bgnd_process :: proc(s: ^State) -> (level_done: bool) {
 }
 
 bgnd_stop :: proc "contextless" (s: ^State) {
-	s.bgnd.speed = 0
+	single(s, Bgnd).speed = 0
 }
 
 bgnd_resume :: proc "contextless" (s: ^State) {
-	if !s.bgnd.finished {
-		s.bgnd.speed = 1
+	if !single(s, Bgnd).finished {
+		single(s, Bgnd).speed = 1
 	}
 }

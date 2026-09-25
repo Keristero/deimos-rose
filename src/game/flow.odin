@@ -180,7 +180,7 @@ pause_begin :: proc(fl: ^Flow, r: ^Renderer) {
 @(private = "file")
 pause_notice_step :: proc(fl: ^Flow) {
 	m := &fl.pause_menu
-	if m.notice && !fl.state.paused {
+	if m.notice && !sim.single(fl.state, sim.Pause).paused {
 		m.blend += max(sim.trunc_i32(fl.defs.perm_floats[PF_NOTICE_FADE_OUT]), 1)
 		if m.blend >= 32 {
 			m.notice = false
@@ -294,13 +294,13 @@ flow_handle_input :: proc(fl: ^Flow, r: ^Renderer) {
 			// gather_input sets the Pause input bit, so both peers pause
 			// on the same frame. The notice and button appear once the
 			// (shared) state says paused, whoever pressed it.
-			if fl.state.paused != fl.netplay_was_paused {
-				fl.netplay_was_paused = fl.state.paused
-				if fl.state.paused {
+			if sim.single(fl.state, sim.Pause).paused != fl.netplay_was_paused {
+				fl.netplay_was_paused = sim.single(fl.state, sim.Pause).paused
+				if sim.single(fl.state, sim.Pause).paused {
 					pause_begin(fl, r)
 				}
 			}
-			if fl.state.paused {
+			if sim.single(fl.state, sim.Pause).paused {
 				if pause_menu_update(r, &fl.pause_menu) {
 					// The peer sees a Goodbye and freezes, able to continue
 					// alone (F5) -- the same as any mid-game disconnect.
@@ -380,8 +380,8 @@ flow_finish_session :: proc(fl: ^Flow) {
 		scores[i] = int(fl.state.players[i].score)
 		active[i] = fl.state.session.game_type != .Single || i == 0
 	}
-	if fl.state.level != nil {
-		sector = fl.state.level.identifier
+	if sim.level_def(fl.state) != nil {
+		sector = sim.level_def(fl.state).identifier
 	}
 	if fl.session_named {
 		// Netplay: both names are already known, so there is nothing to
@@ -412,7 +412,7 @@ flow_finish_session :: proc(fl: ^Flow) {
 // level has finished scrolling -- level_end_step only learns about it once
 // the background does report scroll-complete, and then just short-circuits
 // straight to `complete` with no tally to show (level_end.odin: "if
-// s.game_over { l.started = true; return }"). Reacting to game_over directly
+// sim.single(s, sim.Game_Status).game_over { l.started = true; return }"). Reacting to game_over directly
 // means the game-over screen appears the moment play actually ends, rather
 // than only after (and if) the level happens to finish scrolling.
 flow_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs, notices: ^Notices) {
@@ -448,24 +448,24 @@ flow_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 		// move back. Flow only reads the state here, never changes it:
 		// in netplay, the state is the rollback session's to change.
 		switch {
-		case fl.state.game_over:
+		case sim.single(fl.state, sim.Game_Status).game_over:
 			fl.mode, fl.end_timer = .Game_Over, 0
-		case fl.state.level_end.complete && !sim.session_frozen(fl.state):
+		case sim.single(fl.state, sim.Level_End).complete && !sim.session_frozen(fl.state):
 			fl.mode, fl.end_timer = .Complete, 0
 		}
 		// G_LevelSelect only ever raises U_Prefs slot 3 (highest reached)
 		// for a session that started at level 1 -- jumping into the middle
 		// via Level Select never advances it, even past the levels played
 		// along the way.
-		if fl.session_start_pos == 1 && int(fl.state.level_number) > fl.highest_reached {
-			fl.highest_reached = int(fl.state.level_number)
+		if fl.session_start_pos == 1 && int(sim.single(fl.state, sim.Level_Info).number) > fl.highest_reached {
+			fl.highest_reached = int(sim.single(fl.state, sim.Level_Info).number)
 			progress_save(fl.highest_reached)
 		}
 	case .Attract:
 		// Plain sim.step: a demo that finishes its level moves on to the
 		// next demo (below), not to the next level.
 		flow_sim_step(fl, r, particles, blurs, notices, {}, &fl.sim_film, false)
-		if fl.state.game_over || fl.state.level_end.complete || sim.film_finished(fl.state, &fl.sim_film) {
+		if sim.single(fl.state, sim.Game_Status).game_over || sim.single(fl.state, sim.Level_End).complete || sim.film_finished(fl.state, &fl.sim_film) {
 			flow_load_demo(fl, (fl.demo_index + 1) % DEMO_COUNT)
 		}
 	case .Game_Over, .Complete:
@@ -495,8 +495,8 @@ flow_music_update :: proc(fl: ^Flow, r: ^Renderer) {
 		key = MENU_MUSIC_KEY
 		want, ok = music_load(&r.textures, MENU_MUSIC)
 	case .Playing, .Paused, .Game_Over, .Complete, .Attract:
-		if fl.state.level != nil {
-			key = fl.state.level.id
+		if sim.level_def(fl.state) != nil {
+			key = sim.level_def(fl.state).id
 			want, ok = music_track(&r.textures, key)
 		}
 	}
@@ -512,7 +512,7 @@ flow_music_update :: proc(fl: ^Flow, r: ^Renderer) {
 	}
 	if fl.music.frameCount != 0 {
 		// Either pause: local (.Paused) or a netplay pause in the state.
-		paused := fl.mode == .Paused || (fl.mode == .Playing && fl.state.paused)
+		paused := fl.mode == .Paused || (fl.mode == .Playing && sim.single(fl.state, sim.Pause).paused)
 		if paused != fl.music_paused {
 			if paused {
 				rl.PauseMusicStream(fl.music)
@@ -522,7 +522,7 @@ flow_music_update :: proc(fl: ^Flow, r: ^Renderer) {
 		}
 		rl.UpdateMusicStream(fl.music)
 	}
-	fl.music_paused = fl.music.frameCount != 0 && (fl.mode == .Paused || (fl.mode == .Playing && fl.state.paused))
+	fl.music_paused = fl.music.frameCount != 0 && (fl.mode == .Paused || (fl.mode == .Playing && sim.single(fl.state, sim.Pause).paused))
 }
 
 @(private = "file")
@@ -566,10 +566,10 @@ flow_session_began :: proc(fl: ^Flow) {
 // events, so a new level's first effects survive. flow_draw calls it too,
 // for a session started with no step yet taken.
 flow_effects_sync :: proc(fl: ^Flow, particles: ^Particles, blurs: ^Blurs, notices: ^Notices) {
-	if fl.effects_level == fl.state.levels_played {
+	if fl.effects_level == sim.single(fl.state, sim.Level_Info).played {
 		return
 	}
-	fl.effects_level = fl.state.levels_played
+	fl.effects_level = sim.single(fl.state, sim.Level_Info).played
 	clear(&particles.live)
 	clear(&particles.beams)
 	clear(&blurs.live)
@@ -650,13 +650,13 @@ flow_load_demo :: proc(fl: ^Flow, index: int) -> bool {
 
 // Once per render frame, after the fixed-step loop: builds and presents the
 // current game frame (skipped at Title, which has no session yet -- state is
-// zeroed, and build_frame dereferences state.level), then layers on whatever
+// zeroed, and build_frame dereferences sim.level_def(state)), then layers on whatever
 // text the mode calls for. draw_text needs a built frame's layer/scale
 // pipeline to draw into, which Title doesn't have, so these overlays go
 // through raylib's own font directly instead -- the same shortcut
 // draw_debug already takes for its dev overlay.
 flow_draw :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs, notices: ^Notices, scale: f32) {
-	if fl.state.level != nil {
+	if sim.level_def(fl.state) != nil {
 		flow_effects_sync(fl, particles, blurs, notices)
 	}
 	switch fl.mode {
@@ -711,7 +711,7 @@ flow_draw :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 			if title, sub := netplay_disconnect_banner(&fl.netplay); title != "" {
 				draw_banner(title, sub)
 			} else {
-				pause_draw(fl, r, scale, fl.state.paused, "PAUSED FOR BOTH PLAYERS -- EITHER CAN RESUME")
+				pause_draw(fl, r, scale, sim.single(fl.state, sim.Pause).paused, "PAUSED FOR BOTH PLAYERS -- EITHER CAN RESUME")
 			}
 		} else {
 			pause_draw(fl, r, scale, false, "") // the notice fading after a resume

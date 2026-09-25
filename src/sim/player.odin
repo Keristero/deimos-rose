@@ -72,7 +72,7 @@ player_setup :: proc (s: ^State, p: ^Player, number: i32, game_type: Game_Type) 
 		// G_Player::Lives_ResetAtNewGameStart; SetUpAtNewGameStart passes
 		// "starting at level 1" for the initial-lives choice.
 		d := player_def(s, p)
-		p.lives = s.level_number == 1 ? d.life_num_initial : 1
+		p.lives = single(s, Level_Info).number == 1 ? d.life_num_initial : 1
 		p.next_life_score = d.life_initial_required_score
 	}
 	p.life_step = 0
@@ -82,13 +82,13 @@ player_setup :: proc (s: ^State, p: ^Player, number: i32, game_type: Game_Type) 
 	p.passives = {}
 	player_regen_interrupt(p)
 	player_shields_reset(s, p, true)
-	weapons_new_game(s, &p.weapons, number, s.time, s.level_number)
+	weapons_new_game(s, &p.weapons, number, single(s, Clock).time, single(s, Level_Info).number)
 	p.speed = player_def(s, p).active_default_max_speed
 	if p.active {
-		p.state, p.state_time = .Entering, s.time
+		p.state, p.state_time = .Entering, single(s, Clock).time
 		p.inputs = {}
 	} else {
-		p.state, p.state_time = .Gone, s.time
+		p.state, p.state_time = .Gone, single(s, Clock).time
 	}
 }
 
@@ -130,7 +130,7 @@ player_level_reset :: proc (s: ^State, p: ^Player, time: i32) {
 	p.visibility_delta = s.defs.perm_floats[PF_PLAYER_APPEARS_DELTA]
 	// Drawn even when the result is unused: the registration nag timer is
 	// only armed for an unregistered player 1, but the draw always happens.
-	nag := random_int(&s.rng, 400, 2000, 0x43103a)
+	nag := roll_int(s, 400, 2000, 0x43103a)
 	if p.number == 0 {
 		p.nag_time = nag + time
 	}
@@ -205,7 +205,7 @@ player_process_state :: proc(s: ^State, p: ^Player, time: i32) {
 			break
 		}
 		// A life is only spent once player 1 has actually been in play.
-		if s.player1_seen_playing && p.active {
+		if single(s, Game_Status).player1_seen_playing && p.active {
 			p.lives = max(p.lives - 1, 0)
 		}
 		if p.lives <= 0 {
@@ -217,7 +217,7 @@ player_process_state :: proc(s: ^State, p: ^Player, time: i32) {
 	case .Playing:
 		// Entry invulnerability wears off; the kind granted at the end of
 		// a level does not.
-		if p.invulnerable && !s.level_ending && !p.invulnerable_always &&
+		if p.invulnerable && !single(s, Level_Info).ending && !p.invulnerable_always &&
 		   d.entry_invulnerability_time + p.state_time < time && p.active {
 			p.invulnerable = false
 		}
@@ -233,7 +233,7 @@ player_process :: proc(s: ^State, p: ^Player, time: i32, input: Buttons, film: ^
 	// (DAT_004e4855), a player who took no damage this level (this[0xcc]
 	// still clear) gets the "Notice - Defence Bonus" at their ship and
 	// level * perm float 0xb8 points. Setting the flag makes it once only.
-	if s.level_ending && !p.defence_spawned {
+	if single(s, Level_Info).ending && !p.defence_spawned {
 		p.defence_spawned = true
 		if d := player_def(s, p); d.active_defence_bonus_object != NONE {
 			req := spawn_request(d.active_defence_bonus_object)
@@ -241,7 +241,7 @@ player_process :: proc(s: ^State, p: ^Player, time: i32, input: Buttons, film: ^
 			req.owner_player = p.number // this+0xc2
 			eg_request_spawn(s, req)
 		}
-		player_score(s, p, s.level_number * trunc_i32(s.defs.perm_floats[0xb8]), false)
+		player_score(s, p, single(s, Level_Info).number * trunc_i32(s.defs.perm_floats[0xb8]), false)
 	}
 	player_process_state(s, p, time)
 	// Priv_GetInputs: only a player in play reads input, so a film is
@@ -249,17 +249,17 @@ player_process :: proc(s: ^State, p: ^Player, time: i32, input: Buttons, film: ^
 	if p.state == .Playing {
 		p.inputs = {}
 		if film != nil {
-			n := s.film_cursor[p.number]
+			n := single(s, Film_Cursor).reads[p.number]
 			if int(n) < len(film.frames) {
 				p.inputs = film.frames[n][p.number]
 			}
 			// G_Film::GetInputs reads while cursor <= frames, so it is
 			// called frames + 1 times; the last read yields nothing.
 			if int(n) <= len(film.frames) {
-				s.film_cursor[p.number] += 1
+				single(s, Film_Cursor).reads[p.number] += 1
 			}
-			if p.number == 0 && s.rng.log != nil {
-				s.rng.log.frame = u32(s.film_cursor[0])
+			if p.number == 0 && s.draws != nil {
+				s.draws.frame = u32(single(s, Film_Cursor).reads[0])
 			}
 		} else {
 			p.inputs = input
@@ -284,7 +284,7 @@ player_process :: proc(s: ^State, p: ^Player, time: i32, input: Buttons, film: ^
 		}
 		switch result {
 		case .Overload:
-			if p.state == .Playing && !s.level_ending && !p.overloaded {
+			if p.state == .Playing && !single(s, Level_Info).ending && !p.overloaded {
 				player_overload_begin(s, p, time)
 			}
 		case .Released:

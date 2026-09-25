@@ -51,15 +51,15 @@ reward_chooser :: #force_inline proc "contextless" (p: ^Player) -> bool {
 // Whether the session stops for a reward screen after this step: easy
 // mode, the level counted, and another level to come.
 reward_due :: proc "contextless" (s: ^State) -> bool {
-	return s.session.easy && s.level_end.complete && !s.game_over && !s.reward.active &&
-		int(s.level_number) < len(s.defs.levels)
+	return s.session.easy && single(s, Level_End).complete && !single(s, Game_Status).game_over && !single(s, Reward).active &&
+		int(single(s, Level_Info).number) < len(s.defs.levels)
 }
 
 // Opens the reward screen: one option per chooser plus one, drawn without
 // repeats from the passives someone can still take on the next level.
 // false, and no screen, when nobody is choosing or nothing is left.
 reward_begin :: proc(s: ^State, input: Frame_Input) -> bool {
-	r := &s.reward
+	r := single(s, Reward)
 	r^ = {}
 	choosers: i32
 	for &p, i in s.players {
@@ -69,7 +69,7 @@ reward_begin :: proc(s: ^State, input: Frame_Input) -> bool {
 	if choosers == 0 {
 		return false
 	}
-	next := s.defs.levels[s.level_number].number
+	next := s.defs.levels[single(s, Level_Info).number].number
 	pool: [len(Passive)]Passive
 	n: i32
 	for pa in Passive {
@@ -90,7 +90,7 @@ reward_begin :: proc(s: ^State, input: Frame_Input) -> bool {
 	r.count = min(choosers + 1, n)
 	// A partial Fisher-Yates shuffle: the first `count` of the pool.
 	for k in 0 ..< r.count {
-		j := random_int(&s.rng, k, n - 1, SITE_REWARD_SHUFFLE)
+		j := roll_int(s, k, n - 1, SITE_REWARD_SHUFFLE)
 		pool[k], pool[j] = pool[j], pool[k]
 		r.options[k] = pool[k]
 	}
@@ -106,7 +106,7 @@ reward_begin :: proc(s: ^State, input: Frame_Input) -> bool {
 // Whether `player` may lock option k: not already at its top level for
 // them, and not locked by another player.
 reward_selectable :: proc "contextless" (s: ^State, player: int, k: i32) -> bool {
-	r := &s.reward
+	r := single(s, Reward)
 	if k < 0 || k >= r.count || passive_maxed(&s.players[player].passives, r.options[k]) {
 		return false
 	}
@@ -120,7 +120,7 @@ reward_selectable :: proc "contextless" (s: ^State, player: int, k: i32) -> bool
 
 // A player is ready once locked in, or when nothing is left to lock.
 reward_ready :: proc "contextless" (s: ^State, player: int) -> bool {
-	r := &s.reward
+	r := single(s, Reward)
 	if !r.choosing[player] || r.locked[player] {
 		return true
 	}
@@ -156,8 +156,8 @@ reward_move :: proc "contextless" (cursor, count: i32, pressed: Buttons) -> i32 
 // false the choices have been applied and the session moves on.
 reward_step :: proc(s: ^State, input: Frame_Input) -> bool {
 	clear_step_events(s)
-	s.frame += 1
-	r := &s.reward
+	single(s, Clock).frame += 1
+	r := single(s, Reward)
 	for i in 0 ..< MAX_PLAYERS {
 		pressed := input[i] - r.held[i]
 		r.held[i] = input[i]

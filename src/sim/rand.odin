@@ -128,3 +128,24 @@ random_float :: proc "contextless" (r: ^Rand, a, b: f32, site: Site) -> f32 {
 	v := f32(rand_next(r))
 	return (b - a) * v / f32(RAND_MAX) + lo
 }
+
+// The session's RNG, as a Rand over its Rng component and the state's draw
+// log. The sim draws through these; Rand on its own serves tools and tests.
+@(private = "file")
+session_rand :: #force_inline proc "contextless" (s: ^State) -> Rand {
+	return Rand{next = single(s, Rng).next, log = s.draws}
+}
+
+roll_int :: proc "contextless" (s: ^State, lo, hi: i32, site: Site) -> i32 {
+	r := session_rand(s)
+	v := random_int(&r, lo, hi, site)
+	single(s, Rng).next = r.next
+	return v
+}
+
+roll_float :: proc "contextless" (s: ^State, a, b: f32, site: Site) -> f32 {
+	r := session_rand(s)
+	v := random_float(&r, a, b, site)
+	single(s, Rng).next = r.next
+	return v
+}

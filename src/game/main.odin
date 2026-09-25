@@ -202,7 +202,7 @@ main :: proc() {
 	// presentation: nothing ever reads it back into the simulation, so it
 	// cannot change gameplay, films, netplay or a checksum -- at the cost of
 	// drawing up to one step (~33 ms) behind the newest state.
-	interp_prev := new(sim.State)
+	interp_prev := new(Interp_Prev)
 	defer free(interp_prev)
 	fps_high: Maybe(bool)
 	for !rl.WindowShouldClose() && !flow.quit {
@@ -242,7 +242,7 @@ main :: proc() {
 		for steps := 0; accumulator >= step_dt && steps < MAX_STEPS_PER_FRAME; steps += 1 {
 			was_playing := flow.mode == .Playing
 			if high {
-				interp_prev^ = state^ // before this step; a step that changes nothing leaves them equal
+				interp_capture(interp_prev, state) // before this step; a step that changes nothing leaves them equal
 			}
 			flow_step(&flow, &renderer, &particles, &blurs, &notices)
 			if was_playing {
@@ -259,7 +259,7 @@ main :: proc() {
 		rl.BeginTextureMode(renderer.canvas)
 		rl.ClearBackground(rl.Color{0, 0, 0, 255})
 		flow_draw(&flow, &renderer, &particles, &blurs, &notices, WINDOW_SCALE)
-		if show_debug && state.level != nil {
+		if show_debug && sim.level_def(state) != nil {
 			draw_debug(state, &report)
 		}
 		diagnostics_draw(&diagnostics, flow.netplay_active, flow.netplay.ping_ms)
@@ -343,10 +343,10 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 			fmt.eprintln("reward: no options to offer")
 			os.exit(1)
 		}
-		state.players[0].passives[state.reward.options[0]] = 1
+		state.players[0].passives[sim.single(state, sim.Reward).options[0]] = 1
 		if two {
-			state.reward.cursor[1] = 0
-			state.reward.locked[0] = true
+			sim.single(state, sim.Reward).cursor[1] = 0
+			sim.single(state, sim.Reward).locked[0] = true
 		}
 		flow.mode = .Playing
 	case "loadout", "loadout_2p", "loadout_placed":
@@ -368,21 +368,21 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		if placed {
 			state.players[0].weapons.loadout[1] = sim.NO_WEAPON
 		}
-		for i := 0; i < 2000 && !state.loadout.active; i += 1 {
+		for i := 0; i < 2000 && !sim.single(state, sim.Loadout).active; i += 1 {
 			_ = sim.session_step(state, {})
 		}
-		if !state.loadout.active {
+		if !sim.single(state, sim.Loadout).active {
 			fmt.eprintln("loadout: the screen never opened (is assets/extra there?)")
 			os.exit(1)
 		}
 		if !placed {
-			state.loadout.boards[0].col = 1
+			sim.single(state, sim.Loadout).boards[0].col = 1
 		}
 		if two {
-			b := &state.loadout.boards[0]
+			b := &sim.single(state, sim.Loadout).boards[0]
 			b.holding, b.hold_row, b.hold_col = true, .Fresh, 0
 			b.row, b.col = .Slots, 1
-			state.loadout.boards[1].row = .Ready
+			sim.single(state, sim.Loadout).boards[1].row = .Ready
 		}
 		flow.mode = .Playing
 	case "chaingun", "chaingun_charge", "discharge", "discharge_charge":
@@ -398,7 +398,7 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		extra_set(ps, .New_Weapons, 1)
 		beam := strings.has_prefix(name, "discharge")
 		flow_start_session(&flow, 0x1234_5678, .Single, beam ? 9 : 6)
-		state.loadout.shown = true
+		sim.single(state, sim.Loadout).shown = true
 		p := &state.players[0]
 		for &w, i in defs.weapons {
 			if w.id == sim.res_id(beam ? "aidb" : "aicg") {
@@ -475,8 +475,8 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		for _ in 0 ..< 90 {
 			_ = sim.session_step(state, {})
 		}
-		prev := new(sim.State, context.temp_allocator)
-		prev^ = state^
+		prev := new(Interp_Prev, context.temp_allocator)
+		interp_capture(prev, state)
 		_ = sim.session_step(state, {})
 		flow.mode = .Playing
 		r.interp_prev = prev
@@ -706,7 +706,7 @@ draw_debug :: proc(s: ^sim.State, report: ^data.Defs_Report) {
 	rl.DrawText(
 		fmt.ctprintf(
 			"frame %v  time %v  entities %v  scroll %v\nplayer shields %.0f lives %v score %v\ndefs: %v units %v sprites %v levels",
-			s.frame, s.time, s.world.used_count, s.bgnd.view_top,
+			sim.frame_of(s), sim.single(s, sim.Clock).time, s.world.used_count, sim.single(s, sim.Bgnd).view_top,
 			s.players[0].shields, s.players[0].lives, s.players[0].score,
 			report.units, report.sprites, report.levels,
 		),

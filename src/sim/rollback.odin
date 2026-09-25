@@ -13,6 +13,7 @@ package sim
 Snapshot :: struct {
 	fields:  State,
 	world:   [dynamic]byte,
+	frame:   u32, // the frame it was saved at, which is in the world
 	written: bool, // holds a real snapshot, not just zero value
 }
 
@@ -38,8 +39,10 @@ snapshot_ring_destroy :: proc(r: ^Snapshot_Ring, allocator := context.allocator)
 // Records s as the snapshot for its current frame, overwriting whichever
 // older snapshot last landed in that slot.
 snapshot_save :: proc(r: ^Snapshot_Ring, s: ^State) {
-	slot := &r.slots[s.frame % u32(len(r.slots))]
+	frame := frame_of(s)
+	slot := &r.slots[frame % u32(len(r.slots))]
 	slot.fields = s^
+	slot.frame = frame
 	clear(&slot.world)
 	ecs_write(s.ecs, &slot.world)
 	slot.written = true
@@ -48,7 +51,7 @@ snapshot_save :: proc(r: ^Snapshot_Ring, s: ^State) {
 @(private = "file")
 snapshot_find :: proc(r: ^Snapshot_Ring, frame: u32) -> ^Snapshot {
 	slot := &r.slots[frame % u32(len(r.slots))]
-	if !slot.written || slot.fields.frame != frame {
+	if !slot.written || slot.frame != frame {
 		return nil
 	}
 	return slot

@@ -37,10 +37,10 @@ pf :: proc "contextless" (s: ^State, i: int) -> i32 {
 // The G_Bgnd_Process() == 1 branch of FUN_00420280, run once the background
 // reports the level has scrolled to its end.
 level_end_step :: proc(s: ^State, time: i32) {
-	l := &s.level_end
-	s.level_ending = true
+	l := single(s, Level_End)
+	single(s, Level_Info).ending = true
 	if !l.started {
-		if s.game_over {
+		if single(s, Game_Status).game_over {
 			l.started = true
 			return
 		}
@@ -72,9 +72,9 @@ level_end_step :: proc(s: ^State, time: i32) {
 
 @(private = "file")
 level_end_begin :: proc(s: ^State, time: i32) {
-	l := &s.level_end
+	l := single(s, Level_End)
 	n := i32(len(s.defs.levels))
-	if s.level_number == n && s.levels_played == n {
+	if single(s, Level_Info).number == n && single(s, Level_Info).played == n {
 		l.all_done = true
 	}
 	notice := s.defs.perm_objects[l.all_done ? 0x17 : 0x16]
@@ -99,8 +99,8 @@ level_end_begin :: proc(s: ^State, time: i32) {
 	l.state_time = time
 	l.count_time = time
 	percent: f32 = 0
-	if s.accuracy_targets >= 1 {
-		percent = f32(s.accuracy_destroyed) / f32(s.accuracy_targets) * 100
+	if single(s, Accuracy).targets >= 1 {
+		percent = f32(single(s, Accuracy).destroyed) / f32(single(s, Accuracy).targets) * 100
 	}
 	l.percent = trunc_i32(percent)
 	// The thresholds step down from 100 by whole multiples of perm float
@@ -110,7 +110,7 @@ level_end_begin :: proc(s: ^State, time: i32) {
 	switch {
 	case percent >= 100:
 		// Remembered for the next level's accuracy reward.
-		s.perfect_level = true
+		single(s, Accuracy).perfect_level = true
 		tier = 0xbd
 	case percent >= f32(100 - gap):
 		tier = 0xbe
@@ -123,7 +123,7 @@ level_end_begin :: proc(s: ^State, time: i32) {
 	case:
 		tier = 0xc2
 	}
-	l.bonus = pf(s, tier) * s.level_number
+	l.bonus = pf(s, tier) * single(s, Level_Info).number
 	l.bonus_total = l.bonus
 	l.bonus_step = count_step(s, l.bonus)
 }
@@ -146,7 +146,7 @@ count_step :: proc "contextless" (s: ^State, total: i32) -> i32 {
 // the money counters start.
 @(private = "file")
 level_end_process :: proc(s: ^State, time: i32) -> bool {
-	l := &s.level_end
+	l := single(s, Level_End)
 	switch l.state {
 	case 0:
 		return true
@@ -273,7 +273,7 @@ money_counter_start :: proc(s: ^State, p: ^Player, time: i32, offset: bool) -> b
 	m.count_time = time
 	m.multiplier = pf(s, 0xab)
 	if pf(s, 0xaa) != 0 {
-		m.multiplier *= s.level_number
+		m.multiplier *= single(s, Level_Info).number
 	}
 	m.money = p.money
 	m.value = m.money * m.multiplier

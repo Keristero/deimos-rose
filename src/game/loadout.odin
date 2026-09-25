@@ -82,7 +82,7 @@ panel_height :: proc(b: ^sim.Loadout_Board) -> f32 {
 
 loadout_draw :: proc(fl: ^Flow, r: ^Renderer) {
 	s := fl.state
-	l := &s.loadout
+	l := sim.single(s, sim.Loadout)
 	if !l.active {
 		return
 	}

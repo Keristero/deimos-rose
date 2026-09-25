@@ -34,48 +34,32 @@ Session :: struct {
 }
 
 // The complete simulation state. Everything that affects future frames lives
-// here and in the entity component system `ecs` points at (D39), and
-// nowhere else. `defs` points at read-only data and is not part of the state
-// proper. state_write and state_read copy a state, for rollback and
-// reconnection.
+// in the entity component system `ecs` points at (D39): the session's
+// singletons (components.odin), the players and the entity pool. The rest
+// here is not state:
+// - `session` is fixed at start;
+// - `defs` points at read-only data;
+// - the queues are what the last step did, for presentation to show, and
+//   no step reads them back;
+// - `draws`, `events` and the unported sites are debugging records.
+// state_write and state_read copy a state, for rollback and reconnection.
 State :: struct {
 	session:      Session,
 	defs:         ^Defs,
 	ecs:          ^Ecs,
-	level:        ^Level_Def,
-	level_number: i32,        // DAT_004e482e
-	time:         i32,        // DAT_004e4836: game steps this level
-	frame:        u32,        // steps taken this session
-	rng:          Rand,
-	film_cursor:  [MAX_PLAYERS]i32, // G_Film's per-player read positions
 	players:      [MAX_PLAYERS]Player,
 	world:        World,
-	bgnd:         Bgnd,
-	debris:       Debris,
 	sounds:       Sound_Queue,    // this step's sound events, for presentation
 	particles:    Particle_Queue, // this step's particle bursts, for presentation
 	stamps:       Stamp_Queue,    // this step's marks on the terrain
 	blurs:        Blur_Queue,     // this step's new motion-blur ghosts
 	beams:        Beam_Queue,     // this step's laser shots, for presentation (beam.odin)
-	notice:       Notice_State,   // the pending on-screen notice, if any
 	notices:      Notice_Queue,   // this step's new notices, for presentation
-	accuracy_targets:   i32,  // DAT_004e4856
-	accuracy_destroyed: i32,  // DAT_004e485a
-	accuracy_reward_this_level: bool, // DAT_004e4828
-	perfect_level: bool,        // DAT_004e4827: this level ended at 100%
-	levels_played: i32,         // DAT_004e482a: levels started this session
-	player1_seen_playing: bool, // FUN_00420280's first argument
-	level_ending: bool,         // DAT_004e4855
-	game_over:    bool,         // DAT_004e4826: no player left in the game
-	game_over_notice: bool,     // FUN_00420280's third argument: the game-over banner has been spawned
-	level_end:    Level_End,
-	// Netplay pause (session_step): new content, not the original's
-	// G_Interface_PauseGame, which lives outside the simulation entirely
-	// (game/flow.odin's .Paused, still what single-player uses).
-	paused:       bool,
-	pause_held:   [MAX_PLAYERS]bool, // each player's Pause bit last step, for edge detection
-	reward:       Reward,            // easy mode's reward screen, between levels
-	loadout:      Loadout,           // New Weapons' loadout screen, early in each level
+	// Optional record of every RandomInt/RandomFloat call, for diffing
+	// against the original's gdb trace (see oracle/). nil in normal play
+	// and netplay. Tracing is a single-timeline debugging aid: rollback
+	// leaves it alone.
+	draws:        ^Draw_Log,
 	// The first original function reached that is not ported yet, by
 	// address; 0 while the port covers everything run so far. `gaps` keeps
 	// each distinct site with the film step it was first reached at.
@@ -103,7 +87,7 @@ unported :: proc "contextless" (s: ^State, site: Site) {
 		}
 	}
 	if s.gap_count < len(s.gaps) {
-		s.gaps[s.gap_count] = {site, s.film_cursor[0]}
+		s.gaps[s.gap_count] = {site, single(s, Film_Cursor).reads[0]}
 		s.gap_count += 1
 	}
 }
@@ -125,13 +109,15 @@ init :: proc(s: ^State, session: Session, defs: ^Defs, log: ^Draw_Log = nil, eve
 	s.session = session
 	s.defs = defs
 	s.events = events
-	s.rng = rand_init(session.seed, log)
-	s.level = level_by_id(defs, session.level_id)
-	if s.level == nil {
+	s.draws = log
+	add_singletons(s)
+	single(s, Rng).next = session.seed
+	level := level_by_id(defs, session.level_id)
+	if level == nil {
 		unported(s, 1) // unknown level id
 		return
 	}
-	s.level_number = s.level.number
+	single(s, Level_Info).number = level.number
 	for i in 0 ..< MAX_PLAYERS {
 		player_setup(s, &s.players[i], i32(i), session.game_type)
 	}
@@ -151,7 +137,7 @@ state_write :: proc(s: ^State, buf: ^[dynamic]byte) {
 	append(buf, ..([^]u8)(s)[:size_of(State)])
 	// Addresses mean nothing to the reader; send zeroes.
 	fields := ([^]u8)(&buf[start])
-	for off in ([?]uintptr{offset_of(State, defs), offset_of(State, ecs), offset_of(State, level), offset_of(State, events), offset_of(State, rng) + offset_of(Rand, log)}) {
+	for off in ([?]uintptr{offset_of(State, defs), offset_of(State, ecs), offset_of(State, draws), offset_of(State, events)}) {
 		runtime.mem_zero(&fields[off], size_of(rawptr))
 	}
 	ecs_write(s.ecs, buf)
@@ -175,29 +161,23 @@ state_read :: proc(s: ^State, data: []byte) -> bool {
 	return true
 }
 
-// s^ = plain, keeping what s points at. The level is looked up again: it
-// points into this process's definitions.
+// s^ = plain, keeping what s points at.
 @(private)
 restore_plain :: proc(s: ^State, plain: ^State) {
-	defs, world, events, log := s.defs, s.ecs, s.events, s.rng.log
+	defs, world, draws, events := s.defs, s.ecs, s.draws, s.events
 	s^ = plain^
-	s.defs, s.ecs, s.events, s.rng.log = defs, world, events, log
-	s.level = nil
-	for &l in defs.levels {
-		if l.number == s.level_number {
-			s.level = &l
-		}
-	}
+	s.defs, s.ecs, s.draws, s.events = defs, world, draws, events
 }
 
 // FUN_0041fc80: the start of a level.
 level_start :: proc(s: ^State) {
-	s.time = 0
-	s.accuracy_targets = 0
-	s.accuracy_destroyed = 0
+	single(s, Clock).time = 0
+	acc := single(s, Accuracy)
+	acc.targets = 0
+	acc.destroyed = 0
 	// FUN_004208d0: the tally resets, but not the count of levels finished
 	// at 100%, nor `all_done`/`complete`, which belong to the session.
-	l := &s.level_end
+	l := single(s, Level_End)
 	l.started, l.started_time = false, 0
 	l.state, l.state_time, l.count_time = 0, 0, 0
 	l.fade = 0x20
@@ -205,29 +185,30 @@ level_start :: proc(s: ^State) {
 	l.perfect, l.perfect_count = false, 0
 	// A level finished at 100% accuracy earns the bonus pickup on the next
 	// one, once (G_Game_GroundAccuracy_CheckForRewardThisLevel).
-	s.accuracy_reward_this_level = s.perfect_level
-	s.perfect_level = false
-	s.levels_played += 1
+	acc.reward_this_level = acc.perfect_level
+	acc.perfect_level = false
+	single(s, Level_Info).played += 1
 	for &p in s.players {
-		player_level_reset(s, &p, s.time)
+		player_level_reset(s, &p, 0)
 	}
-	s.debris.count = 0 // G_Debris_ResetAtLevelStart
-	bgnd_reset(s, s.level)
-	eg_reset(s, s.level)
+	single(s, Debris).count = 0 // G_Debris_ResetAtLevelStart
+	bgnd_reset(s, level_def(s))
+	eg_reset(s, level_def(s))
 	bgnd_initial_spawns(s)
 
 	// The level's title notice unit, centred in the play area. The loadout
 	// screen waits for it to go.
-	s.loadout.shown = false
-	s.loadout.title = NO_REF
-	notice := s.defs.perm_objects[s.level_number + 9]
+	single(s, Loadout).shown = false
+	single(s, Loadout).title = NO_REF
+	notice := s.defs.perm_objects[level_number_of(s) + 9]
 	if notice != NONE {
 		req := spawn_request(notice)
 		req.loc = {
 			s.defs.perm_floats[PF_VISIBLE_GAME_WIDTH] / 2,
 			s.defs.perm_floats[PF_VISIBLE_GAME_HEIGHT] / 2,
 		}
-		s.loadout.title = eg_request_spawn(s, req)
+		title := eg_request_spawn(s, req)
+		single(s, Loadout).title = title
 	}
 }
 
@@ -240,12 +221,12 @@ level_start :: proc(s: ^State) {
 // `defs.levels` is ordered by number and level_number is 1-based, so the next
 // entry is simply the array index at the current number.
 level_advance :: proc(s: ^State) -> bool {
-	next := int(s.level_number)
+	info := single(s, Level_Info)
+	next := int(info.number)
 	if next >= len(s.defs.levels) {
 		return false
 	}
-	s.level = &s.defs.levels[next]
-	s.level_number = s.level.number
+	info.number = s.defs.levels[next].number
 	// level_start leaves `complete` alone (FUN_004208d0 does not touch it),
 	// so it has to be consumed here: left set, flow_step saw the next level
 	// as already complete on its very first step and chained through every
@@ -255,8 +236,8 @@ level_advance :: proc(s: ^State) -> bool {
 	// the session. Provisional: where the original clears DAT_004e4825 and
 	// DAT_004e4855 between levels has not been traced -- the effect (both
 	// false at the start of every level) is what a playable session needs.
-	s.level_end.complete = false
-	s.level_ending = false
+	single(s, Level_End).complete = false
+	info.ending = false
 	level_start(s)
 	return true
 }
@@ -271,10 +252,10 @@ Level_Transition :: enum u8 {
 // What the session does after a step: carry on, game over, the next level or
 // the end of the list. game_over wins over complete, see flow_step.
 level_transition :: proc(s: ^State) -> Level_Transition {
-	if s.game_over {
+	if single(s, Game_Status).game_over {
 		return .Game_Over
 	}
-	if !s.level_end.complete || s.reward.active {
+	if !single(s, Level_End).complete || single(s, Reward).active {
 		return .None
 	}
 	return level_advance(s) ? .Advanced : .All_Complete
@@ -308,30 +289,30 @@ session_step :: proc(s: ^State, input: Frame_Input, film: ^Film = nil) -> Level_
 	toggle := false
 	for i in 0 ..< MAX_PLAYERS {
 		held := .Pause in input[i]
-		if held && !s.pause_held[i] {
+		if held && !single(s, Pause).held[i] {
 			toggle = true // both pressing on the same frame still toggles once
 		}
-		s.pause_held[i] = held
+		single(s, Pause).held[i] = held
 	}
 	if toggle {
-		s.paused = !s.paused
+		single(s, Pause).paused = !single(s, Pause).paused
 	}
-	if s.paused {
+	if single(s, Pause).paused {
 		clear_step_events(s) // nothing happened this step; do not replay last step's
-		s.frame += 1
+		single(s, Clock).frame += 1
 		return .None
 	}
 	game_input := input
 	for &b in game_input {
 		b -= {.Pause}
 	}
-	if s.reward.active {
+	if single(s, Reward).active {
 		if reward_step(s, game_input) {
 			return .None
 		}
 		return level_transition(s)
 	}
-	if s.loadout.active {
+	if single(s, Loadout).active {
 		loadout_step(s, game_input)
 		return .None
 	}
@@ -348,7 +329,7 @@ session_step :: proc(s: ^State, input: Frame_Input, film: ^Film = nil) -> Level_
 // Whether play stands still this step for a pause or a between-play screen:
 // the presentation holds its own effects still to match.
 session_frozen :: proc "contextless" (s: ^State) -> bool {
-	return s.paused || s.reward.active || s.loadout.active
+	return single(s, Pause).paused || single(s, Reward).active || single(s, Loadout).active
 }
 
 // This step's presentation events start empty; step, a paused session_step
@@ -367,15 +348,15 @@ clear_step_events :: proc "contextless" (s: ^State) {
 // one frame per step they spend in play.
 step :: proc(s: ^State, input: Frame_Input, film: ^Film = nil) {
 	clear_step_events(s)
-	if !s.player1_seen_playing && s.players[0].state == .Playing {
-		s.player1_seen_playing = true
+	if !single(s, Game_Status).player1_seen_playing && s.players[0].state == .Playing {
+		single(s, Game_Status).player1_seen_playing = true
 	}
 	// G_Notice_Process, G_Particle_Process and G_MotionBlur_Process do not
 	// draw; G_Debris_Process moves the ground wreckage with the scroll.
 	notice_process(s)
 	debris_process(s)
 	for i in 0 ..< MAX_PLAYERS {
-		player_process(s, &s.players[i], s.time, input[i], film)
+		player_process(s, &s.players[i], single(s, Clock).time, input[i], film)
 	}
 	// G_ScoreBar_Process is presentation.
 
@@ -386,7 +367,7 @@ step :: proc(s: ^State, input: Frame_Input, film: ^Film = nil) {
 		}
 	}
 	if !any_in_game {
-		s.game_over = true
+		single(s, Game_Status).game_over = true
 		// FUN_00420280 LAB_0042037a: the first step no player is left in
 		// game spawns the Notice_GameOver banner (perm object 0x18) once, at
 		// screen centre -- the same position formula level_end_begin uses
@@ -400,7 +381,7 @@ step :: proc(s: ^State, input: Frame_Input, film: ^Film = nil) {
 		// of lives needs it for the replay to stay in sync -- no shipped
 		// demo film reaches game over, so oracle:diff never exercised this
 		// gap before.
-		if !s.game_over_notice {
+		if !single(s, Game_Status).game_over_notice {
 			notice := s.defs.perm_objects[0x18]
 			if notice != NONE {
 				req := spawn_request(notice)
@@ -410,19 +391,19 @@ step :: proc(s: ^State, input: Frame_Input, film: ^Film = nil) {
 				}
 				eg_request_spawn(s, req)
 			}
-			s.game_over_notice = true
+			single(s, Game_Status).game_over_notice = true
 		}
 	}
 	if bgnd_process(s) {
-		level_end_step(s, s.time)
+		level_end_step(s, single(s, Clock).time)
 	}
-	if eg_process(s, s.time) {
+	if eg_process(s, single(s, Clock).time) {
 		bgnd_stop(s)
 	} else {
 		bgnd_resume(s)
 	}
-	s.time += 1
-	s.frame += 1
+	single(s, Clock).time += 1
+	single(s, Clock).frame += 1
 }
 
 // Order-sensitive FNV-1a over the state, used to detect divergence between a
@@ -434,19 +415,16 @@ checksum :: proc(s: ^State) -> u64 {
 	return h.sum
 }
 
-// The first part of checksum: what it hashes outside the world.
+// The first part of checksum: what it hashes outside the world. It must not
+// read the world: rollback hashes a snapshot's saved fields, whose ecs is
+// the live one (snapshot_checksum). Everything in the world, the session's
+// singletons included, is hashed whole by ecs_hash.
 @(private)
 checksum_fields :: proc "contextless" (s: ^State) -> Hasher {
 	h := hasher()
 	mix :: proc "contextless" (h: ^Hasher, v: u64) {
 		hash_u64(h, v)
 	}
-	mix(&h, u64(s.time))
-	mix(&h, u64(s.rng.next))
-	// Which level, and whether it has ended or play is paused: two peers on
-	// different levels at the same time value must not hash alike.
-	mix(&h, u64(s.level_number))
-	mix(&h, u64(s.level_end.complete ? 1 : 0) | u64(s.paused ? 2 : 0))
 	for &p in s.players {
 		mix(&h, u64(p.active ? 1 : 0))
 		mix(&h, u64(p.state))
@@ -456,11 +434,7 @@ checksum_fields :: proc "contextless" (s: ^State) -> Hasher {
 	// Easy mode's own state. Only then: a session without it hashes as it
 	// always has.
 	if s.session.easy {
-		r := &s.reward
-		mix(&h, u64(r.active ? 1 : 0) | u64(r.count) << 8 | u64(r.ready_time) << 16)
-		for i in 0 ..< MAX_PLAYERS {
-			mix(&h, u64(r.cursor[i]) | u64(r.locked[i] ? 1 : 0) << 32)
-			p := &s.players[i]
+		for &p in s.players {
 			for lv in p.passives {
 				mix(&h, u64(lv))
 			}
@@ -469,22 +443,11 @@ checksum_fields :: proc "contextless" (s: ^State) -> Hasher {
 	}
 	// New Weapons' own state, likewise only then.
 	if s.session.loadout {
-		l := &s.loadout
-		mix(&h, u64(l.active ? 1 : 0) | u64(l.shown ? 2 : 0) | u64(l.ready_time) << 8)
-		for i in 0 ..< MAX_PLAYERS {
-			b := &l.boards[i]
-			mix(&h, u64(b.row) | u64(b.col) << 8 | u64(b.hold_row) << 16 | u64(b.hold_col) << 24 |
-				u64(b.holding ? 1 : 0) << 32 | u64(b.ready ? 1 : 0) << 33)
-			for row in b.cells {
-				for w in row {
-					mix(&h, u64(u32(w)))
-				}
-			}
-			wh := &s.players[i].weapons
-			for w in wh.loadout {
+		for &p in s.players {
+			for w in p.weapons.loadout {
 				mix(&h, u64(u32(w)))
 			}
-			for w in wh.spare {
+			for w in p.weapons.spare {
 				mix(&h, u64(u32(w)))
 			}
 		}

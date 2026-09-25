@@ -47,7 +47,7 @@ stamp_object :: proc "contextless" (s: ^State, o: ^Game_Object, casts_shadow: bo
 		is_air       = o.is_air,
 		casts_shadow = casts_shadow,
 		draw_layer   = o.draw_layer,
-		view_top     = s.bgnd.view_top,
+		view_top     = single(s, Bgnd).view_top,
 	}
 	s.stamps.count += 1
 }

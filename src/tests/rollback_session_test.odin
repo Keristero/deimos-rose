@@ -92,8 +92,11 @@ rollback_session_converges_under_latency_and_loss :: proc(t: ^testing.T) {
 		net.rollback_session_advance(&rs_b, inputs1[i])
 
 		send_count += 1
-		if send_count % 5 == 0 {
-			continue // drop this tick's send in both directions
+		// Drop this tick's send in both directions -- but not the last
+		// tick's: nothing sends after it, so the last frame's input would
+		// never arrive and each side would end on its own guess.
+		if send_count % 5 == 0 && i < FRAMES - 1 {
+			continue
 		}
 
 		win: [WINDOW]sim.Buttons
@@ -143,7 +146,7 @@ rollback_session_converges_under_latency_and_loss :: proc(t: ^testing.T) {
 		deliver_due(&to_b, i, &rs_b, &dm_b)
 	}
 
-	testing.expect_value(t, state_a.frame, u32(FRAMES))
+	testing.expect_value(t, sim.frame_of(state_a), u32(FRAMES))
 	testing.expect_value(t, sim.checksum(state_a), sim.checksum(state_b))
 	// Otherwise this test would prove nothing: with inputs changing this
 	// often against 4 frames of latency, prediction must have guessed wrong
@@ -208,7 +211,7 @@ rollback_session_frame_advantage_tracks_the_confirmed_remote_frame :: proc(t: ^t
 
 	testing.expect_value(t, net.rollback_session_frame_advantage(&rs), 0)
 
-	// Simulate 6 local frames (0..5, state.frame becomes 6) with nothing at
+	// Simulate 6 local frames (0..5, sim.frame_of(state) becomes 6) with nothing at
 	// all confirmed from the peer yet -- still predicting throughout.
 	for i in 0 ..< 6 {
 		net.rollback_session_advance(&rs, {})
@@ -216,7 +219,7 @@ rollback_session_frame_advantage_tracks_the_confirmed_remote_frame :: proc(t: ^t
 	testing.expect_value(t, net.rollback_session_frame_advantage(&rs), 0)
 
 	// The peer confirms frames 0..2: this side has simulated frames 0..5
-	// (state.frame == 6) but only knows the peer's real input through frame
+	// (sim.frame_of(state) == 6) but only knows the peer's real input through frame
 	// 2, i.e. it is 3 frames ahead of what it can confirm (6 - 2 - 1 == 3).
 	frames: [3]sim.Buttons
 	buf: [64]byte
@@ -237,7 +240,7 @@ rollback_session_frame_advantage_tracks_the_confirmed_remote_frame :: proc(t: ^t
 // netplay_playing_step gates a whole tick on. Drives a Rollback_Session's
 // frame straight to a chosen value (rather than replaying real ticks) via
 // repeated no-input advances, so each case's frame_advantage is exact and
-// the period math can be checked directly against rs.state.frame's parity.
+// the period math can be checked directly against sim.frame_of(rs.state)'s parity.
 @(test)
 rollback_session_should_stall_throttles_only_once_over_threshold :: proc(t: ^testing.T) {
 	defs := synthetic_defs()
@@ -261,7 +264,7 @@ rollback_session_should_stall_throttles_only_once_over_threshold :: proc(t: ^tes
 		testing.expect(t, !net.rollback_session_should_stall(&rs, THRESHOLD, MIN_EVERY))
 	}
 
-	// Confirm frame 3: state.frame is 10, so frame_advantage == 10-3-1 == 6,
+	// Confirm frame 3: sim.frame_of(state) is 10, so frame_advantage == 10-3-1 == 6,
 	// one over THRESHOLD -- every == max(5-1, 2) == 4. 10 % 4 == 2, not a
 	// stall point.
 	frames: [4]sim.Buttons
@@ -275,12 +278,12 @@ rollback_session_should_stall_throttles_only_once_over_threshold :: proc(t: ^tes
 
 	// Advancing without any further confirmation widens the lead each tick,
 	// which shrinks (more aggressive) the throttle period each tick too:
-	// at state.frame 11, advantage 7, every == max(5-2, 2) == 3 (11 % 3 == 2,
-	// no stall); at state.frame 12, advantage 8, every == max(5-3, 2) == 2
+	// at sim.frame_of(state) 11, advantage 7, every == max(5-2, 2) == 3 (11 % 3 == 2,
+	// no stall); at sim.frame_of(state) 12, advantage 8, every == max(5-3, 2) == 2
 	// (12 % 2 == 0, a stall point).
-	net.rollback_session_advance(&rs, {}) // state.frame -> 11
+	net.rollback_session_advance(&rs, {}) // sim.frame_of(state) -> 11
 	testing.expect(t, !net.rollback_session_should_stall(&rs, THRESHOLD, MIN_EVERY))
-	net.rollback_session_advance(&rs, {}) // state.frame -> 12
+	net.rollback_session_advance(&rs, {}) // sim.frame_of(state) -> 12
 	testing.expect(t, net.rollback_session_should_stall(&rs, THRESHOLD, MIN_EVERY))
 }
 
@@ -378,17 +381,17 @@ rollback_session_converges_across_level_changes_and_pauses :: proc(t: ^testing.T
 				append(&queues[1 - p], Delivery{i + LATENCY, pkt})
 			}
 		}
-		if states[0].paused {
+		if sim.single(states[0], sim.Pause).paused {
 			paused_frames += 1
 		}
-		max_level = max(max_level, states[0].level_number)
+		max_level = max(max_level, sim.single(states[0], sim.Level_Info).number)
 	}
 
 	testing.expect(t, rs[0].rollback_count > 0 && rs[1].rollback_count > 0, "test never exercised a rollback")
 	testing.expect(t, max_level >= 3, "test never reached the third level")
 	testing.expect(t, paused_frames > 0, "test never paused")
-	testing.expect_value(t, states[0].level_number, states[1].level_number)
-	testing.expect_value(t, states[0].time, states[1].time)
-	testing.expect_value(t, states[0].paused, states[1].paused)
+	testing.expect_value(t, sim.single(states[0], sim.Level_Info).number, sim.single(states[1], sim.Level_Info).number)
+	testing.expect_value(t, sim.single(states[0], sim.Clock).time, sim.single(states[1], sim.Clock).time)
+	testing.expect_value(t, sim.single(states[0], sim.Pause).paused, sim.single(states[1], sim.Pause).paused)
 	testing.expect_value(t, sim.checksum(states[0]), sim.checksum(states[1]))
 }

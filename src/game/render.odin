@@ -239,7 +239,7 @@ Renderer :: struct {
 	// step and the next (0..1). main.odin sets both each frame; interp_prev
 	// nil means off, and every position is drawn exactly as the state has
 	// it. The simulation never sees any of this.
-	interp_prev:  ^sim.State,
+	interp_prev:  ^Interp_Prev,
 	interp_alpha: f32,
 	// The scroll this frame is drawn at: build_frame's (possibly
 	// interpolated) view_top and side_scroll, read by draw_object and
@@ -555,16 +555,20 @@ build_frame :: proc(r: ^Renderer, s: ^sim.State, blurs: ^Blurs, notices: ^Notice
 	terrain_prepare(r, s)
 	terrain_stamp(r, s)
 	scorebar_process(&r.scorebar, s)
-	pv := r.interp_prev
-	if pv != nil && (pv.level != s.level || pv.levels_played != s.levels_played || pv.frame > s.frame) {
+	prev := r.interp_prev
+	info := sim.single(s, sim.Level_Info)
+	if prev != nil && (prev.level != info.number || prev.played != info.played || prev.frame > sim.frame_of(s)) {
 		// A different level, or a new session: nothing on screen was there
 		// a step ago.
-		pv = nil
+		prev = nil
 	}
-	r.view_top, r.side_scroll = f32(s.bgnd.view_top), f32(s.bgnd.side_scroll)
-	if pv != nil {
-		r.view_top = interp(f32(pv.bgnd.view_top), r.view_top, r.interp_alpha)
-		r.side_scroll = interp(f32(pv.bgnd.side_scroll), r.side_scroll, r.interp_alpha)
+	bg := sim.single(s, sim.Bgnd)
+	r.view_top, r.side_scroll = f32(bg.view_top), f32(bg.side_scroll)
+	pv: ^sim.State
+	if prev != nil {
+		pv = &prev.state
+		r.view_top = interp(f32(prev.view_top), r.view_top, r.interp_alpha)
+		r.side_scroll = interp(f32(prev.side_scroll), r.side_scroll, r.interp_alpha)
 	}
 	w := &s.world
 	for g := w.active.head; g != sim.NO_LINK; g = w.group_links[g].next {
@@ -684,10 +688,10 @@ present :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, scale: f32) 
 // The map buffer for a level: the image, plus every mark burned into it
 // since the level started. Rebuilt when the level changes.
 terrain_prepare :: proc(r: ^Renderer, s: ^sim.State) {
-	if r.terrain_level == s.level.id && r.terrain.id != 0 && r.terrain_qt == r.textures.quicktime_gamma {
+	if r.terrain_level == sim.level_def(s).id && r.terrain.id != 0 && r.terrain_qt == r.textures.quicktime_gamma {
 		return
 	}
-	tex, ok := terrain_texture(&r.textures, s.level.id)
+	tex, ok := terrain_texture(&r.textures, sim.level_def(s).id)
 	if !ok {
 		return
 	}
@@ -695,7 +699,7 @@ terrain_prepare :: proc(r: ^Renderer, s: ^sim.State) {
 		rl.UnloadRenderTexture(r.terrain)
 	}
 	r.terrain = rl.LoadRenderTexture(tex.width, tex.height)
-	r.terrain_level = s.level.id
+	r.terrain_level = sim.level_def(s).id
 	r.terrain_qt = r.textures.quicktime_gamma
 	rl.BeginTextureMode(r.terrain)
 	rl.ClearBackground(rl.BLACK)

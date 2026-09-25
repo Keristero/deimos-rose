@@ -101,15 +101,15 @@ mix_obj :: proc(f: ^Fnv, o: ^sim.Game_Object) {
 // where the state keeps it.
 golden_state_hash :: proc(s: ^sim.State) -> u64 {
 	f := fnv_init()
-	mix(&f, u64(s.time))
-	mix(&f, u64(s.frame))
-	mix(&f, u64(s.rng.next))
-	mix(&f, u64(s.level_number))
-	mixb(&f, s.level_end.complete)
-	mixb(&f, s.game_over)
-	mixb(&f, s.paused)
-	mix(&f, u64(s.bgnd.view_top))
-	mix(&f, u64(s.bgnd.side_scroll))
+	mix(&f, u64(sim.single(s, sim.Clock).time))
+	mix(&f, u64(sim.frame_of(s)))
+	mix(&f, u64(sim.single(s, sim.Rng).next))
+	mix(&f, u64(sim.single(s, sim.Level_Info).number))
+	mixb(&f, sim.single(s, sim.Level_End).complete)
+	mixb(&f, sim.single(s, sim.Game_Status).game_over)
+	mixb(&f, sim.single(s, sim.Pause).paused)
+	mix(&f, u64(sim.single(s, sim.Bgnd).view_top))
+	mix(&f, u64(sim.single(s, sim.Bgnd).side_scroll))
 	for &p in s.players {
 		mixb(&f, p.active)
 		mix(&f, u64(p.state))
@@ -135,8 +135,8 @@ golden_state_hash :: proc(s: ^sim.State) -> u64 {
 			mix(&f, u64(u32(w)))
 		}
 	}
-	mixb(&f, s.reward.active)
-	mixb(&f, s.loadout.active)
+	mixb(&f, sim.single(s, sim.Reward).active)
+	mixb(&f, sim.single(s, sim.Loadout).active)
 	w := &s.world
 	for g := w.active.head; g != sim.NO_LINK; g = w.group_links[g].next {
 		grp := &w.groups[g]
@@ -243,7 +243,7 @@ golden_session :: proc(defs: ^sim.Defs, g: Golden_Session, allocator := context.
 		// each is a new press) of a direction or Fire_Air only: Fire_Ground
 		// takes a ready back, and random play would never have both players
 		// ready at once.
-		screen := s.reward.active || s.loadout.active
+		screen := sim.single(s, sim.Reward).active || sim.single(s, sim.Loadout).active
 		if screen || r.steps % 6 == 0 {
 			for k in 0 ..< sim.MAX_PLAYERS {
 				b := sim.Buttons{}
@@ -255,8 +255,8 @@ golden_session :: proc(defs: ^sim.Defs, g: Golden_Session, allocator := context.
 						b += {btn}
 					}
 				}
-				if s.loadout.active && s.loadout.choosing[k] {
-					b = loadout_policy(&s.loadout.boards[k])
+				if sim.single(s, sim.Loadout).active && sim.single(s, sim.Loadout).choosing[k] {
+					b = loadout_policy(&sim.single(s, sim.Loadout).boards[k])
 				}
 				input[k] = screen && r.steps % 2 == 1 ? {} : b
 			}

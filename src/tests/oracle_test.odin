@@ -127,7 +127,7 @@ film_reads_stamp_draws_with_the_trace_step_number :: proc(t: ^testing.T) {
 	defer sim.destroy(s)
 	defer free(s)
 	sim.init(s, film.session, synthetic_defs(), &log)
-	for s.film_cursor[0] == 0 {
+	for sim.single(s, sim.Film_Cursor).reads[0] == 0 {
 		sim.step(s, {}, &film)
 	}
 	testing.expect_value(t, log.frame, u32(1))

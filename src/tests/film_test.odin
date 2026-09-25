@@ -114,7 +114,7 @@ film_converts_to_a_sim_replay :: proc(t: ^testing.T) {
 	sim.replay(a, &replay, defs)
 	sim.replay(b, &replay, defs)
 	testing.expect_value(t, sim.checksum(a), sim.checksum(b))
-	testing.expect_value(t, a.film_cursor[0], i32(3))
+	testing.expect_value(t, sim.single(a, sim.Film_Cursor).reads[0], i32(3))
 }
 
 // --- integration: the shipped films ---------------------------------------

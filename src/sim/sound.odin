@@ -35,8 +35,8 @@ sound_play :: proc "contextless" (s: ^State, st: Sound_Settings, loop: bool) {
 		return
 	}
 	record_event(s, Event{kind = .Sound, unit = st.id})
-	pitch := random_float(&s.rng, st.min_pitch, st.max_pitch, 0x44f61d)
-	volume := random_int(&s.rng, st.min_volume, st.min_volume, 0x44f632)
+	pitch := roll_float(s, st.min_pitch, st.max_pitch, 0x44f61d)
+	volume := roll_int(s, st.min_volume, st.min_volume, 0x44f632)
 	if s.sounds.count < MAX_SOUND_EVENTS {
 		s.sounds.events[s.sounds.count] = {st.id, volume, st.priority, pitch, loop}
 		s.sounds.count += 1

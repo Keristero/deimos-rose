@@ -115,14 +115,14 @@ players_enter_then_read_the_film :: proc(t: ^testing.T) {
 		sim.step(s, {}, &film)
 	}
 	// entry_initial_delay 3: appears once time > 0 + 3, i.e. at time 4.
-	testing.expect_value(t, s.film_cursor[0], i32(0))
+	testing.expect_value(t, sim.single(s, sim.Film_Cursor).reads[0], i32(0))
 	sim.step(s, {}, &film)
 	testing.expect_value(t, s.players[0].state, sim.Player_State.Playing)
-	testing.expect_value(t, s.film_cursor[0], i32(1))
+	testing.expect_value(t, sim.single(s, sim.Film_Cursor).reads[0], i32(1))
 
 	sim.replay(s, &film, defs)
 	// frames + 1 reads: the last one finds the film exhausted.
-	testing.expect_value(t, s.film_cursor[0], i32(11))
+	testing.expect_value(t, sim.single(s, sim.Film_Cursor).reads[0], i32(11))
 	testing.expect_value(t, s.unported, sim.Site(0))
 }
 
@@ -186,14 +186,14 @@ level_end_tally_scores_the_ground_accuracy :: proc(t: ^testing.T) {
 	defer sim.destroy(s)
 	defer free(s)
 	sim.init(s, sim.Session{seed = 3, level_id = sim.level_id("le01"), game_type = .Single}, defs)
-	s.accuracy_targets, s.accuracy_destroyed = 50, 47 // 94%
-	sim.level_end_step(s, s.time)
-	testing.expect(t, s.level_ending, "the level must be marked as ending")
-	testing.expect_value(t, s.level_end.percent, i32(94))
+	sim.single(s, sim.Accuracy).targets, sim.single(s, sim.Accuracy).destroyed = 50, 47 // 94%
+	sim.level_end_step(s, sim.single(s, sim.Clock).time)
+	testing.expect(t, sim.single(s, sim.Level_Info).ending, "the level must be marked as ending")
+	testing.expect_value(t, sim.single(s, sim.Level_End).percent, i32(94))
 	// 94% is under 95 but not under 90, so the third tier.
-	testing.expect_value(t, s.level_end.bonus, i32(1000))
-	testing.expect_value(t, s.level_end.bonus_step, i32(100))
-	testing.expect_value(t, s.level_end.state, i32(1))
+	testing.expect_value(t, sim.single(s, sim.Level_End).bonus, i32(1000))
+	testing.expect_value(t, sim.single(s, sim.Level_End).bonus_step, i32(100))
+	testing.expect_value(t, sim.single(s, sim.Level_End).state, i32(1))
 	testing.expect(t, s.players[0].invulnerable, "players are safe once the level is over")
 }
 
@@ -212,17 +212,17 @@ level_advance_starts_the_next_level_unfinished :: proc(t: ^testing.T) {
 	defer sim.destroy(s)
 	defer free(s)
 	sim.init(s, sim.Session{seed = 3, level_id = sim.level_id("le01"), game_type = .Single}, defs)
-	s.level_ending = true
-	s.level_end.complete = true
+	sim.single(s, sim.Level_Info).ending = true
+	sim.single(s, sim.Level_End).complete = true
 	testing.expect(t, sim.level_advance(s), "level 1 of 3 has a next level")
-	testing.expect_value(t, s.level_number, i32(2))
-	testing.expect(t, !s.level_end.complete, "the new level must not start already complete")
-	testing.expect(t, !s.level_ending, "the new level must not start already ending")
+	testing.expect_value(t, sim.single(s, sim.Level_Info).number, i32(2))
+	testing.expect(t, !sim.single(s, sim.Level_End).complete, "the new level must not start already complete")
+	testing.expect(t, !sim.single(s, sim.Level_Info).ending, "the new level must not start already ending")
 	for _ in 0 ..< 10 {
 		sim.step(s, {})
 	}
-	testing.expect(t, !s.level_end.complete, "a level cannot complete before it scrolls to its end")
-	testing.expect_value(t, s.level_number, i32(2))
+	testing.expect(t, !sim.single(s, sim.Level_End).complete, "a level cannot complete before it scrolls to its end")
+	testing.expect_value(t, sim.single(s, sim.Level_Info).number, i32(2))
 }
 
 @(test)
@@ -238,7 +238,7 @@ money_counter_converts_money_at_the_level_multiplier :: proc(t: ^testing.T) {
 	sim.init(s, sim.Session{seed = 3, level_id = sim.level_id("le01"), game_type = .Single}, defs)
 	p := &s.players[0]
 	p.money = 10
-	testing.expect(t, sim.money_counter_start(s, p, s.time, false))
+	testing.expect(t, sim.money_counter_start(s, p, sim.single(s, sim.Clock).time, false))
 	testing.expect(t, sim.money_counter_active(p))
 	testing.expect_value(t, p.counter.value, i32(50))
 	testing.expect_value(t, p.counter.step, i32(1)) // 2% of 50, floored at 1
@@ -263,7 +263,7 @@ notice_plays_its_sound_once_the_delay_elapses :: proc(t: ^testing.T) {
 		entry_notice_sound_max_volume = 50,
 		entry_notice_delay            = 3,
 	}
-	sim.notice_request(s, &u, s.time)
+	sim.notice_request(s, &u, sim.single(s, sim.Clock).time)
 	testing.expect_value(t, s.notices.count, 1)
 	testing.expect_value(t, s.notices.events[0].text, "Test Notice")
 
@@ -279,7 +279,7 @@ notice_plays_its_sound_once_the_delay_elapses :: proc(t: ^testing.T) {
 
 	// The slot stays busy, so a second request while this one shows is dropped.
 	u2 := sim.Unit{entry_notice = "Other", entry_notice_sound = sim.NONE}
-	sim.notice_request(s, &u2, s.time)
+	sim.notice_request(s, &u2, sim.single(s, sim.Clock).time)
 	testing.expect_value(t, s.notices.count, 1)
 }
 
@@ -297,7 +297,7 @@ destruct_notice_never_draws_a_sound :: proc(t: ^testing.T) {
 		sim.notice_process(s)
 	}
 	testing.expect_value(t, s.sounds.count, 0)
-	testing.expect(t, !s.notice.pending, "the slot releases once the hold ends")
+	testing.expect(t, !sim.single(s, sim.Notice_State).pending, "the slot releases once the hold ends")
 }
 
 // The multiplier survives the move to the next level (only a death or a new
@@ -322,10 +322,10 @@ multiplier_carries_into_the_next_level :: proc(t: ^testing.T) {
 	p := &s.players[0]
 	p.multiplier = 3
 
-	s.level_ending = true
-	s.level_end.complete = true
+	sim.single(s, sim.Level_Info).ending = true
+	sim.single(s, sim.Level_End).complete = true
 	testing.expect(t, sim.level_advance(s))
-	testing.expect_value(t, s.level_number, i32(2))
+	testing.expect_value(t, sim.single(s, sim.Level_Info).number, i32(2))
 	testing.expect_value(t, p.multiplier, i32(3))
 
 	events.count = 0

@@ -259,7 +259,7 @@ player_overload_process :: proc(s: ^State, p: ^Player, time: i32) {
 	if !p.overloaded {
 		return
 	}
-	if s.level_ending {
+	if single(s, Level_Info).ending {
 		overload_clear(p)
 		return
 	}

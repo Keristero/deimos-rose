@@ -168,7 +168,7 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 		}
 	}
 
-	if st.destruct_if_vertical_scrolling_not_paused && s.bgnd.speed != 0 {
+	if st.destruct_if_vertical_scrolling_not_paused && single(s, Bgnd).speed != 0 {
 		entity_destroy(s, e, -1, time)
 		return
 	}
@@ -223,15 +223,15 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 				// Both sides take damage; a state can pass hits to its owner.
 				hit_owner := false
 				if st.pass_hits_to_owner && ref_valid(s, e.owner) {
-					entity_hit(s, entity_at(s, e.owner.index), s.defs.perm_floats[0xa1], p.number, s.time)
+					entity_hit(s, entity_at(s, e.owner.index), s.defs.perm_floats[0xa1], p.number, single(s, Clock).time)
 					hit_owner = true
 				}
 				if !hit_owner {
-					entity_hit(s, e, s.defs.perm_floats[0xa1], p.number, s.time)
+					entity_hit(s, e, s.defs.perm_floats[0xa1], p.number, single(s, Clock).time)
 				}
-				player_hit(s, &p, u.damage, s.time)
+				player_hit(s, &p, u.damage, single(s, Clock).time)
 			} else if player_collect(s, &p, e) {
-				entity_destroy(s, e, p.number, s.time)
+				entity_destroy(s, e, p.number, single(s, Clock).time)
 				e.killed_by_player = true
 			}
 		}
@@ -240,7 +240,7 @@ process_entity :: proc(s: ^State, ei: i32, time: i32) -> (pause: bool) {
 		return
 	}
 	if st.motion_blur_required && e.sprite != NONE {
-		gap := random_int(&s.rng, st.motion_blur_min_time_between_blurs, st.motion_blur_max_time_between_blurs, 0x418d92)
+		gap := roll_int(s, st.motion_blur_min_time_between_blurs, st.motion_blur_max_time_between_blurs, 0x418d92)
 		if e.blur_time + gap < time {
 			e.blur_time = time
 			blur_spawn(s, &e.obj, st)
@@ -338,7 +338,7 @@ entity_collisions :: proc(s: ^State, e: ^Entity) {
 				continue
 			}
 			if circles_collide(e.loc, f32(halve(me.bottom - me.top)), o.loc, f32(halve(ob.bottom - ob.top))) {
-				collide_entities(s, e, o, s.time)
+				collide_entities(s, e, o, single(s, Clock).time)
 				if e.deleted {
 					return
 				}
@@ -371,10 +371,10 @@ spawn_control :: proc(s: ^State, e: ^Entity, time: i32) {
 			} else if info.last + info.delay <= time {
 				// A new volley: timings re-drawn, nothing spawned this step.
 				info.last = time
-				info.gap = random_int(&s.rng, set.delay_between_entities_min, set.delay_between_entities_max, 0x414c7c)
-				info.volley = random_int(&s.rng, set.num_in_volley_min, set.num_in_volley_max, 0x414c91)
+				info.gap = roll_int(s, set.delay_between_entities_min, set.delay_between_entities_max, 0x414c7c)
+				info.volley = roll_int(s, set.num_in_volley_min, set.num_in_volley_max, 0x414c91)
 				info.left = info.volley
-				info.delay = random_int(&s.rng, set.rate_min, set.rate_max, 0x414cac)
+				info.delay = roll_int(s, set.rate_min, set.rate_max, 0x414cac)
 				if set.pause_any_rotation_while_spawning && e.spawn_pause < set.time_to_pause_rotation_after_spawning {
 					e.spawn_pause = set.time_to_pause_rotation_after_spawning
 				}
@@ -386,7 +386,7 @@ spawn_control :: proc(s: ^State, e: ^Entity, time: i32) {
 			if info.gap < 1 {
 				fire = true
 				info.left -= 1
-				info.gap = random_int(&s.rng, set.delay_between_entities_min, set.delay_between_entities_max, 0x414c39)
+				info.gap = roll_int(s, set.delay_between_entities_min, set.delay_between_entities_max, 0x414c39)
 			}
 		}
 		if fire {
@@ -741,7 +741,7 @@ adjust_to_required_velocity :: proc "contextless" (s: ^State, e: ^Entity) {
 // is still within `margin` of the play area. Ground objects ride the scroll.
 move_and_check_position :: proc "contextless" (s: ^State, o: ^Game_Object, margin: i32, generous: bool) -> bool {
 	if !o.is_air {
-		o.loc.y = f32(s.bgnd.scrolled) + o.loc.y
+		o.loc.y = f32(single(s, Bgnd).scrolled) + o.loc.y
 	}
 	o.loc += o.vel
 	w, h := view_width(s.defs), view_height(s.defs)
@@ -786,7 +786,7 @@ sweep_deleted :: proc(s: ^State) {
 				if state_of(s, e).destroy_owner_on_destruction && ref_valid(s, e.owner) {
 					o := entity_at(s, e.owner.index)
 					if !o.deleted {
-						entity_destroy(s, o, e.target_player, s.time)
+						entity_destroy(s, o, e.target_player, single(s, Clock).time)
 					}
 				}
 			}
@@ -836,7 +836,7 @@ remove_from_group :: proc(s: ^State, gi: i32, e: ^Entity, destroyed, by_player: 
 	// Destroy is a no-op for an entity the sweep already marked deleted, but
 	// not for a child pulled in by children_follow.
 	if destroyed {
-		entity_destroy(s, e, e.target_player, s.time)
+		entity_destroy(s, e, e.target_player, single(s, Clock).time)
 	}
 	e.deleted = true
 	g.total -= 1
@@ -1034,8 +1034,8 @@ orbit_owner :: proc "contextless" (s: ^State, e: ^Entity) {
 cyclic_motion :: proc "contextless" (s: ^State, e: ^Entity) {
 	st := state_of(s, e)
 	top := trunc_i32(st.max_speed)
-	whole := random_int(&s.rng, halve(top), top, 0x416032)
-	frac := random_int(&s.rng, 1, 100, 0x41604f)
+	whole := roll_int(s, halve(top), top, 0x416032)
+	frac := roll_int(s, 1, 100, 0x41604f)
 	limit := f32(whole) + f32(frac) / 100
 	flip :: proc "contextless" (v: ^f32) {
 		v^ = transmute(f32)(transmute(u32)v^ ~ 0x8000_0000)

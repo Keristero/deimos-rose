@@ -175,7 +175,7 @@ main :: proc() {
 			if len(t.players) > 0 {
 				for &p in state.players {
 					append(&snaps, oracle.Player_Snapshot {
-						frame   = u32(state.film_cursor[0]),
+						frame   = u32(sim.single(state, sim.Film_Cursor).reads[0]),
 						player  = p.number,
 						state   = i32(p.state),
 						loc     = p.loc,
@@ -195,7 +195,7 @@ main :: proc() {
 
 		pct := d.want == 0 ? 100.0 : 100.0 * f64(d.matched) / f64(d.want)
 		fmt.printfln("%s  seed %d  %d frames  %d steps traced; replay: %d steps, %d film reads",
-			name, t.seed, len(film.frames), t.steps, state.frame, state.film_cursor[0])
+			name, t.seed, len(film.frames), t.steps, sim.frame_of(state), sim.single(state, sim.Film_Cursor).reads[0])
 		fmt.printfln("    calls matched %d / %d (%.1f%%), simulation made %d", d.matched, d.want, pct, d.got)
 		if t.unpaired > 0 {
 			fmt.printfln("    WARNING: %d rand() calls not attributed to RandomInt/RandomFloat", t.unpaired)

@@ -32,7 +32,7 @@ play_session :: proc(defs: ^sim.Defs, start: sim.Level_ID, max_steps: int, alloc
 	defer sim.destroy(s)
 	defer free(s)
 	sim.init(s, sim.Session{seed = 7, level_id = start, game_type = .Single}, defs)
-	append(&r.levels_seen, s.level_number)
+	append(&r.levels_seen, sim.single(s, sim.Level_Info).number)
 	steps: i32 = 0
 	for _ in 0 ..< max_steps {
 		for &p in s.players {
@@ -45,7 +45,7 @@ play_session :: proc(defs: ^sim.Defs, start: sim.Level_ID, max_steps: int, alloc
 		case .None:
 		case .Advanced:
 			append(&r.level_steps, steps)
-			append(&r.levels_seen, s.level_number)
+			append(&r.levels_seen, sim.single(s, sim.Level_Info).number)
 			steps = 0
 		case .Game_Over, .All_Complete:
 			append(&r.level_steps, steps)

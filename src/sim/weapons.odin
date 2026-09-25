@@ -193,7 +193,7 @@ weapons_appear :: proc(s: ^State, h: ^Weapon_Handler, level_start: bool) {
 		h.queued_ground = NO_WEAPON
 	}
 	// New Weapons keeps the weapon chosen: a new one waits in the loadout.
-	next := level_start && !s.session.loadout ? level_air_weapon(s.defs, s.level_number) : h.queued_air
+	next := level_start && !s.session.loadout ? level_air_weapon(s.defs, single(s, Level_Info).number) : h.queued_air
 	if next != NO_WEAPON {
 		change_weapon(s, h, WEP_AIR, next)
 		h.queued_air = NO_WEAPON
@@ -243,7 +243,7 @@ air_weapon_next :: proc "contextless" (s: ^State, h: ^Weapon_Handler, current: i
 	if current == NO_WEAPON {
 		return NO_WEAPON
 	}
-	return next_weapon_of_type(s.defs, WEP_AIR, weapon_def(s, current).id, s.level_number)
+	return next_weapon_of_type(s.defs, WEP_AIR, weapon_def(s, current).id, single(s, Level_Info).number)
 }
 
 // AirWeapon_GetCurrentOrQueuedWeaponRefPtr.
@@ -412,7 +412,7 @@ check_spawning_ground :: proc "contextless" (s: ^State, h: ^Weapon_Handler, time
 	if !(h.ground.last + wd.delay_between_launches < time) {
 		return false
 	}
-	h.ground.pending = s.level_number - 1 + trunc_i32(s.defs.perm_floats[0x97])
+	h.ground.pending = single(s, Level_Info).number - 1 + trunc_i32(s.defs.perm_floats[0x97])
 	if mx := trunc_i32(s.defs.perm_floats[0x98]); mx < h.ground.pending {
 		h.ground.pending = mx
 	}
@@ -467,7 +467,7 @@ spawn_air :: proc(s: ^State, h: ^Weapon_Handler, at: Vec) {
 		eg_request_spawn(s, req)
 	}
 	if wd := weapon_def(s, h.air.weapon); wd.beam.on {
-		beam_fire(s, h, wd, at, wd.beam.damage, wd.beam.width, false, s.time)
+		beam_fire(s, h, wd, at, wd.beam.damage, wd.beam.width, false, single(s, Clock).time)
 	}
 }
 
