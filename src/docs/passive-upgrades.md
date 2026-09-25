@@ -192,19 +192,55 @@ is `plbo`, the Plasma Bomb, the only ground weapon.
     bottom edge it stops as it normally stops against the top.
   - `fires_backwards` is listed as a stat, so the reward screen shows it
     like the rest.
-  - The volley delay paces the bomb burst in hundredths.
+  - The volley delay paces the bomb burst in hundredths. No passive uses
+    it on the bomb any more (see Tuning).
 - **Weapon 1** (Ion Cannon). Accelerating shots leave at the scaled initial
   speed (50% at level 3). They then gain `ACCEL_RATE` a step until they reach
   `ACCEL_TOP`, 150% of the unit's speed.
 - **Weapon 2** (Bacta Gun). `projectile_lifetime` scales the shot's timer,
   and so its range.
 - **Weapon 3** (Rear Gun)
-  - The design's `(1,2,0)` is taken literally: level 3 trades the extra
-    volleys for side fire.
   - Side fire makes each forward-facing set fire to the side it is on as
     well. A centre lane fires both ways.
 - **Weapon 4** (Photon Beam). `firing_delay` scales
-  `delay_between_launches`, and `volley_delay` the spawner's clock.
+  `delay_between_launches`.
+
+## Tuning (2026-09-25)
+
+The weapon passives' numbers no longer follow the design. They are tuned
+with the DPS report (`mise run dps:report`, [dps-report.md](dps-report.md)).
+Level 1 adds 10-20% to the weapon's DPS, level 2 20-40%, and level 3
+40-60%. This is measured as the report's Gain: the mean over the
+scenarios the bare weapon reaches. For Ground Variant 1 it is its DPS
+behind against the bare bomb's single target ahead.
+
+A target takes at most one hit every two steps. So a lane that arrives
+with another adds nothing to a lone target, and extra volleys add the most.
+A percentage off a firing delay counts only once it rounds to a whole step:
+the Ion Cannon's 4 steps take 20% to lose one.
+
+| Passive | Level 1 | Level 2 | Level 3 | Gain |
+|---|---|---|---|---|
+| Weapon 1 (Ion Cannon) | +1 projectile | firing delay -20% | accelerating shots, launch speed -50% | +16.8 / +31.0 / +51.9% |
+| Weapon 2 (Bacta Gun) | firing delay -20%, range +10% | +2 projectiles, range +20% | firing delay -40%, +4 projectiles, range +50% | +17.2 / +29.4 / +52.7% |
+| Weapon 3 (Rear Gun) | firing delay -10% | firing delay -20% | +1 volley, side fire | +10.2 / +22.0 / +39.6% |
+| Weapon 4 (Photon Beam) | firing delay -20% | firing delay -40% | firing delay -10%, +1 volley | +18.7 / +32.9 / +45.2% |
+| Ground Variant 1 (Plasma Bomb) | fires backwards, damage +15% | damage +30% | damage +50%, +1 projectile | +14.9 / +29.8 / +49.8% |
+
+Levels carry what they do not change (the design's `x`).
+
+- **Weapon 3 level 3** stops at +39.6%. The bare Rear Gun already lands
+  two thirds of the hits a lone target can take. A second extra volley
+  measures the same as one.
+- **Weapon 4** steps its firing delay back to 10% at level 3, where the
+  extra volley takes over. With 40% the volley would make it +61%.
+- **Ground Variant 1** had the design's shorter volley delay (10%, 20%).
+  A burst already lands a bomb every two steps, so any bombs closer than
+  that were ignored. It measured -9%, -19% and -19%. With every rate
+  lever at the cap, the bands come from `projectile_damage`, a stat the
+  design does not have. See Balance in AGENTS.md for why that stat is a
+  last resort.
+- Charge shots are not tuned. Weapon passives add at most 1% to them.
 
 ## Provisional
 
@@ -217,7 +253,6 @@ Each of these is marked in the code, with what would settle it:
   not the curve.
 - `REWARD_RESUME_DELAY` = 10 steps.
 - `LANE_SPACING` = 12 px, for a weapon with a single lane.
-- Weapon 3's `(1,2,0)`. It may be meant as `(1,2,x)`.
 - The icons' compositions (see Icons) are a first pass, not a
   designed set.
 

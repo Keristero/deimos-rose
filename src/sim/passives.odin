@@ -57,6 +57,7 @@ Stat :: enum u8 {
 	Projectile_Lifetime,      // how long a shot flies, and so its range
 	Side_Firing_Volley,       // each volley also fires to both sides
 	Firing_Delay,             // the gap between shots
+	Projectile_Damage,        // the damage each shot, and what it spawns, deals
 }
 
 Mod_Kind :: enum u8 {
@@ -140,17 +141,30 @@ PASSIVES := [Passive]Passive_Def {
 		mods = {
 			// Firing backwards is the passive's premise rather than a listed
 			// stat; as one, it shows on the reward screen like the rest.
+			// The design's shorter volley delay (10, 20) is gone: a burst
+			// already lands a bomb every two steps, the most a target takes,
+			// so bombs any closer were ignored and it cost 9-19% of the DPS.
+			// Nothing but damage per hit can add to a lone target, so the
+			// DPS report's bands come from Projectile_Damage, a stat the
+			// design does not have. The extra lane adds only on groups.
 			{.Fires_Backwards, .Enables, {1, X, X}},
-			{.Volley_Delay, .Decrease, {10, 20, X}},
+			{.Projectile_Damage, .Increase, {15, 30, 50}},
 			{.Extra_Projectiles, .Extra, {X, X, 1}},
 		},
 	},
+	// The weapon passives below are tuned by the DPS report (mise run
+	// dps:report; docs/dps-report.md), not the design's numbers: level 1
+	// adds 10-20% to the weapon's DPS, level 2 20-40%, level 3 40-60%, as
+	// the report's Gain column measures it. A target takes one hit every
+	// two steps at most, so a second lane arriving with the first adds
+	// nothing to a lone target, and a firing delay only counts once it
+	// rounds to a whole step less.
 	.Weapon_1 = {
 		levels = 3,
 		weapon = WEAPON_ION_CANNON,
 		mods = {
-			{.Extra_Projectiles, .Extra, {2, X, 6}},
-			{.Extra_Volley, .Extra, {X, 1, X}},
+			{.Extra_Projectiles, .Extra, {1, X, X}},
+			{.Firing_Delay, .Decrease, {X, 20, X}},
 			{.Accelerating_Projectiles, .Enables, {X, X, 1}},
 			{.Initial_Projectile_Speed, .Decrease, {X, X, 50}},
 		},
@@ -159,8 +173,8 @@ PASSIVES := [Passive]Passive_Def {
 		levels = 3,
 		weapon = WEAPON_BACTA_GUN,
 		mods = {
-			{.Extra_Projectiles, .Extra, {2, 4, X}},
-			{.Extra_Volley, .Extra, {X, X, 1}},
+			{.Firing_Delay, .Decrease, {20, X, 40}},
+			{.Extra_Projectiles, .Extra, {X, 2, 4}},
 			{.Projectile_Lifetime, .Increase, {10, 20, 50}},
 		},
 	},
@@ -168,9 +182,11 @@ PASSIVES := [Passive]Passive_Def {
 		levels = 3,
 		weapon = WEAPON_REAR_GUN,
 		mods = {
-			// (1,2,0) as written: level 3 trades the extra volleys for side
-			// fire. Provisional -- it reads like it may mean (1,2,x).
-			{.Extra_Volley, .Extra, {1, 2, 0}},
+			// Level 3 is +40% at most: the bare Rear Gun already lands two
+			// thirds of the hits a lone target takes, and a second extra
+			// volley measures the same as one.
+			{.Firing_Delay, .Decrease, {10, 20, X}},
+			{.Extra_Volley, .Extra, {X, X, 1}},
 			{.Side_Firing_Volley, .Enables, {X, X, 1}},
 		},
 	},
@@ -178,9 +194,10 @@ PASSIVES := [Passive]Passive_Def {
 		levels = 3,
 		weapon = WEAPON_PHOTON_BEAM,
 		mods = {
-			{.Extra_Projectiles, .Extra, {X, 2, 3}},
-			{.Firing_Delay, .Decrease, {10, X, 30}},
-			{.Volley_Delay, .Decrease, {10, X, 30}},
+			// The firing delay steps back at level 3, where the extra volley
+			// takes over; 40% with it would be +90%.
+			{.Firing_Delay, .Decrease, {20, 40, 10}},
+			{.Extra_Volley, .Extra, {X, X, 1}},
 		},
 	},
 }
@@ -688,6 +705,16 @@ weapon_spawns :: proc "contextless" (s: ^State, weapon: i32, player: i32, backwa
 }
 
 // Tagged entities.
+
+// The damage a tagged shot deals, scaled by its passive's Projectile_Damage.
+// What it spawns carries the tag (a bomb's blast), so that is scaled too.
+passive_damage :: proc "contextless" (s: ^State, e: ^Entity, base: f32) -> f32 {
+	pa, ok := tag_passive(e.passive_tag)
+	if !ok || e.owner_player < 0 || e.owner_player >= MAX_PLAYERS {
+		return base
+	}
+	return scale_f32(base, stat_total(&s.players[e.owner_player].passives, .Projectile_Damage, PASSIVES[pa].weapon).percent)
+}
 
 // Accelerating shots leave at the scaled initial speed and speed up by
 // ACCEL_RATE a step to ACCEL_TOP percent of their unit's own speed.

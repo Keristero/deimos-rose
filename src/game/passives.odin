@@ -79,6 +79,7 @@ STAT_DISPLAY := [sim.Stat]Stat_Display {
 	.Projectile_Lifetime      = {"RANGE", .Percent, nil},
 	.Side_Firing_Volley       = {"SIDE FIRE", .Toggle, nil},
 	.Firing_Delay             = {"FIRING DELAY", .Percent, nil},
+	.Projectile_Damage        = {"DAMAGE", .Percent, nil},
 }
 
 // A stat's value for a player holding `levels`, as the reward screen shows

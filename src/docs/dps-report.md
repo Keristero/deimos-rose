@@ -76,12 +76,14 @@ carries on to another target. It is replaced 12 steps later.
 
 **Scenarios.**
 - **Single target:** one target 120 px straight ahead of the ship for air
-  weapons. For the Plasma Bomb it stands as far away as the crosshair,
-  ahead of the ship.
+  weapons. For the Plasma Bomb it stands under the crosshair, where the
+  bombs land.
 - **Cluster:** that target plus four more in a V, 40 px either side and
   two 34 px further back.
-- **Target behind:** the single target mirrored behind the ship, at the
-  same distance.
+- **Target behind:** for air weapons, the single target mirrored behind
+  the ship. For the Plasma Bomb it stands under the crosshair as it is when
+  Ground Variant 1 turns the bombs round: half the reach behind, kept on
+  screen (y 390.5 at stage 7, with the ship at 330).
 - **Wave of 9:** three rows of three, 40 px apart across and 34 px deep,
   the first row where the single target stands. Each target has 0.8
   shields, about a stage 9–12 air enemy's, and is replaced 12 steps after
@@ -89,9 +91,12 @@ carries on to another target. It is replaced 12 steps later.
   damage that carries through a kill (the Discharge Beam's leftover and
   its shrapnel) counts.
 
-The ground target is placed ahead or behind by rule, not on the crosshair
-itself. Otherwise a passive that turns the crosshair round (Ground
-Variant 1) would take its target with it.
+Both ground positions come from the crosshair's own sums
+(`ground_aim` in `tools/dps`, copied from `player.odin`). A scenario
+keeps its side whichever way the bombs face. Every run checks that the
+crosshair in use stands where `ground_aim` puts it, and the run fails if
+it does not. So the targets cannot drift from where the bombs land
+without the report failing.
 
 **Two sets.** Every scenario is measured twice. Each cell is the best
 policy in its set, so the numbers are a perfect player's.
@@ -166,23 +171,33 @@ been confirmed.
 Ranked by the four-scenario mean. Only the Rear Gun reaches a target
 behind.
 
-Passive changes that are not 0, as single / cluster / behind / wave:
+Passive changes that are not 0, as single / cluster / behind / wave, with
+the weapon passives as tuned on 2026-09-25 (see
+[passive-upgrades.md](passive-upgrades.md), Tuning). Gain is the band
+measure: the mean over the scenarios the bare weapon reaches. For Ground
+Variant 1 it is behind against the bare bomb's single target ahead.
 
-| Passive | Weapon | Change | DPS added |
-|---|---|---|---|
-| Weapon 1 (Ion) 3 | Ion Cannon | +99.7% / +499.2% / 0 / +300.4% | +6.28 |
-| Weapon 2 (Bacta) 3 | Bacta Gun | +50.0% / +100.0% / 0 / +58.6% | +4.24 |
-| Weapon 4 (Photon) 3 | Photon Beam | +28.5% / +28.5% / 0 / +178.4% | +3.23 |
-| Weapon 1 (Ion) 2 | Ion Cannon | +99.7% / +99.7% / 0 / +211.0% | +3.08 |
-| Weapon 4 (Photon) 2 | Photon Beam | +12.5% / +12.5% / 0 / +143.7% | +2.33 |
-| Weapon 3 (Rear) 2 | Rear Gun | +49.9% / +49.9% / +49.9% / +10.9% | +1.61 |
-| Weapon 3 (Rear) 1 | Rear Gun | +33.2% / +33.2% / +33.2% / +10.9% | +1.11 |
-| Weapon 1 (Ion) 1 | Ion Cannon | 0 / 0 / 0 / +84.0% | +0.75 |
-| Weapon 2 (Bacta) 2 | Bacta Gun | 0 / 0 / 0 / +24.4% | +0.52 |
-| Weapon 2 (Bacta) 1 | Bacta Gun | 0 / 0 / 0 / +16.7% | +0.36 |
-| Weapon 4 (Photon) 1 | Photon Beam | +12.5% / +12.5% / 0 / 0 | +0.33 |
-| Ground Variant 1 1 | Plasma Bomb | −100% / −100% / 4.46 from 0 / −100% | −1.69 |
-| Ground Variant 1 2, 3 | Plasma Bomb | −100% / −100% / 3.97 from 0 / −100% | −1.81 |
+| Passive | Weapon | Change | DPS added | Gain |
+|---|---|---|---|---|
+| Weapon 1 (Ion) 1 | Ion Cannon | 0 / 0 / 0 / +39.3% | +0.35 | +16.8% |
+| Weapon 1 (Ion) 2 | Ion Cannon | +24.8% / +24.8% / 0 / +39.3% | +0.65 | +31.0% |
+| Weapon 1 (Ion) 3 | Ion Cannon | +24.8% / +24.8% / 0 / +88.3% | +1.09 | +51.9% |
+| Weapon 2 (Bacta) 1 | Bacta Gun | +20.1% / +20.1% / 0 / +12.1% | +1.01 | +17.2% |
+| Weapon 2 (Bacta) 2 | Bacta Gun | +20.1% / +20.1% / 0 / +45.8% | +1.73 | +29.4% |
+| Weapon 2 (Bacta) 3 | Bacta Gun | +50.0% / +50.2% / 0 / +57.2% | +3.09 | +52.7% |
+| Weapon 3 (Rear) 1 | Rear Gun | +12.5% / +12.5% / +12.5% / +3.9% | +0.42 | +10.2% |
+| Weapon 3 (Rear) 2 | Rear Gun | +28.5% / +28.5% / +28.5% / +3.9% | +0.90 | +22.0% |
+| Weapon 3 (Rear) 3 | Rear Gun | +49.9% / +49.9% / +49.9% / +10.9% | +1.61 | +39.6% |
+| Weapon 4 (Photon) 1 | Photon Beam | +28.5% / +28.5% / 0 / 0 | +0.76 | +18.7% |
+| Weapon 4 (Photon) 2 | Photon Beam | +50.0% / +50.0% / 0 / 0 | +1.33 | +32.9% |
+| Weapon 4 (Photon) 3 | Photon Beam | +68.8% / +68.8% / 0 / 0 | +1.83 | +45.2% |
+| Ground Variant 1 1 | Plasma Bomb | −100% / −100% / 5.63 from 0 / −100% | −1.39 | +14.9% |
+| Ground Variant 1 2 | Plasma Bomb | −100% / −100% / 6.36 from 0 / −100% | −1.21 | +29.8% |
+| Ground Variant 1 3 | Plasma Bomb | −100% / −100% / 7.34 from 0 / −100% | −0.97 | +49.8% |
+
+Before the tuning, Weapon 1 level 3 was +299.8% by this measure, Weapon 4
+level 3 +79.8% and Weapon 2 level 1 +6.1%. Weapon 3 level 3 was 0, and
+Ground Variant 1 was −9% to −19%.
 
 Every other passive level is 0 on every weapon, apart from a +0.1% on the
 Discharge Beam's wave from Improved Manoeuvring 2 (see Method). That
@@ -250,17 +265,14 @@ plain shot the first press fires before a charge begins. The Rear Gun's
   before it starts again. A held button starts the next charge as soon as
   the release is spent. In the primary set Auto Charge changes nothing,
   because fast taps never let a charge build.
-- **Weapon 3 level 3 is a downgrade.** It trades level 2's two extra
-  volleys (+49.9%, ahead and behind) for side fire, which never meets
-  either target. As written, `(1,2,0)`, it takes the Rear Gun back to its
-  bare DPS. That entry is already marked provisional in
-  `sim/passives.odin`.
-- **Ground Variant 1 turns the Plasma Bomb round.** `Fires_Backwards`
-  puts the crosshair behind the ship, so level 1 deals 0 ahead and 4.46
-  behind. Levels 2 and 3 fall to 3.97. The bombs of a burst fall 2 steps
-  apart, exactly the hit delay. The Volley Delay cut packs them closer,
-  so some land inside the delay and are ignored. Level 3's extra lane
-  lands on the same spot, so it adds nothing.
+- **Weapon 3 level 3 was a downgrade, and Ground Variant 1 a loss.**
+  Before the tuning, the design's `(1,2,0)` traded the Rear Gun's two extra
+  volleys for side fire, which never meets either target. The Plasma
+  Bomb's bursts already fall 2 steps apart, exactly the hit delay, so the
+  Ground Variant's volley-delay cut packed bombs inside it: 4.46 behind at
+  level 1 and 3.97 at levels 2-3, against 4.90 ahead. Both are fixed in
+  the tuning. The Plasma Bomb now gains through damage per hit, the only
+  lever left under the cap.
 - **The wave rewards spread and pierce, and punishes slow heavy hits.**
   With 0.8 shields a target dies to two or three hits, so what counts is
   how many targets a weapon reaches, not how hard it hits one. The

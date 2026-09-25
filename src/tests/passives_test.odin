@@ -51,15 +51,16 @@ stat_totals_sum_across_passives :: proc(t: ^testing.T) {
 @(test)
 weapon_passives_count_only_for_their_weapon :: proc(t: ^testing.T) {
 	lv: sim.Passive_Levels
-	lv[.Weapon_1] = 1 // Ion Cannon: +2 projectiles
-	lv[.Weapon_2] = 2 // Bacta Gun: +4 projectiles
-	testing.expect_value(t, sim.stat_total(&lv, .Extra_Projectiles, sim.WEAPON_ION_CANNON).extra, 2)
-	testing.expect_value(t, sim.stat_total(&lv, .Extra_Projectiles, sim.WEAPON_BACTA_GUN).extra, 4)
+	lv[.Weapon_1] = 1 // Ion Cannon: +1 projectile
+	lv[.Weapon_2] = 2 // Bacta Gun: +2 projectiles
+	testing.expect_value(t, sim.stat_total(&lv, .Extra_Projectiles, sim.WEAPON_ION_CANNON).extra, 1)
+	testing.expect_value(t, sim.stat_total(&lv, .Extra_Projectiles, sim.WEAPON_BACTA_GUN).extra, 2)
 	testing.expect_value(t, sim.stat_total(&lv, .Extra_Projectiles, sim.WEAPON_PHOTON_BEAM).extra, 0)
 	testing.expect_value(t, sim.stat_total(&lv, .Extra_Projectiles, sim.NONE).extra, 0)
-	// Weapon 3's (1,2,0) is taken literally: level 3 drops the extra volleys.
+	// Weapon 3's level 3 adds a volley and side fire to levels 1-2's delay.
 	lv[.Weapon_3] = 3
-	testing.expect_value(t, sim.stat_total(&lv, .Extra_Volley, sim.WEAPON_REAR_GUN).extra, 0)
+	testing.expect_value(t, sim.stat_total(&lv, .Extra_Volley, sim.WEAPON_REAR_GUN).extra, 1)
+	testing.expect_value(t, sim.stat_total(&lv, .Firing_Delay, sim.WEAPON_REAR_GUN).percent, -20)
 	testing.expect(t, sim.stat_total(&lv, .Side_Firing_Volley, sim.WEAPON_REAR_GUN).enabled)
 }
 
@@ -435,10 +436,10 @@ weapon_passives_shape_the_real_weapons :: proc(t: ^testing.T) {
 	testing.expect_value(t, nb, k)
 	p.passives[.Weapon_1] = 1
 	n := sim.weapon_spawns(s, ion, 0, false, out[:])
-	testing.expect_value(t, projectiles(s, out[:n]), projectiles(s, before[:nb]) + 2)
-	p.passives[.Weapon_1] = 3
+	testing.expect_value(t, projectiles(s, out[:n]), projectiles(s, before[:nb]) + 1)
+	p.passives[.Weapon_1] = 3 // x at levels 2-3: still the one extra
 	n = sim.weapon_spawns(s, ion, 0, false, out[:])
-	testing.expect_value(t, projectiles(s, out[:n]), projectiles(s, before[:nb]) + 6)
+	testing.expect_value(t, projectiles(s, out[:n]), projectiles(s, before[:nb]) + 1)
 
 	// The Bacta Gun's passive leaves the Ion Cannon alone.
 	p.passives = #partial {.Weapon_2 = 3}

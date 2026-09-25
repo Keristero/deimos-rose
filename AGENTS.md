@@ -154,6 +154,37 @@ Co-Authored-By: ...
 - A release collects the blocks of every commit since the previous release,
   oldest first. `mise run release:notes` previews what the next one says.
 
+## Balance
+
+New content is tuned against numbers, not by feel. `mise run dps:report`
+measures every weapon and passive level in the sim alone
+(`WEAPON='Rear Gun'` for one weapon, in a second);
+`src/docs/dps-report.md` says how.
+
+- **Weapon passives have bands.** Measured by the report's Gain, level 1
+  adds 10-20% to its weapon's DPS, level 2 20-40%, level 3 40-60%. When a
+  level lands outside, say why in the code and in
+  `src/docs/passive-upgrades.md` (the Rear Gun stops at +39.6%, for
+  example).
+- **Know the hit cap.** A target ignores a hit within one step of its last,
+  so it takes at most 15 hits a second. Shots arriving together count once.
+  Extra lanes help only against groups. Extra volleys and a shorter firing
+  delay help a lone target, until the cap. A percentage off a firing delay
+  counts only once it rounds to a whole step.
+- **Avoid the damage stat (`Projectile_Damage`).** It changes a number the
+  player cannot see: the shot looks the same and only the enemy dies
+  sooner. Reach first for what shows on screen: more lanes, more volleys,
+  faster fire, range, side fire. Use damage only when nothing visible can
+  reach the band, and say so where it is used. Ground Variant 1 is the one
+  case today: the Plasma Bomb's bursts already land at the hit cap, so
+  every rate lever was spent. If damage is used, give it something to
+  see. One option not built yet: boost the glow of the shot's particle
+  effects with its damage increase.
+- **Probe one lever at a time.** Set each level of a passive to a single
+  modifier (explicit 0s, not `x`), run the report for that weapon, and
+  read off what each lever is worth. Then combine. Guessing combinations
+  wastes runs.
+
 ## Writing the code
 
 The goal is a codebase that is a pleasure to read.

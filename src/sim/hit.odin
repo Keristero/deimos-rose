@@ -96,19 +96,19 @@ collide_entities :: proc(s: ^State, e, o: ^Entity, time: i32) {
 	eu, ou := unit_of(s, e), unit_of(s, o)
 	hit_owner := false
 	if state_of(s, e).pass_hits_to_owner && ref_valid(s, e.owner) {
-		entity_hit(s, entity_at(s, e.owner.index), ou.damage, o.owner_player, time)
+		entity_hit(s, entity_at(s, e.owner.index), passive_damage(s, o, ou.damage), o.owner_player, time)
 		hit_owner = true
 	}
 	if !hit_owner {
-		entity_hit(s, e, ou.damage, o.owner_player, time)
+		entity_hit(s, e, passive_damage(s, o, ou.damage), o.owner_player, time)
 	}
 	hit_owner = false
 	if state_of(s, o).pass_hits_to_owner && ref_valid(s, e.owner) {
-		entity_hit(s, entity_at(s, e.owner.index), eu.damage, e.owner_player, time)
+		entity_hit(s, entity_at(s, e.owner.index), passive_damage(s, e, eu.damage), e.owner_player, time)
 		hit_owner = true
 	}
 	if !hit_owner {
-		entity_hit(s, o, eu.damage, e.owner_player, time)
+		entity_hit(s, o, passive_damage(s, e, eu.damage), e.owner_player, time)
 	}
 }
 
