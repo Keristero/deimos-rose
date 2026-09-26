@@ -26,15 +26,10 @@ player_contact_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step)
 			}
 			if u.pickup_type == sim.NONE {
 				// Both sides take damage; a state can pass hits to its owner.
-				hit_owner := false
-				if sim.prefab_has(s, es.prefab, Passes_Hits_To_Owner) && sim.ref_valid(s, e.owner) {
-					entity_hit(s, sim.entity_at(s, e.owner.index), s.defs.perm_floats[0xa1], p.number, sim.single(s, sim.Clock).time)
-					hit_owner = true
-				}
-				if !hit_owner {
-					entity_hit(s, e, s.defs.perm_floats[0xa1], p.number, sim.single(s, sim.Clock).time)
-				}
-				player_hit(s, p, u.damage, sim.single(s, sim.Clock).time)
+				time := sim.single(s, sim.Clock).time
+				passes := sim.prefab_has(s, es.prefab, Passes_Hits_To_Owner)
+				entity_hit(s, hit_taker(s, e, passes, e.owner), s.defs.perm_floats[0xa1], p.number, time)
+				player_hit(s, p, u.damage, time)
 			} else if player_collect(s, p, e) {
 				lifecycle.entity_destroy(s, e, p.number, sim.single(s, sim.Clock).time)
 				e.killed_by_player = true

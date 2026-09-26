@@ -95,27 +95,25 @@ change_state_on_depletion :: proc(s: ^sim.State, e: sim.Entity, time: i32) {
 	}
 }
 
+// Who takes a hit meant for `e`: its owner, when e's state passes hits on
+// and `owner` is still there, else e itself.
+hit_taker :: proc "contextless" (s: ^sim.State, e: sim.Entity, passes: bool, owner: sim.Entity_Ref) -> sim.Entity {
+	if passes && sim.ref_valid(s, owner) {
+		return sim.entity_at(s, owner.index)
+	}
+	return e
+}
+
 // The hit half of FUN_0041b920: a shot `e` meets a target `o`; each damages
-// the other (or its owner, when the state passes hits on). Note the second
-// check tests the *shot's* owner, not the target's -- faithful to the original.
+// the other (or its owner, when the state passes hits on). The target's pass
+// is checked against, and goes to, the *shot's* owner, not the target's --
+// faithful to the original.
 collide_entities :: proc(s: ^sim.State, e, o: sim.Entity, time: i32) {
 	eu, ou := sim.unit_of(s, e), sim.unit_of(s, o)
-	hit_owner := false
-	if sim.prefab_has(s, sim.prefab_of(s, e), Passes_Hits_To_Owner) && sim.ref_valid(s, e.owner) {
-		entity_hit(s, sim.entity_at(s, e.owner.index), stats.shot_damage(s, o, ou.damage), o.owner_player, time)
-		hit_owner = true
-	}
-	if !hit_owner {
-		entity_hit(s, e, stats.shot_damage(s, o, ou.damage), o.owner_player, time)
-	}
-	hit_owner = false
-	if sim.prefab_has(s, sim.prefab_of(s, o), Passes_Hits_To_Owner) && sim.ref_valid(s, e.owner) {
-		entity_hit(s, sim.entity_at(s, e.owner.index), stats.shot_damage(s, e, eu.damage), e.owner_player, time)
-		hit_owner = true
-	}
-	if !hit_owner {
-		entity_hit(s, o, stats.shot_damage(s, e, eu.damage), e.owner_player, time)
-	}
+	e_passes := sim.prefab_has(s, sim.prefab_of(s, e), Passes_Hits_To_Owner)
+	entity_hit(s, hit_taker(s, e, e_passes, e.owner), stats.shot_damage(s, o, ou.damage), o.owner_player, time)
+	o_passes := sim.prefab_has(s, sim.prefab_of(s, o), Passes_Hits_To_Owner)
+	entity_hit(s, hit_taker(s, o, o_passes, e.owner), stats.shot_damage(s, e, eu.damage), e.owner_player, time)
 }
 
 // G_Player::Score_Adjust. `flat` bonuses bypass the multiplier and reset the

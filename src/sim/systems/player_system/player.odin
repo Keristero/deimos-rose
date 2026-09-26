@@ -258,12 +258,7 @@ fire_stage :: proc(s: ^sim.State, p: sim.Player, ps: ^sim.Player_Step) -> bool {
 			collision_system.player_overload_begin(s, p, ps.time)
 		}
 	case .Released:
-		p.overloaded = false
-		p.overload_rising = false
-		p.overload_time, p.overload_interval, p.overload_warnings = 0, 0, 0
-		p.colorise = false
-		p.tint, p.tint_target, p.tint_delta = 0, 0, 0
-		p.tint_color = 0x7fff
+		collision_system.overload_clear(p)
 	case .None:
 	}
 	return true
