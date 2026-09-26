@@ -1,11 +1,13 @@
 package tests
 
+import "base:runtime"
 import "core:testing"
 
+import "dr:plugins/new_weapons"
 import "dr:sim"
 
 // The simulation host's own edges (sim/state.odin, rand.odin, input.odin,
-// events.odin), on synthetic definitions.
+// events.odin, queue_effects.odin), on synthetic definitions.
 
 // A state is read only from bytes this build wrote: anything shorter than
 // a state, or whose world is not one this build's catalog wrote, is refused
@@ -139,4 +141,45 @@ a_netplay_pause_holds_the_session :: proc(t: ^testing.T) {
 	sim.session_step(s, {})
 	sim.session_step(s, {{}, {.Pause}})
 	testing.expect(t, !sim.session_frozen(s), "the other player's press lets it go")
+}
+
+// A test's own kind of effect event, beside New Weapons' beams.
+Test_Effect :: struct {
+	n: i32,
+}
+
+@(private = "file")
+TEST_EFFECT: sim.Effect_Kind
+
+@(init)
+register_test_effect :: proc "contextless" () {
+	context = runtime.default_context()
+	TEST_EFFECT = sim.effect_kind_register(Test_Effect)
+}
+
+// Each kind of effect event reads back only its own, in the order pushed;
+// a full queue drops what does not fit, and the next step starts empty.
+@(test)
+effect_events_keep_to_their_kind_and_their_step :: proc(t: ^testing.T) {
+	defs := synthetic_defs()
+	s := new(sim.State)
+	defer free(s)
+	defer sim.destroy(s)
+	sim.init(s, sim.Session{seed = 4, level_id = sim.level_id("le01"), game_type = .Single}, defs)
+	sim.clear_step_events(s)
+	for i in 0 ..< sim.MAX_EFFECT_EVENTS + 3 {
+		sim.effect_push(s, TEST_EFFECT, Test_Effect{i32(i)})
+	}
+	walk := sim.effects_of(s, TEST_EFFECT, Test_Effect)
+	n: i32
+	for ev in sim.effects_next(&walk) {
+		testing.expect_value(t, ev.n, n)
+		n += 1
+	}
+	testing.expect_value(t, int(n), sim.MAX_EFFECT_EVENTS)
+	testing.expect_value(t, len(new_weapons.beam_shots(s)), 0)
+	sim.step(s, {})
+	walk = sim.effects_of(s, TEST_EFFECT, Test_Effect)
+	_, any := sim.effects_next(&walk)
+	testing.expect(t, !any, "a step starts with no events")
 }

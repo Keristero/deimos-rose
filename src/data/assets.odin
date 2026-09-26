@@ -497,7 +497,8 @@ sprites_append :: proc(sprites: ^[dynamic]sim.Sprite, root: string, allocator :=
 }
 
 // Weapon definitions, whose spawn records repeat the spawn_* keys. `extra`
-// marks them as new content, whose own keys start `x_`.
+// marks them as new content, whose own keys start `x_` and are read for
+// the plugins that registered them.
 @(private = "file")
 weapons_append :: proc(weapons: ^[dynamic]sim.Weapon, root: string, extra: bool, report: ^Defs_Report, allocator := context.allocator) {
 	for path in record_paths(root, "wede", context.temp_allocator) {
@@ -509,12 +510,6 @@ weapons_append :: proc(weapons: ^[dynamic]sim.Weapon, root: string, extra: bool,
 		wp := sim.Weapon{id = sim.res_id(id_of(path)), extra = extra}
 		def_fill(&wp.def, header, report, allocator)
 		wp.spawns = weapon_spawns(header, report, allocator)
-		if extra {
-			if v, ok := def_find(header, "x_AimedRelease_BOOL"); ok {
-				wp.aimed_release, _ = tag_bool(v)
-			}
-			beam_fill(&wp.beam, header)
-		}
 		weapon_keys_fill(&wp, header)
 		append(weapons, wp)
 	}
@@ -543,32 +538,6 @@ weapon_keys_fill :: proc(w: ^sim.Weapon, header: []Tag) {
 		case .Id:
 			sim.weapon_key_set(w, sim.Weapon_Key(i), sim.Res_ID(def_fourcc(header, k.name)))
 		}
-	}
-}
-
-// A beam weapon's x_Beam* keys (sim/beam.odin); none leaves it off.
-@(private = "file")
-beam_fill :: proc(b: ^sim.Beam_Def, header: []Tag) {
-	b^ = {}
-	if v, ok := def_find(header, "x_Beam_BOOL"); ok {
-		b.on, _ = tag_bool(v)
-	}
-	if !b.on {
-		return
-	}
-	float :: proc(header: []Tag, key: string) -> f32 {
-		v, _ := def_find(header, key)
-		f, _ := tag_float(v)
-		return f32(f)
-	}
-	b.damage = float(header, "x_BeamDamage_FLOAT")
-	b.width = float(header, "x_BeamWidth_FLOAT")
-	b.release_damage = float(header, "x_BeamReleaseDamage_FLOAT")
-	b.release_width = float(header, "x_BeamReleaseWidth_FLOAT")
-	b.shrapnel = sim.Res_ID(def_fourcc(header, "x_BeamShrapnel_ID"))
-	if v, ok := def_find(header, "x_BeamShrapnelCount_INT"); ok {
-		n, _ := tag_int(v)
-		b.shrapnel_count = i32(n)
 	}
 }
 

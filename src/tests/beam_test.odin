@@ -7,6 +7,7 @@ import vmem "core:mem/virtual"
 
 import "dr:data"
 import "dr:plugins/loadout"
+import "dr:plugins/new_weapons"
 import "dr:sim"
 import "dr:sim/systems/weapon_system"
 import "dr:sim/lifecycle"
@@ -91,16 +92,24 @@ discharge_beam_loads_as_new_content :: proc(t: ^testing.T) {
 		return
 	}
 	w := &f.defs.weapons[f.db]
-	testing.expect(t, w.extra && w.beam.on)
+	testing.expect(t, w.extra && sim.weapon_bool(w, new_weapons.BEAM))
+	// A weapon without the plugin's keys, as every original one is, reads
+	// each key's default.
+	orig := &f.defs.weapons[0]
+	testing.expect(t, !orig.extra && !sim.weapon_bool(orig, new_weapons.BEAM))
+	testing.expect_value(t, sim.weapon_id(orig, new_weapons.BEAM_SHRAPNEL), sim.NONE)
+	testing.expect_value(t, sim.weapon_float(orig, new_weapons.BEAM_DAMAGE), 0)
+	_, fires := sim.weapon_fire(orig)
+	testing.expect(t, !fires, "the plugin fires only its own weapons")
 	testing.expect_value(t, w.type, sim.WEP_AIR)
 	testing.expect_value(t, w.minimum_level_available, 10)
-	testing.expect(t, w.beam.damage > 0 && w.beam.release_damage > w.beam.damage)
-	testing.expect(t, w.beam.release_width > w.beam.width, "a charged beam is wider")
-	testing.expect_value(t, w.beam.shrapnel_count, 3)
-	for id in ([]sim.Res_ID{w.beam.shrapnel, w.spawns[0].unit, w.powerup_air_activation_spawn, w.powerup_air_release_spawn}) {
+	testing.expect(t, new_weapons.beam_def(w).damage > 0 && new_weapons.beam_def(w).release_damage > new_weapons.beam_def(w).damage)
+	testing.expect(t, new_weapons.beam_def(w).release_width > new_weapons.beam_def(w).width, "a charged beam is wider")
+	testing.expect_value(t, new_weapons.beam_def(w).shrapnel_count, 3)
+	for id in ([]sim.Res_ID{new_weapons.beam_def(w).shrapnel, w.spawns[0].unit, w.powerup_air_activation_spawn, w.powerup_air_release_spawn}) {
 		testing.expectf(t, sim.unit_index(&f.defs, id) >= 0, "unit %v must load", id)
 	}
-	testing.expect(t, f.defs.units[sim.unit_index(&f.defs, w.beam.shrapnel)].player_projectile, "shrapnel is a player shot")
+	testing.expect(t, f.defs.units[sim.unit_index(&f.defs, new_weapons.beam_def(w).shrapnel)].player_projectile, "shrapnel is a player shot")
 	testing.expect(t, !f.defs.units[sim.unit_index(&f.defs, w.spawns[0].unit)].player_projectile, "the beam itself is not a projectile")
 	for level in i32(1) ..= 12 {
 		testing.expect(t, weapon_system.best_air_weapon(&f.defs, level) != f.db)
@@ -129,24 +138,24 @@ discharge_beam_carries_leftover_damage :: proc(t: ^testing.T) {
 	if far.obj == nil || near.obj == nil || mid.obj == nil || aside.obj == nil {
 		return
 	}
-	shrapnel := count_unit(s, wd.beam.shrapnel)
-	s.beams.count = 0
-	weapon_system.beam_fire(s, h, wd, at, 2.5, wd.beam.width, false, sim.single(s, sim.Clock).time)
+	shrapnel := count_unit(s, new_weapons.beam_def(wd).shrapnel)
+	s.effects.count = 0
+	new_weapons.beam_fire(s, h, wd, at, 2.5, new_weapons.beam_def(wd).width, false, sim.single(s, sim.Clock).time)
 	testing.expect(t, near.deleted, "the first target must die")
 	testing.expect(t, mid.deleted, "the leftover must kill the second")
 	testing.expect(t, !far.deleted && abs(far.shields - 4.5) < 1e-4, "the third takes the last 0.5")
 	testing.expect(t, !aside.deleted && aside.shields == 1, "off the line is not hit")
-	testing.expect_value(t, count_unit(s, wd.beam.shrapnel) - shrapnel, 6)
-	if testing.expect_value(t, s.beams.count, 1) {
-		ev := s.beams.events[0]
+	testing.expect_value(t, count_unit(s, new_weapons.beam_def(wd).shrapnel) - shrapnel, 6)
+	if testing.expect_value(t, len(new_weapons.beam_shots(s)), 1) {
+		ev := new_weapons.beam_shots(s)[0]
 		testing.expect_value(t, ev.to_y, far.loc.y)
 		testing.expect(t, !ev.charged && ev.from.x == at.x && ev.from.y < at.y)
 	}
 	// Again on the same step: the hit delay protects the third, and the
 	// beam stops there without dealing anything.
-	weapon_system.beam_fire(s, h, wd, at, 2.5, wd.beam.width, false, sim.single(s, sim.Clock).time)
+	new_weapons.beam_fire(s, h, wd, at, 2.5, new_weapons.beam_def(wd).width, false, sim.single(s, sim.Clock).time)
 	testing.expect(t, abs(far.shields - 4.5) < 1e-4)
-	testing.expect_value(t, s.beams.events[1].to_y, far.loc.y)
+	testing.expect_value(t, new_weapons.beam_shots(s)[1].to_y, far.loc.y)
 }
 
 // With nothing to stop it, the beam goes off the top of the screen.
@@ -163,10 +172,10 @@ discharge_beam_leaves_the_screen :: proc(t: ^testing.T) {
 	if one.obj == nil {
 		return
 	}
-	s.beams.count = 0
-	weapon_system.beam_fire(s, sim.player_at(s, 0).weapons, wd, {8, 420}, 2, wd.beam.width, false, sim.single(s, sim.Clock).time)
+	s.effects.count = 0
+	new_weapons.beam_fire(s, sim.player_at(s, 0).weapons, wd, {8, 420}, 2, new_weapons.beam_def(wd).width, false, sim.single(s, sim.Clock).time)
 	testing.expect(t, one.deleted)
-	testing.expect(t, s.beams.count == 1 && s.beams.events[0].to_y < 0)
+	testing.expect(t, len(new_weapons.beam_shots(s)) == 1 && new_weapons.beam_shots(s)[0].to_y < 0)
 }
 
 // A release deals the charge's damage in one beam, in proportion to the
@@ -187,14 +196,14 @@ discharge_beam_release_scales_with_charge :: proc(t: ^testing.T) {
 	if wall.obj == nil {
 		return
 	}
-	s.beams.count = 0
-	weapon_system.beam_release(s, h, wd, at, top, sim.single(s, sim.Clock).time)
-	testing.expect(t, abs(100 - wall.shields - wd.beam.release_damage) < 1e-3, "a full charge deals the release damage")
-	testing.expect(t, s.beams.count == 1 && s.beams.events[0].charged && s.beams.events[0].width == wd.beam.release_width)
+	s.effects.count = 0
+	new_weapons.beam_release(s, h, wd, at, top, sim.single(s, sim.Clock).time)
+	testing.expect(t, abs(100 - wall.shields - new_weapons.beam_def(wd).release_damage) < 1e-3, "a full charge deals the release damage")
+	testing.expect(t, len(new_weapons.beam_shots(s)) == 1 && new_weapons.beam_shots(s)[0].charged && new_weapons.beam_shots(s)[0].width == new_weapons.beam_def(wd).release_width)
 	wall.last_hit = -100
 	before := wall.shields
-	weapon_system.beam_release(s, h, wd, at, top / 2, sim.single(s, sim.Clock).time)
-	testing.expect(t, abs(before - wall.shields - wd.beam.release_damage / 2) < 1e-3, "half a charge deals half")
+	new_weapons.beam_release(s, h, wd, at, top / 2, sim.single(s, sim.Clock).time)
+	testing.expect(t, abs(before - wall.shields - new_weapons.beam_def(wd).release_damage / 2) < 1e-3, "half a charge deals half")
 }
 
 // Through the fire button: a press fires a pulse on the step it lands, and
@@ -213,7 +222,7 @@ discharge_beam_fires_from_the_button :: proc(t: ^testing.T) {
 	pulses, charged := 0, 0
 	for i in 0 ..< 120 {
 		sim.session_step(s, {i < 100 ? {.Fire_Air} : {}, {}})
-		for ev in s.beams.events[:s.beams.count] {
+		for ev in new_weapons.beam_shots(s) {
 			if ev.charged {
 				charged += 1
 			} else {

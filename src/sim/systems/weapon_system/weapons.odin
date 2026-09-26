@@ -380,8 +380,9 @@ spawn_air :: proc(s: ^sim.State, h: sim.Weapons, at: sim.Vec) {
 		req.shaped_by = tag
 		lifecycle.eg_request_spawn(s, req)
 	}
-	if wd := sim.weapon_def(s, h.air.weapon); wd.beam.on {
-		beam_fire(s, h, wd, at, wd.beam.damage, wd.beam.width, false, sim.single(s, sim.Clock).time)
+	wd := sim.weapon_def(s, h.air.weapon)
+	if fire, ok := sim.weapon_fire(wd); ok && fire.shot != nil {
+		fire.shot(s, h, wd, at, sim.single(s, sim.Clock).time)
 	}
 }
 
@@ -444,6 +445,8 @@ air_powerup_process :: proc(s: ^sim.State, h: sim.Weapons, time: i32, at: sim.Ve
 		}
 	case 2:
 	case 3:
+		// A plugin's weapon may let its charge go its own way.
+		fire, fired := sim.weapon_fire(wd)
 		if p.level < 1 {
 			p.state = 0
 			p.time = time
@@ -453,15 +456,14 @@ air_powerup_process :: proc(s: ^sim.State, h: sim.Weapons, time: i32, at: sim.Ve
 				change_weapon(s, h, sim.WEP_AIR, h.queued_air)
 				h.queued_air = sim.NO_WEAPON
 			}
-		} else if wd.beam.on {
-			// A beam's charge goes in one shot, however many levels it holds.
-			beam_release(s, h, wd, at, p.level, time)
+		} else if fired && fire.release != nil {
+			fire.release(s, h, wd, at, p.level, time)
 			p.release_time = time
 			p.level = 0
 			p.percent = 0
 		} else if p.release_time + wd.powerup_air_time_between_release_spawns < time {
-			if wd.aimed_release {
-				aimed_release_spawn(s, h, wd, at)
+			if fired && fire.volley != nil {
+				fire.volley(s, h, wd, at)
 			} else {
 				lifecycle.spawn_at(s, wd.powerup_air_release_spawn, at, h.player)
 			}

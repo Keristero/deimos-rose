@@ -1,6 +1,6 @@
-package weapon_system
+package new_weapons
 
-// The Chaingun's charge (a weapon with `aimed_release`, docs/new-weapons.md):
+// The Chaingun's charge (a weapon with x_AimedRelease_BOOL, docs/new-weapons.md):
 // new content, not the original's. Where an original weapon's release
 // spawns its release unit at the ship, each release volley here is two
 // parallel shots aimed at the nearest enemy in the air, leading it by its

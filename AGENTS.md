@@ -205,6 +205,76 @@ The goal is a codebase that is a pleasure to read.
   reports leaks; treat that as a failure, not noise.
 - Keep faithful behaviour in `sim/` and write everything else the modern way.
 
+## Continuous improvement
+
+Leave the structure better than you found it: when a change is harder
+than it should be, the difficulty is a finding, like a failed check. Fix
+the cause, or record it, rather than only working around it.
+
+**Count the places a feature touches.** Before building a feature in a
+plugin, list every file outside the plugin (and its `view/`) that it would
+change. More than its data means a missing extension point. The Discharge
+Beam once needed seven: a field on the core's `Weapon`, parsing in the
+loader, two branches in the weapon handler, a queue on `State`, and
+drawing and clearing in the renderer and the game (decisions.md D48).
+Then:
+
+1. Add the generic extension point first, in its own commit, changing
+   nothing observable: a registry, a hook, a registered key or event kind.
+   Name it for what it does, never for the first feature to use it.
+2. Move the existing feature onto it and prove the move neutral:
+   `oracle:diff` exact, `tests/golden/fingerprints.txt` unchanged, and the
+   feature's own numbers (`WEAPON=... mise run dps:report` for a weapon)
+   and screenshots as before. Presentation particles take random
+   directions, so compare two runs of the old build before calling a
+   screenshot difference real.
+3. Build the new feature on it.
+
+**The core names no plugin's feature.** A field, branch, queue or draw
+call in `sim/`, `data/`, `render/` or `game/` that exists for one plugin's
+content is the same debt found later. `grep` for the feature's names
+outside its plugin when you touch it. Move what you find behind an
+extension point, or list it under "Still open" in the phase doc so it is
+not forgotten.
+
+**Questions are reviews.** When someone asks what it would take to add
+something, and the honest answer is "edit N unrelated places", say so,
+and propose the extension point that would make it one. Offering the fix
+is part of the answer.
+
+**The third copy is a helper.** When the same few lines appear a third
+time, make them one procedure next to the data they work on, and replace
+all the copies. First check whether a helper already exists
+(`sim.Registry`, `walk_entities`, `cursor_walk`, `prefab_tag`,
+`first_state`, `hit_taker`); a helper nobody finds is written twice.
+
+**Use libraries through their public API.** odecs's internals and encoded
+query terms are off limits outside `third_party/`, as `mise run purity`
+enforces. When a rule like this matters, make a check enforce it, as the
+purity and odecs checks do, rather than relying on everyone remembering.
+
+**Record why.** A new extension point, or a rule that changes how
+features are built, gets a decisions.md entry, and the table below stays
+current.
+
+The extension points today:
+
+| To add | Use | Where |
+|---|---|---|
+| a step of the game | `system_register`, `player_stage_register`, `entity_stage_register` with `after`/`before` | `sim/systems.odin` |
+| behaviour for units or states by their definitions | a component, `prefab_builder_register`, and a stage's `with`/`without` | `sim/prefabs.odin` |
+| data on the session, players or entities | `kind_component` | `sim/ecs.odin` |
+| a change to the core's numbers | `stat_provider_register` | `sim/hooks.odin` |
+| a pause or a screen between levels | `hold_register` | `sim/hooks.odin` |
+| which weapons are flown, and in what order | `weapon_chooser_register`, `weapon_filter_register` | `sim/hooks.odin` |
+| a new way for a weapon to fire | `weapon_fire_register` | `sim/hooks.odin` |
+| a new key on weapon definitions | `weapon_key_register` | `sim/def_keys.odin` |
+| an event for a plugin's view to draw | `effect_kind_register`, `effect_push` | `sim/queue_effects.odin` |
+| something drawn in the frame | `render_system_register` | `render/render_systems.odin` |
+| effects that live between steps and draw between layers | `effect_system_register` | `render/render_systems.odin` |
+| a screen over the play field | `ui.overlay_register` | `ui/overlays.odin` |
+| a setting on the Extras page | `prefs.setting_register` | `prefs/settings.odin` |
+
 ## Finishing a phase
 
 1. `mise run ci` green, and the phase's own verification task green.

@@ -8,6 +8,7 @@ import vmem "core:mem/virtual"
 import "dr:data"
 import "dr:plugins/easy_mode"
 import "dr:plugins/loadout"
+import "dr:plugins/new_weapons"
 import "dr:plugins/passives"
 import "dr:sim"
 import "dr:sim/lifecycle"
@@ -645,9 +646,9 @@ shields_stop_refilling_at_full :: proc(t: ^testing.T) {
 beam_leaves_from_the_muzzle :: proc(t: ^testing.T) {
 	wd: sim.Weapon
 	at := sim.Vec{100, 200}
-	testing.expect_value(t, weapon_system.beam_origin(&wd, at), at)
+	testing.expect_value(t, new_weapons.beam_origin(&wd, at), at)
 	wd.spawns = []sim.Wep_Spawn_Def{{x_loc = 1, y_loc = -8}}
-	testing.expect_value(t, weapon_system.beam_origin(&wd, at), sim.Vec{101, 192})
+	testing.expect_value(t, new_weapons.beam_origin(&wd, at), sim.Vec{101, 192})
 }
 
 // A target exactly as fast as the shot: the quadratic falls to a line. One
@@ -655,8 +656,8 @@ beam_leaves_from_the_muzzle :: proc(t: ^testing.T) {
 // one running away can never be caught, and is aimed at directly.
 @(test)
 aimed_shots_meet_a_target_as_fast_as_they_are :: proc(t: ^testing.T) {
-	testing.expect_value(t, weapon_system.aimed_intercept({0, -100}, {0, 10}, 10), sim.Vec{0, -50})
-	testing.expect_value(t, weapon_system.aimed_intercept({0, -100}, {0, -10}, 10), sim.Vec{0, -100})
+	testing.expect_value(t, new_weapons.aimed_intercept({0, -100}, {0, 10}, 10), sim.Vec{0, -50})
+	testing.expect_value(t, new_weapons.aimed_intercept({0, -100}, {0, -10}, 10), sim.Vec{0, -100})
 }
 
 // Against the shipped weapons.
@@ -995,7 +996,7 @@ aimed_volley_ignores_enemies_off_screen :: proc(t: ^testing.T) {
 	if above.obj == nil || below.obj == nil {
 		return
 	}
-	found, ok := weapon_system.aimed_target(s, at)
+	found, ok := new_weapons.aimed_target(s, at)
 	testing.expect(t, ok && found == below, "the mine in view must be the target")
 }
 
@@ -1021,11 +1022,11 @@ discharge_beam_spent_on_a_kill_stops_there :: proc(t: ^testing.T) {
 	if near.obj == nil || far.obj == nil {
 		return
 	}
-	s.beams.count = 0
-	weapon_system.beam_fire(s, sim.player_at(s, 0).weapons, wd, at, 1, wd.beam.width, false, sim.single(s, sim.Clock).time)
+	s.effects.count = 0
+	new_weapons.beam_fire(s, sim.player_at(s, 0).weapons, wd, at, 1, new_weapons.beam_def(wd).width, false, sim.single(s, sim.Clock).time)
 	testing.expect(t, near.deleted, "the first target must die")
 	testing.expect(t, !far.deleted && far.shields == 1, "nothing is left for the second")
-	testing.expect(t, s.beams.count == 1 && s.beams.events[0].to_y == near.loc.y, "the beam stops at the kill")
+	testing.expect(t, len(new_weapons.beam_shots(s)) == 1 && new_weapons.beam_shots(s)[0].to_y == near.loc.y, "the beam stops at the kill")
 }
 
 // A beam weapon with no shrapnel: its kills burst, and throw nothing. The
@@ -1044,19 +1045,19 @@ discharge_beam_without_shrapnel_throws_none :: proc(t: ^testing.T) {
 		return
 	}
 	wd := f.defs.weapons[db]
-	wd.beam.shrapnel_count = 0
+	sim.weapon_key_set(&wd, new_weapons.BEAM_SHRAPNEL_COUNT, i32(0))
 	at := sim.Vec{208, 420}
 	one := cw_mine(t, s, at + {0, -80}, 1)
 	if one.obj == nil {
 		return
 	}
 	seen := make(map[i32]bool)
-	cw_new_of(s, &seen, f.defs.weapons[db].beam.shrapnel)
+	cw_new_of(s, &seen, new_weapons.beam_def(&f.defs.weapons[db]).shrapnel)
 	bursts := s.particles.count
-	weapon_system.beam_fire(s, sim.player_at(s, 0).weapons, &wd, at, 2, wd.beam.width, false, sim.single(s, sim.Clock).time)
+	new_weapons.beam_fire(s, sim.player_at(s, 0).weapons, &wd, at, 2, new_weapons.beam_def(&wd).width, false, sim.single(s, sim.Clock).time)
 	testing.expect(t, one.deleted)
 	testing.expect(t, s.particles.count > bursts, "the kill still bursts")
-	testing.expect_value(t, cw_new_of(s, &seen, f.defs.weapons[db].beam.shrapnel), 0)
+	testing.expect_value(t, cw_new_of(s, &seen, new_weapons.beam_def(&f.defs.weapons[db]).shrapnel), 0)
 }
 
 // Priv_Spawn_Ground spawns the weapon's crosshair spawn at the crosshair

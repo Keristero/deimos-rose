@@ -424,10 +424,12 @@ run_menu_shot :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, r
 		for _ in 0 ..< hold {
 			_ = sim.session_step(state, {{.Fire_Air}, {}})
 			render.particles_step(&particles, state)
+			render.effect_systems_step(r, state, &particles) // the beams
 		}
 		for _ in 0 ..< after {
 			_ = sim.session_step(state, {})
 			render.particles_step(&particles, state)
+			render.effect_systems_step(r, state, &particles)
 		}
 		flow.mode = .Playing
 	case "main_netplay":

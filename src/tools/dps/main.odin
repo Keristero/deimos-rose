@@ -44,6 +44,9 @@ import "core:thread"
 import "core:time"
 
 import "dr:data"
+// The new weapons' keys and how they fire: a Discharge Beam fires only with
+// its plugin linked in, as in the game.
+import _ "dr:plugins/new_weapons"
 import "dr:plugins/passives"
 // The original game's systems, which a session runs.
 import _ "dr:sim/core"

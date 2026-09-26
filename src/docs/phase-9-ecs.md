@@ -253,7 +253,9 @@ what it draws from its `@(init)`, through three registries:
 - **overlays** (`ui.overlay_register`), drawn over the play field after
   the frame: Easy Mode's reward screen and the loadout;
 - **effect systems** (`render.effect_system_register`), stepped with the
-  particles after each sim step: the passives' motes and sparks.
+  particles after each sim step, and drawing over a draw layer of their
+  choosing if they keep effects of their own: the passives' motes and
+  sparks, and New Weapons' Discharge Beam.
 
 Each runs only while its plugin is on. The game names no plugin's screen:
 `game/plugins.odin` imports each plugin and its view, which is all it
@@ -363,7 +365,7 @@ them from its flags (`mods_from_flags`).
 
 ## Verification
 
-- `mise run ci`: 264 tests. The new ones are the prefab builds (their
+- `mise run ci`: 267 tests. The new ones are the prefab builds (their
   components follow the definitions' flags, and a plugin's builder runs
   only with the plugin on), and the golden runs, plugin
   dependencies and order, render schedule, mods and settings save format,

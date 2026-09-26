@@ -1,6 +1,6 @@
-package weapon_system
+package new_weapons
 
-// The Discharge Beam (a weapon with `beam.on`, docs/new-weapons.md): new
+// The Discharge Beam (a weapon with x_Beam_BOOL, docs/new-weapons.md): new
 // content, not the original's, which has no instant shot. A beam is not a
 // projectile. On the step it fires, a line is cast straight ahead from the
 // gun, and everything a player's air shot could hit that lies across it is
@@ -12,13 +12,20 @@ package weapon_system
 // - the beam stops at the first target left standing (or one the hit delay
 //   protects), or goes off the top of the screen.
 //
-// The shrapnel pieces are ordinary player projectiles. Presentation draws
-// the beam from `s.beams`, this step's shots, as a line that fades.
+// The shrapnel pieces are ordinary player projectiles. Each shot is pushed
+// as a Beam_Event (sim/queue_effects.odin), which this plugin's view draws
+// as a line that fades.
 
 import "dr:sim"
 import "dr:sim/lifecycle"
 import "dr:sim/stats"
 import "dr:sim/systems/collision_system"
+
+// A pulse: with every press, after the weapon's own spawns.
+beam_shot :: proc(s: ^sim.State, h: ^sim.Weapon_Handler, wd: ^sim.Weapon, at: sim.Vec, time: i32) {
+	b := beam_def(wd)
+	beam_fire(s, h, wd, at, b.damage, b.width, false, time)
+}
 
 // A kill's burst, over the enemy's own destruction effects. Provisional:
 // picked by eye, the size of the largest burst in the red of the ship.
@@ -26,6 +33,53 @@ import "dr:sim/systems/collision_system"
 @(private = "file") BEAM_BURST_COLOR :: sim.Color{0xf8, 0x60, 0x30}
 
 @(private = "file") SITE_SHRAPNEL :: sim.Site(0xe0000020)
+
+// The most targets one beam can pass through. A full screen of the densest
+// formation (Shuriken, groups of 11) in one column is well under this.
+MAX_BEAM_TARGETS :: 64
+
+// How far above the top of the screen an unstopped beam is drawn to.
+BEAM_OVERSHOOT :: 16
+
+// A beam's shot, for the view to draw.
+Beam_Event :: struct {
+	from:    sim.Vec, // the gun
+	to_y:    f32, // where it stopped; above the screen if nothing stopped it
+	width:   f32,
+	charged: bool,
+	player:  i32,
+}
+
+// The weapon's settings: new keys on its definition.
+Beam_Def :: struct {
+	damage:         f32, // a pulse's
+	width:          f32, // px across the line that a target's circle must touch
+	release_damage: f32, // a charge's at the weapon's own max power level
+	release_width:  f32,
+	shrapnel:       sim.Res_ID, // the unit a kill throws out
+	shrapnel_count: i32,
+}
+
+beam_def :: proc "contextless" (wd: ^sim.Weapon) -> Beam_Def {
+	return {
+		damage         = sim.weapon_float(wd, BEAM_DAMAGE),
+		width          = sim.weapon_float(wd, BEAM_WIDTH),
+		release_damage = sim.weapon_float(wd, BEAM_RELEASE_DAMAGE),
+		release_width  = sim.weapon_float(wd, BEAM_RELEASE_WIDTH),
+		shrapnel       = sim.weapon_id(wd, BEAM_SHRAPNEL),
+		shrapnel_count = sim.weapon_int(wd, BEAM_SHRAPNEL_COUNT),
+	}
+}
+
+// This step's beams, in the order they fired.
+beam_shots :: proc(s: ^sim.State, allocator := context.temp_allocator) -> []Beam_Event {
+	out := make([dynamic]Beam_Event, allocator)
+	walk := sim.effects_of(s, BEAM_SHOT, Beam_Event)
+	for ev in sim.effects_next(&walk) {
+		append(&out, ev)
+	}
+	return out[:]
+}
 
 // Where the beam leaves the ship: the weapon's first spawn, its muzzle flash.
 beam_origin :: proc "contextless" (wd: ^sim.Weapon, at: sim.Vec) -> sim.Vec {
@@ -38,9 +92,9 @@ beam_origin :: proc "contextless" (wd: ^sim.Weapon, at: sim.Vec) -> sim.Vec {
 // A pulse, or a charge's release: casts the line and deals `damage` along it.
 beam_fire :: proc(s: ^sim.State, h: ^sim.Weapon_Handler, wd: ^sim.Weapon, at: sim.Vec, damage, width: f32, charged: bool, time: i32) {
 	from := beam_origin(wd, at)
-	targets: [sim.MAX_BEAM_TARGETS]sim.Entity
+	targets: [MAX_BEAM_TARGETS]sim.Entity
 	n := beam_targets(s, from, width, targets[:])
-	to_y := f32(-sim.BEAM_OVERSHOOT)
+	to_y := f32(-BEAM_OVERSHOOT)
 	left := damage
 	for e in targets[:n] {
 		if e.deleted {
@@ -63,11 +117,7 @@ beam_fire :: proc(s: ^sim.State, h: ^sim.Weapon_Handler, wd: ^sim.Weapon, at: si
 			break
 		}
 	}
-	q := &s.beams
-	if q.count < sim.MAX_BEAM_EVENTS {
-		q.events[q.count] = {from, to_y, width, charged, h.player}
-		q.count += 1
-	}
+	sim.effect_push(s, BEAM_SHOT, Beam_Event{from, to_y, width, charged, h.player})
 }
 
 // Everything across the line from `from` straight up that the beam can hit,
@@ -110,13 +160,14 @@ beam_before :: proc "contextless" (a, b: sim.Entity) -> bool {
 @(private = "file")
 beam_explode :: proc(s: ^sim.State, wd: ^sim.Weapon, loc: sim.Vec, player: i32) {
 	sim.particle_burst(s, loc, BEAM_BURST_COLOR, BEAM_BURST, false)
-	n := wd.beam.shrapnel_count
-	if wd.beam.shrapnel == sim.NONE || n <= 0 {
+	b := beam_def(wd)
+	n := b.shrapnel_count
+	if b.shrapnel == sim.NONE || n <= 0 {
 		return
 	}
 	base := sim.roll_int(s, 0, 359, SITE_SHRAPNEL)
 	for k in 0 ..< n {
-		req := sim.spawn_request(wd.beam.shrapnel)
+		req := sim.spawn_request(b.shrapnel)
 		req.owner_player = player
 		req.loc = loc
 		req.explicit_heading = true
@@ -125,13 +176,15 @@ beam_explode :: proc(s: ^sim.State, wd: ^sim.Weapon, loc: sim.Vec, player: i32) 
 	}
 }
 
-// The charge's release, all at once: the release damage and width scaled by
-// the power level reached against the weapon's own max, so a part charge
-// deals part and Improved Charge's higher max deals more than the full.
+// The charge's release, all at once, however many levels it holds: the
+// release damage and width scaled by the power level reached against the
+// weapon's own max, so a part charge deals part and Improved Charge's
+// higher max deals more than the full.
 beam_release :: proc(s: ^sim.State, h: ^sim.Weapon_Handler, wd: ^sim.Weapon, at: sim.Vec, level: i32, time: i32) {
+	b := beam_def(wd)
 	top := max(wd.powerup_air_max_power_level, 1)
 	f := f32(level) / f32(top)
-	beam_fire(s, h, wd, at, wd.beam.release_damage * f, max(wd.beam.release_width * min(f, 1), wd.beam.width), true, time)
+	beam_fire(s, h, wd, at, b.release_damage * f, max(b.release_width * min(f, 1), b.width), true, time)
 	if wd.powerup_air_release_spawn != sim.NONE {
 		lifecycle.spawn_at(s, wd.powerup_air_release_spawn, beam_origin(wd, at), h.player)
 	}

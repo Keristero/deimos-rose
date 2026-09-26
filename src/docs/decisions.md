@@ -659,9 +659,10 @@ of play by marking it rather than by not loading it:
 - only a New Weapons session's loadout (`sim/loadout.odin`) hands them
   out.
 
-A record's new behaviour goes in an `x_`-prefixed tag that only the extra
-loader reads, such as `x_AimedRelease_BOOL`. The generated `Wep_Def` stays
-the original's layout.
+A record's new behaviour goes in an `x_`-prefixed tag, such as
+`x_AimedRelease_BOOL`. The generated `Wep_Def` stays the original's
+layout. *Since D48, the plugin that reads a tag registers it and the loader
+fills it generically.*
 
 The extra records are hand-authored source: each was cloned from its
 nearest original record and then edited. The extra sprites are derived from
@@ -680,7 +681,8 @@ step it fires. The original has nothing like it: every shot is an entity
 that flies and collides. The beam is not one. `sim/beam.odin` casts the line
 when the weapon fires, hits the targets through `entity_hit` nearest first,
 and pushes a `Beam_Event` onto `State.beams`, a per-step queue like the
-particle and blur requests. Presentation draws each event and lets it fade.
+particle and blur requests. *Since D48 all of it is the New Weapons
+plugin's, and the queue is the plugins' generic effect queue.* Presentation draws each event and lets it fade.
 
 Why not a very fast, very long projectile:
 - a projectile takes steps to cross the screen, and one fast enough to
@@ -924,4 +926,36 @@ of it, where the first pass wrote only live rows. A snapshot takes about
 64 µs and a checksum about 170 µs (`mise run bench`), both well inside
 a frame. Writing only up to the highest slot used is the next step if
 the ring's memory or the time ever matters.
+
+### D48 — New weapons live in their plugin, through four extension points
+
+Adding the Discharge Beam touched seven places outside anything it owned:
+a field and a struct on the core's `Weapon`, parsing in the loader, two
+branches in the weapon handler, a queue on `State`, its clearing, and
+drawing and clearing in the renderer and the game. The Chaingun's aimed
+release added another field and branch. None of it could be switched off
+with its plugin, and the next weapon would have touched the same places.
+
+Now the core has one generic way for each of those, and the Beam and the
+aimed release are entirely `plugins/new_weapons` and its `view/`:
+- **Definition keys** (`sim/def_keys.odin`). A plugin registers the `x_`
+  keys it reads, typed by their suffix, and the loader fills every
+  registered key of every weapon into `Weapon.keys`, knowing none of them.
+- **Weapon_Fire** (`sim/hooks.odin`). A plugin fires the weapons whose
+  keys it recognises: with each press, as a charge's release all at once,
+  or as each of a charge's volleys. Unlike the other hooks it is not
+  gated by the session's mods: how a weapon fires belongs to the weapon,
+  which only reaches play through its plugin's filter, and a tool that
+  flies it alone (`tools/dps`) should see it fire.
+- **Effect events** (`sim/queue_effects.odin`). A plugin registers a kind
+  with the type it carries and pushes values for its view, a per-step
+  queue like the core's, left out of snapshots and checksums.
+- **Effect systems that draw** (`render/render_systems.odin`). A plugin's
+  view keeps its effects, draws them over the draw layer it names, and
+  forgets them when a level starts.
+
+The Beam's and the Chaingun's DPS figures, the golden fingerprints and
+`oracle:diff` are unchanged. A new weapon with new behaviour now needs a
+plugin and its data, and no core change unless it needs a kind of hook
+the core does not have yet.
 

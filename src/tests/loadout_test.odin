@@ -8,6 +8,7 @@ import vmem "core:mem/virtual"
 
 import "dr:data"
 import "dr:plugins/loadout"
+import "dr:plugins/new_weapons"
 import "dr:sim"
 import "dr:sim/systems/weapon_system"
 import "dr:sim/lifecycle"
@@ -255,19 +256,19 @@ change_air_cycles_the_loadout :: proc(t: ^testing.T) {
 @(test)
 aimed_shots_lead_the_target :: proc(t: ^testing.T) {
 	// Standing still: straight at it.
-	testing.expect_value(t, weapon_system.aimed_intercept({0, -100}, {}, 10), sim.Vec{0, -100})
+	testing.expect_value(t, new_weapons.aimed_intercept({0, -100}, {}, 10), sim.Vec{0, -100})
 	// Crossing: the aim point is where both arrive at once.
 	offset, vel, speed := sim.Vec{0, -100}, sim.Vec{4, 0}, f32(10)
-	aim := weapon_system.aimed_intercept(offset, vel, speed)
+	aim := new_weapons.aimed_intercept(offset, vel, speed)
 	tt := math.sqrt(aim.x * aim.x + aim.y * aim.y) / speed
 	meet := offset + vel * tt
 	testing.expect(t, abs(meet.x - aim.x) < 1e-3 && abs(meet.y - aim.y) < 1e-3, "the shot and the target must meet")
 	testing.expect(t, aim.x > 0, "a target moving right is led to the right")
 	// Coming straight at the shooter: aimed at the same line, nearer.
-	aim = weapon_system.aimed_intercept({0, -100}, {0, 5}, 10)
+	aim = new_weapons.aimed_intercept({0, -100}, {0, 5}, 10)
 	testing.expect(t, abs(aim.x) < 1e-3 && aim.y > -100 && aim.y < 0)
 	// Too fast to catch: straight at it.
-	testing.expect_value(t, weapon_system.aimed_intercept({0, -100}, {20, 0}, 10), sim.Vec{0, -100})
+	testing.expect_value(t, new_weapons.aimed_intercept({0, -100}, {20, 0}, 10), sim.Vec{0, -100})
 }
 
 // Against the shipped content (src/assets and src/assets/extra): the
@@ -301,7 +302,7 @@ chaingun_loads_as_new_content :: proc(t: ^testing.T) {
 		return
 	}
 	w := &defs.weapons[cg]
-	testing.expect(t, w.aimed_release)
+	testing.expect(t, sim.weapon_bool(w, new_weapons.AIMED_RELEASE))
 	testing.expect_value(t, w.type, sim.WEP_AIR)
 	testing.expect_value(t, w.minimum_level_available, 7)
 	testing.expect(t, sim.unit_index(&defs, w.powerup_air_release_spawn) >= 0, "the aimed shot's unit must load")
@@ -376,7 +377,7 @@ aimed_volley_turns_towards_an_air_enemy :: proc(t: ^testing.T) {
 	}
 	target := sim.entity_at(s, mine.index)
 	target.appear_delay = 0
-	found, ok := weapon_system.aimed_target(s, at)
+	found, ok := new_weapons.aimed_target(s, at)
 	if !testing.expect(t, ok && found == target, "the mine must be the nearest target") {
 		return
 	}
@@ -388,8 +389,8 @@ aimed_volley_turns_towards_an_air_enemy :: proc(t: ^testing.T) {
 			before[e.number] = true
 		}
 	}
-	weapon_system.aimed_release_spawn(s, sim.player_at(s, 0).weapons.handler, &defs.weapons[cg], at)
-	aim := weapon_system.aimed_intercept(target.loc - at, target.vel, defs.units[shot].initial_speed_max)
+	new_weapons.aimed_release_spawn(s, sim.player_at(s, 0).weapons.handler, &defs.weapons[cg], at)
+	aim := new_weapons.aimed_intercept(target.loc - at, target.vel, defs.units[shot].initial_speed_max)
 	want := sim.invert_angle(sim.angle_from_vector(aim))
 	testing.expect(t, want > 20 && want < 70, "the aim must be up and to the right")
 	shots: [dynamic]sim.Entity
@@ -409,5 +410,5 @@ aimed_volley_turns_towards_an_air_enemy :: proc(t: ^testing.T) {
 	d := sim.vector_from_angle(sim.invert_angle(want))
 	gap := shots[1].loc - shots[0].loc
 	testing.expect(t, abs(gap.x * d.x + gap.y * d.y) < 0.01, "the pair must fly abreast")
-	testing.expect(t, abs(math.sqrt(gap.x * gap.x + gap.y * gap.y) - 2 * weapon_system.AIMED_PAIR_OFFSET) < 0.01)
+	testing.expect(t, abs(math.sqrt(gap.x * gap.x + gap.y * gap.y) - 2 * new_weapons.AIMED_PAIR_OFFSET) < 0.01)
 }

@@ -83,8 +83,9 @@ weapon number five and unlocks at stage 7. Its ship is dark grey:
   steps, where the others' is shorter.
 - **Charge attack.** Holding fire charges as the original's weapons do,
   with the ordinary power-up state machine. A weapon marked
-  `x_AimedRelease_BOOL` changes one step, `aimed_release_spawn` in
-  `sim/systems/weapon_system/aimed.odin`. Every release volley:
+  `x_AimedRelease_BOOL` changes one step: the New Weapons plugin fires
+  each volley through the core's Weapon_Fire hook, `aimed_release_spawn`
+  in `plugins/new_weapons/aimed.odin`. Every release volley:
   - finds the nearest enemy a player shot could hit;
   - leads it by its current velocity;
   - fires two parallel `cgpb` rounds at that point, 3 px either side of
@@ -107,8 +108,8 @@ air weapon number six and unlocks at stage 10. Its ship is red:
 (see Content).
 
 The original has no instant shot, so the beam is a new mechanic, in
-`sim/systems/weapon_system/beam.odin`. A weapon with `x_Beam_BOOL` fires no projectile of its
-own. Its spawn list holds only the muzzle flash, `dbmf`, which also plays
+`plugins/new_weapons/beam.odin`, fired through the core's Weapon_Fire hook.
+A weapon with `x_Beam_BOOL` fires no projectile of its own. Its spawn list holds only the muzzle flash, `dbmf`, which also plays
 the sound.
 
 - **Standard attack.** Every press, at most one every 8 steps, calls
@@ -131,11 +132,14 @@ the sound.
   weapon's own max. A part charge deals part, and Improved Charge's higher
   max deals more than the full 7.5. The width never falls below the
   pulse's.
-- **Drawing.** `sim.State.beams` holds this step's beams, like the
-  particle and blur queues: where each started, where it stopped, its
-  width and whether it was charged. `render/beams.odin` keeps each for 6
-  steps (12 charged), drawn additively as a soft glow, a body and a white
-  core, with a flare where it stopped. It fades from the first frame.
+- **Drawing.** Each beam is pushed as a `Beam_Event`, a plugin's effect
+  event (`sim/queue_effects.odin`) that lasts the step, like the particle
+  and blur queues: where it started, where it stopped, its width and
+  whether it was charged. The plugin's view,
+  `plugins/new_weapons/view/beams.odin`, is an effect system that keeps
+  each for 6 steps (12 charged) and draws them over the air enemies and
+  under the ships, additively, as a soft glow, a body and a white core,
+  with a flare where it stopped. It fades from the first frame.
 
 #### How the design was read
 
@@ -271,15 +275,17 @@ Balance), but its feel is untested by hand:
   dwindling;
 - the sound: the Laser Gun Bullet's (`lgbu`), pitched down, a stand-in
   for a proper zap;
-- in the code: the kill burst's size and colour (`sim/systems/weapon_system/beam.odin`), and
-  the beam's lifetimes, widths and colours (`render/beams.odin`).
+- in the code: the kill burst's size and colour
+  (`plugins/new_weapons/beam.odin`), and the beam's lifetimes, widths and
+  colours (`plugins/new_weapons/view/beams.odin`).
 
 ## Content
 
 `assets/extra` holds the new content: records in `data/` and sprites in
 `sprites/`, laid out like `assets/`. `data.extra_defs_load` appends it after
-the original definitions. Each weapon it loads is marked `extra`, and
-`x_AimedRelease_BOOL` is read into `aimed_release`. `assets_open` reads the
+the original definitions. Each weapon it loads is marked `extra`. Its
+`x_` keys are read into `Weapon.keys` for the plugin that registered them
+(`sim/def_keys.odin`); the loader knows none of them. `assets_open` reads the
 extra sprite index beside the game's own.
 
 - **Records.** Each was cloned from its nearest original record and then

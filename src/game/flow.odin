@@ -588,7 +588,7 @@ flow_effects_sync :: proc(fl: ^Flow, particles: ^render.Particles, blurs: ^rende
 	}
 	fl.effects_level = sim.single(fl.state, sim.Level_Info).played
 	clear(&particles.live)
-	clear(&particles.beams)
+	render.effect_systems_clear()
 	clear(&blurs.live)
 	notices^ = {}
 }

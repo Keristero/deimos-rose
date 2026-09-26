@@ -3,9 +3,10 @@ package render
 // Presentation: what the player sees and hears of a state. The assets it
 // is drawn from, the renderer and its render systems (render_systems.odin),
 // text, the score bar, the effects the simulation hands over (particles,
-// blurs, beams, notices) and the sounds it asks for. It reads the
-// simulation and never changes it. Below game/ and ui/, so that a plugin's
-// view/ package can draw without importing the game.
+// blurs, notices, and plugins' own through effect systems) and the sounds
+// it asks for. It reads the simulation and never changes it. Below game/
+// and ui/, so that a plugin's view/ package can draw without importing the
+// game.
 //
 // Compositing a frame the way the original does.
 //
@@ -617,9 +618,11 @@ present :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, scale: f32) 
 	run(r, 2, 5, scale)
 	t := r.interp_prev != nil ? r.interp_alpha : 1
 	particles_draw(particles, scale, r.side_scroll, t)
-	run(r, 6, 8, scale)
-	beams_draw(particles, scale, r.side_scroll, t) // over the air enemies, under the ships
-	run(r, 9, 15, scale)
+	// Layer by layer, so a plugin's effects can go between them.
+	for l in 6 ..= 15 {
+		run(r, l, l, scale)
+		effect_systems_draw(r, s, l, scale, r.side_scroll, t)
+	}
 	rl.EndScissorMode()
 	level_end_draw(r, s, scale) // layer 0xf text, over the sprites
 	scorebar_draw(r, s, scale)
