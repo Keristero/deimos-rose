@@ -593,6 +593,8 @@ this port's own screens, which classic hides.
 
 ### D35 — Extras: one table for every enhancement, off in classic mode
 
+*Superseded by D42: the extras are now mods and the settings they register.*
+
 Classic mode is the original game, look and behaviour both. Everything this
 port adds on top is an *extra*: listed once in `prefs.EXTRAS` (key, label,
 kind, default) and read only through `game/extras.odin`'s `extra_on` /
@@ -727,3 +729,90 @@ odecs was not written for rollback, so the sim uses it under three rules:
 - **Pointers into odecs never outlive a structural change.** Columns are
   byte arrays that grow and swap-remove. A system that adds or removes
   components re-fetches what it holds.
+
+### D40 — Deimos Rose's additions are plugins, and a session names the ones it runs
+
+notes/ecs-refactor.md splits new content into plugins, each in a folder of
+its own under `plugins/`, with dependencies between them. A plugin
+registers itself (`sim.plugin_register`), its components, its systems and
+its hooks from an `@(init)` procedure. A plugin's ID is its place in the
+registry, and a set of plugins is `sim.Mods`, a 32-bit set.
+
+- **A plugin is on only while everything it needs is.** `mods_resolve`
+  drops the rest. The Mods page turns dependencies on with a plugin, and
+  dependants off with it, so a saved set never relies on resolving.
+- **A plugin imports the plugins it needs.** The import is what lets it
+  use their components, and it guarantees they are linked, so their
+  `@(init)` registers them. `import _` is enough where nothing is used.
+- **A session plugin is part of `sim.Session`.** It changes the
+  simulation, so peers must agree on it. The session's systems are
+  ordered once, when it starts (`schedule_build`). Any other plugin, such
+  as how the game looks, is the player's own and never reaches the
+  simulation.
+- **A plugin's sim half is held to D3.** `mise run purity` checks every
+  plugin folder except `view/`, where its presentation goes.
+
+Plugin IDs follow registration order, which is fixed for a build. Peers
+agree on them only when they run the same build, which netplay already
+requires (D43).
+
+### D41 — The core reaches plugins only through hooks
+
+`sim/` must not name a plugin: the core is the original game, and runs
+alone in classic mode, in films and for the oracle. Where the original's
+code has to give way to a plugin, the plugin registers a hook
+(`sim/hooks.odin`):
+- a stat provider: a modifier on a player or weapon stat (the passives);
+- a hold: a screen that keeps the level from moving on (the reward and
+  loadout screens);
+- a weapon chooser: which air weapon a new game or Change_Air picks (the
+  loadout);
+- a weapon filter: which of the new weapons the rules may choose (New
+  Weapons).
+
+A hook runs only while its plugin is on in the session (`mod_on`). With
+none on, each query returns the original's answer untouched, so
+`oracle:diff` stays exact by construction.
+
+The alternative was for the core to call each plugin directly. That would
+have had `sim/` import the plugins, so they could not depend on the core
+without a cycle, and a new plugin would mean editing the core.
+
+### D42 — Mods replace the extras; their settings are registered by the mods
+
+This supersedes D35's table. Each of the four extras that switched a
+feature on or off is now a mod. High Refresh Rate is 30FPS Unlock,
+Accent Colours is Accent Color, and Easy Mode and New Weapons are their
+mods. What is left of the extras are the mods' settings. A plugin
+registers them with `prefs.setting_register`, and the Extras page (the
+Extra Preferences plugin's) lists those of the mods that are on.
+
+- **Settings are registered from a plugin's `view/` package.** The plugin
+  itself cannot register them: `prefs` formats text, which D3 keeps out
+  of anything the simulation runs.
+- **Mods are saved by name** (`mods=accent,new_weapons,...`), since an ID
+  is only a place in one build's registry. A name the build does not know
+  is dropped.
+- **Older saves carry over.** Without a `mods=` line, the four old keys
+  (`high_refresh_rate`, `accent_colours`, `easy_mode`, `new_weapons`) turn
+  their mods on or off. Settings keep the keys they had (`accent_hue`,
+  `accent_hue_p2`, `self_outline`).
+- **Classic mode turns every mod off** whatever is saved (`prefs_mods`),
+  as it did every extra.
+
+A new player starts with Accent Color, New Weapons and Netplay on, as
+the extras' defaults had them, plus what those need.
+
+### D43 — Start carries the session's mods by ID, after the old flags
+
+Start and Level_Choice gained four bytes after the flags byte (D36): the
+host's session plugins as a `sim.Mods`. They supersede the flags, which
+are still sent. A build that reads only the flags then sees what it did
+before. A Start from such a build has no mods, and `mods_from_flags`
+turns on what its flags turned on then.
+
+The mods travel by registry ID, not by name. Names would not fit the
+reliable channel's buffer, which is sized for Hello, and the IDs already
+have to agree: peers must run the same build for their simulations to
+agree at all. Netplay's own plugin is added exactly when the session is
+online (`session_from_mods`), whatever either player has on.

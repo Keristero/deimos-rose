@@ -93,9 +93,11 @@ silently. `G_Film::GetRandomSeed` shows the original made the same choice.
 **Classic mode is the original, exactly.** With classic mode on, the game
 must look and behave as the 2003 build does: same sprites, colours, frames,
 text and timing. Anything this port adds — a colour, an outline, a menu, a
-smoothing — is an *extra* (decisions.md D35): an entry in `prefs.EXTRAS`,
-read only through `extra_on`/`extra_value`, which classic mode switches
-off. Never change a default look to suit an enhancement; add an extra.
+smoothing — belongs to a *mod*, a plugin under `src/plugins/`
+(decisions.md D40, D42). Its settings are registered with
+`prefs.setting_register`, and it is read only through `prefs_mod_on`,
+`setting_on` and `setting_value`, which classic mode switches off. Never
+change a default look to suit an enhancement; put it in a mod.
 Check a visual change with classic on as well as off. When the port
 differs from the original in classic mode, that is a bug to port, not an
 enhancement to keep (the crosshair's red lock was missing this way).

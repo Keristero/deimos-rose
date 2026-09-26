@@ -8,8 +8,10 @@ left room, and what is still provisional. The cross-cutting choice is D36 in
 
 ## What was built
 
-- **Easy mode** is an extra (`prefs.EXTRAS`, key `easy_mode`, off by
-  default), so classic mode switches it off with every other extra. It is
+- **Easy mode** is a mod (`plugins/easy_mode`, off by default; it was an
+  extra, key `easy_mode`, until the Mods page: docs/phase-9-ecs.md), so
+  classic mode switches it off with every other mod. The passives are a
+  mod of their own, `plugins/passives`, which Easy Mode needs. It is
   offered where the design asks:
   - on Level Select, under the level name (`game/menu_level_select.odin`),
     only outside classic mode;

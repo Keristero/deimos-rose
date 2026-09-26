@@ -186,6 +186,23 @@ loadout_screen_places_new_weapons :: proc(t: ^testing.T) {
 	}
 }
 
+// The loadout is a mod of its own: without New Weapons it still opens,
+// and hands over only the original's weapons.
+@(test)
+loadout_without_new_weapons_leaves_them_out :: proc(t: ^testing.T) {
+	defs := loadout_defs()
+	s := new(sim.State, context.temp_allocator)
+	defer sim.destroy(s)
+	mods := sim.mods_session(sim.mods_with_deps({int(loadout.ID)}))
+	sim.init(s, sim.Session{seed = 3, level_id = defs.levels[0].id, game_type = .Single, mods = mods}, defs)
+	if !testing.expect(t, play_to_loadout(s), "the loadout screen must open on level 2") {
+		return
+	}
+	b := &loadout.loadout_of(s).boards[0]
+	testing.expect_value(t, [3]i32{b.cells[.Slots][0], b.cells[.Slots][1], b.cells[.Slots][2]}, [3]i32{WAIR, WAI2, WAI3})
+	testing.expect_value(t, b.width[.Fresh], 0)
+}
+
 @(test)
 loadout_keeps_the_weapon_flown :: proc(t: ^testing.T) {
 	defs := loadout_defs()

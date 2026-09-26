@@ -15,8 +15,10 @@ Discharge Beam's instant shot is D38.
 
 ### New Weapons, the extra
 
-New Weapons is an extra: its `prefs.EXTRAS` key is `new_weapons`. Classic
-mode switches it off along with every other extra.
+New Weapons is a mod, `plugins/new_weapons` (it was an extra, key
+`new_weapons`, until the Mods page: docs/phase-9-ecs.md). Classic mode
+switches it off along with every other mod. The loadout screen is a mod
+of its own, `plugins/loadout`, which New Weapons needs.
 
 It is **on by default**, unlike Easy Mode. The design asks for it outside
 classic mode, and classic mode remains the way to play the original.
