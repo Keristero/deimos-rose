@@ -389,6 +389,29 @@ what is left is mostly paths random play and the shipped definitions
 never take, such as aux weapons, ground pickups, rule conditions no unit
 uses and the perfect-game bonus.
 
+Tests aimed at those paths followed (`tests/coverage_*_test.odin`,
+`tests/host_test.odin`), each driving one behaviour directly: on the
+committed assets or synthetic definitions, editing a definition in
+memory where no shipped one takes the path. They bring coverage to 1,727
+of 1,766 blocks (97.8%). What is left is defensive checks, a few stat
+paths no shipped plugin supplies, and gaps the port marks as unported.
+
+Writing them turned up one crash, since fixed: a unit whose first state
+is Delete or Destroy (none is shipped) read its state at -1. They also
+pinned readings of the original that are worth checking against it, as
+none of the four demos reaches them:
+- holding to a target (`hunt`) adjusts to the required velocity straight
+  after the hold, so the hold's acceleration is applied twice;
+- the level-end bonus and money counters award a whole step on the last
+  tick, so a 1000 bonus in steps of 300 pays 1200;
+- on levels before perm float 0xdb, the ninth and tenth random-bonus
+  bands both give bonus 8;
+- reaching a multiplier with no icon unit leaves the last icon up;
+- entities deleted but not yet swept still count for rules and for a
+  unique unit's respawn;
+- a released ground power-up never returns to idle (the ground power-up
+  process, 0x44741a, is not ported; no shipped weapon has one).
+
 ## Still open
 
 - **The renderer still knows about accents.** `Renderer.accents` and
@@ -408,12 +431,10 @@ uses and the perfect-game bonus.
 - **Some flags are still read directly.** The spawn sets are walked from
   the definitions, and lifecycle procedures such as change_state read
   their state's flags. Each can move to components the same way.
-- **Coverage is 83.5% of the simulation's blocks, not 100%.** `mise run
-  coverage` measures it (see [Coverage](#coverage)). What the tests never
-  reach is listed in `build/coverage/missed.txt`: mostly defensive
-  checks, paths no shipped definition takes, and parts of the original
-  that the four demos never exercise, such as random bonus drops and
-  spawning on water.
+- **Coverage is 97.8% of the simulation's blocks, and most of it is
+  pinned, not matched.** Only the four demos are checked against the
+  original, call for call. The rest of the tests pin the port's reading
+  of it, and [Coverage](#coverage) lists the readings worth checking.
 - **A session with the passives but not Easy Mode** has no way to earn a
   passive. It runs, and is the same as neither.
 - **The new Start is untested between two builds** and on two machines,

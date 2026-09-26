@@ -444,11 +444,6 @@ constrain_in_game_area :: proc "contextless" (s: ^sim.State, e: sim.Entity) {
 		flip(&e.vel_delta.x)
 		flip(&e.vel_target.x)
 	}
-	bounce_y :: proc "contextless" (e: sim.Entity) {
-		flip(&e.vel.y)
-		flip(&e.vel_delta.y)
-		flip(&e.vel_target.y)
-	}
 	if e.loc.x < -32 {
 		flip(&e.vel.x)
 		e.loc.x = -32
