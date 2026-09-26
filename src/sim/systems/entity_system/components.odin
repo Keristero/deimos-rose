@@ -91,9 +91,7 @@ state_prefab :: proc(p: sim.Prefab, u: ^sim.Unit, st: ^sim.Unit_State) {
 			max_plays = st.sound_max_num_to_play,
 		})
 	}
-	if len(st.rules) > 0 {
-		sim.prefab_add(p, Follows_Rules{})
-	}
+	sim.prefab_tag(p, len(st.rules) > 0, Follows_Rules)
 	if st.use_owners_visibility || st.use_owners_scale || st.visually_reflect_owner_hits {
 		sim.prefab_add(p, Follows_Owner_Look {
 			visibility = st.use_owners_visibility,
@@ -101,12 +99,8 @@ state_prefab :: proc(p: sim.Prefab, u: ^sim.Unit, st: ^sim.Unit_State) {
 			hits = st.visually_reflect_owner_hits,
 		})
 	}
-	if st.pause_vertical_scrolling {
-		sim.prefab_add(p, Pauses_Scrolling{})
-	}
-	if st.destruct_if_vertical_scrolling_not_paused {
-		sim.prefab_add(p, Destructs_While_Scrolling{})
-	}
+	sim.prefab_tag(p, st.pause_vertical_scrolling, Pauses_Scrolling)
+	sim.prefab_tag(p, st.destruct_if_vertical_scrolling_not_paused, Destructs_While_Scrolling)
 	if st.motion_blur_required {
 		sim.prefab_add(p, Motion_Blur {
 			min_gap = st.motion_blur_min_time_between_blurs,

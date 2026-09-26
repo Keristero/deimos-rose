@@ -54,25 +54,11 @@ movement_prefab :: proc(p: sim.Prefab, u: ^sim.Unit, st: ^sim.Unit_State) {
 	} else if u.flees_south_on_no_active_players {
 		sim.prefab_add(p, Flees_Without_Players{sim.res_id("sora")})
 	}
-	if u.constrain_in_game_area {
-		sim.prefab_add(p, Constrained_To_Play_Area{})
-	}
-	if st.delete_on_no_active_players {
-		sim.prefab_add(p, Deleted_Without_Players{})
-	}
-	if st.destruct_on_no_active_players {
-		sim.prefab_add(p, Destructs_Without_Players{})
-	}
-	if st.cyclic_motion {
-		sim.prefab_add(p, Cyclic_Motion{})
-	}
-	if st.lock_to_owner_loc {
-		sim.prefab_add(p, Locked_To_Owner{})
-	}
-	if st.link_to_owner_loc {
-		sim.prefab_add(p, Linked_To_Owner{})
-	}
-	if st.orbit_owner {
-		sim.prefab_add(p, Orbits_Owner{})
-	}
+	sim.prefab_tag(p, u.constrain_in_game_area, Constrained_To_Play_Area)
+	sim.prefab_tag(p, st.delete_on_no_active_players, Deleted_Without_Players)
+	sim.prefab_tag(p, st.destruct_on_no_active_players, Destructs_Without_Players)
+	sim.prefab_tag(p, st.cyclic_motion, Cyclic_Motion)
+	sim.prefab_tag(p, st.lock_to_owner_loc, Locked_To_Owner)
+	sim.prefab_tag(p, st.link_to_owner_loc, Linked_To_Owner)
+	sim.prefab_tag(p, st.orbit_owner, Orbits_Owner)
 }

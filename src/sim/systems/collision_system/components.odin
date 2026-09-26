@@ -68,28 +68,14 @@ shot_targets: sim.Prefab_Query
 ground_based, player_projectile: sim.Prefab_Query
 
 collision_prefab :: proc(p: sim.Prefab, u: ^sim.Unit, st: ^sim.Unit_State) {
-	if u.harmless_to_players {
-		sim.prefab_add(p, Harmless_To_Players{})
-	}
-	if u.is_ground_based {
-		sim.prefab_add(p, Ground_Based{})
-	}
-	if u.player_projectile {
-		sim.prefab_add(p, Player_Projectile{})
-	}
-	if u.can_be_hit_by_player_projectile {
-		sim.prefab_add(p, Hittable_By_Player_Shots{})
-	}
+	sim.prefab_tag(p, u.harmless_to_players, Harmless_To_Players)
+	sim.prefab_tag(p, u.is_ground_based, Ground_Based)
+	sim.prefab_tag(p, u.player_projectile, Player_Projectile)
+	sim.prefab_tag(p, u.can_be_hit_by_player_projectile, Hittable_By_Player_Shots)
 	if u.collides_with_ground_obstacles {
 		sim.prefab_add(p, Blocked_By_Wreckage{becomes_wreckage = u.destruct_create_obstacle})
 	}
-	if st.collides {
-		sim.prefab_add(p, Collides{})
-	}
-	if st.collides_with_players {
-		sim.prefab_add(p, Collides_With_Players{})
-	}
-	if st.pass_hits_to_owner {
-		sim.prefab_add(p, Passes_Hits_To_Owner{})
-	}
+	sim.prefab_tag(p, st.collides, Collides)
+	sim.prefab_tag(p, st.collides_with_players, Collides_With_Players)
+	sim.prefab_tag(p, st.pass_hits_to_owner, Passes_Hits_To_Owner)
 }

@@ -117,6 +117,13 @@ prefab_add :: proc(p: Prefab, value: $T) {
 	ecs.add_component(p.world, p.id, value)
 }
 
+// Gives the prefab the tag T when `on`: a definition's flag, as a component.
+prefab_tag :: proc(p: Prefab, on: bool, $T: typeid) {
+	if on {
+		prefab_add(p, T{})
+	}
+}
+
 // Builds the prefabs for defs and a session's plugins, reusing pf's memory
 // where it has any.
 prefabs_build :: proc(pf: ^Prefabs, defs: ^Defs, mods: Mods, allocator := context.allocator) {
