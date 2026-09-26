@@ -816,3 +816,44 @@ reliable channel's buffer, which is sized for Hello, and the IDs already
 have to agree: peers must run the same build for their simulations to
 agree at all. Netplay's own plugin is added exactly when the session is
 online (`session_from_mods`), whatever either player has on.
+
+### D44 — Behaviour lives in packages of systems; the host knows no game
+
+`dr:sim` keeps the state, the registries, the schedule and the
+definitions. The systems moved into packages under `sim/systems/`, with
+`sim/stats` and `sim/lifecycle` beneath them and `sim/core` above, which
+registers the original's systems in its order. A package imports only
+those below it (phase-9-ecs.md has the order), so dependencies between
+systems are explicit and acyclic.
+
+`sim/lifecycle` is the one way to spawn, change state, destroy or free an
+entity, so the pool and its group lists change in one place. The
+alternative, leaving the systems in `sim/` split by file, kept every
+system able to call every other, which is what the refactor set out to
+end.
+
+### D45 — Definition flags are components on prefab entities, and stages query them
+
+Each unit and each of its states is a prefab entity in a world owned by
+the state but not part of it. Builders registered by the system packages
+turn the definitions' flags into components on those prefabs when a
+session starts, with the session's plugins. An entity's components, for
+a stage, are its own plus its unit's plus its current state's. A stage
+declares `with` and `without` sets and runs only on entities that match.
+
+- **Prefabs, not components on each entity.** An entity changes state
+  mid-step. Changing its components would move it between archetypes,
+  and odecs swaps rows when it does (D39). The prefab's components stay
+  put, and only the state index changes.
+- **Not state.** Prefabs follow from the definitions and the mods, fixed
+  for a session. Snapshots, checksums and the golden fingerprints leave
+  them out. A state read in from elsewhere builds its own.
+- **The step's view.** A stage is matched against the state G_EG_Process
+  holds in its local, refreshed where the original refreshes it, not the
+  entity's state at that instant. The two differ after the movement AI
+  changes state, and the stages after it read the old one, as the
+  original does.
+- **Order is still the original's.** Stages run entity by entity in group
+  order, since the random draws depend on it. A query decides whether a
+  stage runs for an entity, not the order entities are visited in.
+

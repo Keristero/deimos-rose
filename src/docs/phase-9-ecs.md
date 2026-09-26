@@ -87,8 +87,9 @@ are three registries:
     entities its components;
 - **player stages**: G_Player::Process in 7 parts, run for one player at
   a time;
-- **entity stages**: G_EG_Process's body in 19 parts, run for one entity
-  at a time, in group order.
+- **entity stages**: G_EG_Process's body in 28 parts, run for one entity
+  at a time, in group order. Each stage names the components an entity
+  must have for it to run (see [Prefabs and queries](#prefabs-and-queries-d45)).
 
 Stages run one player or entity at a time because running one stage over
 all of them before the next would reorder the random draws.
@@ -102,6 +103,94 @@ access.
 `schedule_build` orders the core's systems and those of the session's
 plugins once, when the session starts. The schedule is therefore the same
 on every peer.
+
+### Packages (D44)
+
+`dr:sim` is now only the host: the components, the world, the registries,
+the schedule, the output queues, rollback and the definitions. It knows
+no game. The behaviour is in packages under it, each owning its systems,
+stages and components, in the spirit of Orion's `systems/` folder:
+
+| Package | What it does |
+|---|---|
+| `sim/stats` | the numbers plugins can change, and the mechanics that follow them |
+| `sim/lifecycle` | spawning, state changes, destruction and freeing: every system that changes the pool goes through it |
+| `sim/systems/debris_system` | wreckage on the ground |
+| `sim/systems/notice_system` | on-screen notices and their sounds |
+| `sim/systems/background_system` | the scroll |
+| `sim/systems/collision_system` | contacts, hits and player damage |
+| `sim/systems/movement_system` | the movement AI, following the owner, the move |
+| `sim/systems/entity_system` | G_EG_Process: timers, rules, look, spawners |
+| `sim/systems/weapon_system` | the weapon handler, the crosshair, the new weapons' shots |
+| `sim/systems/player_system` | G_Player |
+| `sim/systems/level_system` | level start, end, game over, the move to the next level |
+| `sim/core` | the original's order: registers all of the above |
+
+Each package imports only those listed above it, so there is no cycle,
+and each system's dependencies are visible in its imports. `sim/core` is
+the only package that knows the original's order, the way FUN_00420280
+and G_Player::Process read. Importing it is what puts the original game
+in a build. A plugin places its systems against the core's by name.
+
+`mise run purity` covers every package under `sim/`, and `mise run
+check` vets each one on its own.
+
+### Prefabs and queries (D45)
+
+The original chooses what an entity does from flags in its unit and
+state definitions, tested inside long procedures ("if the state orbits
+its owner, orbit"). Those flags are now components, and the stages that
+act on them ask for them.
+
+Each unit is a **prefab entity**, and so is each of its states, in a
+world of their own (`sim/prefabs.odin`). Builders, registered by the
+package that owns each component, read the definitions when a session
+starts and give each prefab its components: `Emits_Particles` for a state
+with particles, `Orbits_Owner` for one that orbits,
+`Constrained_To_Play_Area` for a unit that bounces off the edges, and so
+on. A component holds the parameters its stage reads, copied from the
+definition, and a tag (no fields) is a behaviour with nothing to set.
+
+An entity then has three sets of components: its own (the pool slot's),
+its unit's and its current state's. A stage declares `with` and
+`without` sets, and runs for an entity only when the union matches. So
+changing state changes which systems an entity takes part in, and two
+units that share a component share the behaviour. A plugin can give an
+existing behaviour to any unit or state by adding the component in a
+builder of its own, and its builders run only in sessions with it on.
+
+| Package | Components |
+|---|---|
+| `entity_system` | `Emits_Particles`, `Entry_Sound`, `Follows_Rules`, `Follows_Owner_Look`, `Pauses_Scrolling`, `Destructs_While_Scrolling`, `Motion_Blur` |
+| `movement_system` | `Deleted_Without_Players`, `Destructs_Without_Players`, `Flees_Without_Players`, `Cyclic_Motion`, `Constrained_To_Play_Area`, `Locked_To_Owner`, `Linked_To_Owner`, `Orbits_Owner` |
+| `collision_system` | `Collides`, `Collides_With_Players`, `Harmless_To_Players`, `Passes_Hits_To_Owner`, `Blocked_By_Wreckage` |
+| `weapon_system` | `Ground_Target`, `Targetable` |
+
+Where a procedure did several things by flag, it became one stage per
+thing. DoMovementAI is now eight stages: flee steering, sensing the
+nearest player, the three reactions to there being none, cyclic motion,
+keeping to the play area and the hunt. Following the owner is three.
+The sighting is kept in the entity's step (`Entity_Step.nearest`), so the
+stages after it act on the same one, as the original's locals did.
+
+Why prefabs rather than components on each entity:
+- **An entity changes state mid-step.** Adding and removing its
+  components then would move it between odecs archetypes, which swaps
+  rows and would leave other systems' views stale (D39). A prefab's
+  components never move; only which prefab the entity's state names does.
+- **They are not state.** Prefabs follow from the definitions and the
+  session's plugins, neither of which changes in a session. Snapshots
+  leave them out, like `defs`, and the golden fingerprints did not move.
+- **The step's local.** G_EG_Process holds the state in a local that it
+  refreshes only at some points. The step's mask is refreshed at the same
+  points (`entity_step_state`), so a stage sees the state the original's
+  code would have read.
+
+Lookups: `step_component` and `step_has` answer for the entity as the
+step sees it; `entity_component` and `entity_has` for the entity as it
+is now, which is what code outside the step, such as a hit, reads.
+Either looks at the entity's own components first, then its state's,
+then its unit's.
 
 ### Render systems
 
@@ -215,7 +304,9 @@ them from its flags (`mods_from_flags`).
 
 ## Verification
 
-- `mise run ci`: 163 tests. The new ones are the golden runs, plugin
+- `mise run ci`: 165 tests. The new ones are the prefab builds (their
+  components follow the definitions' flags, and a plugin's builder runs
+  only with the plugin on), and the golden runs, plugin
   dependencies and order, render schedule, mods and settings save format,
   legacy keys, dependency toggling, packets with mods, and a Loadout-only
   session.
@@ -235,11 +326,17 @@ them from its flags (`mods_from_flags`).
   plugins' `view/` needs the renderer's types in a package below `game`,
   so a view package can register a render system without importing
   `game`.
-- **Systems are the original's function-sized parts, not small queries.**
-  A movement system over "everything with a velocity" would visit
-  entities in archetype order. The random draws depend on the original's
-  list order (D39), so the stages walk the group lists instead. Splitting
-  them further is possible where nothing draws, but was not attempted.
+- **Entity stages still run entity by entity.** A stage is matched
+  against each entity in group order, and the entity goes through every
+  stage before the next starts. Running one stage over all its entities
+  first would visit them in a different order relative to the others'
+  draws, and the random draws depend on it (D39). Stages that neither
+  draw nor read what another entity's stages write could run system by
+  system, but none has been proved so yet.
+- **Some flags are still read directly.** The shot collision loop reads
+  the other entity's unit and state flags, the spawn sets are walked from
+  the definitions, and the players' stages are not gated by components.
+  Each can move to components the same way.
 - **Behavioural coverage is not measured.** The golden runs cover four
   demos and three sessions with the additions on. There is no coverage
   tool to say which paths they miss.
