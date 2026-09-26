@@ -62,6 +62,21 @@ component_slot :: #force_inline proc "contextless" ($T: typeid) -> ^i32 {
 	return &id
 }
 
+// The components of `types`, for a query (Entity_Stage.with). Every one
+// must be registered.
+mask_of :: proc(types: ..typeid) -> (m: Component_Mask) {
+	outer: for t in types {
+		for c, i in catalog[:catalog_count] {
+			if c.type == t {
+				m += {i}
+				continue outer
+			}
+		}
+		panic("ecs: a query names a component that is not registered")
+	}
+	return
+}
+
 // Adds T to the catalog. Called from `@(init)` procedures only, the sim's
 // own and each plugin's, so the catalog is complete and fixed before any
 // world exists, and ids are the same in every world of the process.
@@ -239,6 +254,7 @@ pool_entity :: #force_inline proc "contextless" (i: i32) -> ecs.EntityID {
 
 Ecs :: struct {
 	world:      ^ecs.World,
+	entities:   int, // how many, from 1: FIXED_ENTITIES for a session's world
 	allocator:  runtime.Allocator,
 	archetypes: map[Component_Mask]^ecs.Archetype,
 	// Each component's column in the archetype it was last read from, so
@@ -254,9 +270,10 @@ Column_Cache :: struct {
 	col:  i32, // -1: the archetype does not have the component
 }
 
-ecs_create :: proc(allocator := context.allocator) -> ^Ecs {
+ecs_create :: proc(allocator := context.allocator, entities := FIXED_ENTITIES) -> ^Ecs {
 	e := new(Ecs, allocator)
 	e.allocator = allocator
+	e.entities = entities
 	e.world = ecs.create_world(allocator, allocator)
 	// An archetype that empties stays, with its reserved rows, for the next
 	// entity to need it.
@@ -267,7 +284,7 @@ ecs_create :: proc(allocator := context.allocator) -> ^Ecs {
 		assert(cid == cid_of(i), "ecs: odecs numbered a component differently")
 	}
 	e.archetypes[{}] = e.world.empty_archetype
-	for i in 1 ..= FIXED_ENTITIES {
+	for i in 1 ..= entities {
 		id := ecs.add_entity(e.world)
 		assert(id == ecs.EntityID(i), "ecs: fixed entity numbered differently")
 	}
@@ -286,7 +303,7 @@ ecs_destroy :: proc(e: ^Ecs) {
 
 // Takes every component off every entity.
 ecs_clear :: proc(e: ^Ecs) {
-	for i in 1 ..= FIXED_ENTITIES {
+	for i in 1 ..= e.entities {
 		ecs_set_components(e, ecs.EntityID(i), {})
 	}
 }

@@ -77,20 +77,29 @@ Entity_Step :: struct {
 	time:   i32,
 	u:      ^Unit,
 	// The entity's state as G_EG_Process's local holds it: refreshed where
-	// the original refreshes it, which is not after every state change.
+	// the original refreshes it, which is not after every state change
+	// (entity_step_state).
 	st:     ^Unit_State,
+	state:  i32,
+	// The entity's components, its unit's and those of `st`: what a stage's
+	// query is matched against.
+	mask:   Component_Mask,
 	pause:  bool, // the state holds the scroll
 	bounds: Rect, // the entity's bounds after spawning
 }
 
 // A stage returns false when the entity is done for this step (deleted,
-// destroyed, or not yet appeared).
+// destroyed, or not yet appeared). It runs for an entity only when the
+// entity has every component in `with` and none in `without` (mask_of),
+// its own or shared from its prefabs (prefabs.odin).
 Entity_Stage :: struct {
-	name:   string,
-	after:  []string,
-	before: []string,
-	plugin: Plugin_ID,
-	run:    proc(s: ^State, e: Entity, es: ^Entity_Step) -> bool,
+	name:    string,
+	after:   []string,
+	before:  []string,
+	plugin:  Plugin_ID,
+	with:    Component_Mask,
+	without: Component_Mask,
+	run:     proc(s: ^State, e: Entity, es: ^Entity_Step) -> bool,
 }
 
 @(private = "file")
@@ -205,11 +214,56 @@ run_player_stages :: proc(s: ^State, p: Player, ps: ^Player_Step) {
 }
 
 // Runs the session's entity stages on one entity, in order, until one
-// says the entity is done.
+// says the entity is done. A stage whose query the entity does not match
+// is passed over; the entity's components are matched as they are when the
+// stage comes up, since an earlier stage may have changed its state.
 run_entity_stages :: proc(s: ^State, e: Entity, es: ^Entity_Step) {
 	for idx in s.schedule.stages[:s.schedule.stage_count] {
-		if !stages[idx].run(s, e, es) {
+		stage := &stages[idx]
+		if stage.with - es.mask != {} || stage.without & es.mask != {} {
+			continue
+		}
+		if !stage.run(s, e, es) {
 			return
 		}
 	}
+}
+
+// Starts an entity's pass through the stages.
+entity_step :: proc(s: ^State, e: Entity, time: i32) -> Entity_Step {
+	es := Entity_Step{time = time, u = unit_of(s, e)}
+	entity_step_state(s, e, &es)
+	return es
+}
+
+// Takes the entity's state as it is now, where G_EG_Process refreshes its
+// local: the state, and so the components the later stages see.
+entity_step_state :: proc(s: ^State, e: Entity, es: ^Entity_Step) {
+	es.st = state_of(s, e)
+	es.state = e.state
+	es.mask = components_of(s.ecs, pool_entity(e.pool_index)) + s.prefabs.unit_mask[e.unit] + prefab_state_mask(s.prefabs, e.unit, e.state)
+}
+
+// T for the entity as the stage sees it: its own, else its state's (the
+// state `es` holds), else its unit's. nil when none of them has one.
+step_component :: proc(s: ^State, e: Entity, es: ^Entity_Step, $T: typeid) -> ^T {
+	if c := get(s.ecs, pool_entity(e.pool_index), T); c != nil {
+		return c
+	}
+	if c := get(s.prefabs.world, prefab_state_id(s.prefabs, e.unit, es.state), T); c != nil {
+		return c
+	}
+	return get(s.prefabs.world, prefab_unit_id(e.unit), T)
+}
+
+// T for the entity as it is now: its own, else its current state's, else
+// its unit's.
+entity_component :: proc(s: ^State, e: Entity, $T: typeid) -> ^T {
+	if c := get(s.ecs, pool_entity(e.pool_index), T); c != nil {
+		return c
+	}
+	if c := get(s.prefabs.world, prefab_state_id(s.prefabs, e.unit, e.state), T); c != nil {
+		return c
+	}
+	return get(s.prefabs.world, prefab_unit_id(e.unit), T)
 }

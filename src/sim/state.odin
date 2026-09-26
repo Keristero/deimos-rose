@@ -47,6 +47,7 @@ State :: struct {
 	session:      Session,
 	defs:         ^Defs,
 	ecs:          ^Ecs,
+	prefabs:      ^Prefabs, // derived from defs and the session's plugins; not state (prefabs.odin)
 	schedule:     Schedule, // the systems this session runs, in order (systems.odin, sim/core)
 	sounds:       Sound_Queue,    // this step's sound events, for presentation
 	particles:    Particle_Queue, // this step's particle bursts, for presentation
@@ -98,7 +99,7 @@ unported :: proc "contextless" (s: ^State, site: Site) {
 // The state's world is made on first use and kept, emptied, for the next
 // session; destroy frees it.
 init :: proc(s: ^State, session: Session, defs: ^Defs, log: ^Draw_Log = nil, events: ^Event_Log = nil) {
-	world := s.ecs
+	world, prefabs := s.ecs, s.prefabs
 	s^ = State{}
 	if world == nil {
 		world = ecs_create()
@@ -110,6 +111,8 @@ init :: proc(s: ^State, session: Session, defs: ^Defs, log: ^Draw_Log = nil, eve
 	s.defs = defs
 	s.events = events
 	s.draws = log
+	s.prefabs = prefabs
+	prefabs_ensure(s)
 	schedule_build(&s.schedule, session.mods)
 	assert(s.schedule.system_count > 0, "sim: no systems registered -- import dr:sim/core")
 	setup := Step{}
@@ -119,6 +122,11 @@ init :: proc(s: ^State, session: Session, defs: ^Defs, log: ^Draw_Log = nil, eve
 destroy :: proc(s: ^State) {
 	ecs_destroy(s.ecs)
 	s.ecs = nil
+	if s.prefabs != nil {
+		prefabs_destroy(s.prefabs)
+		free(s.prefabs)
+		s.prefabs = nil
+	}
 }
 
 // Appends everything a copy of s needs to buf: the state's own fields and
@@ -129,7 +137,7 @@ state_write :: proc(s: ^State, buf: ^[dynamic]byte) {
 	append(buf, ..([^]u8)(s)[:size_of(State)])
 	// Addresses mean nothing to the reader; send zeroes.
 	fields := ([^]u8)(&buf[start])
-	for off in ([?]uintptr{offset_of(State, defs), offset_of(State, ecs), offset_of(State, draws), offset_of(State, events)}) {
+	for off in ([?]uintptr{offset_of(State, defs), offset_of(State, ecs), offset_of(State, prefabs), offset_of(State, draws), offset_of(State, events)}) {
 		runtime.mem_zero(&fields[off], size_of(rawptr))
 	}
 	ecs_write(s.ecs, buf)
@@ -150,15 +158,16 @@ state_read :: proc(s: ^State, data: []byte) -> bool {
 		return false
 	}
 	restore_plain(s, plain)
+	prefabs_ensure(s)
 	return true
 }
 
 // s^ = plain, keeping what s points at.
 @(private)
 restore_plain :: proc(s: ^State, plain: ^State) {
-	defs, world, draws, events := s.defs, s.ecs, s.draws, s.events
+	defs, world, prefabs, draws, events := s.defs, s.ecs, s.prefabs, s.draws, s.events
 	s^ = plain^
-	s.defs, s.ecs, s.draws, s.events = defs, world, draws, events
+	s.defs, s.ecs, s.prefabs, s.draws, s.events = defs, world, prefabs, draws, events
 }
 
 Level_Transition :: enum u8 {

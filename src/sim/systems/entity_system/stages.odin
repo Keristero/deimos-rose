@@ -24,7 +24,7 @@ eg_process :: proc(s: ^sim.State, time: i32) -> (pause_scrolling: bool) {
 		for n: i32 = 0; n < sim.group_at(s, gi).entities.count; n += 1 {
 			ei := sim.list_next(&sim.group_at(s, gi).entities, sim.entity_links(s), &ec)
 			e := sim.entity_at(s, ei)
-			es := sim.Entity_Step{time = time, u = sim.unit_of(s, e), st = sim.state_of(s, e)}
+			es := sim.entity_step(s, e, time)
 			sim.run_entity_stages(s, e, &es)
 			if es.pause {
 				pause_scrolling = true
@@ -121,7 +121,7 @@ state_timer_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) ->
 		if !lifecycle.entity_carry_on(s, e, del, des, es.time) {
 			return false
 		}
-		es.st = sim.state_of(s, e)
+		sim.entity_step_state(s, e, es)
 	}
 	return true
 }
@@ -146,7 +146,7 @@ rules_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool 
 	if !lifecycle.entity_carry_on(s, e, del, des, es.time) {
 		return false
 	}
-	es.st = sim.state_of(s, e)
+	sim.entity_step_state(s, e, es)
 	return true
 }
 
