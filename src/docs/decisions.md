@@ -514,6 +514,16 @@ blocks of every commit since the previous `v*`/`build-*` tag
 (`tools/version/release_notes.sh`). The old `build-*` tags remain; the
 first versioned release's notes start from the last of them.
 
+Other branches build and release too, so a branch can be tried from its
+zips before it is merged. Their versions end in `-<branch>`
+(`tools/version/branch.sh`), which keeps them from taking the tag main
+will use for the same commit count and shows in the menu where a build
+came from. A branch release is never marked latest; its notes are the
+`Changelog:` blocks of the branch's own commits, with a link to the
+latest release of main, which they are changes on top of. A branch is
+expected to be rebased, so a branch tag already on another commit is
+replaced, where on main it is an error.
+
 ### D32 — Level changes and the netplay pause happen inside the step
 
 Two peers could end up on different levels. `game/flow.odin` applied the

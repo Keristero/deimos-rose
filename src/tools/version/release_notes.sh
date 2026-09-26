@@ -7,13 +7,29 @@
 #   - One player-facing change per bullet.
 #     An indented line continues the bullet above it.
 #
-# The block ends at the first line that is neither. The previous release is
-# the nearest v* (or older build-*) tag behind HEAD, so a re-run of the
-# same commit, whose own tag already exists, still finds the one before it.
+# The block ends at the first line that is neither. On main the previous
+# release is the nearest main tag -- v* without a branch suffix, or an
+# older build-* -- behind HEAD, so a re-run of the same commit, whose own
+# tag already exists, still finds the one before it.
+#
+# A branch build (tools/version/branch.sh) lists the blocks of the
+# branch's own commits, those not on main, and links the latest main
+# release, which is what the branch's changes are on top of.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-prev=$(git describe --tags --abbrev=0 --match 'v*' --match 'build-*' HEAD^ 2>/dev/null || true)
-range=${prev:+$prev..}HEAD
+branch=$(bash tools/version/branch.sh)
+main_tag() {
+	git describe --tags --abbrev=0 --match 'v*' --match 'build-*' --exclude 'v*-*' "$1" 2>/dev/null || true
+}
+if [ -n "$branch" ]; then
+	main_ref=$(git rev-parse -q --verify origin/main || git rev-parse -q --verify main || true)
+	base=${main_ref:+$(git merge-base "$main_ref" HEAD)}
+	range=${base:+$base..}HEAD
+	latest=${main_ref:+$(main_tag "$main_ref")}
+else
+	prev=$(main_tag HEAD^)
+	range=${prev:+$prev..}HEAD
+fi
 
 # A plain-text boundary line: mawk (Ubuntu's awk, which CI runs) does not
 # take \x escapes in a regex.
@@ -25,14 +41,28 @@ notes=$(git log --reverse --format='@@deimos-commit@@%n%B' "$range" | awk '
 	                  { inblock = 0 }
 ')
 
-echo "## Changes"
+if [ -n "$branch" ]; then
+	echo "**Branch build of \`${GITHUB_REF_NAME:-$branch}\`**, not a release of main."
+	if [ -n "$latest" ] && [ -n "${GITHUB_REPOSITORY:-}" ]; then
+		echo "The latest release of main is [$latest](https://github.com/$GITHUB_REPOSITORY/releases/tag/$latest)."
+	fi
+	echo
+	echo "## Changes on this branch"
+else
+	echo "## Changes"
+fi
 echo
 if [ -n "$notes" ]; then
 	echo "$notes"
 else
 	echo "No player-facing changes in this release."
 fi
-if [ -n "$prev" ] && [ -n "${GITHUB_REPOSITORY:-}" ]; then
-	echo
-	echo "All commits: https://github.com/$GITHUB_REPOSITORY/compare/$prev...$(git rev-parse --short HEAD)"
+if [ -n "${GITHUB_REPOSITORY:-}" ]; then
+	if [ -n "$branch" ] && [ -n "$latest" ]; then
+		echo
+		echo "All commits since $latest: https://github.com/$GITHUB_REPOSITORY/compare/$latest...$(git rev-parse --short HEAD)"
+	elif [ -z "$branch" ] && [ -n "$prev" ]; then
+		echo
+		echo "All commits: https://github.com/$GITHUB_REPOSITORY/compare/$prev...$(git rev-parse --short HEAD)"
+	fi
 fi

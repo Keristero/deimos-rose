@@ -127,7 +127,10 @@ Every push to `main` becomes a release tagged `v<major.minor>.<commits>`
 last number is the commit count, from `src/tools/version/version.sh`). The
 release notes are copied out of commit messages by
 `src/tools/version/release_notes.sh`, so **the commit message is where
-patch notes are written.**
+patch notes are written.** A push to any other branch builds too, and
+becomes a prerelease tagged `v<major.minor>.<commits>-<branch>`, whose
+notes list the branch's own `Changelog:` blocks and link the latest
+release of `main`.
 
 Any commit a player would notice carries a `Changelog:` block after the
 body and before the trailers:

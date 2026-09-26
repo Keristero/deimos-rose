@@ -6,9 +6,12 @@ name: Build
 # shortcut here; a real windows-latest runner sidesteps that entirely since
 # it is not cross-compiling at all.
 
+# Every branch builds. A push to main is a release; a push to any other
+# branch is a release labelled with the branch's name (the version ends in
+# -<branch>, tools/version/branch.sh), for trying the branch out.
 on:
   push:
-    branches: [main]
+    branches: ['**']
   workflow_dispatch:
 
 # java in mise.toml is only for Ghidra's decomp:* tasks; without this,
@@ -124,15 +127,17 @@ jobs:
           path: src/deimos-*-windows-amd64.zip
           if-no-files-found: error
 
-  # One prerelease per push to main, carrying both platforms' zips, tagged
-  # with the version both build jobs baked in (tools/version/version.sh --
-  # the same commit always computes the same tag, so a re-run re-attaches
-  # rather than minting a new one). The notes are the "Changelog:" blocks
-  # of every commit since the previous release (tools/version/
-  # release_notes.sh; format in AGENTS.md).
+  # One prerelease per push, carrying both platforms' zips, tagged with the
+  # version both build jobs baked in (tools/version/version.sh -- the same
+  # commit always computes the same tag, so a re-run re-attaches rather
+  # than minting a new one). The notes are the "Changelog:" blocks of every
+  # commit since the previous release (tools/version/release_notes.sh;
+  # format in AGENTS.md). A branch's release is titled with the branch,
+  # never marked latest, and its notes list the branch's own changes and
+  # link the latest release of main.
   release:
     needs: [build-linux, build-windows]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -152,22 +157,35 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           tag=$(bash src/tools/version/version.sh)
+          branch=$(bash src/tools/version/branch.sh)
           ls -l dist
           # A tag already on a different commit means history was rewritten
-          # and the count repeated; publishing onto it would mislabel both.
+          # and the count repeated. On main, publishing onto it would
+          # mislabel both. A branch is expected to be rebased, and only its
+          # newest build matters, so the old release makes way.
           if existing=$(git rev-parse -q --verify "refs/tags/$tag^{commit}"); then
-            [ "$existing" = "$GITHUB_SHA" ] || { echo "$tag already tags $existing, not $GITHUB_SHA" >&2; exit 1; }
+            if [ "$existing" != "$GITHUB_SHA" ]; then
+              [ -n "$branch" ] || { echo "$tag already tags $existing, not $GITHUB_SHA" >&2; exit 1; }
+              gh release delete "$tag" --yes --cleanup-tag || git push origin ":refs/tags/$tag"
+            fi
           fi
           bash src/tools/version/release_notes.sh > notes.md
           printf '\nUnzip and run deimos (Linux) or deimos.exe (Windows) from inside the unzipped folder. Built from %s (run %s).\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" >> notes.md
           cat notes.md
+          title="Deimos Rose $tag"
+          extra=()
+          if [ -n "$branch" ]; then
+            title="Deimos Rose $tag (branch $GITHUB_REF_NAME)"
+            extra=(--latest=false)
+          fi
           # Create, then upload, so a re-run of the same commit re-attaches
           # files instead of failing on the existing tag. The API's asset
           # listing can lag the upload by minutes (seen on build-e3cab80), so
           # it is not used as a check here.
           gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" \
             --target "$GITHUB_SHA" \
-            --title "Deimos Rose $tag" \
+            --title "$title" \
             --notes-file notes.md \
-            --prerelease
+            --prerelease \
+            "${extra[@]}"
           gh release upload "$tag" dist/*.zip --clobber
