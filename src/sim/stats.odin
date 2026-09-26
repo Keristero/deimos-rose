@@ -1,41 +1,23 @@
 package sim
 
-// Easy mode's passive upgrades: new content, not the original's. The design
-// is notes/passive-upgrades-and-easy-mode.md; docs/passive-upgrades.md
-// records how each entry was read.
+// Stats: the numbers the core's mechanics read that a plugin may change --
+// how fast a ship accelerates, how a weapon charges, fires and what its
+// shots do -- and the mechanics that follow them where the original has
+// none (extra lanes and volleys, paced charging, shaped shots). Plugins
+// supply the changes through stat providers (hooks.odin), passive upgrades
+// (plugins/passives) among them.
 //
-// A passive has one to three levels, and each level lists modifiers to named
-// stats. Every stat is worked out afresh from the levels a player holds
-// whenever it is needed, never stored, so passives that touch the same stat
-// combine instead of overwriting each other:
+// Every stat is worked out afresh whenever it is needed, never stored, so
+// providers that touch the same stat combine instead of overwriting each
+// other:
 //
-// - Increase and Decrease are percentages of the base value. All of them,
-//   from every passive held, are summed first, and the base is scaled once
-//   by 100 + the sum (never below zero).
-// - Extra is a flat amount; all of them are summed.
-// - Enables is a switch; on if any passive held turns it on.
+// - `percent` scales the base once, by 100 + the sum (never below zero);
+// - `extra` is a flat amount;
+// - `enabled` is a switch, on if anything turns it on.
 //
-// Within one passive only the level held counts, not the levels below it
-// ((10,x,30) is 30 at level 3, not 40). An `x` (X below) leaves the value as
-// the level below had it; a stat whose levels up to the one held are all x
-// is not touched at all.
-//
-// The levels live in Player.passives, inside State, so rollback snapshots and
-// the reconnect resync (a copy of State) carry them. With none held, every
-// hook below returns what the original code computes, unchanged -- the
-// oracle's demos never hold one, and must stay exact.
-
-Passive :: enum u8 {
-	Improved_Manoeuvring,
-	Auto_Charge,
-	Improved_Charge,
-	Shield_Regen,
-	Ground_Variant_1,
-	Weapon_1,
-	Weapon_2,
-	Weapon_3,
-	Weapon_4,
-}
+// With no provider on, every stat is zero and every procedure below returns
+// what the original code computes, unchanged: the oracle's demos, and
+// classic mode, run none.
 
 Stat :: enum u8 {
 	Maneuverability,          // the ship's acceleration, active_velocity_delta
@@ -60,160 +42,6 @@ Stat :: enum u8 {
 	Projectile_Damage,        // the damage each shot, and what it spawns, deals
 }
 
-Mod_Kind :: enum u8 {
-	Increase,
-	Decrease,
-	Extra,
-	Enables,
-}
-
-MAX_PASSIVE_LEVELS :: 3
-
-// The design's `x`: this level leaves the stat as the level below had it.
-X :: min(i16)
-
-Mod :: struct {
-	stat: Stat,
-	kind: Mod_Kind,
-	at:   [MAX_PASSIVE_LEVELS]i16, // one per level; Enables is 1 for true
-}
-
-Passive_Def :: struct {
-	levels: u8,
-	// NONE for a ship passive. A weapon passive's modifiers apply to that
-	// weapon's own shots alone, and it is only offered while the weapon can
-	// be flown (see passive_available).
-	weapon: Res_ID,
-	mods:   []Mod,
-}
-
-// The weapons the design calls Weapon 1-4 and Ground Variant 1: the four
-// air weapons in the order they unlock (aiic from level 1, aibg 2, airg 3,
-// aipb 5), and the one ground weapon.
-WEAPON_ION_CANNON :: Res_ID{'a', 'i', 'i', 'c'}
-WEAPON_BACTA_GUN :: Res_ID{'a', 'i', 'b', 'g'}
-WEAPON_REAR_GUN :: Res_ID{'a', 'i', 'r', 'g'}
-WEAPON_PHOTON_BEAM :: Res_ID{'a', 'i', 'p', 'b'}
-WEAPON_PLASMA_BOMB :: Res_ID{'p', 'l', 'b', 'o'}
-
-PASSIVES := [Passive]Passive_Def {
-	.Improved_Manoeuvring = {
-		levels = 2,
-		weapon = NONE,
-		mods = {
-			{.Maneuverability, .Increase, {20, 50, X}},
-			{.Risky_Reward, .Enables, {X, 1, X}},
-		},
-	},
-	.Auto_Charge = {
-		levels = 2,
-		weapon = NONE,
-		mods = {
-			{.Auto_Charge_Air_To_Air, .Enables, {1, X, X}},
-			{.Prevent_Overheat, .Enables, {X, 1, X}},
-			{.Charge_Rate, .Decrease, {50, X, X}},
-			{.Overheat_Delay, .Increase, {50, X, X}},
-		},
-	},
-	.Improved_Charge = {
-		levels = 3,
-		weapon = NONE,
-		mods = {
-			{.Maximum_Charge, .Increase, {10, 20, 30}},
-			{.Charge_Rate, .Increase, {10, 20, 30}},
-		},
-	},
-	.Shield_Regen = {
-		levels = 3,
-		weapon = NONE,
-		mods = {
-			{.Shield_Regenerates, .Enables, {1, X, X}},
-			// The design lists these as seconds and percent per second
-			// outright (its "decreased" describes the trend across levels),
-			// so they are flat amounts over a base of none.
-			{.Recharge_Delay, .Extra, {30, 15, 0}},
-			{.Shield_Regen_Rate, .Extra, {1, 2, X}},
-		},
-	},
-	.Ground_Variant_1 = {
-		levels = 3,
-		weapon = WEAPON_PLASMA_BOMB,
-		mods = {
-			// Firing backwards is the passive's premise rather than a listed
-			// stat; as one, it shows on the reward screen like the rest.
-			// The design's shorter volley delay (10, 20) is gone: a burst
-			// already lands a bomb every two steps, the most a target takes,
-			// so bombs any closer were ignored and it cost 9-19% of the DPS.
-			// Nothing but damage per hit can add to a lone target, so the
-			// DPS report's bands come from Projectile_Damage, a stat the
-			// design does not have. The extra lane adds only on groups.
-			{.Fires_Backwards, .Enables, {1, X, X}},
-			{.Projectile_Damage, .Increase, {15, 30, 50}},
-			{.Extra_Projectiles, .Extra, {X, X, 1}},
-		},
-	},
-	// The weapon passives below are tuned by the DPS report (mise run
-	// dps:report; docs/dps-report.md), not the design's numbers: level 1
-	// adds 10-20% to the weapon's DPS, level 2 20-40%, level 3 40-60%, as
-	// the report's Gain column measures it. A target takes one hit every
-	// two steps at most, so a second lane arriving with the first adds
-	// nothing to a lone target, and a firing delay only counts once it
-	// rounds to a whole step less.
-	.Weapon_1 = {
-		levels = 3,
-		weapon = WEAPON_ION_CANNON,
-		mods = {
-			{.Extra_Projectiles, .Extra, {1, X, X}},
-			{.Firing_Delay, .Decrease, {X, 20, X}},
-			{.Accelerating_Projectiles, .Enables, {X, X, 1}},
-			{.Initial_Projectile_Speed, .Decrease, {X, X, 50}},
-		},
-	},
-	.Weapon_2 = {
-		levels = 3,
-		weapon = WEAPON_BACTA_GUN,
-		mods = {
-			{.Firing_Delay, .Decrease, {20, X, 40}},
-			{.Extra_Projectiles, .Extra, {X, 2, 4}},
-			{.Projectile_Lifetime, .Increase, {10, 20, 50}},
-		},
-	},
-	.Weapon_3 = {
-		levels = 3,
-		weapon = WEAPON_REAR_GUN,
-		mods = {
-			// Level 3 is +40% at most: the bare Rear Gun already lands two
-			// thirds of the hits a lone target takes, and a second extra
-			// volley measures the same as one.
-			{.Firing_Delay, .Decrease, {10, 20, X}},
-			{.Extra_Volley, .Extra, {X, X, 1}},
-			{.Side_Firing_Volley, .Enables, {X, X, 1}},
-		},
-	},
-	.Weapon_4 = {
-		levels = 3,
-		weapon = WEAPON_PHOTON_BEAM,
-		mods = {
-			// The firing delay steps back at level 3, where the extra volley
-			// takes over; 40% with it would be +90%.
-			{.Firing_Delay, .Decrease, {20, 40, 10}},
-			{.Extra_Volley, .Extra, {X, X, 1}},
-		},
-	},
-}
-
-Passive_Levels :: [Passive]u8
-
-// A modifier's value at `level` (1-based): the last entry up to it that is
-// not x. ok is false when there is none, and the modifier does nothing.
-mod_value :: proc "contextless" (m: Mod, level: u8) -> (v: i16, ok: bool) {
-	for l in 0 ..< min(int(level), MAX_PASSIVE_LEVELS) {
-		if m.at[l] != X {
-			v, ok = m.at[l], true
-		}
-	}
-	return
-}
 
 Stat_Total :: struct {
 	percent: i32, // increases minus decreases
@@ -221,37 +49,6 @@ Stat_Total :: struct {
 	enabled: bool,
 }
 
-// Every held passive's contribution to `stat`, summed. `weapon` is the
-// weapon the stat is for (NONE for the ship): a weapon passive only counts
-// for its own weapon.
-stat_total :: proc "contextless" (levels: ^Passive_Levels, stat: Stat, weapon: Res_ID) -> (t: Stat_Total) {
-	for &def, pa in PASSIVES {
-		lv := levels[pa]
-		if lv == 0 || (def.weapon != NONE && def.weapon != weapon) {
-			continue
-		}
-		for m in def.mods {
-			if m.stat != stat {
-				continue
-			}
-			v, ok := mod_value(m, lv)
-			if !ok {
-				continue
-			}
-			switch m.kind {
-			case .Increase:
-				t.percent += i32(v)
-			case .Decrease:
-				t.percent -= i32(v)
-			case .Extra:
-				t.extra += i32(v)
-			case .Enables:
-				t.enabled ||= v != 0
-			}
-		}
-	}
-	return
-}
 
 // base scaled by 100 + pct percent, rounded to the nearest whole (halves
 // up) and never below zero. pct == 0 is base exactly.
@@ -270,8 +67,9 @@ scale_f32 :: proc "contextless" (base: f32, pct: i32) -> f32 {
 	return base * f32(max(100 + pct, 0)) / 100
 }
 
+// A stat for `player`: for their ship, or for a weapon by its id.
 player_stat :: #force_inline proc "contextless" (s: ^State, player: i32, stat: Stat, weapon: Res_ID = NONE) -> Stat_Total {
-	return stat_total(passive_levels(s, player), stat, weapon)
+	return stat_of(s, player, stat, weapon)
 }
 
 // A weapon stat for the weapon at index `weapon` in Defs.weapons.
@@ -279,135 +77,41 @@ weapon_stat :: proc "contextless" (s: ^State, player: i32, weapon: i32, stat: St
 	if weapon == NO_WEAPON || player < 0 {
 		return {}
 	}
-	return stat_total(passive_levels(s, player), stat, s.defs.weapons[weapon].id)
+	return stat_of(s, player, stat, s.defs.weapons[weapon].id)
 }
 
-passive_maxed :: #force_inline proc "contextless" (levels: ^Passive_Levels, pa: Passive) -> bool {
-	return levels[pa] >= PASSIVES[pa].levels
-}
-
-// Whether a passive may be offered on the way into level `next`: a weapon
-// passive needs its weapon in the data and flyable there (the Ion Cannon,
-// say, is gone after level 3). Under New Weapons (`kept`) a weapon is kept
-// once unlocked (loadout_unlocked), so its passive is offered from then on.
-passive_available :: proc "contextless" (d: ^Defs, pa: Passive, next: i32, kept := false) -> bool {
-	w := PASSIVES[pa].weapon
-	if w == NONE {
-		return true
-	}
-	for &wd in d.weapons {
-		if wd.id == w {
-			return wd.type == WEP_GROUND || (wd.minimum_level_available <= next && (kept || next <= wd.maximum_level_available))
-		}
-	}
-	return false
-}
-
-// Shots carry which weapon passive fired them, so the passive can shape them
-// after they spawn: 0 for none, else the passive's index + 1.
-passive_tag :: #force_inline proc "contextless" (pa: Passive) -> u8 {
-	return u8(pa) + 1
-}
-
-tag_passive :: #force_inline proc "contextless" (tag: u8) -> (Passive, bool) {
-	if tag == 0 {
-		return {}, false
-	}
-	return Passive(tag - 1), true
-}
-
-// The tag for shots of `weapon` by `player`, or 0 when the player holds no
-// passive for it -- then nothing about the shot changes.
-weapon_passive_tag :: proc "contextless" (s: ^State, player: i32, weapon: i32) -> u8 {
-	if weapon == NO_WEAPON || player < 0 {
+// Shots carry the weapon that fired them when a provider shapes it, so that
+// they can be shaped after they spawn (Shaped): 0 for none, else the
+// weapon's index + 1. What a shaped spawner spawns carries it too.
+shot_shaper :: proc "contextless" (s: ^State, player: i32, weapon: i32) -> u8 {
+	if weapon == NO_WEAPON || player < 0 || !stat_shapes(s, player, s.defs.weapons[weapon].id) {
 		return 0
 	}
-	id := s.defs.weapons[weapon].id
-	for &def, pa in PASSIVES {
-		if def.weapon == id && player_at(s, player).passives[pa] > 0 {
-			return passive_tag(pa)
-		}
+	return u8(weapon + 1)
+}
+
+// The weapon a shaped entity's stats are read for.
+shaped_weapon :: #force_inline proc "contextless" (s: ^State, shaped_by: u8) -> (Res_ID, bool) {
+	if shaped_by == 0 {
+		return NONE, false
 	}
-	return 0
+	return s.defs.weapons[shaped_by - 1].id, true
 }
 
 @(private = "file") PF_STEP_HZ :: 0x20
 
-@(private = "file")
+// Game steps a second.
 step_hz :: #force_inline proc "contextless" (s: ^State) -> i32 {
 	return max(trunc_i32(s.defs.perm_floats[PF_STEP_HZ]), 1)
 }
 
-// Ship passives.
+// The ship.
 
 // active_velocity_delta, scaled by Maneuverability.
 player_acceleration :: proc "contextless" (s: ^State, p: Player, base: f32) -> f32 {
 	return scale_f32(base, player_stat(s, p.number, .Maneuverability).percent)
 }
 
-RISKY_REWARD_SECONDS :: 20
-@(private = "file") RISKY_REWARD_UNIT :: Res_ID{'p', 'i', '2', 'k'} // "Pickup - 2000"
-@(private = "file") RISKY_REWARD_MARGIN :: 48
-
-// Random sites for draws the original never makes. oracle:diff never meets
-// them: no demo holds a passive.
-@(private = "file") SITE_RISKY_X :: Site(0xe0000001)
-@(private = "file") SITE_RISKY_Y :: Site(0xe0000002)
-
-// Once a step for a player in play: shield regeneration and the risky reward.
-player_passives_process :: proc(s: ^State, p: Player, time: i32) {
-	if p.state != .Playing {
-		return
-	}
-	player_regen_process(s, p)
-	if player_stat(s, p.number, .Risky_Reward).enabled && !single(s, Level_Info).ending &&
-	   time > 0 && time % (RISKY_REWARD_SECONDS * step_hz(s)) == 0 {
-		w, h := view_width(s.defs), view_height(s.defs)
-		req := spawn_request(RISKY_REWARD_UNIT)
-		req.loc = {
-			f32(roll_int(s, RISKY_REWARD_MARGIN, w - RISKY_REWARD_MARGIN, SITE_RISKY_X)),
-			f32(roll_int(s, RISKY_REWARD_MARGIN, h * 2 / 3, SITE_RISKY_Y)),
-		}
-		eg_request_spawn(s, req)
-	}
-}
-
-// Shields climb in the eighths shields_set rounds to: regen_acc gathers
-// eight times the rate per step, and each step_hz of it is one eighth, so a
-// rate of r percent a second is exactly r percent every step_hz steps.
-@(private = "file")
-player_regen_process :: proc(s: ^State, p: Player) {
-	if !player_stat(s, p.number, .Shield_Regenerates).enabled {
-		return
-	}
-	hz := step_hz(s)
-	if p.regen_wait < player_stat(s, p.number, .Recharge_Delay).extra * hz {
-		p.regen_wait += 1
-		return
-	}
-	if p.shields >= 100 {
-		p.regen_acc = 0
-		return
-	}
-	p.regen_acc += 8 * player_stat(s, p.number, .Shield_Regen_Rate).extra
-	for p.regen_acc >= hz {
-		p.regen_acc -= hz
-		player_shields_add(s, p, 0.125)
-	}
-}
-
-// Damage restarts the wait before shields regenerate.
-player_regen_interrupt :: #force_inline proc "contextless" (p: Player) {
-	p.regen_wait, p.regen_acc = 0, 0
-}
-
-// For presentation: whether the ship's shields are refilling this step.
-player_regenerating :: proc "contextless" (s: ^State, p: Player) -> bool {
-	if p.state != .Playing || p.shields >= 100 || !player_stat(s, p.number, .Shield_Regenerates).enabled {
-		return false
-	}
-	return p.regen_wait >= player_stat(s, p.number, .Recharge_Delay).extra * step_hz(s)
-}
 
 // For presentation: how far an air charge has climbed past the weapon's own
 // maximum, 0 at or below it and 1 at the raised one.
@@ -485,7 +189,7 @@ VOLLEY_INTERVAL :: 2
 
 // After a direct-fire shot: the extra volleys it owes, fired one per
 // (scaled) VOLLEY_INTERVAL. A spawner weapon's volleys come from its
-// spawner instead -- see passive_entity_init.
+// spawner instead -- see shaped_entity_init.
 air_volleys_schedule :: proc "contextless" (s: ^State, h: ^Weapon_Handler) {
 	h.volleys_left, h.volley_pace = 0, 0
 	if !weapon_is_direct(s, h.air.weapon) {
@@ -704,16 +408,16 @@ weapon_spawns :: proc "contextless" (s: ^State, weapon: i32, player: i32, backwa
 	return count
 }
 
-// Tagged entities.
+// Shaped entities.
 
-// The damage a tagged shot deals, scaled by its passive's Projectile_Damage.
-// What it spawns carries the tag (a bomb's blast), so that is scaled too.
-passive_damage :: proc "contextless" (s: ^State, e: Entity, base: f32) -> f32 {
-	pa, ok := tag_passive(e.passive_tag)
+// The damage a shaped shot deals, scaled by its weapon's Projectile_Damage.
+// What it spawns is shaped too (a bomb's blast), so that is scaled as well.
+shot_damage :: proc "contextless" (s: ^State, e: Entity, base: f32) -> f32 {
+	w, ok := shaped_weapon(s, e.shaped_by)
 	if !ok || e.owner_player < 0 || e.owner_player >= MAX_PLAYERS {
 		return base
 	}
-	return scale_f32(base, stat_total(passive_levels(s, e.owner_player), .Projectile_Damage, PASSIVES[pa].weapon).percent)
+	return scale_f32(base, stat_of(s, e.owner_player, .Projectile_Damage, w).percent)
 }
 
 // Accelerating shots leave at the scaled initial speed and speed up by
@@ -722,19 +426,18 @@ passive_damage :: proc "contextless" (s: ^State, e: Entity, base: f32) -> f32 {
 ACCEL_RATE :: 1.0
 ACCEL_TOP :: 150
 
-// Right after a tagged entity spawns (spawn_entity): its passive shapes it.
-// A projectile's flight (lifetime, speed); a spawner fired straight from the
-// weapon (depth 0) its volleys.
-passive_entity_init :: proc(s: ^State, e: Entity, time: i32) {
-	pa, ok := tag_passive(e.passive_tag)
+// Right after a shaped entity spawns (spawn_entity): its weapon's stats
+// shape it. A projectile's flight (lifetime, speed); a spawner fired
+// straight from the weapon (depth 0) its volleys.
+shaped_entity_init :: proc(s: ^State, e: Entity, time: i32) {
+	w, ok := shaped_weapon(s, e.shaped_by)
 	if !ok || e.owner_player < 0 || e.owner_player >= MAX_PLAYERS {
 		return
 	}
-	levels := passive_levels(s, e.owner_player)
-	w := PASSIVES[pa].weapon
+	p := e.owner_player
 	u := unit_of(s, e)
 	if u.player_projectile {
-		if pct := stat_total(levels, .Projectile_Lifetime, w).percent; pct != 0 && e.timer > 0 {
+		if pct := stat_of(s, p, .Projectile_Lifetime, w).percent; pct != 0 && e.timer > 0 {
 			e.timer = scale_i32(e.timer, pct)
 		}
 		speed := speed_from_vector(e.vel)
@@ -742,8 +445,8 @@ passive_entity_init :: proc(s: ^State, e: Entity, time: i32) {
 			return
 		}
 		dir := e.vel / speed
-		pct := stat_total(levels, .Initial_Projectile_Speed, w).percent
-		if stat_total(levels, .Accelerating_Projectiles, w).enabled {
+		pct := stat_of(s, p, .Initial_Projectile_Speed, w).percent
+		if stat_of(s, p, .Accelerating_Projectiles, w).enabled {
 			e.vel = dir * scale_f32(speed, pct)
 			e.vel_target = dir * scale_f32(speed, ACCEL_TOP - 100)
 			e.vel_delta = dir * ACCEL_RATE
@@ -755,12 +458,12 @@ passive_entity_init :: proc(s: ^State, e: Entity, time: i32) {
 		}
 		return
 	}
-	if e.passive_depth != 0 || e.state < 0 || len(state_of(s, e).spawn_sets) == 0 {
+	if e.shaped_depth != 0 || e.state < 0 || len(state_of(s, e).spawn_sets) == 0 {
 		return
 	}
-	extra := max(stat_total(levels, .Extra_Volley, w).extra, 0)
+	extra := max(stat_of(s, p, .Extra_Volley, w).extra, 0)
 	pace := 100
-	if pct := stat_total(levels, .Volley_Delay, w).percent; pct != 0 {
+	if pct := stat_of(s, p, .Volley_Delay, w).percent; pct != 0 {
 		pace = 100 * 100 / max(int(100 + pct), 1)
 	}
 	if extra == 0 && pace == 100 {
@@ -794,10 +497,10 @@ spawner_volley_period :: proc "contextless" (s: ^State, e: Entity) -> (period: i
 	return
 }
 
-// spawn_control for a spawner whose volleys a passive has sped up: its
+// spawn_control for a spawner whose volleys its stats have sped up: its
 // spawn sets run on their own clock, spawn_pace hundredths of a step per
 // step, so a 30% shorter volley delay runs them 100/70 as fast.
-passive_paced_spawn_control :: proc(s: ^State, e: Entity) {
+paced_spawn_control :: proc(s: ^State, e: Entity) {
 	e.pace_acc += e.spawn_pace
 	for e.pace_acc >= 100 && !e.deleted {
 		e.pace_acc -= 100
@@ -806,18 +509,17 @@ passive_paced_spawn_control :: proc(s: ^State, e: Entity) {
 	}
 }
 
-// One of a tagged spawner's spawn sets firing (spawn_child). Handles its
+// One of a shaped spawner's spawn sets firing (spawn_child). Handles its
 // projectile sets -- extending the lanes and firing to the sides -- and
 // returns false for the rest, which spawn as they are.
-passive_spawn_child :: proc(s: ^State, e: Entity, set: ^Spawn_Set_Def) -> bool {
-	pa, ok := tag_passive(e.passive_tag)
+shaped_spawn_child :: proc(s: ^State, e: Entity, set: ^Spawn_Set_Def) -> bool {
+	w, ok := shaped_weapon(s, e.shaped_by)
 	if !ok || e.owner_player < 0 || e.owner_player >= MAX_PLAYERS || !unit_is_projectile(s, set.spawn) {
 		return false
 	}
-	levels := passive_levels(s, e.owner_player)
-	w := PASSIVES[pa].weapon
-	extra := stat_total(levels, .Extra_Projectiles, w).extra
-	side := stat_total(levels, .Side_Firing_Volley, w).enabled
+	p := e.owner_player
+	extra := stat_of(s, p, .Extra_Projectiles, w).extra
+	side := stat_of(s, p, .Side_Firing_Volley, w).enabled
 	if extra <= 0 && !side {
 		return false
 	}

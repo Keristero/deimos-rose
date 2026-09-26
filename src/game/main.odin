@@ -9,6 +9,9 @@ import rl "vendor:raylib"
 
 import "dr:data"
 import "dr:prefs"
+import "dr:plugins/easy_mode"
+import "dr:plugins/loadout"
+import "dr:plugins/passives"
 import "dr:sim"
 
 // The original presents a 416x480 play-field inside a 640x480 screen; the
@@ -333,20 +336,20 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		// reward_2p both players are on the first option, player 1 locked,
 		// so the borders nest.
 		ps.saved.classic, ps.launch.classic, r.classic = false, false, false
+		ps.saved.extras[.Easy_Mode] = 1
 		two := name == "reward_2p"
 		flow_start_session(&flow, 0x1234_5678, two ? .Co_Op : .Single, 0)
-		state.session.easy = true
 		for _ in 0 ..< 60 {
 			_ = sim.session_step(state, {})
 		}
-		if !sim.reward_begin(state, {}) {
+		if !easy_mode.reward_begin(state, {}) {
 			fmt.eprintln("reward: no options to offer")
 			os.exit(1)
 		}
-		sim.player_at(state, 0).passives[sim.single(state, sim.Reward).options[0]] = 1
+		passives.levels_of(state, 0)[easy_mode.reward_of(state).options[0]] = 1
 		if two {
-			sim.single(state, sim.Reward).cursor[1] = 0
-			sim.single(state, sim.Reward).locked[0] = true
+			easy_mode.reward_of(state).cursor[1] = 0
+			easy_mode.reward_of(state).locked[0] = true
 		}
 		flow.mode = .Playing
 	case "loadout", "loadout_2p", "loadout_placed":
@@ -366,23 +369,23 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		placed := name == "loadout_placed"
 		flow_start_session(&flow, 0x1234_5678, two ? .Co_Op : .Single, placed ? 1 : 6)
 		if placed {
-			sim.player_at(state, 0).weapons.loadout[1] = sim.NO_WEAPON
+			loadout.slots_of(state, 0).loadout[1] = sim.NO_WEAPON
 		}
-		for i := 0; i < 2000 && !sim.single(state, sim.Loadout).active; i += 1 {
+		for i := 0; i < 2000 && !loadout.loadout_open(state); i += 1 {
 			_ = sim.session_step(state, {})
 		}
-		if !sim.single(state, sim.Loadout).active {
+		if !loadout.loadout_open(state) {
 			fmt.eprintln("loadout: the screen never opened (is assets/extra there?)")
 			os.exit(1)
 		}
 		if !placed {
-			sim.single(state, sim.Loadout).boards[0].col = 1
+			loadout.loadout_of(state).boards[0].col = 1
 		}
 		if two {
-			b := &sim.single(state, sim.Loadout).boards[0]
+			b := &loadout.loadout_of(state).boards[0]
 			b.holding, b.hold_row, b.hold_col = true, .Fresh, 0
 			b.row, b.col = .Slots, 1
-			sim.single(state, sim.Loadout).boards[1].row = .Ready
+			loadout.loadout_of(state).boards[1].row = .Ready
 		}
 		flow.mode = .Playing
 	case "chaingun", "chaingun_charge", "discharge", "discharge_charge":
@@ -398,11 +401,11 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		extra_set(ps, .New_Weapons, 1)
 		beam := strings.has_prefix(name, "discharge")
 		flow_start_session(&flow, 0x1234_5678, .Single, beam ? 9 : 6)
-		sim.single(state, sim.Loadout).shown = true
+		loadout.loadout_of(state).shown = sim.single(state, sim.Level_Info).played
 		p := sim.player_at(state, 0)
 		for &w, i in defs.weapons {
 			if w.id == sim.res_id(beam ? "aidb" : "aicg") {
-				p.weapons.loadout[0] = i32(i)
+				loadout.slots_of(state, 0).loadout[0] = i32(i)
 				sim.change_weapon(state, p.weapons, sim.WEP_AIR, i32(i))
 				sim.player_sprite_from_weapon(state, p)
 			}

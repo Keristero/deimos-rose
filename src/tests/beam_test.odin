@@ -6,6 +6,7 @@ import "core:testing"
 import vmem "core:mem/virtual"
 
 import "dr:data"
+import "dr:plugins/loadout"
 import "dr:sim"
 
 // The Discharge Beam (sim/beam.odin): an instant line that carries its
@@ -45,7 +46,7 @@ beam_fixture :: proc(t: ^testing.T, f: ^Beam_Fixture) -> bool {
 	}
 	f.s = new(sim.State, alloc)
 	context.allocator = alloc // the state's world goes in the arena too
-	sim.init(f.s, sim.Session{seed = 1, level_id = f.defs.levels[0].id, game_type = .Single, loadout = true}, &f.defs)
+	sim.init(f.s, sim.Session{seed = 1, level_id = f.defs.levels[0].id, game_type = .Single, mods = session_mods(false, true)}, &f.defs)
 	for i := 0; i < 300 && sim.player_at(f.s, 0).state != .Playing; i += 1 {
 		sim.session_step(f.s, {})
 	}
@@ -205,7 +206,7 @@ discharge_beam_fires_from_the_button :: proc(t: ^testing.T) {
 	}
 	s := f.s
 	p := sim.player_at(s, 0)
-	p.weapons.loadout[0] = f.db
+	loadout.slots_of(s, 0).loadout[0] = f.db
 	sim.change_weapon(s, p.weapons, sim.WEP_AIR, f.db)
 	pulses, charged := 0, 0
 	for i in 0 ..< 120 {

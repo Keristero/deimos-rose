@@ -44,6 +44,7 @@ import "core:thread"
 import "core:time"
 
 import "dr:data"
+import "dr:plugins/passives"
 import "dr:sim"
 
 SEED :: 0x5eed_d95
@@ -135,7 +136,7 @@ Policy :: struct {
 // A loadout under test: nothing, or one passive at one level.
 Config :: struct {
 	has:     bool,
-	passive: sim.Passive,
+	passive: passives.Passive,
 	level:   u8,
 }
 
@@ -445,7 +446,7 @@ dps_only :: proc(ws: []Weapon_Case, name: string) -> ([]Weapon_Case, bool) {
 dps_configs :: proc(alloc := context.allocator) -> []Config {
 	out := make([dynamic]Config, alloc)
 	append(&out, Config{})
-	for &def, pa in sim.PASSIVES {
+	for &def, pa in passives.PASSIVES {
 		for l in 1 ..= def.levels {
 			append(&out, Config{true, pa, l})
 		}
@@ -453,7 +454,7 @@ dps_configs :: proc(alloc := context.allocator) -> []Config {
 	return out[:]
 }
 
-config_levels :: proc(c: Config) -> (lv: sim.Passive_Levels) {
+config_levels :: proc(c: Config) -> (lv: passives.Passive_Levels) {
 	if c.has {
 		lv[c.passive] = c.level
 	}
@@ -467,7 +468,7 @@ config_name :: proc(c: Config) -> string {
 	return fmt.tprintf("%s %d", passive_name(c.passive), c.level)
 }
 
-passive_name :: proc(p: sim.Passive) -> string {
+passive_name :: proc(p: passives.Passive) -> string {
 	n, _ := fmt.enum_value_to_string(p)
 	s, _ := strings.replace_all(n, "_", " ", context.temp_allocator)
 	return s
@@ -546,11 +547,12 @@ policy_fire :: proc(s: ^sim.State, h: ^sim.Weapon_Handler, pol: Policy, k: int) 
 	return false
 }
 
-dps_run :: proc(d: ^sim.Defs, w: Weapon_Case, sc: Scenario, levels: sim.Passive_Levels, pol: Policy, steps: int) -> (o: Outcome) {
+dps_run :: proc(d: ^sim.Defs, w: Weapon_Case, sc: Scenario, levels: passives.Passive_Levels, pol: Policy, steps: int) -> (o: Outcome) {
 	s := new(sim.State)
 	defer free(s)
 	defer sim.destroy(s)
-	sim.init(s, sim.Session{seed = SEED, level_id = d.levels[0].id, game_type = .Single}, d)
+	mods := sim.mods_session(sim.mods_with_deps({int(passives.ID)}))
+	sim.init(s, sim.Session{seed = SEED, level_id = d.levels[0].id, game_type = .Single, mods = mods}, d)
 	p := sim.player_at(s, 0)
 	for i := 0; i < ENTRY_STEPS && p.state != .Playing; i += 1 {
 		sim.session_step(s, {})
@@ -558,7 +560,7 @@ dps_run :: proc(d: ^sim.Defs, w: Weapon_Case, sc: Scenario, levels: sim.Passive_
 	if p.state != .Playing {
 		return
 	}
-	p.passives = levels
+	passives.levels_of(s, 0)^ = levels
 	h := p.weapons
 	sim.change_weapon(s, h, w.ground ? sim.WEP_GROUND : sim.WEP_AIR, w.index)
 	sim.player_sprite_from_weapon(s, p)

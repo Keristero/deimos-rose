@@ -2,6 +2,7 @@ package game
 
 import "base:runtime"
 
+import "dr:plugins/accent"
 import "dr:sim"
 
 // Render systems: what draws a frame from the state, in a loop of their own
@@ -29,6 +30,7 @@ Render_System :: struct {
 	name:   string,
 	after:  []string,
 	before: []string,
+	plugin: sim.Plugin_ID, // drawn only while this plugin is on
 	run:    proc(r: ^Renderer, s: ^sim.State, f: ^Frame),
 }
 
@@ -50,31 +52,25 @@ registered_render_systems :: proc "contextless" () -> []Render_System {
 	return render_systems[:render_system_count]
 }
 
-// The render systems a renderer runs, in order, by registry index.
+// The render systems a renderer runs, in order, by registry index: the
+// core's and those of the plugins in `mods`.
 Render_Schedule :: struct {
 	order: [MAX_RENDER_SYSTEMS]u8,
 	count: u8,
 	built: bool,
+	mods:  sim.Mods,
 }
 
-render_schedule_build :: proc(sched: ^Render_Schedule) {
-	registered := render_systems[:render_system_count]
-	items := make([]sim.Order_Item, len(registered), context.temp_allocator)
-	for sys, i in registered {
-		items[i] = {sys.name, sys.after, sys.before}
-	}
-	order, ok := sim.schedule(items, context.temp_allocator)
-	assert(ok, "game: a cycle in the order of the render systems")
-	for idx, i in order {
-		sched.order[i] = u8(idx)
-	}
-	sched.count = u8(len(order))
+render_schedule_build :: proc(sched: ^Render_Schedule, mods: sim.Mods) {
+	sched.count = sim.order_registered(render_systems[:render_system_count], mods, sched.order[:])
 	sched.built = true
+	sched.mods = mods
 }
 
+// Rebuilds the schedule whenever the plugins on (Renderer.mods) change.
 run_render_systems :: proc(r: ^Renderer, s: ^sim.State, f: ^Frame) {
-	if !r.render_schedule.built {
-		render_schedule_build(&r.render_schedule)
+	if !r.render_schedule.built || r.render_schedule.mods != r.mods {
+		render_schedule_build(&r.render_schedule, r.mods)
 	}
 	for idx in r.render_schedule.order[:r.render_schedule.count] {
 		render_systems[idx].run(r, s, f)
@@ -93,7 +89,7 @@ register_core_render_systems :: proc "contextless" () {
 	render_system_register({name = "blurs", run = blurs_render})
 	render_system_register({name = "notices", run = notices_render})
 	// Self Outline: under the local player's ship, so ahead of it.
-	render_system_register({name = "outline", before = OUTLINE_BEFORE, run = outline_render})
+	render_system_register({name = "outline", before = OUTLINE_BEFORE, plugin = accent.ID, run = outline_render})
 }
 
 @(private = "file", rodata)

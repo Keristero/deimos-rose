@@ -30,6 +30,9 @@ Level_Info :: struct {
 	number: i32,  // DAT_004e482e
 	played: i32,  // DAT_004e482a: levels started this session
 	ending: bool, // DAT_004e4855
+	// Not the original's, which never looks back at it: the level's title
+	// notice, for what waits for it to go (plugins/loadout).
+	title:  Entity_Ref,
 }
 
 // G_Game_GroundAccuracy: the share of ground targets destroyed.
@@ -48,14 +51,6 @@ Game_Status :: struct {
 	game_over_notice:     bool,
 }
 
-// Netplay pause (session_step): new content, not the original's
-// G_Interface_PauseGame, which lives outside the simulation entirely
-// (game/flow.odin's .Paused, still what single-player uses).
-Pause :: struct {
-	paused: bool,
-	held:   [MAX_PLAYERS]bool, // each player's Pause bit last step, for edge detection
-}
-
 @(init)
 register_core_components :: proc "contextless" () {
 	context = runtime.default_context()
@@ -66,13 +61,10 @@ register_core_components :: proc "contextless" () {
 	component_register(Level_Info, 1)
 	component_register(Accuracy, 1)
 	component_register(Game_Status, 1)
-	component_register(Pause, 1)
 	component_register(Bgnd, 1)
 	component_register(Debris, 1)
 	component_register(Notice_State, 1)
 	component_register(Level_End, 1)
-	component_register(Reward, 1)
-	component_register(Loadout, 1)
 	component_register(Pool, 1)
 	// Every object: the players, their crosshairs and the entity pool.
 	component_register(Game_Object, MAX_ENTITIES)
@@ -81,7 +73,6 @@ register_core_components :: proc "contextless" () {
 	component_register(Purse, MAX_PLAYERS)
 	component_register(Hull, MAX_PLAYERS)
 	component_register(Overload, MAX_PLAYERS)
-	component_register(Passive_State, MAX_PLAYERS)
 	component_register(Weapon_Handler, MAX_PLAYERS)
 	component_register(Crosshair, MAX_PLAYERS)
 	// The entity pool.
@@ -91,7 +82,7 @@ register_core_components :: proc "contextless" () {
 	component_register(Owned, MAX_ENTITIES)
 	component_register(Spawner, MAX_ENTITIES)
 	component_register(Effects, MAX_ENTITIES)
-	component_register(Passive_Tag, MAX_ENTITIES)
+	component_register(Shaped, MAX_ENTITIES)
 	// The groups.
 	component_register(Group, MAX_GROUPS)
 	// List membership, for pool entities and groups alike.
@@ -108,13 +99,10 @@ add_singletons :: proc(s: ^State) {
 		component_id(Level_Info),
 		component_id(Accuracy),
 		component_id(Game_Status),
-		component_id(Pause),
 		component_id(Bgnd),
 		component_id(Debris),
 		component_id(Notice_State),
 		component_id(Level_End),
-		component_id(Reward),
-		component_id(Loadout),
 		component_id(Pool),
 	})
 }
@@ -138,8 +126,12 @@ level_number_of :: #force_inline proc "contextless" (s: ^State) -> i32 {
 	return single(s, Level_Info).number
 }
 
-// The level being played, from the definitions.
+// The level being played, from the definitions. nil before the first
+// session starts: the menus draw from a zeroed state, which has no world yet.
 level_def :: proc "contextless" (s: ^State) -> ^Level_Def {
+	if s.ecs == nil {
+		return nil
+	}
 	n := single(s, Level_Info).number
 	for &l in s.defs.levels {
 		if l.number == n {

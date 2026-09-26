@@ -226,7 +226,7 @@ spawn_stage :: proc(s: ^State, e: Entity, es: ^Entity_Step) -> bool {
 	if e.spawn_pace == 0 {
 		spawn_control(s, e, es.time)
 	} else {
-		passive_paced_spawn_control(s, e)
+		paced_spawn_control(s, e)
 	}
 	if e.deleted {
 		return false
@@ -467,10 +467,10 @@ spawn_control :: proc(s: ^State, e: Entity, time: i32) {
 }
 
 // The spawn at the end of SpawnControl. A spawner fired by a weapon with a
-// passive may reshape the spawn first (passive_spawn_child).
+// plugin may reshape the spawn first (shaped_spawn_child).
 @(private = "file")
 spawn_child :: proc(s: ^State, e: Entity, set: ^Spawn_Set_Def) {
-	if e.passive_tag != 0 && e.passive_depth == 0 && passive_spawn_child(s, e, set) {
+	if e.shaped_by != 0 && e.shaped_depth == 0 && shaped_spawn_child(s, e, set) {
 		return
 	}
 	spawn_child_set(s, e, set)
@@ -534,9 +534,9 @@ spawn_child_set :: proc(s: ^State, e: Entity, set: ^Spawn_Set_Def) {
 	req.owner_player = e.owner_player
 	req.stationary = set.stationary_option
 	req.terrain_effects = set.terrain_effects_option
-	if e.passive_tag != 0 {
-		req.passive_tag = e.passive_tag
-		req.passive_depth = e.passive_depth + 1
+	if e.shaped_by != 0 {
+		req.shaped_by = e.shaped_by
+		req.shaped_depth = e.shaped_depth + 1
 	}
 	eg_request_spawn(s, req)
 }

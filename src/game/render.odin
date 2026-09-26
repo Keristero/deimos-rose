@@ -246,7 +246,9 @@ Renderer :: struct {
 	// draw_terrain.
 	view_top:    f32,
 	side_scroll: f32,
-	// The render systems this renderer runs, built on its first frame.
+	// The plugins on, whose render systems draw (flow sets it each frame),
+	// and the render systems this renderer runs, rebuilt when they change.
+	mods:            sim.Mods,
 	render_schedule: Render_Schedule,
 }
 

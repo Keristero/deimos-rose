@@ -115,7 +115,7 @@ entity_reset :: proc "contextless" (e: Entity, pool_index: i32) {
 	e.owned^ = Owned{owner = NO_REF}
 	e.spawner^ = {}
 	e.effects^ = {}
-	e.tag^ = {}
+	e.shaped^ = {}
 	object_defaults(e.obj)
 }
 

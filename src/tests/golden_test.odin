@@ -31,6 +31,10 @@ import "core:strings"
 import "core:testing"
 
 import "dr:data"
+import "dr:plugins/easy_mode"
+import "dr:plugins/loadout"
+import netplay_plugin "dr:plugins/netplay"
+import "dr:plugins/passives"
 import "dr:sim"
 
 GOLDEN_PATH :: "tests/golden/fingerprints.txt"
@@ -107,7 +111,7 @@ golden_state_hash :: proc(s: ^sim.State) -> u64 {
 	mix(&f, u64(sim.single(s, sim.Level_Info).number))
 	mixb(&f, sim.single(s, sim.Level_End).complete)
 	mixb(&f, sim.single(s, sim.Game_Status).game_over)
-	mixb(&f, sim.single(s, sim.Pause).paused)
+	mixb(&f, netplay_plugin.paused(s))
 	mix(&f, u64(sim.single(s, sim.Bgnd).view_top))
 	mix(&f, u64(sim.single(s, sim.Bgnd).side_scroll))
 	for p in sim.players_of(s) {
@@ -120,7 +124,12 @@ golden_state_hash :: proc(s: ^sim.State) -> u64 {
 		mix(&f, u64(p.lives))
 		mix(&f, u64(p.multiplier))
 		mixb(&f, p.invulnerable)
-		for lv in p.passives {
+		// A plugin that is off hashes as its components would start.
+		levels: passives.Passive_Levels
+		if st := sim.get(s.ecs, sim.player_entity(p.number), passives.Passive_State); st != nil {
+			levels = st.passives
+		}
+		for lv in levels {
 			mix(&f, u64(lv))
 		}
 		wh := p.weapons
@@ -131,12 +140,16 @@ golden_state_hash :: proc(s: ^sim.State) -> u64 {
 		mixb(&f, wh.crosshair_shown)
 		mixb(&f, wh.crosshair_locked)
 		mixv(&f, wh.crosshair.loc)
-		for w in wh.loadout {
+		slots := [loadout.LOADOUT_SLOTS]i32{0 ..< loadout.LOADOUT_SLOTS = sim.NO_WEAPON}
+		if ls := loadout.slots_of(s, p.number); ls != nil {
+			slots = ls.loadout
+		}
+		for w in slots {
 			mix(&f, u64(u32(w)))
 		}
 	}
-	mixb(&f, sim.single(s, sim.Reward).active)
-	mixb(&f, sim.single(s, sim.Loadout).active)
+	mixb(&f, easy_mode.reward_open(s))
+	mixb(&f, loadout.loadout_open(s))
 	w := sim.single(s, sim.Pool)
 	for g := w.active.head; g != sim.NO_LINK; g = sim.link_of(sim.group_links(s), g).next {
 		grp := sim.group_at(s, g)
@@ -228,8 +241,7 @@ golden_session :: proc(defs: ^sim.Defs, g: Golden_Session, allocator := context.
 		seed      = g.seed,
 		level_id  = defs.levels[g.level].id,
 		game_type = g.game_type,
-		easy      = g.easy,
-		loadout   = g.loadout,
+		mods      = session_mods(g.easy, g.loadout),
 	}
 	sim.init(s, session, defs, &log)
 	// The input's own generator, apart from the state's.
@@ -243,7 +255,7 @@ golden_session :: proc(defs: ^sim.Defs, g: Golden_Session, allocator := context.
 		// each is a new press) of a direction or Fire_Air only: Fire_Ground
 		// takes a ready back, and random play would never have both players
 		// ready at once.
-		screen := sim.single(s, sim.Reward).active || sim.single(s, sim.Loadout).active
+		screen := easy_mode.reward_open(s) || loadout.loadout_open(s)
 		if screen || r.steps % 6 == 0 {
 			for k in 0 ..< sim.MAX_PLAYERS {
 				b := sim.Buttons{}
@@ -255,8 +267,8 @@ golden_session :: proc(defs: ^sim.Defs, g: Golden_Session, allocator := context.
 						b += {btn}
 					}
 				}
-				if sim.single(s, sim.Loadout).active && sim.single(s, sim.Loadout).choosing[k] {
-					b = loadout_policy(&sim.single(s, sim.Loadout).boards[k])
+				if l := loadout.loadout_of(s); l != nil && l.active && l.choosing[k] {
+					b = loadout_policy(&l.boards[k])
 				}
 				input[k] = screen && r.steps % 2 == 1 ? {} : b
 			}
@@ -281,12 +293,12 @@ golden_session :: proc(defs: ^sim.Defs, g: Golden_Session, allocator := context.
 // Places every new weapon on the loadout screen, then readies: carry each
 // one to the first empty cell of the loadout, else of the spares.
 @(private = "file")
-loadout_policy :: proc(b: ^sim.Loadout_Board) -> sim.Buttons {
+loadout_policy :: proc(b: ^loadout.Loadout_Board) -> sim.Buttons {
 	if b.ready {
 		return {}
 	}
-	target_row, target_col := sim.Loadout_Row.Ready, i32(0)
-	find :: proc(b: ^sim.Loadout_Board, row: sim.Loadout_Row, want_empty: bool) -> (i32, bool) {
+	target_row, target_col := loadout.Loadout_Row.Ready, i32(0)
+	find :: proc(b: ^loadout.Loadout_Board, row: loadout.Loadout_Row, want_empty: bool) -> (i32, bool) {
 		for c in 0 ..< b.width[row] {
 			if (b.cells[row][c] == sim.NO_WEAPON) == want_empty {
 				return c, true

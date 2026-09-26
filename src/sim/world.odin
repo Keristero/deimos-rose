@@ -288,10 +288,11 @@ Effects :: struct {
 	particle_count: i32,         // +0xec
 }
 
-// Not the original's; all zero unless a passive shaped the entity.
-Passive_Tag :: struct {
-	passive_tag:   u8,  // the weapon passive (see passive_tag)
-	passive_depth: u8,  // spawners between it and the weapon
+// Not the original's; all zero unless a plugin shaped the entity's weapon
+// (stats.odin).
+Shaped :: struct {
+	shaped_by:     u8,  // the weapon, as shot_shaper gives it
+	shaped_depth:  u8,  // spawners between it and the weapon
 	spawn_pace:    i32, // 0, or its spawn sets' pace in hundredths of a step
 	pace_acc:      i32,
 	spawn_clock:   i32, // the time its spawn sets run at, when paced
@@ -308,7 +309,7 @@ Entity :: struct {
 	using owned:   ^Owned,
 	using spawner: ^Spawner,
 	using effects: ^Effects,
-	using tag:     ^Passive_Tag,
+	using shaped:  ^Shaped,
 }
 
 // Every pool entity's components. Its list membership is a Link.
@@ -321,7 +322,7 @@ pool_components :: proc "contextless" () -> Component_Mask {
 		component_id(Owned),
 		component_id(Spawner),
 		component_id(Effects),
-		component_id(Passive_Tag),
+		component_id(Shaped),
 		component_id(Link),
 	}
 }
@@ -337,7 +338,7 @@ entity_at :: #force_inline proc "contextless" (s: ^State, i: i32) -> Entity {
 		owned   = get(s.ecs, id, Owned),
 		spawner = get(s.ecs, id, Spawner),
 		effects = get(s.ecs, id, Effects),
-		tag     = get(s.ecs, id, Passive_Tag),
+		shaped  = get(s.ecs, id, Shaped),
 	}
 }
 

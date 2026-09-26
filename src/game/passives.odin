@@ -12,13 +12,14 @@ import "core:strings"
 
 import rl "vendor:raylib"
 
+import "dr:plugins/passives"
 import "dr:sim"
 
 // The icons are assets/icons/passives/<name>.png, 32x32, composited from the
 // game's own sprites by `mise run assets:icons` (tools/icons/passives.json
-// holds the recipes), each named after its sim.Passive in lower case.
+// holds the recipes), each named after its passives.Passive in lower case.
 @(rodata)
-PASSIVE_NAMES := [sim.Passive]string {
+PASSIVE_NAMES := [passives.Passive]string {
 	.Improved_Manoeuvring = "IMPROVED MANOEUVRING",
 	.Auto_Charge          = "AUTO CHARGE",
 	.Improved_Charge      = "IMPROVED CHARGE",
@@ -32,7 +33,7 @@ PASSIVE_NAMES := [sim.Passive]string {
 
 // A passive's icon, loaded on first use and cached with the other derived
 // images (a missing file is cached too, so it is tried once).
-passive_icon :: proc(t: ^Textures, pa: sim.Passive) -> (rl.Texture2D, bool) {
+passive_icon :: proc(t: ^Textures, pa: passives.Passive) -> (rl.Texture2D, bool) {
 	key := fmt.tprintf("icons/passives/%s", strings.to_lower(fmt.tprint(pa), context.temp_allocator))
 	if tex, ok := t.images[key]; ok {
 		return tex, tex.id != 0
@@ -84,12 +85,12 @@ STAT_DISPLAY := [sim.Stat]Stat_Display {
 
 // A stat's value for a player holding `levels`, as the reward screen shows
 // it. Every passive's contribution is in it, not only the one on offer.
-stat_text :: proc(levels: ^sim.Passive_Levels, stat: sim.Stat, weapon: sim.Res_ID) -> string {
+stat_text :: proc(levels: ^passives.Passive_Levels, stat: sim.Stat, weapon: sim.Res_ID) -> string {
 	d := STAT_DISPLAY[stat]
-	if needs, ok := d.needs.?; ok && !sim.stat_total(levels, needs, weapon).enabled {
+	if needs, ok := d.needs.?; ok && !passives.stat_total(levels, needs, weapon).enabled {
 		return "--"
 	}
-	t := sim.stat_total(levels, stat, weapon)
+	t := passives.stat_total(levels, stat, weapon)
 	switch d.format {
 	case .Percent:
 		return fmt.tprintf("%d%%", max(100 + t.percent, 0))
@@ -118,14 +119,14 @@ stat_text :: proc(levels: ^sim.Passive_Levels, stat: sim.Stat, weapon: sim.Res_I
 @(private = "file") SPARK_SPEED :: 3
 
 passive_particles_step :: proc(p: ^Particles, s: ^sim.State, r: ^Renderer) {
-	if !s.session.easy || sim.session_frozen(s) {
+	if !sim.mod_on(s, passives.ID) || sim.session_frozen(s) {
 		return
 	}
 	for pl, i in sim.players_of(s) {
 		if pl.state != .Playing {
 			continue
 		}
-		if sim.player_regenerating(s, pl) && sim.single(s, sim.Clock).time % REGEN_EVERY == 0 {
+		if passives.player_regenerating(s, pl) && sim.single(s, sim.Clock).time % REGEN_EVERY == 0 {
 			a := rand.float32() * 2 * math.PI
 			from := pl.loc + sim.Vec{math.cos(a), math.sin(a)} * REGEN_RADIUS
 			shade := colour5(accent_color(int(r.accents[i].hue)))

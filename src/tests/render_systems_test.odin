@@ -3,6 +3,7 @@ package tests
 import "core:testing"
 
 import "dr:game"
+import "dr:plugins/accent"
 import "dr:sim"
 
 // The render systems place themselves against each other by name, as the
@@ -23,7 +24,7 @@ render_systems_name_only_registered_systems :: proc(t: ^testing.T) {
 @(test)
 render_schedule_draws_the_outline_under_the_ships :: proc(t: ^testing.T) {
 	sched: game.Render_Schedule
-	game.render_schedule_build(&sched)
+	game.render_schedule_build(&sched, ~sim.Mods{})
 	registered := game.registered_render_systems()
 	at :: proc(sched: ^game.Render_Schedule, registered: []game.Render_System, name: string) -> int {
 		for idx, i in sched.order[:sched.count] {
@@ -37,4 +38,24 @@ render_schedule_draws_the_outline_under_the_ships :: proc(t: ^testing.T) {
 	testing.expect(t, outline >= 0 && players >= 0, "outline and players are both scheduled")
 	testing.expect(t, outline < players, "the outline is drawn before the ships")
 	testing.expect_value(t, at(&sched, registered, "layers_clear"), 0)
+}
+
+// The outline is the Accent Color plugin's: without it, it is not drawn at
+// all.
+@(test)
+render_schedule_leaves_the_outline_to_its_plugin :: proc(t: ^testing.T) {
+	registered := game.registered_render_systems()
+	has_outline :: proc(sched: ^game.Render_Schedule, registered: []game.Render_System) -> bool {
+		for idx in sched.order[:sched.count] {
+			if registered[idx].name == "outline" {
+				return true
+			}
+		}
+		return false
+	}
+	sched: game.Render_Schedule
+	game.render_schedule_build(&sched, {})
+	testing.expect(t, !has_outline(&sched, registered), "the outline is drawn with no plugins on")
+	game.render_schedule_build(&sched, {int(accent.ID)})
+	testing.expect(t, has_outline(&sched, registered), "the outline is not drawn with Accent Color on")
 }

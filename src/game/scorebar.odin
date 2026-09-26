@@ -244,7 +244,7 @@ air_weapon_faces :: proc(s: ^sim.State, h: sim.Weapons) -> (out: [3]Weapon_Face)
 		return {d.score_bar_preview_face, d.score_bar_preview_frame}
 	}
 	out[0] = face(s, cur)
-	// In a New Weapons session, the loadout's next slots (sim.air_weapon_next).
+	// Under a weapon chooser, its next choices (sim.air_weapon_next).
 	next := sim.air_weapon_next(s, h, cur)
 	out[1] = next == sim.NO_WEAPON ? out[0] : face(s, next)
 	if out[1] == out[0] {

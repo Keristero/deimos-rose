@@ -40,12 +40,16 @@ System_Kind :: enum u8 {
 	Step,
 	// Around the game step, in a played session only (`session_step`).
 	Session,
+	// Once, as a session starts, before the players are set up: where a
+	// plugin gives the session's entities its components.
+	Setup,
 }
 
 System :: struct {
 	name:         string,
 	after:        []string,
 	before:       []string,
+	plugin:       Plugin_ID, // runs only in a session with this plugin on
 	kind:         System_Kind,
 	run:          proc(s: ^State, step: ^Step),
 	// Runs even when the step is frozen: what decides the level change.
@@ -64,6 +68,7 @@ Player_Stage :: struct {
 	name:   string,
 	after:  []string,
 	before: []string,
+	plugin: Plugin_ID,
 	run:    proc(s: ^State, p: Player, ps: ^Player_Step) -> bool,
 }
 
@@ -85,6 +90,7 @@ Entity_Stage :: struct {
 	name:   string,
 	after:  []string,
 	before: []string,
+	plugin: Plugin_ID,
 	run:    proc(s: ^State, e: Entity, es: ^Entity_Step) -> bool,
 }
 
@@ -146,24 +152,31 @@ Schedule :: struct {
 	stage_count:        u8,
 }
 
-// Orders the registered systems and stages. A cycle is a bug in whoever
-// registered them, found the first time any session starts.
-schedule_build :: proc(sched: ^Schedule) {
-	sched.system_count = order_registered(systems[:system_count], sched.systems[:])
-	sched.player_stage_count = order_registered(player_stages[:player_stage_count], sched.player_stages[:])
-	sched.stage_count = order_registered(stages[:stage_count], sched.stages[:])
+// Orders the registered systems and stages of the core and the plugins in
+// `mods`. A cycle is a bug in whoever registered them, found the first time
+// a session with them starts.
+schedule_build :: proc(sched: ^Schedule, mods: Mods) {
+	sched.system_count = order_registered(systems[:system_count], mods, sched.systems[:])
+	sched.player_stage_count = order_registered(player_stages[:player_stage_count], mods, sched.player_stages[:])
+	sched.stage_count = order_registered(stages[:stage_count], mods, sched.stages[:])
 }
 
-@(private = "file")
-order_registered :: proc(registered: []$T, out: []u8) -> u8 {
-	items := make([]Order_Item, len(registered), context.temp_allocator)
+// Orders the items of `registered` that belong to the core or a plugin in
+// `mods`, as registry indexes. Placing against a plugin's item that is not
+// there places against nothing.
+order_registered :: proc(registered: []$T, mods: Mods, out: []u8) -> u8 {
+	items := make([dynamic]Order_Item, 0, len(registered), context.temp_allocator)
+	index := make([dynamic]u8, 0, len(registered), context.temp_allocator)
 	for r, i in registered {
-		items[i] = {r.name, r.after, r.before}
+		if r.plugin == CORE || int(r.plugin) in mods {
+			append(&items, Order_Item{r.name, r.after, r.before})
+			append(&index, u8(i))
+		}
 	}
-	order, ok := schedule(items, context.temp_allocator)
+	order, ok := schedule(items[:], context.temp_allocator)
 	assert(ok, "sim: a cycle in the order of the registered systems")
 	for idx, i in order {
-		out[i] = u8(idx)
+		out[i] = index[idx]
 	}
 	return u8(len(order))
 }
@@ -205,10 +218,6 @@ run_entity_stages :: proc(s: ^State, e: Entity, es: ^Entity_Step) {
 @(init)
 register_core_systems :: proc "contextless" () {
 	context = runtime.default_context()
-	// Around the game step, in a played session.
-	system_register({name = "netplay_pause", kind = .Session, run = netplay_pause_system})
-	system_register({name = "reward_screen", kind = .Session, run = reward_screen_system})
-	system_register({name = "loadout_screen", kind = .Session, run = loadout_screen_system})
 	// The game step, FUN_00420280, in the original's order.
 	system_register({name = "step_events", run = step_events_system})
 	system_register({name = "first_player", run = first_player_system})
@@ -223,8 +232,6 @@ register_core_systems :: proc "contextless" () {
 	system_register({name = "scroll_hold", run = scroll_hold_system})
 	system_register({name = "clock", run = clock_system})
 	// After the game step, in a played session.
-	system_register({name = "reward_open", kind = .Session, run = reward_open_system})
-	system_register({name = "loadout_open", kind = .Session, run = loadout_open_system})
 	system_register({name = "level_transition", kind = .Session, run = level_transition_system, while_frozen = true})
 
 	// G_Player::Process for one player, in the original's order.
@@ -233,7 +240,7 @@ register_core_systems :: proc "contextless" () {
 	player_stage_register({name = "read_input", run = read_input_stage})
 	player_stage_register({name = "player_look", run = player_look_stage})
 	player_stage_register({name = "fire", run = fire_stage})
-	player_stage_register({name = "player_passives", run = player_passives_stage})
+	player_stage_register({name = "calm", run = calm_stage})
 	player_stage_register({name = "player_move", run = player_move_stage})
 
 	// G_EG_Process's body for one entity, in the original's order.

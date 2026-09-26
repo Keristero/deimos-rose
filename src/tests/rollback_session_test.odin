@@ -3,6 +3,7 @@ package tests
 import "core:testing"
 
 import net "dr:net"
+import netplay_plugin "dr:plugins/netplay"
 import "dr:sim"
 
 // Phase 6 stage 3's real guarantee: two independent Rollback_Sessions, each
@@ -308,7 +309,7 @@ rollback_session_converges_across_level_changes_and_pauses :: proc(t: ^testing.T
 		l.background.bottom = 700 // a ~220-step scroll per level
 	}
 	defs.levels = levels
-	session := sim.Session{seed = 0xC0FFEE, level_id = levels[0].id, game_type = .Co_Op}
+	session := sim.Session{seed = 0xC0FFEE, level_id = levels[0].id, game_type = .Co_Op, mods = session_mods(false, false, online = true)}
 
 	FRAMES :: 1100
 	LATENCY :: 6
@@ -381,7 +382,7 @@ rollback_session_converges_across_level_changes_and_pauses :: proc(t: ^testing.T
 				append(&queues[1 - p], Delivery{i + LATENCY, pkt})
 			}
 		}
-		if sim.single(states[0], sim.Pause).paused {
+		if netplay_plugin.paused(states[0]) {
 			paused_frames += 1
 		}
 		max_level = max(max_level, sim.single(states[0], sim.Level_Info).number)
@@ -392,6 +393,6 @@ rollback_session_converges_across_level_changes_and_pauses :: proc(t: ^testing.T
 	testing.expect(t, paused_frames > 0, "test never paused")
 	testing.expect_value(t, sim.single(states[0], sim.Level_Info).number, sim.single(states[1], sim.Level_Info).number)
 	testing.expect_value(t, sim.single(states[0], sim.Clock).time, sim.single(states[1], sim.Clock).time)
-	testing.expect_value(t, sim.single(states[0], sim.Pause).paused, sim.single(states[1], sim.Pause).paused)
+	testing.expect_value(t, netplay_plugin.paused(states[0]), netplay_plugin.paused(states[1]))
 	testing.expect_value(t, sim.checksum(states[0]), sim.checksum(states[1]))
 }

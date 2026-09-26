@@ -51,6 +51,10 @@ Purse :: struct {
 Hull :: struct {
 	shields:       f32,          // +0x9e as a percentage
 	shield_warned: bool,         // +0xcd
+	// Not the original's, which never reads it: steps in play since the ship
+	// last lost shields, appeared or started a level, for plugins that wait
+	// on it (shield regeneration). Saturates rather than wrapping to zero.
+	calm:          i32,
 }
 
 // The air power-up overload.
@@ -62,14 +66,6 @@ Overload :: struct {
 	overload_warnings: i32,      // +0x217
 }
 
-// Not the original's: easy mode's passive upgrades (sim/passives.odin).
-// They last the session, not the level.
-Passive_State :: struct {
-	passives:      Passive_Levels,
-	regen_wait:    i32, // steps since the last damage, towards Recharge_Delay
-	regen_acc:     i32, // eighths of a percent towards the next, times step_hz
-}
-
 // One player's components, found once (player_at). Good for the step it
 // was found in (D39).
 Player :: struct {
@@ -78,7 +74,6 @@ Player :: struct {
 	using purse:   ^Purse,
 	using hull:    ^Hull,
 	using surge:   ^Overload,
-	using upgrades: ^Passive_State,
 	weapons:       Weapons,
 }
 
@@ -89,7 +84,6 @@ player_components :: proc "contextless" () -> Component_Mask {
 		component_id(Purse),
 		component_id(Hull),
 		component_id(Overload),
-		component_id(Passive_State),
 		component_id(Weapon_Handler),
 	}
 }
@@ -102,11 +96,6 @@ players_of :: proc "contextless" (s: ^State) -> (all: [MAX_PLAYERS]Player) {
 	return
 }
 
-// A player's passive levels, for code that changes them in place.
-passive_levels :: proc "contextless" (s: ^State, i: $I) -> ^Passive_Levels {
-	return &get(s.ecs, player_entity(i32(i)), Passive_State).passives
-}
-
 player_at :: proc "contextless" (s: ^State, index: $I) -> Player {
 	i := i32(index)
 	id := player_entity(i)
@@ -117,7 +106,6 @@ player_at :: proc "contextless" (s: ^State, index: $I) -> Player {
 		purse    = get(e, id, Purse),
 		hull     = get(e, id, Hull),
 		surge    = get(e, id, Overload),
-		upgrades = get(e, id, Passive_State),
 		weapons  = weapons_of(s, i),
 	}
 }
@@ -145,8 +133,7 @@ player_setup :: proc (s: ^State, p: Player, number: i32, game_type: Game_Type) {
 	p.score = 0
 	p.multiplier = 1
 	p.multiplier_entity = -1
-	p.passives = {}
-	player_regen_interrupt(p)
+	p.calm = 0
 	player_shields_reset(s, p, true)
 	weapons_new_game(s, p.weapons, number, single(s, Clock).time, single(s, Level_Info).number)
 	p.speed = player_def(s, p).active_default_max_speed
@@ -185,7 +172,7 @@ player_level_reset :: proc (s: ^State, p: Player, time: i32) {
 	p.money = 0       // Money_Reset
 	p.counter = {fade = 0x20} // MoneyCounter_Reset: hidden until it fades in
 	player_shields_reset(s, p, true)
-	player_regen_interrupt(p)
+	p.calm = 0
 	overload_clear(p)
 	player_reset_sprite(s, p)
 	calculate_dimensions(s, p.obj)
@@ -226,7 +213,7 @@ player_appear :: proc(s: ^State, p: Player, time: i32) {
 	// destroyed until entry_invulnerability_time after it reappears, and
 	// one that simply entered the level was never invulnerable at all.
 	overload_clear(p)
-	player_regen_interrupt(p)
+	p.calm = 0
 	p.crosshair_reach = 0
 	p.appeared = true
 	p.state, p.state_time = .Playing, time
@@ -344,7 +331,8 @@ read_input_stage :: proc(s: ^State, p: Player, ps: ^Player_Step) -> bool {
 			s.draws.frame = u32(single(s, Film_Cursor).reads[0])
 		}
 	} else {
-		p.inputs = ps.input
+		// Pause is the port's (plugins/netplay), never the game's.
+		p.inputs = ps.input - {.Pause}
 	}
 	return true
 }
@@ -390,8 +378,12 @@ fire_stage :: proc(s: ^State, p: Player, ps: ^Player_Step) -> bool {
 	return true
 }
 
-player_passives_stage :: proc(s: ^State, p: Player, ps: ^Player_Step) -> bool {
-	player_passives_process(s, p, ps.time)
+// Where the original has nothing: counts the ship's calm, for plugins'
+// stages placed before it.
+calm_stage :: proc(s: ^State, p: Player, ps: ^Player_Step) -> bool {
+	if p.state == .Playing && p.calm < max(i32) {
+		p.calm += 1
+	}
 	return true
 }
 

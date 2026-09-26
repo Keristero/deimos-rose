@@ -872,7 +872,7 @@ netplay_begin_session :: proc(fl: ^Flow, nl: ^Netplay, seed: u32, level_index: i
 		level_index = 0
 	}
 	level := fl.defs.levels[level_index].id
-	sim.init(fl.state, session_from_flags(seed, level, .Co_Op, flags), fl.defs)
+	sim.init(fl.state, session_from_flags(seed, level, .Co_Op, flags, online = true), fl.defs)
 	flow_session_began(fl)
 	local_player := nl.role == .Host ? 0 : 1
 	net.rollback_session_init(&nl.rs, fl.state, local_player)

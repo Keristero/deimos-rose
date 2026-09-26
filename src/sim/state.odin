@@ -23,14 +23,13 @@ level_id :: proc "contextless" (s: string) -> Level_ID {
 }
 
 // Session parameters fixed at start and never mutated. A film stores exactly
-// the first three plus the per-frame inputs; `easy` and `loadout` are not
-// the original's, and no film sets them.
+// the first three plus the per-frame inputs; `mods` is not the original's,
+// and no film sets it.
 Session :: struct {
 	seed:      u32,
 	level_id:  Level_ID,
 	game_type: Game_Type,
-	easy:      bool, // easy mode: a reward screen after every level (reward.odin)
-	loadout:   bool, // New Weapons: the new weapons, and a loadout screen each stage (loadout.odin)
+	mods:      Mods, // the session plugins that run (plugins.odin), dependencies included
 }
 
 // The complete simulation state. Everything that affects future frames lives
@@ -110,12 +109,14 @@ init :: proc(s: ^State, session: Session, defs: ^Defs, log: ^Draw_Log = nil, eve
 	s.defs = defs
 	s.events = events
 	s.draws = log
-	schedule_build(&s.schedule)
+	schedule_build(&s.schedule, session.mods)
 	add_singletons(s)
 	for i in 0 ..< i32(MAX_PLAYERS) {
 		ecs_set_components(s.ecs, player_entity(i), player_components())
 		ecs_set_components(s.ecs, crosshair_entity(i), crosshair_components())
 	}
+	setup := Step{}
+	run_systems(s, &setup, {.Setup})
 	single(s, Rng).next = session.seed
 	level := level_by_id(defs, session.level_id)
 	if level == nil {
@@ -201,10 +202,9 @@ level_start :: proc(s: ^State) {
 	eg_reset(s, level_def(s))
 	bgnd_initial_spawns(s)
 
-	// The level's title notice unit, centred in the play area. The loadout
-	// screen waits for it to go.
-	single(s, Loadout).shown = false
-	single(s, Loadout).title = NO_REF
+	// The level's title notice unit, centred in the play area.
+	info := single(s, Level_Info)
+	info.title = NO_REF
 	notice := s.defs.perm_objects[level_number_of(s) + 9]
 	if notice != NONE {
 		req := spawn_request(notice)
@@ -212,8 +212,7 @@ level_start :: proc(s: ^State) {
 			s.defs.perm_floats[PF_VISIBLE_GAME_WIDTH] / 2,
 			s.defs.perm_floats[PF_VISIBLE_GAME_HEIGHT] / 2,
 		}
-		title := eg_request_spawn(s, req)
-		single(s, Loadout).title = title
+		info.title = eg_request_spawn(s, req)
 	}
 }
 
@@ -260,16 +259,16 @@ level_transition :: proc(s: ^State) -> Level_Transition {
 	if single(s, Game_Status).game_over {
 		return .Game_Over
 	}
-	if !single(s, Level_End).complete || single(s, Reward).active {
+	if !single(s, Level_End).complete {
 		return .None
 	}
 	return level_advance(s) ? .Advanced : .All_Complete
 }
 
 // One step of a played session -- live, local or netplay -- as opposed to
-// step alone, which films and the oracle tools replay. Adds the two things a
-// session needs that FUN_00420280 does not do: the netplay pause, and the
-// move to the next level.
+// step alone, which films and the oracle tools replay. Adds what a session
+// needs that FUN_00420280 does not do: the move to the next level, and the
+// session plugins' own systems around the step.
 //
 // The level change has to happen *inside* whatever the rollback session
 // steps and snapshots. It used to be applied by game/flow.odin after
@@ -281,94 +280,24 @@ level_transition :: proc(s: ^State) -> Level_Transition {
 // function of the state and inputs like the rest of the step, and a
 // resimulation reproduces it on the same frame.
 //
-// While paused, only the frame count advances (the rollback ring is keyed
-// on it, and inputs keep flowing so either player can unpause); game time,
-// the RNG and every entity stand still.
-//
-// In easy mode a counted level opens the reward screen (reward.odin) on the
-// step it is counted, and the move to the next level waits for it to close.
-// It pauses the game the same way, and a pause pauses it in turn. New
-// Weapons' loadout screen (loadout.odin) opens early in a level the same
-// way, on the step the level's title has gone.
+// A plugin's system can take the whole step (Step.done): netplay's pause,
+// and the screens between play (plugins/easy_mode, plugins/loadout). Only
+// the frame count advances then (the rollback ring is keyed on it, and
+// inputs keep flowing); game time, the RNG and every entity stand still.
+// One that closes a screen freezes the rest of the step instead, so that
+// the level can still move on.
 session_step :: proc(s: ^State, input: Frame_Input, film: ^Film = nil) -> Level_Transition {
 	st := Step{input = input, film = film}
 	run_systems(s, &st, {.Step, .Session})
 	return st.transition
 }
 
-// The netplay pause: either player's Pause press toggles it, and while it
-// holds only the frame count moves. The game never sees the Pause button.
-netplay_pause_system :: proc(s: ^State, step: ^Step) {
-	pause := single(s, Pause)
-	toggle := false
-	for i in 0 ..< MAX_PLAYERS {
-		held := .Pause in step.input[i]
-		if held && !pause.held[i] {
-			toggle = true // both pressing on the same frame still toggles once
-		}
-		pause.held[i] = held
-	}
-	if toggle {
-		pause.paused = !pause.paused
-	}
-	if pause.paused {
-		clear_step_events(s) // nothing happened this step; do not replay last step's
-		single(s, Clock).frame += 1
-		step.done = true
-		return
-	}
-	for &b in step.input {
-		b -= {.Pause}
-	}
-}
-
-// Easy mode's reward screen, while it is open, takes the step; once it
-// closes the level moves on.
-reward_screen_system :: proc(s: ^State, step: ^Step) {
-	if !single(s, Reward).active {
-		return
-	}
-	if reward_step(s, step.input) {
-		step.done = true
-	} else {
-		step.frozen = true
-	}
-}
-
-// New Weapons' loadout screen, while it is open, takes the step.
-loadout_screen_system :: proc(s: ^State, step: ^Step) {
-	if single(s, Loadout).active {
-		loadout_step(s, step.input)
-		step.done = true
-	}
-}
-
-// A counted level opens the reward screen in easy mode.
-reward_open_system :: proc(s: ^State, step: ^Step) {
-	if reward_due(s) && reward_begin(s, step.input) {
-		step.done = true
-	}
-}
-
-// The level's title gone, the loadout screen opens with New Weapons.
-loadout_open_system :: proc(s: ^State, step: ^Step) {
-	if loadout_due(s) && loadout_begin(s, step.input) {
-		step.done = true
-	}
-}
-
 level_transition_system :: proc(s: ^State, step: ^Step) {
 	step.transition = level_transition(s)
 }
 
-// Whether play stands still this step for a pause or a between-play screen:
-// the presentation holds its own effects still to match.
-session_frozen :: proc "contextless" (s: ^State) -> bool {
-	return single(s, Pause).paused || single(s, Reward).active || single(s, Loadout).active
-}
-
-// This step's presentation events start empty; step, a paused session_step
-// and the reward screen all begin here.
+// This step's presentation events start empty; step, and a plugin's system
+// that takes the step, begin here.
 clear_step_events :: proc "contextless" (s: ^State) {
 	s.sounds.count = 0
 	s.particles.count = 0

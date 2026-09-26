@@ -16,6 +16,10 @@ import rl "vendor:raylib"
 import "dr:data"
 import "dr:net"
 import "dr:prefs"
+import "dr:plugins/easy_mode"
+import netplay_plugin "dr:plugins/netplay"
+import "dr:plugins/new_weapons"
+import "dr:plugins/accent"
 import "dr:sim"
 
 Flow_Mode :: enum {
@@ -180,7 +184,7 @@ pause_begin :: proc(fl: ^Flow, r: ^Renderer) {
 @(private = "file")
 pause_notice_step :: proc(fl: ^Flow) {
 	m := &fl.pause_menu
-	if m.notice && !sim.single(fl.state, sim.Pause).paused {
+	if m.notice && !netplay_plugin.paused(fl.state) {
 		m.blend += max(sim.trunc_i32(fl.defs.perm_floats[PF_NOTICE_FADE_OUT]), 1)
 		if m.blend >= 32 {
 			m.notice = false
@@ -294,13 +298,13 @@ flow_handle_input :: proc(fl: ^Flow, r: ^Renderer) {
 			// gather_input sets the Pause input bit, so both peers pause
 			// on the same frame. The notice and button appear once the
 			// (shared) state says paused, whoever pressed it.
-			if sim.single(fl.state, sim.Pause).paused != fl.netplay_was_paused {
-				fl.netplay_was_paused = sim.single(fl.state, sim.Pause).paused
-				if sim.single(fl.state, sim.Pause).paused {
+			if netplay_plugin.paused(fl.state) != fl.netplay_was_paused {
+				fl.netplay_was_paused = netplay_plugin.paused(fl.state)
+				if netplay_plugin.paused(fl.state) {
 					pause_begin(fl, r)
 				}
 			}
-			if sim.single(fl.state, sim.Pause).paused {
+			if netplay_plugin.paused(fl.state) {
 				if pause_menu_update(r, &fl.pause_menu) {
 					// The peer sees a Goodbye and freezes, able to continue
 					// alone (F5) -- the same as any mid-game disconnect.
@@ -512,7 +516,7 @@ flow_music_update :: proc(fl: ^Flow, r: ^Renderer) {
 	}
 	if fl.music.frameCount != 0 {
 		// Either pause: local (.Paused) or a netplay pause in the state.
-		paused := fl.mode == .Paused || (fl.mode == .Playing && sim.single(fl.state, sim.Pause).paused)
+		paused := fl.mode == .Paused || (fl.mode == .Playing && netplay_plugin.paused(fl.state))
 		if paused != fl.music_paused {
 			if paused {
 				rl.PauseMusicStream(fl.music)
@@ -522,7 +526,7 @@ flow_music_update :: proc(fl: ^Flow, r: ^Renderer) {
 		}
 		rl.UpdateMusicStream(fl.music)
 	}
-	fl.music_paused = fl.music.frameCount != 0 && (fl.mode == .Paused || (fl.mode == .Playing && sim.single(fl.state, sim.Pause).paused))
+	fl.music_paused = fl.music.frameCount != 0 && (fl.mode == .Paused || (fl.mode == .Playing && netplay_plugin.paused(fl.state)))
 }
 
 @(private = "file")
@@ -594,14 +598,20 @@ flow_session_flags :: proc(fl: ^Flow) -> (flags: u8) {
 	return
 }
 
-session_from_flags :: proc(seed: u32, level: sim.Level_ID, game_type: sim.Game_Type, flags: u8) -> sim.Session {
-	return {
-		seed      = seed,
-		level_id  = level,
-		game_type = game_type,
-		easy      = flags & net.START_EASY != 0,
-		loadout   = flags & net.START_LOADOUT != 0,
+// The session plugins for Start's flags, and netplay's own in a netplay
+// session.
+session_from_flags :: proc(seed: u32, level: sim.Level_ID, game_type: sim.Game_Type, flags: u8, online := false) -> sim.Session {
+	want: sim.Mods
+	if flags & net.START_EASY != 0 {
+		want += {int(easy_mode.ID)}
 	}
+	if flags & net.START_LOADOUT != 0 {
+		want += {int(new_weapons.ID)}
+	}
+	if online {
+		want += {int(netplay_plugin.ID)}
+	}
+	return {seed = seed, level_id = level, game_type = game_type, mods = sim.mods_session(sim.mods_with_deps(want))}
 }
 
 // Called once Level Select's accept pulse finishes (game/menu_level_select.odin).
@@ -711,7 +721,7 @@ flow_draw :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 			if title, sub := netplay_disconnect_banner(&fl.netplay); title != "" {
 				draw_banner(title, sub)
 			} else {
-				pause_draw(fl, r, scale, sim.single(fl.state, sim.Pause).paused, "PAUSED FOR BOTH PLAYERS -- EITHER CAN RESUME")
+				pause_draw(fl, r, scale, netplay_plugin.paused(fl.state), "PAUSED FOR BOTH PLAYERS -- EITHER CAN RESUME")
 			}
 		} else {
 			pause_draw(fl, r, scale, false, "") // the notice fading after a resume
@@ -739,12 +749,15 @@ draw_banner :: proc(line, sub: cstring) {
 // whoever is aiming with it. In a local game each player has the hue set
 // for them in Extras. Accent Colours turns the colours off; Self Outline
 // is separate, and only ever rings the ship of the player at this machine.
+// The plugins drawn with (Renderer.mods) are set here with them.
 @(private = "file")
 flow_set_accents :: proc(fl: ^Flow, r: ^Renderer) {
 	r.accents = {}
+	r.mods = fl.state.session.mods
 	if fl.mode == .Attract || prefs_classic(fl.prefs) {
 		return
 	}
+	r.mods += {int(accent.ID)}
 	colours := extra_on(fl.prefs, .Accent_Colours)
 	outline := extra_on(fl.prefs, .Self_Outline)
 	if fl.session_named {

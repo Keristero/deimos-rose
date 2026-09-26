@@ -17,7 +17,7 @@ import "core:fmt"
 import "core:slice"
 import "core:strings"
 
-import "dr:sim"
+import "dr:plugins/passives"
 
 // A change this small is the same run give or take rounding: no effect.
 // A 0.01-point hit over 60 s is 0.0002 DPS.
@@ -78,8 +78,8 @@ gain_pct :: proc(sh: ^Shared, t: Table, w: int, m: Mode, c: int) -> (pct: f64, o
 	return (with / bare - 1) * 100, true
 }
 
-passive_turns :: proc(p: sim.Passive) -> bool {
-	for mod in sim.PASSIVES[p].mods {
+passive_turns :: proc(p: passives.Passive) -> bool {
+	for mod in passives.PASSIVES[p].mods {
 		if mod.stat == .Fires_Backwards {
 			return true
 		}

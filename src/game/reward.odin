@@ -1,8 +1,7 @@
 package game
 
 // Easy mode's reward screen, drawn over the frozen play area while
-// sim.State.reward is open (sim/reward.odin holds it and takes the
-// choices). New content: no original screen to match. Everything is read
+// its screen is open (plugins/easy_mode holds it and takes the choices). New content: no original screen to match. Everything is read
 // from the state, so both netplay peers draw the same screen from the same
 // frame.
 //
@@ -19,6 +18,8 @@ import "core:fmt"
 import rl "vendor:raylib"
 
 import "dr:prefs"
+import "dr:plugins/easy_mode"
+import "dr:plugins/passives"
 import "dr:sim"
 
 @(private = "file") CX :: VIEW_X + PLAY_W / 2
@@ -56,7 +57,7 @@ reward_player_label :: proc(fl: ^Flow, i: int) -> string {
 // Where option k's cell sits, in menu coordinates.
 @(private = "file")
 reward_cell :: proc(count, k: i32) -> rl.Rectangle {
-	cols := sim.reward_grid_columns(count)
+	cols := easy_mode.reward_grid_columns(count)
 	rows := (count + cols - 1) / cols
 	cell := min(f32(CELL_MAX),
 		(f32(PLAY_W - 2 * GRID_SIDE) - f32(cols - 1) * CELL_GAP) / f32(cols),
@@ -76,8 +77,8 @@ window_rect :: proc(r: rl.Rectangle) -> rl.Rectangle {
 
 reward_draw :: proc(fl: ^Flow, r: ^Renderer) {
 	s := fl.state
-	rw := sim.single(s, sim.Reward)
-	if !rw.active {
+	rw := easy_mode.reward_of(s)
+	if rw == nil || !rw.active {
 		return
 	}
 	white := rl.Color{255, 255, 255, 255}
@@ -114,14 +115,14 @@ reward_draw :: proc(fl: ^Flow, r: ^Renderer) {
 			continue
 		}
 		pa := rw.options[rw.cursor[i]]
-		levels := sim.passive_levels(s, i)
-		def := &sim.PASSIVES[pa]
+		levels := passives.levels_of(s, i)
+		def := &passives.PASSIVES[pa]
 		accent := reward_accent(r.accents[i].hue, true)
 		menu_draw_text(r, reward_player_label(fl, i), left, y, accent)
-		status := rw.locked[i] ? "LOCKED IN" : sim.reward_ready(s, i) ? "NOTHING LEFT TO TAKE" : "CHOOSING"
+		status := rw.locked[i] ? "LOCKED IN" : easy_mode.reward_ready(s, i) ? "NOTHING LEFT TO TAKE" : "CHOOSING"
 		menu_draw_text(r, status, right, y, rw.locked[i] ? accent : dim, .Right)
 		y += LINE
-		if sim.passive_maxed(levels, pa) {
+		if passives.passive_maxed(levels, pa) {
 			menu_draw_text(r, fmt.tprintf("%s: AT ITS HIGHEST LEVEL", PASSIVE_NAMES[pa]), left, y, dim)
 			y += LINE + LINE / 2
 			continue
@@ -129,7 +130,7 @@ reward_draw :: proc(fl: ^Flow, r: ^Renderer) {
 		next := levels[pa] + 1
 		menu_draw_text(r, fmt.tprintf("%s  LEVEL %d/%d", PASSIVE_NAMES[pa], next, def.levels), left, y, white)
 		y += LINE
-		if !sim.reward_selectable(s, i, rw.cursor[i]) {
+		if !easy_mode.reward_selectable(s, i, rw.cursor[i]) {
 			menu_draw_text(r, "TAKEN BY THE OTHER PLAYER", left, y, dim)
 			y += LINE
 		}
@@ -137,7 +138,7 @@ reward_draw :: proc(fl: ^Flow, r: ^Renderer) {
 		after[pa] = next
 		for m in def.mods {
 			// A stat the new level leaves as it was is not listed.
-			if m.at[next - 1] == sim.X {
+			if m.at[next - 1] == passives.X {
 				continue
 			}
 			menu_draw_text(r, STAT_DISPLAY[m.stat].label, left + 8, y, dim)
@@ -152,7 +153,7 @@ reward_draw :: proc(fl: ^Flow, r: ^Renderer) {
 // The option's icon, centred in its cell at the largest whole multiple of
 // its size, in window pixels, that fits.
 @(private = "file")
-reward_draw_icon :: proc(r: ^Renderer, pa: sim.Passive, cell: rl.Rectangle) {
+reward_draw_icon :: proc(r: ^Renderer, pa: passives.Passive, cell: rl.Rectangle) {
 	tex, ok := passive_icon(&r.textures, pa)
 	if !ok {
 		return

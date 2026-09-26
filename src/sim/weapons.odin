@@ -54,15 +54,11 @@ Weapon_Handler :: struct {
 	player:          i32,  // +0x119
 	fade_in:         f32,  // +0x11d perm float 0x95
 	fade_out:        f32,  // +0x121 perm float 0x96
-	// Not the original's; used only by passives (sim/passives.odin).
+	// Not the original's; used only by stat providers (stats.odin).
 	air_idle:        i32,  // steps fire-air has been let go, for Auto Charge
 	volleys_left:    i32,  // extra volleys still owed by the last shot
 	volley_pace:     i32,  // hundredths of a step towards the next one
 	ground_pace:     i32,  // hundredths of a step towards the next bomb
-	// Not the original's; used only by New Weapons (sim/loadout.odin): the
-	// air weapons held, those switched between and the rest.
-	loadout:         [LOADOUT_SLOTS]i32,
-	spare:           [MAX_SPARE]i32,
 }
 
 // The crosshair entity's own component; its Game_Object is the rest of it.
@@ -120,7 +116,7 @@ default_weapon :: proc "contextless" (d: ^Defs, ground: bool) -> i32 {
 
 // FUN_00448890: the air weapon introduced at exactly this level. This and
 // the two below are the original's choices, which never see a new weapon:
-// New Weapons chooses through the loadout instead.
+// a plugin's weapon chooser (hooks.odin) chooses those.
 level_air_weapon :: proc "contextless" (d: ^Defs, level: i32) -> i32 {
 	for &w, i in d.weapons {
 		if w.type == WEP_AIR && !w.extra && w.minimum_level_available == level {
@@ -183,11 +179,9 @@ weapons_new_game :: proc(s: ^State, h: Weapons, player: i32, time, level: i32) {
 	if g := default_weapon(s.defs, true); g != NO_WEAPON {
 		slot_reset(&h.ground, g, time)
 	}
-	h.loadout = NO_WEAPON
-	h.spare = NO_WEAPON
 	a := best_air_weapon(s.defs, level)
-	if s.session.loadout {
-		a = loadout_new_game(s, h, level)
+	if c, ok := weapon_chooser(s); ok {
+		a = c.new_game(s, h, level)
 	}
 	if a != NO_WEAPON {
 		slot_reset(&h.air, a, time)
@@ -216,8 +210,8 @@ weapons_appear :: proc(s: ^State, h: Weapons, level_start: bool) {
 		change_weapon(s, h, WEP_GROUND, h.queued_ground)
 		h.queued_ground = NO_WEAPON
 	}
-	// New Weapons keeps the weapon chosen: a new one waits in the loadout.
-	next := level_start && !s.session.loadout ? level_air_weapon(s.defs, single(s, Level_Info).number) : h.queued_air
+	// A weapon chooser keeps the weapon chosen.
+	next := level_start && !weapons_kept(s) ? level_air_weapon(s.defs, single(s, Level_Info).number) : h.queued_air
 	if next != NO_WEAPON {
 		change_weapon(s, h, WEP_AIR, next)
 		h.queued_air = NO_WEAPON
@@ -258,11 +252,11 @@ change_weapon :: proc(s: ^State, h: Weapons, type: Res_ID, weapon: i32) {
 	}
 }
 
-// The air weapon Change_Air moves on to from `current`: the next in the
-// loadout under New Weapons, else the original's next of its type.
+// The air weapon Change_Air moves on to from `current`: a weapon chooser's
+// choice, else the original's next of its type.
 air_weapon_next :: proc "contextless" (s: ^State, h: Weapons, current: i32) -> i32 {
-	if s.session.loadout {
-		return loadout_next(h, current)
+	if c, ok := weapon_chooser(s); ok {
+		return c.next(s, h, current)
 	}
 	if current == NO_WEAPON {
 		return NO_WEAPON
@@ -453,7 +447,7 @@ check_spawning_ground :: proc "contextless" (s: ^State, h: Weapons, time: i32) -
 spawn_ground :: proc(s: ^State, h: Weapons, at: Vec) {
 	wd := weapon_def(s, h.ground.weapon)
 	backwards := ground_fires_backwards(s, h)
-	tag := weapon_passive_tag(s, h.player, h.ground.weapon)
+	tag := shot_shaper(s, h.player, h.ground.weapon)
 	spawns: [MAX_LANES + MAX_EXTRA_SPAWNS]Weapon_Spawn
 	for sp in spawns[:weapon_spawns(s, h.ground.weapon, h.player, backwards, spawns[:])] {
 		req := spawn_request(sp.unit)
@@ -461,7 +455,7 @@ spawn_ground :: proc(s: ^State, h: Weapons, at: Vec) {
 		req.loc = {f32(sp.x) + at.x, f32(sp.y) + at.y}
 		req.explicit_heading = sp.set_heading
 		req.heading = sp.angle
-		req.passive_tag = tag
+		req.shaped_by = tag
 		reach := max(trunc_i32(backwards ? h.crosshair.loc.y - h.loc.y : h.loc.y - h.crosshair.loc.y), 0)
 		req.speed_scale = f32(reach) / f32(abs(wd.crosshair_y_offset))
 		eg_request_spawn(s, req)
@@ -479,7 +473,7 @@ spawn_air :: proc(s: ^State, h: Weapons, at: Vec) {
 	if h.air.pending <= 0 {
 		return
 	}
-	tag := weapon_passive_tag(s, h.player, h.air.weapon)
+	tag := shot_shaper(s, h.player, h.air.weapon)
 	spawns: [MAX_LANES + MAX_EXTRA_SPAWNS]Weapon_Spawn
 	for sp in spawns[:weapon_spawns(s, h.air.weapon, h.player, false, spawns[:])] {
 		req := spawn_request(sp.unit)
@@ -487,7 +481,7 @@ spawn_air :: proc(s: ^State, h: Weapons, at: Vec) {
 		req.loc = {f32(sp.x) + at.x, f32(sp.y) + at.y}
 		req.explicit_heading = sp.set_heading
 		req.heading = sp.angle
-		req.passive_tag = tag
+		req.shaped_by = tag
 		eg_request_spawn(s, req)
 	}
 	if wd := weapon_def(s, h.air.weapon); wd.beam.on {
@@ -504,7 +498,7 @@ air_powerup_process :: proc(s: ^State, h: Weapons, time: i32, at: Vec, weapon: i
 		return
 	}
 	p := &h.air_powerup
-	top := powerup_max_level(s, h, weapon) // powerup_air_max_power_level, save for passives
+	top := powerup_max_level(s, h, weapon) // powerup_air_max_power_level, save for stat providers
 	percent :: proc "contextless" (level, max_level: i32) -> f32 {
 		v := f32(level) / f32(max_level) * 100
 		if v < 1 {

@@ -27,6 +27,7 @@ import rl "vendor:raylib"
 
 import "dr:data"
 import "dr:game"
+import "dr:plugins/loadout"
 import "dr:prefs"
 import "dr:sim"
 
@@ -103,13 +104,13 @@ clip :: proc(r: ^game.Renderer, defs: ^sim.Defs, state: ^sim.State, root, id, ou
 	notices: game.Notices
 
 	game.flow_start_session(&fl, SEED, .Single, max(int(wd.minimum_level_available) - 1, 0))
-	sim.single(state, sim.Loadout).shown = true
+	loadout.loadout_of(state).shown = sim.single(state, sim.Level_Info).played
 	fl.mode = .Playing
 	p := sim.player_at(state, 0)
 	if ground {
 		sim.change_weapon(state, p.weapons, sim.WEP_GROUND, i32(wi))
 	} else {
-		p.weapons.loadout[0] = i32(wi)
+		loadout.slots_of(state, 0).loadout[0] = i32(wi)
 		sim.change_weapon(state, p.weapons, sim.WEP_AIR, i32(wi))
 		sim.player_sprite_from_weapon(state, p)
 	}

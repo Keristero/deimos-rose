@@ -1,8 +1,7 @@
 package game
 
 // New Weapons' loadout screen, drawn over the frozen play area while
-// sim.State.loadout is open (sim/loadout.odin holds it and takes the
-// choices). New content: no original screen to match. Everything is read
+// its screen is open (plugins/loadout holds it and takes the choices). New content: no original screen to match. Everything is read
 // from the state, so both netplay peers draw the same screen from the same
 // frame.
 //
@@ -21,6 +20,7 @@ import "core:strings"
 import rl "vendor:raylib"
 
 import "dr:prefs"
+import "dr:plugins/loadout"
 import "dr:sim"
 
 @(private = "file") CX :: VIEW_X + PLAY_W / 2
@@ -41,7 +41,7 @@ import "dr:sim"
 @(private = "file") BORDER :: 2
 
 @(private = "file")
-ROW_LABELS := [sim.Loadout_Row]string {
+ROW_LABELS := [loadout.Loadout_Row]string {
 	.Fresh = "NEW",
 	.Slots = "LOADOUT",
 	.Spare = "SPARE",
@@ -70,9 +70,9 @@ window_rect :: proc(r: rl.Rectangle) -> rl.Rectangle {
 // weapon's name and two lines of description. Two full panels (three rows
 // each) just fit the play area.
 @(private = "file")
-panel_height :: proc(b: ^sim.Loadout_Board) -> f32 {
+panel_height :: proc(b: ^loadout.Loadout_Board) -> f32 {
 	h := f32(PAD + LINE)
-	for row in sim.Loadout_Row {
+	for row in loadout.Loadout_Row {
 		if row != .Ready && b.width[row] > 0 {
 			h += ROW_H
 		}
@@ -82,8 +82,8 @@ panel_height :: proc(b: ^sim.Loadout_Board) -> f32 {
 
 loadout_draw :: proc(fl: ^Flow, r: ^Renderer) {
 	s := fl.state
-	l := sim.single(s, sim.Loadout)
-	if !l.active {
+	l := loadout.loadout_of(s)
+	if l == nil || !l.active {
 		return
 	}
 	dim := rl.Color{170, 170, 170, 255}
@@ -105,7 +105,7 @@ loadout_draw :: proc(fl: ^Flow, r: ^Renderer) {
 }
 
 @(private = "file")
-loadout_draw_panel :: proc(fl: ^Flow, r: ^Renderer, i: int, b: ^sim.Loadout_Board, panel: rl.Rectangle) {
+loadout_draw_panel :: proc(fl: ^Flow, r: ^Renderer, i: int, b: ^loadout.Loadout_Board, panel: rl.Rectangle) {
 	s := fl.state
 	white := rl.Color{255, 255, 255, 255}
 	dim := rl.Color{170, 170, 170, 255}
@@ -122,7 +122,7 @@ loadout_draw_panel :: proc(fl: ^Flow, r: ^Renderer, i: int, b: ^sim.Loadout_Boar
 	menu_draw_text(r, status, right, y, b.ready ? accent : dim, .Right)
 	y += LINE
 
-	for row in sim.Loadout_Row {
+	for row in loadout.Loadout_Row {
 		if row == .Ready || b.width[row] == 0 {
 			continue
 		}
@@ -133,7 +133,7 @@ loadout_draw_panel :: proc(fl: ^Flow, r: ^Renderer, i: int, b: ^sim.Loadout_Boar
 			w := b.cells[row][col]
 			// Until the screen closes the player's handler still has only
 			// what they held before it.
-			fresh := w != sim.NO_WEAPON && !sim.loadout_holds(sim.player_at(s, i).weapons, w)
+			fresh := w != sim.NO_WEAPON && !loadout.loadout_holds(loadout.slots_of(s, i), w)
 			fill, edge := rl.Color{16, 20, 28, 230}, rl.Color{70, 80, 92, 255}
 			if fresh {
 				fill, edge = {header.r / 3, header.g / 3, header.b / 3, 230}, header
@@ -158,7 +158,7 @@ loadout_draw_panel :: proc(fl: ^Flow, r: ^Renderer, i: int, b: ^sim.Loadout_Boar
 	// READY, under the cells.
 	ready := rl.Rectangle{f32(left + LABEL_W), f32(y), READY_W, READY_H}
 	on := b.row == .Ready && !b.ready
-	can := sim.loadout_can_ready(b)
+	can := loadout.loadout_can_ready(b)
 	fill := b.ready ? loadout_accent(hue, false) : rl.Color{16, 20, 28, 230}
 	rl.DrawRectangleRec(window_rect(ready), fill)
 	rl.DrawRectangleLinesEx(window_rect(ready), (on ? BORDER : 1) * WINDOW_SCALE, on || b.ready ? accent : rl.Color{70, 80, 92, 255})
