@@ -101,7 +101,7 @@ change_state_on_depletion :: proc(s: ^sim.State, e: sim.Entity, time: i32) {
 collide_entities :: proc(s: ^sim.State, e, o: sim.Entity, time: i32) {
 	eu, ou := sim.unit_of(s, e), sim.unit_of(s, o)
 	hit_owner := false
-	if sim.state_of(s, e).pass_hits_to_owner && sim.ref_valid(s, e.owner) {
+	if sim.entity_has(s, e, Passes_Hits_To_Owner) && sim.ref_valid(s, e.owner) {
 		entity_hit(s, sim.entity_at(s, e.owner.index), stats.shot_damage(s, o, ou.damage), o.owner_player, time)
 		hit_owner = true
 	}
@@ -109,7 +109,7 @@ collide_entities :: proc(s: ^sim.State, e, o: sim.Entity, time: i32) {
 		entity_hit(s, e, stats.shot_damage(s, o, ou.damage), o.owner_player, time)
 	}
 	hit_owner = false
-	if sim.state_of(s, o).pass_hits_to_owner && sim.ref_valid(s, e.owner) {
+	if sim.entity_has(s, o, Passes_Hits_To_Owner) && sim.ref_valid(s, e.owner) {
 		entity_hit(s, sim.entity_at(s, e.owner.index), stats.shot_damage(s, e, eu.damage), e.owner_player, time)
 		hit_owner = true
 	}

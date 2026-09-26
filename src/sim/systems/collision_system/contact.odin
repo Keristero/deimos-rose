@@ -8,11 +8,11 @@ import "dr:sim/lifecycle"
 import "dr:sim/systems/debris_system"
 
 // Touching a player: both take damage, or the player collects a pickup.
+// Entities with Collides and Collides_With_Players, not Harmless_To_Players.
 player_contact_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool {
-	st, u, b := es.st, es.u, es.bounds
+	u, b := es.u, es.bounds
 	w, h := sim.view_width(s.defs), sim.view_height(s.defs)
-	if sim.players_in_play(s) > 0 && st.collides && !u.harmless_to_players && st.collides_with_players &&
-	   b.right > -33 && b.left <= w + 32 && b.bottom >= 0 && b.top <= h {
+	if sim.players_in_play(s) > 0 && b.right > -33 && b.left <= w + 32 && b.bottom >= 0 && b.top <= h {
 		for p in sim.players_of(s) {
 			if p.state != .Playing || e.deleted {
 				continue
@@ -27,7 +27,7 @@ player_contact_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step)
 			if u.pickup_type == sim.NONE {
 				// Both sides take damage; a state can pass hits to its owner.
 				hit_owner := false
-				if st.pass_hits_to_owner && sim.ref_valid(s, e.owner) {
+				if sim.step_has(es, Passes_Hits_To_Owner) && sim.ref_valid(s, e.owner) {
 					entity_hit(s, sim.entity_at(s, e.owner.index), s.defs.perm_floats[0xa1], p.number, sim.single(s, sim.Clock).time)
 					hit_owner = true
 				}
@@ -44,13 +44,14 @@ player_contact_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step)
 	return !e.deleted
 }
 
-// A ground unit that runs into wreckage stops there.
+// A ground unit that runs into wreckage stops there. Entities with
+// Blocked_By_Wreckage.
 ground_obstacles_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool {
-	if !e.stationary && !e.is_air && es.u.collides_with_ground_obstacles {
+	if !e.stationary && !e.is_air {
 		if debris_system.debris_hits(s, lifecycle.object_bounds(e.obj)) {
 			e.vel = {}
 			e.stationary = true
-			if es.u.destruct_create_obstacle {
+			if sim.step_component(s, e, es, Blocked_By_Wreckage).becomes_wreckage {
 				debris_system.debris_new(s, lifecycle.object_bounds(e.obj))
 			}
 		}
@@ -58,8 +59,9 @@ ground_obstacles_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Ste
 	return true
 }
 
+// Entities with Collides.
 shot_collisions_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool {
-	if !e.deleted && es.st.collides {
+	if !e.deleted {
 		entity_collisions(s, e)
 	}
 	return true

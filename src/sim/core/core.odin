@@ -61,6 +61,8 @@ register :: proc "contextless" () {
 	// The components prefabs give entities, which the stages below ask for.
 	sim.prefab_builder_register({name = "entity_state", build = entity_system.state_prefab})
 	sim.prefab_builder_register({name = "movement", build = movement_system.movement_prefab})
+	sim.prefab_builder_register({name = "collision", build = collision_system.collision_prefab})
+	sim.prefab_builder_register({name = "weapon", build = weapon_system.weapon_prefab})
 
 	// G_EG_Process's body for one entity, in the original's order. A stage
 	// with a `with` set runs only on the entities that have it.
@@ -87,11 +89,16 @@ register :: proc "contextless" () {
 	sim.entity_stage_register({name = "link_to_owner", with = sim.mask_of(movement_system.Linked_To_Owner), run = movement_system.link_to_owner_stage})
 	sim.entity_stage_register({name = "orbit_owner", with = sim.mask_of(movement_system.Orbits_Owner), run = movement_system.orbit_owner_stage})
 	sim.entity_stage_register({name = "spawn", run = entity_system.spawn_stage})
-	sim.entity_stage_register({name = "player_contact", run = collision_system.player_contact_stage})
+	sim.entity_stage_register({
+		name = "player_contact",
+		with = sim.mask_of(collision_system.Collides, collision_system.Collides_With_Players),
+		without = sim.mask_of(collision_system.Harmless_To_Players),
+		run = collision_system.player_contact_stage,
+	})
 	sim.entity_stage_register({name = "motion_blur", with = sim.mask_of(entity_system.Motion_Blur), run = entity_system.motion_blur_stage})
-	sim.entity_stage_register({name = "crosshair_lock", run = weapon_system.crosshair_lock_stage})
-	sim.entity_stage_register({name = "ground_obstacles", run = collision_system.ground_obstacles_stage})
-	sim.entity_stage_register({name = "shot_collisions", run = collision_system.shot_collisions_stage})
+	sim.entity_stage_register({name = "crosshair_lock", with = sim.mask_of(weapon_system.Ground_Target, weapon_system.Targetable), run = weapon_system.crosshair_lock_stage})
+	sim.entity_stage_register({name = "ground_obstacles", with = sim.mask_of(collision_system.Blocked_By_Wreckage), run = collision_system.ground_obstacles_stage})
+	sim.entity_stage_register({name = "shot_collisions", with = sim.mask_of(collision_system.Collides), run = collision_system.shot_collisions_stage})
 }
 
 // The session's singletons, and the players' and crosshairs' components,

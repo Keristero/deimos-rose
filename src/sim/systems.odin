@@ -267,6 +267,11 @@ step_component :: proc(s: ^State, e: Entity, es: ^Entity_Step, $T: typeid) -> ^T
 	return get(s.prefabs.world, prefab_unit_id(e.unit), T)
 }
 
+// Whether the entity as the stage sees it has T: what a tag is asked with.
+step_has :: #force_inline proc "contextless" (es: ^Entity_Step, $T: typeid) -> bool {
+	return component_id(T) in es.mask
+}
+
 // Whether the entity as it is now has T, its own or shared: what a tag
 // (a component with no fields, so nothing to get) is asked with.
 entity_has :: proc(s: ^State, e: Entity, $T: typeid) -> bool {
