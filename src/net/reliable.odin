@@ -9,6 +9,8 @@ package netplay
 import core_net "core:net"
 import "core:time"
 
+import "dr:sim"
+
 RELIABLE_RETRY :: 200 * time.Millisecond
 RELIABLE_MAX_RETRIES :: 20 // ~4s of retrying before the peer is presumed gone
 
@@ -61,9 +63,9 @@ send_goodbye :: proc(rc: ^Reliable_Channel, sock: ^Socket) {
 	send(sock, rc.to, rc.buf[:rc.length])
 }
 
-send_start :: proc(rc: ^Reliable_Channel, sock: ^Socket, seed: u32, level: u8, flags: u8 = 0) {
+send_start :: proc(rc: ^Reliable_Channel, sock: ^Socket, seed: u32, level: u8, flags: u8 = 0, mods: sim.Mods = {}) {
 	seq := reliable_begin(rc)
-	rc.length = encode_start(rc.buf[:], seq, seed, level, flags)
+	rc.length = encode_start(rc.buf[:], seq, seed, level, flags, mods)
 	send(sock, rc.to, rc.buf[:rc.length])
 }
 

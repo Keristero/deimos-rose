@@ -586,22 +586,43 @@ flow_random_seed :: proc() -> u32 {
 	return u32(time.to_unix_nanoseconds(time.now()))
 }
 
-// The session extras this player has on, as Start carries them: off in
-// classic mode, like every extra. New Weapons also needs the new content
-// to be there (assets/extra).
-flow_session_flags :: proc(fl: ^Flow) -> (flags: u8) {
-	if prefs_mod_on(fl.prefs, easy_mode.ID) {
+// The session plugins this player has on, as Start carries them: none in
+// classic mode. New Weapons also needs the new content to be there
+// (assets/extra). Netplay's own is left to session_from_mods, which knows
+// whether the session is online.
+flow_session_mods :: proc(fl: ^Flow) -> sim.Mods {
+	mods := prefs_mods(fl.prefs)
+	if !fl.extra_content {
+		mods = sim.mods_resolve(mods - {int(new_weapons.ID)})
+	}
+	// Resolved before the session's are picked out: a session plugin's
+	// dependencies need not be session plugins themselves.
+	return sim.mods_session(mods) - {int(netplay_plugin.ID)}
+}
+
+// The session, with netplay's plugin exactly when it is online.
+session_from_mods :: proc(seed: u32, level: sim.Level_ID, game_type: sim.Game_Type, mods: sim.Mods, online := false) -> sim.Session {
+	session := sim.Session{seed = seed, level_id = level, game_type = game_type, mods = mods - {int(netplay_plugin.ID)}}
+	if online {
+		session.mods += {int(netplay_plugin.ID)}
+	}
+	return session
+}
+
+// Start's flags for the session's mods, for a build that reads only them.
+flags_from_mods :: proc(mods: sim.Mods) -> (flags: u8) {
+	if int(easy_mode.ID) in mods {
 		flags |= net.START_EASY
 	}
-	if prefs_mod_on(fl.prefs, new_weapons.ID) && fl.extra_content {
+	if int(new_weapons.ID) in mods {
 		flags |= net.START_LOADOUT
 	}
 	return
 }
 
-// The session plugins for Start's flags, and netplay's own in a netplay
-// session.
-session_from_flags :: proc(seed: u32, level: sim.Level_ID, game_type: sim.Game_Type, flags: u8, online := false) -> sim.Session {
+// The session's mods from a Start without them, from a build before they
+// were sent: what its flags turned on then.
+mods_from_flags :: proc(flags: u8) -> sim.Mods {
 	want: sim.Mods
 	if flags & net.START_EASY != 0 {
 		want += {int(easy_mode.ID)}
@@ -609,10 +630,7 @@ session_from_flags :: proc(seed: u32, level: sim.Level_ID, game_type: sim.Game_T
 	if flags & net.START_LOADOUT != 0 {
 		want += {int(new_weapons.ID)}
 	}
-	if online {
-		want += {int(netplay_plugin.ID)}
-	}
-	return {seed = seed, level_id = level, game_type = game_type, mods = sim.mods_session(sim.mods_with_deps(want))}
+	return sim.mods_session(sim.mods_with_deps(want))
 }
 
 // Called once Level Select's accept pulse finishes (game/menu_level_select.odin).
@@ -622,7 +640,7 @@ flow_start_session :: proc(fl: ^Flow, seed: u32, game_type: sim.Game_Type, level
 	fl.session_start_pos = level_index + 1
 	fl.session_named = false // a local game asks for names at the end
 	level := fl.defs.levels[level_index].id
-	sim.init(fl.state, session_from_flags(seed, level, game_type, flow_session_flags(fl)), fl.defs)
+	sim.init(fl.state, session_from_mods(seed, level, game_type, flow_session_mods(fl)), fl.defs)
 	flow_session_began(fl)
 	fl.mode = .Playing
 }

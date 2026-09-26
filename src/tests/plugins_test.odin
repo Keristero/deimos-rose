@@ -2,6 +2,8 @@ package tests
 
 import "core:testing"
 
+import "dr:game"
+import "dr:net"
 import "dr:plugins/easy_mode"
 import netplay_plugin "dr:plugins/netplay"
 import "dr:plugins/new_weapons"
@@ -9,7 +11,8 @@ import "dr:plugins/passives"
 import "dr:sim"
 
 // The session plugins the game turns on for Easy Mode, New Weapons and
-// netplay (game/flow.odin's session_from_flags), with what they depend on.
+// netplay, with what they depend on: what a Start from a build before
+// the mods were sent turns on (game/flow.odin's mods_from_flags).
 session_mods :: proc(easy, weapons: bool, online := false) -> sim.Mods {
 	want: sim.Mods
 	if online {
@@ -109,4 +112,33 @@ plugins_take_their_places_in_the_step :: proc(t: ^testing.T) {
 	core := step_systems({})
 	expect_names(t, core[:1], {"step_events"})
 	expect_names(t, core[len(core) - 2:], {"clock", "level_transition"})
+}
+
+// A Start without mods, from an older build, turns on what its flags did;
+// the flags sent beside the mods say the same to one.
+@(test)
+plugins_from_start_flags :: proc(t: ^testing.T) {
+	for easy in ([]bool{false, true}) {
+		for weapons in ([]bool{false, true}) {
+			flags: u8
+			if easy {
+				flags |= net.START_EASY
+			}
+			if weapons {
+				flags |= net.START_LOADOUT
+			}
+			mods := session_mods(easy, weapons)
+			testing.expect_value(t, game.mods_from_flags(flags), mods)
+			testing.expect_value(t, game.flags_from_mods(mods), flags)
+		}
+	}
+}
+
+// Netplay's plugin is in a session exactly when it is online, whatever the
+// mods passed in say.
+@(test)
+plugins_netplay_only_online :: proc(t: ^testing.T) {
+	all := sim.Mods{int(netplay_plugin.ID), int(easy_mode.ID)}
+	testing.expect_value(t, game.session_from_mods(1, {}, .Single, all).mods, sim.Mods{int(easy_mode.ID)})
+	testing.expect_value(t, game.session_from_mods(1, {}, .Co_Op, {int(easy_mode.ID)}, online = true).mods, all)
 }
