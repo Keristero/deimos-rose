@@ -195,12 +195,14 @@ decode_start :: proc(buf: []byte) -> (seq: u8, seed: u32, level: u8, flags: u8, 
 // Input: a dropped one is invisible since the next one due (a frame later)
 // repeats the same value. The host's choice of flags and mods (Start's)
 // rides along the same way, for the guest's display; Start is what counts.
+LEVEL_CHOICE_SIZE :: 7
+
 encode_level_choice :: proc(buf: []byte, level_index: u8, flags: u8 = 0, mods: sim.Mods = {}) -> int {
 	buf[0] = u8(Packet_Kind.Level_Choice)
 	buf[1] = level_index
 	buf[2] = flags
 	put_u32(buf[3:], transmute(u32)mods)
-	return 7
+	return LEVEL_CHOICE_SIZE
 }
 
 decode_level_choice :: proc(buf: []byte) -> (level_index: u8, flags: u8, mods: Maybe(sim.Mods), ok: bool) {

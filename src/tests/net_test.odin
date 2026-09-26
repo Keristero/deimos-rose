@@ -59,7 +59,9 @@ packet_ping_and_pong_do_not_cross_decode :: proc(t: ^testing.T) {
 
 @(test)
 packet_level_choice_round_trips :: proc(t: ^testing.T) {
-	buf: [64]byte
+	// Exactly the size the lobby sends it in: a smaller buffer was once
+	// declared there, and every host crashed on its first lobby frame.
+	buf: [net.LEVEL_CHOICE_SIZE]byte
 	mods := sim.Mods{1, 3, 31}
 	n := net.encode_level_choice(buf[:], 7, net.START_EASY, mods)
 	kind, kok := net.peek_kind(buf[:n])

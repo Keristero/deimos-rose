@@ -582,7 +582,7 @@ netplay_update_connected :: proc(fl: ^Flow, nl: ^Netplay, r: ^render.Renderer) {
 		}
 	}
 	if nl.role == .Host {
-		buf: [3]byte
+		buf: [net.LEVEL_CHOICE_SIZE]byte
 		lcn := net.encode_level_choice(buf[:], u8(nl.level_index), flags_from_mods(nl.mods), nl.mods)
 		net.send(&nl.sock, nl.peer, buf[:lcn])
 	}
