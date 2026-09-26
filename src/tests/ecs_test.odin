@@ -108,6 +108,17 @@ world_state :: proc(e: ^sim.Ecs) -> sim.State {
 	return sim.State{ecs = e}
 }
 
+// Marks the first n pool slots and groups handed out, as spawning does
+// (lifecycle.entity_alloc, group_alloc): only those are state a snapshot
+// holds.
+@(private = "file")
+use_slots :: proc(e: ^sim.Ecs, n: i32, groups: i32 = 0) {
+	s := world_state(e)
+	p := sim.single(&s, sim.Pool)
+	p.slots_touched = max(p.slots_touched, n)
+	p.groups_touched = max(p.groups_touched, groups)
+}
+
 @(private = "file")
 pool_padded :: proc(e: ^sim.Ecs, i: int) -> ^Test_Padded {
 	return ecs.get_component(e.world, e.ids[.Pool][i], Test_Padded)
@@ -188,6 +199,8 @@ snapshots_depend_only_on_contents :: proc(t: ^testing.T) {
 	defer sim.ecs_destroy(a)
 	b := sim.ecs_create(mods)
 	defer sim.ecs_destroy(b)
+	use_slots(a, 10)
+	use_slots(b, 10)
 	for i in 0 ..< 10 {
 		pool_padded(a, i)^ = {a = u8(i), b = i32(i) * 3}
 		p := pool_padded(b, i)
@@ -206,6 +219,7 @@ snapshots_restore_the_world :: proc(t: ^testing.T) {
 	e := sim.ecs_create({int(fps_unlock.ID)})
 	defer sim.ecs_destroy(e)
 	s := world_state(e)
+	use_slots(e, 8)
 	sim.single(&s, sim.Clock).time = 1
 	pool_padded(e, 5).a = 2
 	sim.entity_at(&s, 7).number = 3
@@ -224,6 +238,50 @@ snapshots_restore_the_world :: proc(t: ^testing.T) {
 	testing.expect_value(t, sim.single(&s, sim.Clock).time, i32(1))
 	testing.expect_value(t, pool_padded(e, 5).a, 2)
 	testing.expect_value(t, sim.entity_at(&s, 7).number, i32(3))
+}
+
+// A snapshot holds the pool slots and groups handed out so far and no
+// more; reading one written before later ones were used puts those back to
+// their start values, as they were then.
+@(test)
+snapshots_hold_only_the_slots_used :: proc(t: ^testing.T) {
+	e := sim.ecs_create({int(fps_unlock.ID)})
+	defer sim.ecs_destroy(e)
+	s := world_state(e)
+	empty := len(snapshot(e))
+	use_slots(e, 3)
+	sim.entity_at(&s, 2).number = 5
+	early := snapshot(e)
+	early_digest := digest(e)
+	row := len(early) - empty
+	testing.expect(t, row > 0 && row % 3 == 0, "each slot used adds its row")
+
+	use_slots(e, 40)
+	sim.entity_at(&s, 30).number = 7
+	pool_padded(e, 39).a = 9
+	testing.expect_value(t, len(snapshot(e)), empty + row / 3 * 40)
+	use_slots(e, 40, 5)
+	sim.group_at(&s, 4).id = 11
+	testing.expect(t, len(snapshot(e)) > empty + row / 3 * 40, "each group used adds its row")
+
+	_, ok := sim.ecs_read(e, early)
+	testing.expect(t, ok)
+	testing.expect_value(t, sim.single(&s, sim.Pool).slots_touched, i32(3))
+	testing.expect_value(t, sim.entity_at(&s, 2).number, i32(5))
+	testing.expect_value(t, sim.entity_at(&s, 30).number, i32(0))
+	testing.expect_value(t, pool_padded(e, 39).a, 0)
+	testing.expect_value(t, sim.group_at(&s, 4).id, i32(0))
+	testing.expect_value(t, sim.single(&s, sim.Pool).groups_touched, i32(0))
+	testing.expect_value(t, digest(e), early_digest)
+
+	// Every slot a world has not used holds its start value, as a fresh
+	// world's do.
+	fresh := sim.ecs_create({int(fps_unlock.ID)})
+	defer sim.ecs_destroy(fresh)
+	use_slots(fresh, 3)
+	fs := world_state(fresh)
+	sim.entity_at(&fs, 2).number = 5
+	testing.expect_value(t, digest(fresh), digest(e))
 }
 
 @(test)

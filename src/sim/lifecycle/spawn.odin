@@ -259,6 +259,7 @@ entity_alloc :: proc(s: ^sim.State) -> i32 {
 	}
 	w.used_count += 1
 	w.entity_used[i] = true
+	w.slots_touched = max(w.slots_touched, i + 1)
 	entity_reset(sim.entity_at(s, i), i)
 	w.free_hint = -1
 	return i

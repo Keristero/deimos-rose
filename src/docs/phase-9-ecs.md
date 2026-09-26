@@ -375,8 +375,10 @@ them from its flags (`mods_from_flags`).
   every commit.
 - `mise run bench` (`tools/simbench`) times the simulation alone. After
   the move to odecs's public API (D47): demos 23 µs a step, every level
-  in co-op 32 µs, snapshot 64 µs, restore 60 µs, checksum 168 µs, for a
-  617 KB world.
+  in co-op 32 µs. Snapshots hold only the pool slots and groups used so
+  far (D47): mid-level on level 6 a 48 KB world saves in 6 µs, restores
+  in 5 µs, checksums in 13 µs, and a 10-frame rollback takes 80 µs; on
+  the fullest level (level 11, 170 slots) 109 KB, 12, 11, 30 and 252 µs.
 - `tests/golden/fingerprints.txt`: unchanged since it was recorded.
 - Looked at: menu shots of Preferences, the Mods page, the Extras page,
   the netplay lobby states, the reward and loadout screens, and the

@@ -292,14 +292,27 @@ Ecs :: struct {
 	// odecs keeps its archetypes: what a snapshot holds.
 	tables:      [dynamic]Table,
 	// The tables' components and sizes, which only a world built alike
-	// shares, and how many bytes a written world takes.
+	// shares; the bytes a written world takes besides the counted kinds'
+	// rows, and those each of their rows adds.
 	shape:       u64,
 	size:        int,
+	row_bytes:   [Counted]int,
+}
+
+// The kinds whose entities are handed out lowest first, and whose tables
+// a snapshot holds only as far as they have been used (ecs_pack).
+Counted :: enum u8 {
+	Pool,
+	Group,
 }
 
 Table :: struct {
 	component: int,
 	arch:      ^ecs.Archetype,
+	// For a counted kind's table: written only up to the rows used, and put
+	// back to `start` above them when a snapshot is read.
+	counted:   Maybe(Counted),
+	start:     rawptr,
 }
 
 // A world for a session with `mods`: every entity of every kind, holding
@@ -374,21 +387,52 @@ find_views :: proc(e: ^Ecs) {
 			e.player_part[p][i] = c.get(w, id)
 		}
 	}
+	kind_of := [Counted]Kind{.Pool = .Pool, .Group = .Group}
+	counted_arch: [Counted]^ecs.Archetype
+	for kind, k in kind_of {
+		counted_arch[k] = ecs.get_entity_archetype(w, e.ids[kind][0])
+	}
 	h := hasher()
 	for c, i in registry_items(&catalog) {
 		if c.size == 0 {
 			continue // a tag has no table
 		}
 		for arch in ecs.query_raw(w, {c.type}) {
-			append(&e.tables, Table{i, arch})
+			t := Table{component = i, arch = arch}
 			rows := len(ecs.get_entities(arch))
 			hash_u64(&h, u64(i) | u64(rows) << 32)
+			row := 0
 			for r in c.runs {
-				e.size += rows * int(r.size)
+				row += int(r.size)
 			}
+			for a, k in counted_arch {
+				if a != arch {
+					continue
+				}
+				t.counted = k
+				for kc in registry_items(&kind_components) {
+					if kc.kind == kind_of[k] && kc.component == i {
+						t.start = kc.value
+					}
+				}
+			}
+			if k, ok := t.counted.?; ok {
+				e.row_bytes[k] += row
+			} else {
+				e.size += rows * row
+			}
+			append(&e.tables, t)
 		}
 	}
 	e.shape = h.sum
+}
+
+// The rows of each counted kind a written world holds: those used this
+// session.
+@(private = "file")
+rows_used :: #force_inline proc "contextless" (e: ^Ecs) -> [Counted]u32 {
+	p := (^Pool)(e.singletons[component_id(Pool)])
+	return {.Pool = u32(p.slots_touched), .Group = u32(p.groups_touched)}
 }
 
 // T of every entity of a kind, by index: the kind's table, whose rows are
@@ -465,26 +509,50 @@ hash_u64 :: proc "contextless" (h: ^Hasher, v: u64) {
 }
 
 @(private = "file")
-HEADER :: 16
+HEADER :: size_of(Header)
 
 // The header: the catalog and the world's shape, so a world only reads
-// what a world built alike wrote.
+// what a world built alike wrote, and how many rows of each counted kind
+// it holds.
 @(private = "file")
-header_of :: proc(e: ^Ecs) -> [2]u64 {
-	return {catalog_hash(), e.shape}
+Header :: struct {
+	catalog: u64,
+	shape:   u64,
+	rows:    [Counted]u32,
+}
+
+// How many bytes a world of e's shape takes, holding `rows`.
+@(private = "file")
+size_holding :: proc "contextless" (e: ^Ecs, rows: [Counted]u32) -> int {
+	size := HEADER + e.size
+	for n, k in rows {
+		size += int(n) * e.row_bytes[k]
+	}
+	return size
 }
 
 // The world's state: its tables, row by row, each row's data bytes, into
 // out (ecs_written_size bytes). The rows are the entities in the order they
 // were made, which no step changes, so equal worlds write equal bytes.
+//
+// The entity pool's and the groups' tables stop at the rows used this
+// session. Both are handed out lowest first, so in a level that is well
+// short of all 1,000 slots and 1,024 groups, and the rest, never used,
+// hold only their start values (Pool.slots_touched, groups_touched).
+// Those tables are almost all of a world, so this is most of what a
+// snapshot costs.
 @(private = "file")
 ecs_pack :: proc(e: ^Ecs, out: []byte) {
-	header := header_of(e)
+	used := rows_used(e)
+	header := Header{catalog_hash(), e.shape, used}
 	runtime.mem_copy_non_overlapping(raw_data(out), &header, HEADER)
 	at := HEADER
 	for t in e.tables {
 		c := &catalog.items[t.component]
 		rows := c.table(e.world, t.arch)
+		if k, ok := t.counted.?; ok {
+			rows = rows[:int(used[k]) * c.size]
+		}
 		if len(c.runs) == 1 && int(c.runs[0].size) == c.size {
 			copy(out[at:], rows) // no padding: the table as it is
 			at += len(rows)
@@ -514,33 +582,52 @@ ecs_hash :: proc(e: ^Ecs, h: ^Hasher) {
 	hash_bytes(h, raw_data(out), len(out))
 }
 
-// How many bytes ecs_write writes for e.
+// How many bytes ecs_write writes for e as it is now.
 ecs_written_size :: proc "contextless" (e: ^Ecs) -> int {
-	return HEADER + e.size
+	return size_holding(e, rows_used(e))
 }
 
-// Whether data starts with a world e can read.
-ecs_readable :: proc(e: ^Ecs, data: []byte) -> bool {
-	if len(data) < HEADER + e.size {
-		return false
+// Whether data starts with a world e can read, and if so how many bytes of
+// it that world takes.
+ecs_readable :: proc(e: ^Ecs, data: []byte) -> (size: int, ok: bool) {
+	if len(data) < HEADER {
+		return
 	}
-	header: [2]u64
+	header: Header
 	runtime.mem_copy_non_overlapping(&header, raw_data(data), HEADER)
-	return header == header_of(e)
+	if header.catalog != catalog_hash() || header.shape != e.shape ||
+	   header.rows[.Pool] > MAX_ENTITIES || header.rows[.Group] > MAX_GROUPS {
+		return
+	}
+	size = size_holding(e, header.rows)
+	return size, len(data) >= size
 }
 
 // Makes the world hold what `data` (from ecs_write) holds, and returns the
 // bytes after it. Fails, leaving the world unchanged, if the data came from
 // a build with a different catalog or a world built otherwise, or is cut
 // short.
+//
+// Rows of a counted kind the data does not hold were unused when it was
+// written, so they go back to their start values: those this world has
+// used since, since those above its own mark hold them already.
 ecs_read :: proc(e: ^Ecs, data: []byte) -> (rest: []byte, ok: bool) {
-	if !ecs_readable(e, data) {
+	if _, readable := ecs_readable(e, data); !readable {
 		return data, false
 	}
+	header: Header
+	runtime.mem_copy_non_overlapping(&header, raw_data(data), HEADER)
+	used, touched := header.rows, rows_used(e) // before the Pool is read over
 	at := HEADER
 	for t in e.tables {
 		c := &catalog.items[t.component]
 		rows := c.table(e.world, t.arch)
+		if k, counted := t.counted.?; counted {
+			for row := int(used[k]) * c.size; row < int(touched[k]) * c.size; row += c.size {
+				runtime.mem_copy_non_overlapping(&rows[row], t.start, c.size)
+			}
+			rows = rows[:int(used[k]) * c.size]
+		}
 		if len(c.runs) == 1 && int(c.runs[0].size) == c.size {
 			copy(rows, data[at:at + len(rows)])
 			at += len(rows)

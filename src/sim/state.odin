@@ -160,7 +160,7 @@ state_read :: proc(s: ^State, data: []byte) -> bool {
 		world = ecs_create(plain.session.mods)
 	}
 	world_data := data[size_of(State):]
-	if !ecs_readable(world, world_data) || len(world_data) != ecs_written_size(world) {
+	if size, ok := ecs_readable(world, world_data); !ok || len(world_data) != size {
 		if world != s.ecs {
 			ecs_destroy(world)
 		}

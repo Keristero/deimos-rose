@@ -409,6 +409,13 @@ Pool :: struct {
 	next_group:      i32, // DAT_004e0d7c
 	ground_targets:  i32, // DAT_004e34a6
 	limit_warned:    bool, // DAT_004e3499
+	// Not the original's: one past the highest entity slot and group
+	// handed out this session. They never go down, not even at a level's
+	// start, since a freed slot keeps what its last entity left; those
+	// above have never been used and still hold their start values, so
+	// snapshots leave them out (ecs.odin).
+	slots_touched:   i32,
+	groups_touched:  i32,
 }
 
 group_alloc :: proc "contextless" (s: ^State) -> i32 {
@@ -416,6 +423,7 @@ group_alloc :: proc "contextless" (s: ^State) -> i32 {
 	for used, i in w.group_used {
 		if !used {
 			w.group_used[i] = true
+			w.groups_touched = max(w.groups_touched, i32(i) + 1)
 			group_at(s, i32(i))^ = Group{entities = list_init()}
 			return i32(i)
 		}

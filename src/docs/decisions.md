@@ -921,11 +921,22 @@ fails on any use of its internals or of its encoded query terms outside
   race on, and its query cache keys `or` groups ambiguously. `without` is
   done by subtracting archetype sets instead.
 
-The cost is size: every pool slot is written in every snapshot, 617 KB
-of it, where the first pass wrote only live rows. A snapshot takes about
-64 µs and a checksum about 170 µs (`mise run bench`), both well inside
-a frame. Writing only up to the highest slot used is the next step if
-the ring's memory or the time ever matters.
+Writing every slot of the fixed world made each snapshot 617 KB, where
+the first pass wrote only live rows: 64 µs to save and 168 µs to
+checksum, and two-thirds of every replayed frame's cost. So the
+pool and the groups, which are nearly all of it, are written only as far
+as they have been used. Both are handed out lowest first, and
+`Pool.slots_touched` and `groups_touched` mark one past the highest ever
+handed out this session. They never go down, not even at a level's
+start, because a freed slot keeps what its last entity left, which a
+stale `Entity_Ref` still reads. Everything above the marks has never
+been used and holds its start values, so the snapshot's header carries
+the marks and a read puts rows above them back to their start values.
+Mid-level on level 6 the world is now 48 KB: a snapshot takes 6 µs, a
+checksum 13 µs and a 10-frame rollback 80 µs. The fullest level of the
+benchmark's sessions (level 11, 170 slots) takes 109 KB, 12 µs, 30 µs and
+252 µs. The one rule this adds: nothing may write to a slot or group that
+has not been handed out, since the snapshot would not see it.
 
 ### D48 — New weapons live in their plugin, through four extension points
 

@@ -2,7 +2,8 @@ package simbench
 
 // Times the simulation alone, with nothing drawn: the four demo replays,
 // random-input co-op sessions on every level, and rollback's snapshot,
-// restore and checksum. Each figure is the best of REPS runs, so noise
+// restore, checksum and a whole 10-frame rollback, on a typical world and
+// on the fullest one those sessions reached. Each figure is the best of REPS runs, so noise
 // from the rest of the machine shows as little as it can. Needs the
 // extracted assets (mise run extract); `mise run bench` runs it.
 
@@ -61,6 +62,10 @@ main :: proc() {
 	STEPS :: 6000
 	sess_t: [REPS]time.Duration
 	sess_steps := 0
+	// The session whose pool had the most slots used: the largest
+	// snapshots any level makes.
+	fullest: ^sim.State
+	fullest_level := 0
 	for rep in 0 ..< REPS {
 		sess_steps = 0
 		t := time.now()
@@ -89,22 +94,39 @@ main :: proc() {
 				sim.session_step(s, input)
 				sess_steps += 1
 			}
+			if fullest == nil || slots_used(s) > slots_used(fullest) {
+				fullest, fullest_level = s, lv
+			}
 		}
 		sess_t[rep] = time.since(t)
 	}
 	d = best(sess_t[:])
 	fmt.printfln("sessions   %d steps  %.2f ms  %.2f us/step", sess_steps, time.duration_milliseconds(d), time.duration_microseconds(d) / f64(sess_steps))
 
-	// 3. Rollback: a snapshot every step, then a restore and a checksum.
+	// 3. Rollback, on a world partway through a level and on the fullest.
 	s := new(sim.State)
 	sim.init(s, sim.Session{seed = 7, level_id = defs.levels[5].id, game_type = .Co_Op}, &defs)
 	for _ in 0 ..< 2000 {
 		sim.session_step(s, {})
 	}
+	rollback_bench(s, "level 6, 2000 steps")
+	rollback_bench(fullest, fmt.tprintf("fullest (level %d)", fullest_level + 1))
+}
+
+slots_used :: proc(s: ^sim.State) -> i32 {
+	return sim.single(s, sim.Pool).slots_touched
+}
+
+// A snapshot every step, then a restore and a checksum; and a whole
+// rollback as net/session.odin makes one: a restore, then ten frames each
+// stepped and saved again.
+rollback_bench :: proc(s: ^sim.State, label: string) {
+	REPS :: 5
+	N :: 2000
+	ROLLBACKS :: 200
 	ring: sim.Snapshot_Ring
 	sim.snapshot_ring_init(&ring, 16)
-	N :: 2000
-	save_t, rest_t, sum_t: [REPS]time.Duration
+	save_t, rest_t, sum_t, back_t: [REPS]time.Duration
 	acc: u64
 	for rep in 0 ..< REPS {
 		t := time.now()
@@ -123,9 +145,19 @@ main :: proc() {
 			acc ~= sim.checksum(s)
 		}
 		sum_t[rep] = time.since(t)
+		t = time.now()
+		for _ in 0 ..< ROLLBACKS {
+			_ = sim.snapshot_restore(&ring, s, f)
+			for _ in 0 ..< 10 {
+				sim.session_step(s, {})
+				sim.snapshot_save(&ring, s)
+			}
+		}
+		back_t[rep] = time.since(t)
+		_ = sim.snapshot_restore(&ring, s, f)
 	}
-	fmt.printfln("world bytes %d", sim.ecs_written_size(s.ecs))
-	fmt.printfln("snapshot   %.2f us   restore %.2f us   checksum %.2f us  (%x)",
+	fmt.printfln("%s: %d pool slots used, world bytes %d", label, slots_used(s), sim.ecs_written_size(s.ecs))
+	fmt.printfln("  snapshot %.2f us   restore %.2f us   checksum %.2f us   10-frame rollback %.2f us  (%x)",
 		time.duration_microseconds(best(save_t[:])) / N, time.duration_microseconds(best(rest_t[:])) / N,
-		time.duration_microseconds(best(sum_t[:])) / N, acc & 0xff)
+		time.duration_microseconds(best(sum_t[:])) / N, time.duration_microseconds(best(back_t[:])) / ROLLBACKS, acc & 0xff)
 }
