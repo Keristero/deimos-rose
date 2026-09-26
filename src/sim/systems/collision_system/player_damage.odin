@@ -79,17 +79,11 @@ player_hit :: proc(s: ^sim.State, p: sim.Player, damage: f32, time: i32) {
 	if d.active_spawn_on_hit != sim.NONE &&
 	   sim.trunc_i32(s.defs.perm_floats[0xa2]) + p.hit_spawn_time <= time {
 		p.hit_spawn_time = time
-		req := sim.spawn_request(d.active_spawn_on_hit)
-		req.loc = p.loc
-		req.owner_player = p.number
-		lifecycle.eg_request_spawn(s, req)
+		lifecycle.spawn_at(s, d.active_spawn_on_hit, p.loc, p.number)
 	}
 	if !p.shield_warned && p.shields <= f32(d.shield_warning_percentage) {
 		if d.active_shield_warning_object != sim.NONE {
-			req := sim.spawn_request(d.active_shield_warning_object)
-			req.loc = p.loc
-			req.owner_player = p.number
-			lifecycle.eg_request_spawn(s, req)
+			lifecycle.spawn_at(s, d.active_shield_warning_object, p.loc, p.number)
 		}
 		p.shield_warned = true
 	}
@@ -100,10 +94,7 @@ player_destroy :: proc(s: ^sim.State, p: sim.Player, time: i32) {
 	dispose_players_children(s, p.number)
 	d := sim.player_def(s, p)
 	if d.death_spawn != sim.NONE {
-		req := sim.spawn_request(d.death_spawn)
-		req.loc = p.loc
-		req.owner_player = p.number
-		lifecycle.eg_request_spawn(s, req)
+		lifecycle.spawn_at(s, d.death_spawn, p.loc, p.number)
 	}
 	p.hit_time = 0
 	p.hit_spawn_time = 0
@@ -116,9 +107,7 @@ player_destroy :: proc(s: ^sim.State, p: sim.Player, time: i32) {
 		for money >= value {
 			money -= value
 			if unit != sim.NONE {
-				req := sim.spawn_request(unit)
-				req.loc = p.loc
-				lifecycle.eg_request_spawn(s, req)
+				lifecycle.spawn_at(s, unit, p.loc)
 			}
 		}
 	}
@@ -176,10 +165,7 @@ player_multiplier_spawn :: proc(s: ^sim.State, p: sim.Player) {
 		return
 	}
 	dispose_entity_number(s, p.multiplier_entity)
-	req := sim.spawn_request(unit)
-	req.loc = p.loc
-	req.owner_player = p.number
-	r := lifecycle.eg_request_spawn(s, req)
+	r := lifecycle.spawn_at(s, unit, p.loc, p.number)
 	p.multiplier_entity = r.number
 }
 

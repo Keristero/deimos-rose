@@ -133,9 +133,6 @@ beam_release :: proc(s: ^sim.State, h: ^sim.Weapon_Handler, wd: ^sim.Weapon, at:
 	f := f32(level) / f32(top)
 	beam_fire(s, h, wd, at, wd.beam.release_damage * f, max(wd.beam.release_width * min(f, 1), wd.beam.width), true, time)
 	if wd.powerup_air_release_spawn != sim.NONE {
-		req := sim.spawn_request(wd.powerup_air_release_spawn)
-		req.owner_player = h.player
-		req.loc = beam_origin(wd, at)
-		lifecycle.eg_request_spawn(s, req)
+		lifecycle.spawn_at(s, wd.powerup_air_release_spawn, beam_origin(wd, at), h.player)
 	}
 }

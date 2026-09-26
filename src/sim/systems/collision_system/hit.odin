@@ -152,10 +152,7 @@ player_add_life :: proc(s: ^sim.State, p: sim.Player, announce: bool) {
 	}
 	if p.lives < n {
 		if d.life_spawn != sim.NONE && announce {
-			req := sim.spawn_request(d.life_spawn)
-			req.loc = p.loc
-			req.owner_player = p.number
-			lifecycle.eg_request_spawn(s, req)
+			lifecycle.spawn_at(s, d.life_spawn, p.loc, p.number)
 		}
 		p.lives = n
 	}

@@ -119,10 +119,7 @@ player_appear :: proc(s: ^sim.State, p: sim.Player, time: i32) {
 	p.visibility_delta = s.defs.perm_floats[sim.PF_PLAYER_APPEARS_DELTA]
 	d := sim.player_def(s, p)
 	if d.entry_spawn != sim.NONE {
-		req := sim.spawn_request(d.entry_spawn)
-		req.loc = p.loc
-		req.owner_player = p.number
-		lifecycle.eg_request_spawn(s, req)
+		lifecycle.spawn_at(s, d.entry_spawn, p.loc, p.number)
 	}
 	// Priv_Multiplier_SpawnForCurrentMultiplier, at the end of Priv_Appear
 	// (0x4351d0). Only a death (G_Player::Destroy) or a new game resets the
@@ -192,10 +189,7 @@ defence_bonus_stage :: proc(s: ^sim.State, p: sim.Player, ps: ^sim.Player_Step) 
 	if sim.single(s, sim.Level_Info).ending && !p.defence_spawned {
 		p.defence_spawned = true
 		if d := sim.player_def(s, p); d.active_defence_bonus_object != sim.NONE {
-			req := sim.spawn_request(d.active_defence_bonus_object)
-			req.loc = p.loc
-			req.owner_player = p.number // this+0xc2
-			lifecycle.eg_request_spawn(s, req)
+			lifecycle.spawn_at(s, d.active_defence_bonus_object, p.loc, p.number) // this+0xc2
 		}
 		collision_system.player_score(s, p, sim.single(s, sim.Level_Info).number * sim.trunc_i32(s.defs.perm_floats[0xb8]), false)
 	}

@@ -366,10 +366,7 @@ spawn_ground :: proc(s: ^sim.State, h: sim.Weapons, at: sim.Vec) {
 		lifecycle.eg_request_spawn(s, req)
 	}
 	if wd.crosshair_spawn_on_activation != sim.NONE {
-		req := sim.spawn_request(wd.crosshair_spawn_on_activation)
-		req.owner_player = h.player
-		req.loc = h.crosshair.loc
-		lifecycle.eg_request_spawn(s, req)
+		lifecycle.spawn_at(s, wd.crosshair_spawn_on_activation, h.crosshair.loc, h.player)
 	}
 }
 
@@ -419,10 +416,7 @@ air_powerup_process :: proc(s: ^sim.State, h: sim.Weapons, time: i32, at: sim.Ve
 			h.air_held = 0
 			p.pace = 0
 			if wd.powerup_air_activation_spawn != sim.NONE {
-				req := sim.spawn_request(wd.powerup_air_activation_spawn)
-				req.owner_player = h.player
-				req.loc = at
-				r := lifecycle.eg_request_spawn(s, req)
+				r := lifecycle.spawn_at(s, wd.powerup_air_activation_spawn, at, h.player)
 				p.entity = r.number
 			}
 			p.state = 1
@@ -475,10 +469,7 @@ air_powerup_process :: proc(s: ^sim.State, h: sim.Weapons, time: i32, at: sim.Ve
 			if wd.aimed_release {
 				aimed_release_spawn(s, h, wd, at)
 			} else {
-				req := sim.spawn_request(wd.powerup_air_release_spawn)
-				req.owner_player = h.player
-				req.loc = at
-				lifecycle.eg_request_spawn(s, req)
+				lifecycle.spawn_at(s, wd.powerup_air_release_spawn, at, h.player)
 			}
 			p.release_time = time
 			p.level -= 1

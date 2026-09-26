@@ -39,12 +39,7 @@ level_start :: proc(s: ^sim.State) {
 	info.title = sim.NO_REF
 	notice := s.defs.perm_objects[sim.level_number_of(s) + 9]
 	if notice != sim.NONE {
-		req := sim.spawn_request(notice)
-		req.loc = {
-			s.defs.perm_floats[sim.PF_VISIBLE_GAME_WIDTH] / 2,
-			s.defs.perm_floats[sim.PF_VISIBLE_GAME_HEIGHT] / 2,
-		}
-		info.title = lifecycle.eg_request_spawn(s, req)
+		info.title = lifecycle.spawn_at(s, notice, lifecycle.screen_centre(s))
 	}
 }
 
@@ -123,12 +118,7 @@ game_over_system :: proc(s: ^sim.State, step: ^sim.Step) {
 	if !sim.single(s, sim.Game_Status).game_over_notice {
 		notice := s.defs.perm_objects[0x18]
 		if notice != sim.NONE {
-			req := sim.spawn_request(notice)
-			req.loc = {
-				s.defs.perm_floats[sim.PF_VISIBLE_GAME_WIDTH] / 2,
-				s.defs.perm_floats[sim.PF_VISIBLE_GAME_HEIGHT] / 2,
-			}
-			lifecycle.eg_request_spawn(s, req)
+			lifecycle.spawn_at(s, notice, lifecycle.screen_centre(s))
 		}
 		sim.single(s, sim.Game_Status).game_over_notice = true
 	}

@@ -65,12 +65,7 @@ level_end_begin :: proc(s: ^sim.State, time: i32) {
 	}
 	notice := s.defs.perm_objects[l.all_done ? 0x17 : 0x16]
 	if notice != sim.NONE {
-		req := sim.spawn_request(notice)
-		req.loc = {
-			s.defs.perm_floats[sim.PF_VISIBLE_GAME_WIDTH] / 2,
-			s.defs.perm_floats[sim.PF_VISIBLE_GAME_HEIGHT] / 2,
-		}
-		lifecycle.eg_request_spawn(s, req)
+		lifecycle.spawn_at(s, notice, lifecycle.screen_centre(s))
 	}
 	l.started = true
 	l.started_time = time

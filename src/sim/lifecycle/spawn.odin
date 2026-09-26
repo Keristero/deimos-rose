@@ -124,6 +124,20 @@ count_of_unit :: proc "contextless" (s: ^sim.State, id: sim.Res_ID) -> (n: i32) 
 	return
 }
 
+// Spawns `unit` at `loc` for player `owner_player` (-1 for none): the
+// request most spawns make, the template's otherwise.
+spawn_at :: proc(s: ^sim.State, unit: sim.Res_ID, loc: sim.Vec, owner_player: i32 = -1) -> sim.Entity_Ref {
+	req := sim.spawn_request(unit)
+	req.loc = loc
+	req.owner_player = owner_player
+	return eg_request_spawn(s, req)
+}
+
+// The middle of the visible play area, where the notices appear.
+screen_centre :: proc "contextless" (s: ^sim.State) -> sim.Vec {
+	return {s.defs.perm_floats[sim.PF_VISIBLE_GAME_WIDTH] / 2, s.defs.perm_floats[sim.PF_VISIBLE_GAME_HEIGHT] / 2}
+}
+
 // G_EG_RequestSpawn. Returns a reference to the first entity spawned.
 eg_request_spawn :: proc(s: ^sim.State, req: sim.Spawn_Request) -> sim.Entity_Ref {
 	w := sim.single(s, sim.Pool)
