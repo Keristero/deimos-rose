@@ -3,6 +3,15 @@ package tests
 import "core:strings"
 import "core:testing"
 
+import "dr:plugins/accent"
+import accent_view "dr:plugins/accent/view"
+import "dr:plugins/easy_mode"
+import "dr:plugins/extra_prefs"
+import "dr:plugins/fps_unlock"
+import "dr:plugins/loadout"
+import netplay_plugin "dr:plugins/netplay"
+import "dr:plugins/new_weapons"
+import "dr:plugins/passives"
 import "dr:prefs"
 import "dr:sim"
 
@@ -11,8 +20,8 @@ prefs_round_trip_through_the_save_format :: proc(t: ^testing.T) {
 	p := prefs.defaults()
 	p.sfx_volume, p.music_volume = 30, 0
 	p.fullscreen, p.classic = true, true
-	p.extras[.High_Refresh_Rate] = 1
-	p.extras[.Accent_Hue] = 42
+	p.mods += {int(fps_unlock.ID)}
+	p.settings[accent_view.HUE_P1] = 42
 	prefs.bind(&p, 1, .Fire_Air, 1, prefs.KEY_SPACE) // moves Space off player 1
 	text := prefs.format(&p, context.temp_allocator)
 	got := prefs.parse(text)
@@ -133,18 +142,6 @@ netplay_name_round_trips_and_is_cleaned :: proc(t: ^testing.T) {
 	n: prefs.Name
 	prefs.name_set(&n, "a\tbéc")
 	testing.expect_value(t, prefs.name_string(&n), "abc") // printable ASCII only
-	// Extras keep the key names the settings had before the table, so an
-	// older save still loads them.
-	testing.expect_value(t, prefs.parse("accent_hue=-30").extras[.Accent_Hue], 330)
-	testing.expect_value(t, prefs.parse("accent_hue=725").extras[.Accent_Hue], 5)
-	testing.expect_value(t, prefs.parse("high_refresh_rate=1").extras[.High_Refresh_Rate], 1)
-	testing.expect_value(t, prefs.parse("self_outline=7").extras[.Self_Outline], 1)
-	testing.expect_value(t, prefs.parse("").extras[.Accent_Hue], prefs.EXTRAS[.Accent_Hue].default)
-	// A save from before the P2 hue and the Accent Colours toggle keeps
-	// accents on, with player 2 in the hue of their original gold.
-	testing.expect_value(t, prefs.parse("accent_hue=30").extras[.Accent_Colours], 1)
-	testing.expect_value(t, prefs.parse("accent_hue=30").extras[.Accent_Hue_P2], 63)
-	testing.expect_value(t, prefs.parse("accent_colours=0").extras[.Accent_Colours], 0)
 	prefs.name_set(&n, "abcdefghijklmnopqrs uvwxyz")
 	testing.expect_value(t, prefs.name_string(&n), "abcdefghijklmnopqrs") // cut at 20, trailing space dropped
 	// Re-trimming a name in place, as netplay's name entry does on Enter,
@@ -152,4 +149,70 @@ netplay_name_round_trips_and_is_cleaned :: proc(t: ^testing.T) {
 	prefs.name_set(&n, " Kez ")
 	prefs.name_set(&n, prefs.name_string(&n))
 	testing.expect_value(t, prefs.name_string(&n), "Kez")
+}
+
+// Accent Color's settings keep the key names they had before there were
+// mods, so an older save still loads them.
+@(test)
+prefs_settings_keep_their_keys :: proc(t: ^testing.T) {
+	testing.expect_value(t, prefs.parse("accent_hue=-30").settings[accent_view.HUE_P1], 330)
+	testing.expect_value(t, prefs.parse("accent_hue=725").settings[accent_view.HUE_P1], 5)
+	testing.expect_value(t, prefs.parse("self_outline=7").settings[accent_view.SELF_OUTLINE], 1)
+	testing.expect_value(t, prefs.parse("").settings[accent_view.HUE_P1], prefs.registered_settings()[accent_view.HUE_P1].default)
+	// A save from before the P2 hue has player 2 in their original gold.
+	testing.expect_value(t, prefs.parse("accent_hue=30").settings[accent_view.HUE_P2], 63)
+}
+
+// Mods are saved by name, not by ID, and a name this build does not know
+// is dropped rather than failing the line.
+@(test)
+prefs_mods_round_trip_by_name :: proc(t: ^testing.T) {
+	p := prefs.defaults()
+	p.mods = sim.mods_with_deps({int(easy_mode.ID)})
+	text := prefs.format(&p, context.temp_allocator)
+	line := text[strings.index(text, "mods="):]
+	line = line[:strings.index_byte(line, '\n')]
+	for name in ([]string{"easy_mode", "passives", "extra_prefs"}) {
+		testing.expectf(t, strings.contains(line, name), "%q is saved in %q", name, line)
+	}
+	testing.expect_value(t, prefs.parse(text).mods, p.mods)
+	testing.expect_value(t, prefs.parse("mods=easy_mode,no_such_mod").mods, sim.Mods{int(easy_mode.ID)})
+	testing.expect_value(t, prefs.parse("mods=").mods, sim.Mods{})
+}
+
+// A new player starts with Accent Color, New Weapons and Netplay on, and
+// what those need.
+@(test)
+prefs_default_mods :: proc(t: ^testing.T) {
+	want := sim.mods_with_deps({int(accent.ID), int(new_weapons.ID), int(netplay_plugin.ID)})
+	testing.expect_value(t, prefs.defaults().mods, want)
+	testing.expect_value(t, prefs.parse("").mods, want)
+}
+
+// A save from before the Mods page switched these features with a line
+// each; they carry over into mods, until a mods line supersedes them.
+@(test)
+prefs_legacy_extras_become_mods :: proc(t: ^testing.T) {
+	defaults := prefs.defaults().mods
+	testing.expect_value(t, prefs.parse("high_refresh_rate=1").mods, defaults + {int(fps_unlock.ID)})
+	testing.expect_value(t, prefs.parse("accent_colours=0").mods, defaults - {int(accent.ID)})
+	testing.expect_value(t, prefs.parse("easy_mode=1").mods, sim.mods_with_deps(defaults + {int(easy_mode.ID)}))
+	// Without New Weapons, the loadout it brought stays on: it is a mod of
+	// its own now.
+	testing.expect_value(t, prefs.parse("new_weapons=0").mods, defaults - {int(new_weapons.ID)})
+	testing.expect_value(t, prefs.parse("mods=accent\neasy_mode=1").mods, sim.Mods{int(accent.ID)})
+}
+
+// Turning a mod on turns on what it needs; turning one off turns off what
+// needs it.
+@(test)
+prefs_mod_toggle_follows_dependencies :: proc(t: ^testing.T) {
+	mods: sim.Mods
+	prefs.mod_toggle(&mods, easy_mode.ID)
+	testing.expect_value(t, mods, sim.Mods{int(easy_mode.ID), int(passives.ID), int(extra_prefs.ID)})
+	prefs.mod_toggle(&mods, extra_prefs.ID)
+	testing.expect_value(t, mods, sim.Mods{})
+	prefs.mod_toggle(&mods, new_weapons.ID)
+	prefs.mod_toggle(&mods, loadout.ID)
+	testing.expect_value(t, mods, sim.Mods{int(extra_prefs.ID)})
 }

@@ -40,6 +40,9 @@ import rl "vendor:raylib"
 
 import "dr:data"
 import "dr:net"
+import accent_view "dr:plugins/accent/view"
+import "dr:plugins/easy_mode"
+import "dr:plugins/new_weapons"
 import "dr:prefs"
 import "dr:sim"
 
@@ -320,7 +323,7 @@ netplay_begin_name_entry :: proc(fl: ^Flow, nl: ^Netplay, role: Netplay_Role) {
 	nl.phase = .Enter_Name
 	nl.name_role = role
 	nl.local_name = fl.prefs.saved.netplay_name
-	nl.local_hue = extra_value(fl.prefs, .Accent_Hue)
+	nl.local_hue = setting_value(fl.prefs, accent_view.HUE_P1)
 	nl.error = ""
 }
 
@@ -400,7 +403,7 @@ netplay_start_hosting :: proc(nl: ^Netplay) {
 // without a name.
 netplay_lobby_start_from_flag :: proc(nl: ^Netplay, saved: ^prefs.Prefs, mode: string) {
 	nl.local_name = saved.netplay_name
-	nl.local_hue = saved.extras[.Accent_Hue]
+	nl.local_hue = saved.settings[accent_view.HUE_P1]
 	if nl.local_name.len == 0 {
 		prefs.name_set(&nl.local_name, high_scores_default_last_name(mode == "host" ? 0 : 1))
 	}
@@ -574,11 +577,11 @@ netplay_update_connected :: proc(fl: ^Flow, nl: ^Netplay, r: ^Renderer) {
 		}
 		text_button_relabel(r, &nl.easy_btn, flag_label(nl.flags, net.START_EASY), EASY_X, EASY_Y)
 		if text_button_update(r, &nl.easy_btn, mouse, dt) {
-			extra_set(fl.prefs, .Easy_Mode, nl.flags & net.START_EASY != 0 ? 0 : 1)
+			prefs_mod_toggle(fl.prefs, easy_mode.ID)
 		}
 		text_button_relabel(r, &nl.weapons_btn, flag_label(nl.flags, net.START_LOADOUT), WEAPONS_X, EASY_Y)
 		if text_button_update(r, &nl.weapons_btn, mouse, dt) {
-			extra_set(fl.prefs, .New_Weapons, nl.flags & net.START_LOADOUT != 0 ? 0 : 1)
+			prefs_mod_toggle(fl.prefs, new_weapons.ID)
 		}
 	}
 	if nl.role == .Host {
@@ -605,8 +608,8 @@ netplay_update_connected :: proc(fl: ^Flow, nl: ^Netplay, r: ^Renderer) {
 		if nl.hue_dirty {
 			nl.hue_dirty = false
 			net.send_hello(&nl.rc, &nl.sock, nl.role == .Host ? 0 : 1, u16(nl.local_hue), prefs.name_string(&nl.local_name))
-			if extra_value(fl.prefs, .Accent_Hue) != nl.local_hue {
-				fl.prefs.saved.extras[.Accent_Hue] = nl.local_hue
+			if setting_value(fl.prefs, accent_view.HUE_P1) != nl.local_hue {
+				fl.prefs.saved.settings[accent_view.HUE_P1] = nl.local_hue
 				prefs_state_save(fl.prefs)
 			}
 		} else if nl.ready_unsent {

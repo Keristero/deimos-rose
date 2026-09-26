@@ -29,6 +29,7 @@ register :: proc "contextless" () {
 		description = "New air weapons to unlock, stage by stage",
 		deps        = DEPS,
 		session     = true,
+		default_on  = true,
 	})
 	sim.weapon_filter_register({plugin = ID, allows = allows})
 }

@@ -2,8 +2,9 @@ package game
 
 // The Preferences screen, reached from the main menu's Preferences button:
 // per-player key bindings, sound and music volume, fullscreen, the
-// diagnostics overlay and classic mode, plus the Extras page
-// (game/extras.odin) for everything the original did not have. New content -- the original's
+// diagnostics overlay and classic mode, plus the Mods page
+// (game/menu_mods.odin) and the Extras page (game/extras.odin) for
+// everything the original did not have. New content -- the original's
 // Preferences was a native Win32 dialog with no art to port -- so it is
 // built from Text_Buttons like the netplay lobby, not traced plates.
 //
@@ -54,7 +55,7 @@ Option :: enum {
 	Display,
 	Diagnostics,
 	Classic,
-	Extras,
+	Mods, // the Mods page, and beside it the Extras page
 }
 
 @(private = "file")
@@ -64,13 +65,20 @@ OPTION_NAMES := [Option]string {
 	.Display     = "DISPLAY",
 	.Diagnostics = "DIAGNOSTICS",
 	.Classic     = "CLASSIC MODE",
-	.Extras      = "EXTRAS",
+	.Mods        = "NEW CONTENT",
+}
+
+Preferences_Page :: enum {
+	Main,
+	Mods,
+	Extras,
 }
 
 Preferences :: struct {
 	player: int, // whose bindings are shown, 0-based
-	extras_open: bool, // showing the Extras page instead
-	extras:      Extras_Page,
+	page:   Preferences_Page,
+	mods:   Mods_Page,
+	extras: Extras_Page,
 
 	// Waiting for a key for this binding slot, after its button was clicked.
 	capturing:      bool,
@@ -81,7 +89,8 @@ Preferences :: struct {
 	keys:                     [prefs.Action][prefs.BINDING_SLOTS]Text_Button,
 	reset:                    Text_Button,
 	volume_down, volume_up:   [Option]Text_Button, // only .Sound and .Music use these
-	toggle:                   [Option]Text_Button, // .Display/.Diagnostics/.Classic, and the volume readouts
+	toggle:                   [Option]Text_Button, // .Display/.Diagnostics/.Classic/.Mods, and the volume readouts
+	open_extras:              Text_Button,         // beside .Mods
 	back:                     Text_Button,
 }
 
@@ -108,8 +117,8 @@ option_value :: proc(ps: ^Prefs_State, o: Option) -> string {
 		return on_off(prefs_diagnostics(ps))
 	case .Classic:
 		return on_off(prefs_classic(ps))
-	case .Extras:
-		return "OPEN"
+	case .Mods:
+		return "MODS"
 	}
 	return ""
 }
@@ -134,6 +143,12 @@ preferences_layout :: proc(r: ^Renderer, p: ^Preferences, ps: ^Prefs_State) {
 	text_button_relabel(r, &p.reset, fmt.tprintf("RESET PLAYER %d KEYS", p.player + 1), SCREEN_W / 2, PREFS_RESET_Y)
 	for o in Option {
 		y := option_y(o)
+		if o == .Mods {
+			// Two pages on one row, where the key slots' columns are.
+			text_button_relabel(r, &p.toggle[o], option_value(ps, o), slot_x[0], y)
+			text_button_relabel(r, &p.open_extras, "EXTRAS", slot_x[1], y)
+			continue
+		}
 		text_button_relabel(r, &p.toggle[o], option_value(ps, o), PREFS_VALUE_X, y)
 		if o == .Sound || o == .Music {
 			text_button_relabel(r, &p.volume_down[o], "<", PREFS_VALUE_X - PREFS_ARROW_DX, y)
@@ -146,9 +161,16 @@ preferences_layout :: proc(r: ^Renderer, p: ^Preferences, ps: ^Prefs_State) {
 // Called once per render frame from flow_handle_input's .Preferences case.
 preferences_update :: proc(fl: ^Flow, r: ^Renderer, p: ^Preferences) {
 	ps := fl.prefs
-	if p.extras_open {
+	switch p.page {
+	case .Main:
+	case .Mods:
+		if mods_page_update(r, &p.mods, ps) {
+			p.page = .Main
+		}
+		return
+	case .Extras:
 		if extras_page_update(r, &p.extras, ps) {
-			p.extras_open = false
+			p.page = .Main
 		}
 		return
 	}
@@ -203,9 +225,12 @@ preferences_update :: proc(fl: ^Flow, r: ^Renderer, p: ^Preferences) {
 			if text_button_update(r, &p.toggle[o], mouse, dt) {
 				prefs_set_fullscreen(ps, !prefs_fullscreen(ps))
 			}
-		case .Extras:
+		case .Mods:
 			if text_button_update(r, &p.toggle[o], mouse, dt) {
-				p.extras_open = true
+				p.page = .Mods
+			}
+			if extras_available(ps) && text_button_update(r, &p.open_extras, mouse, dt) {
+				p.page = .Extras
 			}
 		case .Diagnostics:
 			if text_button_update(r, &p.toggle[o], mouse, dt) {
@@ -249,7 +274,12 @@ preferences_capture :: proc(p: ^Preferences, ps: ^Prefs_State) {
 }
 
 preferences_draw :: proc(r: ^Renderer, p: ^Preferences, ps: ^Prefs_State) {
-	if p.extras_open {
+	switch p.page {
+	case .Main:
+	case .Mods:
+		mods_page_draw(r, &p.mods, ps)
+		return
+	case .Extras:
 		extras_page_draw(r, &p.extras, ps)
 		return
 	}
@@ -277,6 +307,9 @@ preferences_draw :: proc(r: ^Renderer, p: ^Preferences, ps: ^Prefs_State) {
 	for o in Option {
 		menu_draw_text(r, OPTION_NAMES[o], PREFS_LABEL_X, i32(option_y(o)) + 5, white)
 		text_button_draw(r, &p.toggle[o])
+		if o == .Mods {
+			text_button_draw(r, &p.open_extras, extras_available(ps))
+		}
 		if o == .Sound || o == .Music {
 			text_button_draw(r, &p.volume_down[o])
 			text_button_draw(r, &p.volume_up[o])

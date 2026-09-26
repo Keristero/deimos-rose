@@ -22,5 +22,6 @@ register :: proc "contextless" () {
 		label       = "ACCENT COLOR",
 		description = "Each player's own colour on their ship and shots",
 		deps        = DEPS,
+		default_on  = true,
 	})
 }

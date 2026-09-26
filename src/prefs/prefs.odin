@@ -86,57 +86,12 @@ Prefs :: struct {
 	// The name last entered in the netplay lobby, offered again next time
 	// and recorded against this player's high scores after a netplay game.
 	netplay_name: Name,
-	// Enhancements beyond the original, each off in classic mode
-	// (game/extras.odin). One value per entry of EXTRAS.
-	extras: [Extra]int,
-}
-
-// Extras: every setting for a feature the original did not have. Adding
-// one means an entry here and in EXTRAS, and using it through game/
-// extras.odin's extra_on/extra_value -- saving, loading and its row on the
-// Preferences Extras page all come from this table. Classic mode switches
-// every one of them off, so classic stays the original game.
-Extra :: enum {
-	High_Refresh_Rate, // draw at the monitor's rate, interpolating between the fixed 30 Hz steps
-	Accent_Colours,    // the two hues below, on or off together
-	Accent_Hue,        // player 1's colour, and yours in netplay: ship trim, crosshair and air-to-ground shots
-	Accent_Hue_P2,     // player 2's colour in a local game
-	Self_Outline,      // an outline in your accent round your own ship
-	Easy_Mode,         // a passive upgrade to choose after every level (sim/passives.odin); also on level select and the lobby
-	New_Weapons,       // the new weapons, and a loadout screen at the start of each stage (sim/loadout.odin); also in the lobby
-}
-
-Extra_Kind :: enum {
-	Toggle, // 0 or 1
-	Hue,    // degrees, 0..359
-}
-
-Extra_Info :: struct {
-	key:     string, // in the save file; high_refresh_rate and accent_hue predate the table
-	label:   string,
-	kind:    Extra_Kind,
-	default: int,
-}
-
-EXTRAS := [Extra]Extra_Info {
-	.High_Refresh_Rate = {"high_refresh_rate", "HIGH REFRESH RATE", .Toggle, 0},
-	.Accent_Colours    = {"accent_colours", "ACCENT COLOURS", .Toggle, 1},
-	.Accent_Hue        = {"accent_hue", "P1 ACCENT HUE", .Hue, 190}, // the cyan of the original crosshair
-	.Accent_Hue_P2     = {"accent_hue_p2", "P2 ACCENT HUE", .Hue, 63}, // player 2's own gold (game/render.odin TRIM_SATURATION)
-	.Self_Outline      = {"self_outline", "SELF OUTLINE", .Toggle, 0},
-	.Easy_Mode         = {"easy_mode", "EASY MODE", .Toggle, 0},
-	.New_Weapons       = {"new_weapons", "NEW WEAPONS", .Toggle, 1},
-}
-
-// Clamps or wraps a value to what its kind allows.
-extra_clean :: proc(e: Extra, v: int) -> int {
-	switch EXTRAS[e].kind {
-	case .Toggle:
-		return v != 0 ? 1 : 0
-	case .Hue:
-		return hue_wrap(v)
-	}
-	return v
+	// The mods this player has on (sim/plugins.odin), all off in classic
+	// mode. Saved by name: a plugin's ID is only its place in this build's
+	// registry.
+	mods:     sim.Mods,
+	// The mods' settings (settings.odin), by Setting_ID.
+	settings: [MAX_SETTINGS]int,
 }
 
 // A player's name, the same 20 printable-ASCII characters the high score
@@ -173,15 +128,6 @@ name_set :: proc(n: ^Name, text: string) {
 	n^ = out
 }
 
-extra_by_key :: proc(key: string) -> (Extra, bool) {
-	for info, e in EXTRAS {
-		if info.key == key {
-			return e, true
-		}
-	}
-	return {}, false
-}
-
 // Any whole number of degrees, brought into 0..359.
 hue_wrap :: proc(h: int) -> int {
 	return ((h % 360) + 360) % 360
@@ -198,8 +144,14 @@ defaults :: proc() -> Prefs {
 		sfx_volume   = 100,
 		music_volume = 100,
 	}
-	for info, e in EXTRAS {
-		p.extras[e] = info.default
+	for pl, id in sim.registered_plugins() {
+		if pl.default_on {
+			p.mods += {id}
+		}
+	}
+	p.mods = sim.mods_with_deps(p.mods)
+	for s, id in registered_settings() {
+		p.settings[id] = s.default
 	}
 	p.bindings[0] = {
 		.Up          = {KEY_UP, KEY_W},
@@ -273,8 +225,17 @@ format :: proc(p: ^Prefs, allocator := context.allocator) -> string {
 	fmt.sbprintf(&sb, "diagnostics=%d\n", p.diagnostics ? 1 : 0)
 	fmt.sbprintf(&sb, "classic=%d\n", p.classic ? 1 : 0)
 	fmt.sbprintf(&sb, "netplay_name=%s\n", name_string(&p.netplay_name))
-	for info, e in EXTRAS {
-		fmt.sbprintf(&sb, "%s=%d\n", info.key, p.extras[e])
+	fmt.sbprint(&sb, "mods=")
+	sep := ""
+	for pl, id in sim.registered_plugins() {
+		if id in p.mods {
+			fmt.sbprintf(&sb, "%s%s", sep, pl.name)
+			sep = ","
+		}
+	}
+	fmt.sbprint(&sb, "\n")
+	for s, id in registered_settings() {
+		fmt.sbprintf(&sb, "%s=%d\n", s.key, p.settings[id])
 	}
 	for b, player in p.bindings {
 		for keys, button in b {
@@ -295,6 +256,8 @@ format :: proc(p: ^Prefs, allocator := context.allocator) -> string {
 parse :: proc(text: string) -> Prefs {
 	p := defaults()
 	from_file: [sim.MAX_PLAYERS]bit_set[Action]
+	have_mods := false
+	legacy_on, legacy_off: sim.Mods
 	rest := text
 	for line in strings.split_lines_iterator(&rest) {
 		eq := strings.index_byte(line, '=')
@@ -316,10 +279,29 @@ parse :: proc(text: string) -> Prefs {
 			parse_flag(value, &p.classic)
 		case "netplay_name":
 			name_set(&p.netplay_name, value)
+		case "mods":
+			have_mods = true
+			p.mods = {}
+			names := value
+			for mod in strings.split_iterator(&names, ",") {
+				if id, ok := sim.plugin_find(strings.trim_space(mod)); ok {
+					p.mods += {int(id)}
+				}
+			}
 		case:
-			if e, ok := extra_by_key(name); ok {
+			if id, ok := setting_by_key(name); ok {
 				if v, vok := strconv.parse_int(value); vok {
-					p.extras[e] = extra_clean(e, v)
+					p.settings[id] = setting_clean(id, v)
+				}
+				continue
+			}
+			if mod, ok := legacy_mod(name); ok {
+				if v, vok := strconv.parse_int(value); vok {
+					if v != 0 {
+						legacy_on += {int(mod)}
+					} else {
+						legacy_off += {int(mod)}
+					}
 				}
 				continue
 			}
@@ -328,8 +310,31 @@ parse :: proc(text: string) -> Prefs {
 			}
 		}
 	}
+	if !have_mods {
+		p.mods = sim.mods_with_deps(sim.mods_resolve(p.mods - legacy_off) + legacy_on)
+	}
 	drop_colliding_defaults(&p, from_file)
 	return p
+}
+
+// A save from before the Mods page switched the features that are now
+// mods with a line each; a "mods=" line, once written, supersedes them.
+@(private = "file", rodata)
+LEGACY_MODS := [][2]string {
+	{"high_refresh_rate", "fps_unlock"},
+	{"accent_colours", "accent"},
+	{"easy_mode", "easy_mode"},
+	{"new_weapons", "new_weapons"},
+}
+
+@(private = "file")
+legacy_mod :: proc(key: string) -> (sim.Plugin_ID, bool) {
+	for m in LEGACY_MODS {
+		if m[0] == key {
+			return sim.plugin_find(m[1])
+		}
+	}
+	return sim.CORE, false
 }
 
 @(private = "file")

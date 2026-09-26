@@ -120,7 +120,7 @@ run = [
   "odin check net  $DR_COLL -vet -strict-style -no-entry-point",
   "odin check prefs $DR_COLL -vet -strict-style -no-entry-point",
   "odin check oracle $DR_COLL -vet -strict-style -no-entry-point",
-  "for p in plugins/*/; do odin check $p $DR_COLL -vet -strict-style -no-entry-point || exit 1; done",
+  "for p in plugins/*/ plugins/*/view/; do [ -d $p ] || continue; odin check $p $DR_COLL -vet -strict-style -no-entry-point || exit 1; done",
   "odin check tools/extract $DR_COLL -vet -strict-style",
   "odin check tools/verify  $DR_COLL -vet -strict-style",
   "odin check tools/records $DR_COLL -vet -strict-style",
@@ -222,7 +222,7 @@ depends = ["build"]
 run = "bash tools/oracle/menu_compare.sh"
 
 [tasks."menu-shot"]
-description = "Render one of our own menu screens headlessly, no comparison (MENU=main [OUT=path]; MENU=restarted checks a new game starts with none of the last one's particles; DR_SHOT_HUE=63 sets the accent on preferences_extras; MENU=reward, reward_2p and level_select_easy show easy mode; MENU=loadout, loadout_2p, loadout_placed, chaingun, chaingun_charge, discharge and discharge_charge show New Weapons) -- for a quick look, or debug MENU cases from run_menu_shot"
+description = "Render one of our own menu screens headlessly, no comparison (MENU=main [OUT=path]; MENU=restarted checks a new game starts with none of the last one's particles; DR_SHOT_HUE=63 sets the accent on preferences_extras; MENU=preferences_mods shows the Mods page; MENU=reward, reward_2p and level_select_easy show easy mode; MENU=loadout, loadout_2p, loadout_placed, chaingun, chaingun_charge, discharge and discharge_charge show New Weapons) -- for a quick look, or debug MENU cases from run_menu_shot"
 depends = ["build"]
 # Wrapped in xvfb-run/DISPLAY= exactly like the shots and menu-shots:compare
 # tasks -- running $DR_BUILD/deimos directly (without this) opens a real
@@ -322,7 +322,7 @@ depends = ["build"]
 run = '''
 #!/usr/bin/env bash
 set -euo pipefail
-for MENU in preferences_extras netplay_lobby netplay_lobby_name netplay_lobby_join netplay_lobby_connecting netplay_lobby_connected \
+for MENU in preferences_extras preferences_mods netplay_lobby netplay_lobby_name netplay_lobby_join netplay_lobby_connecting netplay_lobby_connected \
             netplay_lobby_connected_host netplay_lobby_connected_host_locked diagnostics; do
   MENU="$MENU" mise run menu-shot
 done

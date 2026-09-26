@@ -28,6 +28,7 @@ import rl "vendor:raylib"
 import "dr:data"
 import "dr:game"
 import "dr:plugins/loadout"
+import "dr:plugins/new_weapons"
 import "dr:prefs"
 import "dr:sim"
 
@@ -91,7 +92,7 @@ clip :: proc(r: ^game.Renderer, defs: ^sim.Defs, state: ^sim.State, root, id, ou
 	// mode with New Weapons on.
 	ps := game.Prefs_State{saved = prefs.defaults()}
 	ps.saved.classic, r.classic = false, false
-	game.extra_set(&ps, .New_Weapons, 1)
+	game.prefs_mod_set(&ps, new_weapons.ID, true)
 	fl: game.Flow
 	game.flow_init(&fl, root, defs, state, r, &ps)
 	defer game.flow_destroy(&fl)

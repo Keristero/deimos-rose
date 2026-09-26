@@ -80,6 +80,7 @@ register :: proc "contextless" () {
 		label       = "NETPLAY",
 		description = "Two players over the network, with rollback",
 		session     = true,
+		default_on  = true,
 	})
 	sim.component_register(Pause, 1)
 	sim.system_register({name = "netplay_setup", plugin = ID, kind = .Setup, run = setup_system})

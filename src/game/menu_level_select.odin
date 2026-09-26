@@ -24,6 +24,7 @@ import "core:fmt"
 import rl "vendor:raylib"
 
 import "dr:data"
+import "dr:plugins/easy_mode"
 import "dr:sim"
 
 LESE :: "lese"
@@ -90,7 +91,7 @@ Level_Select :: struct {
 
 @(private = "file")
 level_select_easy_layout :: proc(fl: ^Flow, r: ^Renderer, ls: ^Level_Select) {
-	label := extra_on(fl.prefs, .Easy_Mode) ? "EASY MODE: ON" : "EASY MODE: OFF"
+	label := prefs_mod_on(fl.prefs, easy_mode.ID) ? "EASY MODE: ON" : "EASY MODE: OFF"
 	text_button_relabel(r, &ls.easy, label, SCREEN_W / 2, LS_EASY_Y)
 }
 
@@ -129,7 +130,7 @@ level_select_update :: proc(fl: ^Flow, r: ^Renderer, ls: ^Level_Select) {
 	if !r.classic {
 		level_select_easy_layout(fl, r, ls)
 		if text_button_update(r, &ls.easy, mouse, dt) {
-			extra_set(fl.prefs, .Easy_Mode, extra_on(fl.prefs, .Easy_Mode) ? 0 : 1)
+			prefs_mod_toggle(fl.prefs, easy_mode.ID)
 		}
 	}
 	for i in 0 ..< 3 {

@@ -31,6 +31,8 @@ Plugin :: struct {
 	// Session, the same on every peer; any other is each player's own
 	// (how the game looks or is set up) and never reaches the simulation.
 	session:     bool,
+	// On for a player who has never visited the Mods page.
+	default_on:  bool,
 }
 
 @(private = "file")

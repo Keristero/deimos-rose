@@ -20,6 +20,7 @@ import "dr:plugins/easy_mode"
 import netplay_plugin "dr:plugins/netplay"
 import "dr:plugins/new_weapons"
 import "dr:plugins/accent"
+import accent_view "dr:plugins/accent/view"
 import "dr:sim"
 
 Flow_Mode :: enum {
@@ -589,10 +590,10 @@ flow_random_seed :: proc() -> u32 {
 // classic mode, like every extra. New Weapons also needs the new content
 // to be there (assets/extra).
 flow_session_flags :: proc(fl: ^Flow) -> (flags: u8) {
-	if extra_on(fl.prefs, .Easy_Mode) {
+	if prefs_mod_on(fl.prefs, easy_mode.ID) {
 		flags |= net.START_EASY
 	}
-	if extra_on(fl.prefs, .New_Weapons) && fl.extra_content {
+	if prefs_mod_on(fl.prefs, new_weapons.ID) && fl.extra_content {
 		flags |= net.START_LOADOUT
 	}
 	return
@@ -757,9 +758,11 @@ flow_set_accents :: proc(fl: ^Flow, r: ^Renderer) {
 	if fl.mode == .Attract || prefs_classic(fl.prefs) {
 		return
 	}
-	r.mods += {int(accent.ID)}
-	colours := extra_on(fl.prefs, .Accent_Colours)
-	outline := extra_on(fl.prefs, .Self_Outline)
+	colours := prefs_mod_on(fl.prefs, accent.ID)
+	if colours {
+		r.mods += {int(accent.ID)}
+	}
+	outline := setting_on(fl.prefs, accent_view.SELF_OUTLINE)
 	if fl.session_named {
 		local := fl.netplay_active ? fl.netplay.rs.local_player : -1
 		for i in 0 ..< sim.MAX_PLAYERS {
@@ -772,6 +775,6 @@ flow_set_accents :: proc(fl: ^Flow, r: ^Renderer) {
 		}
 		return
 	}
-	r.accents[0] = {on = colours, hue = f32(extra_value(fl.prefs, .Accent_Hue)), outline = outline}
-	r.accents[1] = {on = colours, hue = f32(extra_value(fl.prefs, .Accent_Hue_P2))}
+	r.accents[0] = {on = colours, hue = f32(setting_value(fl.prefs, accent_view.HUE_P1)), outline = outline}
+	r.accents[1] = {on = colours, hue = f32(setting_value(fl.prefs, accent_view.HUE_P2))}
 }

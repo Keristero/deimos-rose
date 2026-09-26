@@ -443,7 +443,7 @@ register :: proc "contextless" () {
 	ID = sim.plugin_register({
 		name        = "loadout",
 		label       = "LOADOUT",
-		description = "Keep every air weapon unlocked, three at hand, chosen at the start of each stage",
+		description = "Three air weapons at hand, chosen at the start of each stage",
 		deps        = DEPS,
 		session     = true,
 	})

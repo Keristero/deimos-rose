@@ -18,10 +18,12 @@ package game
 // game/menu_high_scores.odin), Preferences this port's own Preferences screen
 // (game/menu_preferences.odin). Netplay (game/netplay.odin), which once sat
 // behind Preferences, is a separate text item below the original six --
-// hidden under classic mode, since the original has no such entry (D30).
+// hidden without the Netplay mod, and so under classic mode, since the
+// original has no such entry (D30).
 
 import rl "vendor:raylib"
 
+import netplay_plugin "dr:plugins/netplay"
 import "dr:sim"
 
 GALO :: sim.Res_ID{'g', 'a', 'l', 'o'}
@@ -77,7 +79,8 @@ Main_Menu :: struct {
 	buttons:      [6]Menu_Button,
 	website:      Text_Link,
 	copyright:    Text_Link,
-	netplay:      Text_Button, // new content: not drawn or clickable under classic mode
+	netplay:      Text_Button, // new content: not drawn or clickable without the Netplay mod (off in classic mode)
+	netplay_on:   bool,
 	// "Visit the Deimos Rising Website Now?" (stli/inte.json #20) -- the
 	// original gates U_App_LaunchURL behind a confirm dialog; reproduced as
 	// a minimal text prompt rather than a native dialog.
@@ -119,7 +122,8 @@ main_menu_update :: proc(fl: ^Flow, r: ^Renderer, m: ^Main_Menu) {
 			main_menu_activate(fl, r, slot)
 		}
 	}
-	if !r.classic && text_button_update(r, &m.netplay, mouse, dt) {
+	m.netplay_on = prefs_mod_on(fl.prefs, netplay_plugin.ID)
+	if m.netplay_on && text_button_update(r, &m.netplay, mouse, dt) {
 		fl.mode = .Netplay_Lobby
 		netplay_lobby_init(&fl.netplay, r)
 	}
@@ -177,7 +181,7 @@ main_menu_draw :: proc(r: ^Renderer, m: ^Main_Menu) {
 	}
 	text_link_draw(r, &m.website)
 	text_link_draw(r, &m.copyright)
-	if !r.classic && m.netplay.rect.width > 0 {
+	if m.netplay_on && m.netplay.rect.width > 0 {
 		text_button_draw(r, &m.netplay)
 	}
 	// New content, but shown in classic mode too: it is what a bug report

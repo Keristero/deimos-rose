@@ -9,8 +9,11 @@ import rl "vendor:raylib"
 
 import "dr:data"
 import "dr:prefs"
+import accent_view "dr:plugins/accent/view"
 import "dr:plugins/easy_mode"
+import "dr:plugins/fps_unlock"
 import "dr:plugins/loadout"
+import "dr:plugins/new_weapons"
 import "dr:plugins/passives"
 import "dr:sim"
 
@@ -218,7 +221,7 @@ main :: proc() {
 		if prefs_fullscreen(&ps) != rl.IsWindowState({.BORDERLESS_WINDOWED_MODE}) {
 			rl.ToggleBorderlessWindowed()
 		}
-		high := extra_on(&ps, .High_Refresh_Rate)
+		high := prefs_mod_on(&ps, fps_unlock.ID)
 		if applied, ok := fps_high.?; !ok || applied != high {
 			fps := i32(step_hz)
 			if high {
@@ -324,7 +327,7 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 	case "level_select_easy":
 		// Outside classic mode, with the Easy Mode toggle on.
 		ps.saved.classic, ps.launch.classic, r.classic = false, false, false
-		ps.saved.extras[.Easy_Mode] = 1
+		ps.saved.mods = sim.mods_with_deps(ps.saved.mods + {int(easy_mode.ID)})
 		flow.pending_game_type = .Single
 		flow.mode = .Level_Select
 		level_select_init(&flow.level_select)
@@ -336,7 +339,7 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		// reward_2p both players are on the first option, player 1 locked,
 		// so the borders nest.
 		ps.saved.classic, ps.launch.classic, r.classic = false, false, false
-		ps.saved.extras[.Easy_Mode] = 1
+		ps.saved.mods = sim.mods_with_deps(ps.saved.mods + {int(easy_mode.ID)})
 		two := name == "reward_2p"
 		flow_start_session(&flow, 0x1234_5678, two ? .Co_Op : .Single, 0)
 		for _ in 0 ..< 60 {
@@ -364,7 +367,7 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		// - loadout_placed: stage 2, with the Bacta Gun taken away first, so
 		//   it comes back as new, straight into the free slot.
 		ps.saved.classic, ps.launch.classic, r.classic = false, false, false
-		extra_set(ps, .New_Weapons, 1)
+		prefs_mod_set(ps, new_weapons.ID, true)
 		two := name == "loadout_2p"
 		placed := name == "loadout_placed"
 		flow_start_session(&flow, 0x1234_5678, two ? .Co_Op : .Single, placed ? 1 : 6)
@@ -398,7 +401,7 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		// weapon and the loadout screen is skipped. New content: a visual
 		// check.
 		ps.saved.classic, ps.launch.classic, r.classic = false, false, false
-		extra_set(ps, .New_Weapons, 1)
+		prefs_mod_set(ps, new_weapons.ID, true)
 		beam := strings.has_prefix(name, "discharge")
 		flow_start_session(&flow, 0x1234_5678, .Single, beam ? 9 : 6)
 		loadout.loadout_of(state).shown = sim.single(state, sim.Level_Info).played
@@ -528,13 +531,17 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		// The Extras page with a colour and Self Outline on, so both
 		// previews show what they do.
 		flow.mode = .Preferences
-		flow.preferences.extras_open = true
+		flow.preferences.page = .Extras
 		// DR_SHOT_HUE picks the hue: 63 should match player 2's gold.
-		ps.saved.extras[.Accent_Hue] = 30
+		ps.saved.settings[accent_view.HUE_P1] = 30
 		if hue, ok := strconv.parse_int(os.get_env("DR_SHOT_HUE", context.temp_allocator)); ok {
-			ps.saved.extras[.Accent_Hue] = prefs.hue_wrap(hue)
+			ps.saved.settings[accent_view.HUE_P1] = prefs.hue_wrap(hue)
 		}
-		ps.saved.extras[.Self_Outline] = 1
+		ps.saved.settings[accent_view.SELF_OUTLINE] = 1
+	case "preferences_mods":
+		// The Mods page as a new player finds it.
+		flow.mode = .Preferences
+		flow.preferences.page = .Mods
 	case "netplay_lobby_name":
 		flow.mode = .Netplay_Lobby
 		netplay_lobby_init(&flow.netplay, r)
