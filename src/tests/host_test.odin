@@ -77,3 +77,66 @@ a_full_event_log_counts_what_it_drops :: proc(t: ^testing.T) {
 	testing.expect_value(t, events.count, 2)
 	testing.expect_value(t, events.dropped, 3)
 }
+
+// A state read in from a session with other plugins brings its own world,
+// with those plugins' components, and plays on as the writer does. Read
+// into a state with no world yet, as a guest's is before its first state
+// arrives, it builds one. A read that fails leaves the reader's world, and
+// its plugins, as they were.
+@(test)
+a_state_read_across_mods_builds_its_own_world :: proc(t: ^testing.T) {
+	defs := synthetic_defs()
+	a := new(sim.State)
+	defer free(a)
+	defer sim.destroy(a)
+	b := new(sim.State)
+	defer free(b)
+	defer sim.destroy(b)
+	fresh := new(sim.State)
+	defer free(fresh)
+	defer sim.destroy(fresh)
+	sim.init(a, sim.Session{seed = 5, level_id = sim.level_id("le01"), game_type = .Co_Op, mods = session_mods(true, false)}, defs)
+	sim.init(b, sim.Session{seed = 6, level_id = sim.level_id("le01"), game_type = .Single}, defs)
+	fresh.defs = defs
+	testing.expect(t, sim.level_def(fresh) == nil, "a state with no world has no level")
+	press := sim.Frame_Input{{.Fire_Air}, {.Right}}
+	for _ in 0 ..< 30 {
+		sim.session_step(a, press)
+	}
+	buf := make([dynamic]byte, context.temp_allocator)
+	sim.state_write(a, &buf)
+
+	before := sim.checksum(b)
+	testing.expect(t, !sim.state_read(b, buf[:len(buf) - 1]))
+	testing.expect_value(t, sim.checksum(b), before)
+	testing.expect_value(t, b.session.mods, sim.Mods{})
+
+	testing.expect(t, sim.state_read(b, buf[:]))
+	testing.expect(t, sim.state_read(fresh, buf[:]))
+	testing.expect_value(t, b.session.mods, a.session.mods)
+	for i in 0 ..< 30 {
+		sim.session_step(a, press)
+		sim.session_step(b, press)
+		sim.session_step(fresh, press)
+		testing.expectf(t, sim.checksum(b) == sim.checksum(a), "step %d after reading: diverged", i + 1)
+		testing.expectf(t, sim.checksum(fresh) == sim.checksum(a), "step %d after reading fresh: diverged", i + 1)
+	}
+}
+
+// Netplay's pause holds play still, so the presentation freezes too, until
+// either player presses Pause again.
+@(test)
+a_netplay_pause_holds_the_session :: proc(t: ^testing.T) {
+	defs := synthetic_defs()
+	s := new(sim.State)
+	defer free(s)
+	defer sim.destroy(s)
+	sim.init(s, sim.Session{seed = 2, level_id = sim.level_id("le01"), game_type = .Co_Op, mods = session_mods(false, false, online = true)}, defs)
+	sim.session_step(s, {})
+	testing.expect(t, !sim.session_frozen(s))
+	sim.session_step(s, {{.Pause}, {}})
+	testing.expect(t, sim.session_frozen(s), "a pause holds play")
+	sim.session_step(s, {})
+	sim.session_step(s, {{}, {.Pause}})
+	testing.expect(t, !sim.session_frozen(s), "the other player's press lets it go")
+}
