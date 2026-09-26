@@ -42,28 +42,21 @@ aimed_release_spawn :: proc(s: ^sim.State, h: ^sim.Weapon_Handler, wd: ^sim.Weap
 
 // The nearest entity to `at` that a player's air shot can hit, on screen.
 aimed_target :: proc "contextless" (s: ^sim.State, at: sim.Vec) -> (target: sim.Entity, ok: bool) {
-	w := sim.single(s, sim.Pool)
 	width := s.defs.perm_floats[sim.PF_VISIBLE_GAME_WIDTH]
 	height := s.defs.perm_floats[sim.PF_VISIBLE_GAME_HEIGHT]
 	best: f32
-	g := w.active.head
-	for g != sim.NO_LINK {
-		i := sim.group_at(s, g).entities.head
-		for i != sim.NO_LINK {
-			e := sim.entity_at(s, i)
-			i = sim.link_of(sim.entity_links(s), i).next
-			if !air_shot_can_hit(s, e) {
-				continue
-			}
-			if e.loc.x < 0 || e.loc.x > width || e.loc.y < 0 || e.loc.y > height {
-				continue
-			}
-			d := e.loc - at
-			if dist := d.x * d.x + d.y * d.y; !ok || dist < best {
-				target, best, ok = e, dist, true
-			}
+	walk := sim.walk_entities(s)
+	for e in sim.walk_next(&walk) {
+		if !air_shot_can_hit(s, e) {
+			continue
 		}
-		g = sim.link_of(sim.group_links(s), g).next
+		if e.loc.x < 0 || e.loc.x > width || e.loc.y < 0 || e.loc.y > height {
+			continue
+		}
+		d := e.loc - at
+		if dist := d.x * d.x + d.y * d.y; !ok || dist < best {
+			target, best, ok = e, dist, true
+		}
 	}
 	return
 }

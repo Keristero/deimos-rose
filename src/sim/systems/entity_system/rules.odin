@@ -71,20 +71,13 @@ process_rules :: proc(s: ^sim.State, e: sim.Entity, time: i32) -> (delete, destr
 // entity of the unit, within `range` of `from` (0 = anywhere). "Tracking"
 // additionally needs the entity to be rotating towards its target.
 any_entity_of :: proc "contextless" (s: ^sim.State, unit: sim.Res_ID, from: sim.Vec, range: i32, tracking: bool) -> bool {
-	w := sim.single(s, sim.Pool)
-	g := w.active.head
-	for g != sim.NO_LINK {
-		i := sim.group_at(s, g).entities.head
-		for i != sim.NO_LINK {
-			o := sim.entity_at(s, i)
-			if s.defs.units[o.unit].id == unit && o.appear_delay < 1 && (!tracking || o.rotating) {
-				if range == 0 || sim.distance_to(from, o.loc) <= f32(range) {
-					return true
-				}
+	walk := sim.walk_entities(s)
+	for o in sim.walk_next(&walk) {
+		if s.defs.units[o.unit].id == unit && o.appear_delay < 1 && (!tracking || o.rotating) {
+			if range == 0 || sim.distance_to(from, o.loc) <= f32(range) {
+				return true
 			}
-			i = sim.link_of(sim.entity_links(s), i).next
 		}
-		g = sim.link_of(sim.group_links(s), g).next
 	}
 	return false
 }
@@ -92,22 +85,15 @@ any_entity_of :: proc "contextless" (s: ^sim.State, unit: sim.Res_ID, from: sim.
 // G_EG_RuleCondition_IsAnyDestroyable{Air,Ground}EntityActive: counted by
 // the accuracy flags. Ground entities must also be within the game area.
 any_destroyable :: proc(s: ^sim.State, air: bool) -> bool {
-	w := sim.single(s, sim.Pool)
-	g := w.active.head
-	for g != sim.NO_LINK {
-		i := sim.group_at(s, g).entities.head
-		for i != sim.NO_LINK {
-			o := sim.entity_at(s, i)
-			u := &s.defs.units[o.unit]
-			if air && u.include_in_air_accuracy_count {
-				return true
-			}
-			if !air && u.include_in_ground_accuracy_count && movement_system.within_game_area(s, o) {
-				return true
-			}
-			i = sim.link_of(sim.entity_links(s), i).next
+	walk := sim.walk_entities(s)
+	for o in sim.walk_next(&walk) {
+		u := &s.defs.units[o.unit]
+		if air && u.include_in_air_accuracy_count {
+			return true
 		}
-		g = sim.link_of(sim.group_links(s), g).next
+		if !air && u.include_in_ground_accuracy_count && movement_system.within_game_area(s, o) {
+			return true
+		}
 	}
 	return false
 }
@@ -117,18 +103,11 @@ count_appeared :: proc "contextless" (s: ^sim.State, unit: sim.Res_ID) -> (n: i3
 	if unit == sim.NONE {
 		return
 	}
-	w := sim.single(s, sim.Pool)
-	g := w.active.head
-	for g != sim.NO_LINK {
-		i := sim.group_at(s, g).entities.head
-		for i != sim.NO_LINK {
-			o := sim.entity_at(s, i)
-			if s.defs.units[o.unit].id == unit && o.appear_delay < 1 {
-				n += 1
-			}
-			i = sim.link_of(sim.entity_links(s), i).next
+	walk := sim.walk_entities(s)
+	for o in sim.walk_next(&walk) {
+		if s.defs.units[o.unit].id == unit && o.appear_delay < 1 {
+			n += 1
 		}
-		g = sim.link_of(sim.group_links(s), g).next
 	}
 	return
 }

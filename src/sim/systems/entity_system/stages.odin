@@ -16,19 +16,14 @@ import "dr:sim/lifecycle"
 // Returns true when some entity's state asks for vertical scrolling to pause.
 // Branches not ported yet mark themselves with `unported`.
 eg_process :: proc(s: ^sim.State, time: i32) -> (pause_scrolling: bool) {
-	w := sim.single(s, sim.Pool)
-	gc := sim.Cursor{sim.NO_LINK}
-	for gi_n: i32 = 0; gi_n < w.active.count; gi_n += 1 {
-		gi := sim.list_next(&w.active, sim.group_links(s), &gc)
-		ec := sim.Cursor{sim.NO_LINK}
-		for n: i32 = 0; n < sim.group_at(s, gi).entities.count; n += 1 {
-			ei := sim.list_next(&sim.group_at(s, gi).entities, sim.entity_links(s), &ec)
-			e := sim.entity_at(s, ei)
-			es := sim.entity_step(s, e, time)
-			sim.run_entity_stages(s, e, &es)
-			if es.pause {
-				pause_scrolling = true
-			}
+	// The counts are read before every step, so what spawns meanwhile is
+	// processed this step too.
+	walk := sim.cursor_walk(s, fixed = false)
+	for e in sim.cursor_next(&walk) {
+		es := sim.entity_step(s, e, time)
+		sim.run_entity_stages(s, e, &es)
+		if es.pause {
+			pause_scrolling = true
 		}
 	}
 	return

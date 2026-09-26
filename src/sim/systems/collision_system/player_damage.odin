@@ -185,38 +185,24 @@ player_multiplier_spawn :: proc(s: ^sim.State, p: sim.Player) {
 
 // G_EG_DisposeByUniqueEntityNum.
 dispose_entity_number :: proc "contextless" (s: ^sim.State, number: i32) {
-	w := sim.single(s, sim.Pool)
-	g := w.active.head
-	for g != sim.NO_LINK {
-		i := sim.group_at(s, g).entities.head
-		for i != sim.NO_LINK {
-			e := sim.entity_at(s, i)
-			if e.number == number {
-				e.deleted = true
-				e.target_player = -1
-				return
-			}
-			i = sim.link_of(sim.entity_links(s), i).next
+	walk := sim.walk_entities(s)
+	for e in sim.walk_next(&walk) {
+		if e.number == number {
+			e.deleted = true
+			e.target_player = -1
+			return
 		}
-		g = sim.link_of(sim.group_links(s), g).next
 	}
 }
 
 // G_EG_DisposePlayersChildren.
 dispose_players_children :: proc "contextless" (s: ^sim.State, player: i32) {
-	w := sim.single(s, sim.Pool)
-	g := w.active.head
-	for g != sim.NO_LINK {
-		i := sim.group_at(s, g).entities.head
-		for i != sim.NO_LINK {
-			e := sim.entity_at(s, i)
-			if e.owner_player == player && sim.state_of(s, e).can_be_deleted_on_owner_deletion {
-				e.deleted = true
-				e.target_player = -1
-			}
-			i = sim.link_of(sim.entity_links(s), i).next
+	walk := sim.walk_entities(s)
+	for e in sim.walk_next(&walk) {
+		if e.owner_player == player && sim.state_of(s, e).can_be_deleted_on_owner_deletion {
+			e.deleted = true
+			e.target_player = -1
 		}
-		g = sim.link_of(sim.group_links(s), g).next
 	}
 }
 

@@ -91,39 +91,30 @@ shot_hits :: proc "contextless" (s: ^sim.State, shot, target: i32) -> bool {
 // FUN_0041b920: collisions between a "harmless to players" entity (player
 // shots and their kin) and the entities it can hit, in group order.
 entity_collisions :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) {
-	w := sim.single(s, sim.Pool)
 	me := lifecycle.object_bounds(e.obj)
 	if sim.prefab_is(s, es.prefab, player_projectile) && me.bottom < 0 {
 		return
 	}
-	n := w.active.count
-	gc := sim.Cursor{sim.NO_LINK}
-	for _ in 0 ..< n {
-		gi := sim.list_next(&w.active, sim.group_links(s), &gc)
-		m := sim.group_at(s, gi).entities.count
-		ec := sim.Cursor{sim.NO_LINK}
-		for _ in 0 ..< m {
-			oi := sim.list_next(&sim.group_at(s, gi).entities, sim.entity_links(s), &ec)
-			o := sim.entity_at(s, oi)
-			if o.deleted || !o.hittable || o.number == e.number || o.appear_delay >= 1 {
-				continue
-			}
-			op := sim.prefab_of(s, o)
-			if !shot_hits(s, es.prefab, op) {
-				continue
-			}
-			ob := lifecycle.object_bounds(o.obj)
-			if sim.prefab_is(s, op, player_projectile) && ob.bottom < 0 {
-				continue
-			}
-			if !(ob.top <= me.bottom && me.top <= ob.bottom && ob.left <= me.right && me.left <= ob.right) {
-				continue
-			}
-			if circles_collide(e.loc, f32(lifecycle.halve(me.bottom - me.top)), o.loc, f32(lifecycle.halve(ob.bottom - ob.top))) {
-				collide_entities(s, e, o, sim.single(s, sim.Clock).time)
-				if e.deleted {
-					return
-				}
+	walk := sim.cursor_walk(s, fixed = true)
+	for o in sim.cursor_next(&walk) {
+		if o.deleted || !o.hittable || o.number == e.number || o.appear_delay >= 1 {
+			continue
+		}
+		op := sim.prefab_of(s, o)
+		if !shot_hits(s, es.prefab, op) {
+			continue
+		}
+		ob := lifecycle.object_bounds(o.obj)
+		if sim.prefab_is(s, op, player_projectile) && ob.bottom < 0 {
+			continue
+		}
+		if !(ob.top <= me.bottom && me.top <= ob.bottom && ob.left <= me.right && me.left <= ob.right) {
+			continue
+		}
+		if circles_collide(e.loc, f32(lifecycle.halve(me.bottom - me.top)), o.loc, f32(lifecycle.halve(ob.bottom - ob.top))) {
+			collide_entities(s, e, o, sim.single(s, sim.Clock).time)
+			if e.deleted {
+				return
 			}
 		}
 	}

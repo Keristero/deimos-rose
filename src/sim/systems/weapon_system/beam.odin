@@ -74,33 +74,26 @@ beam_fire :: proc(s: ^sim.State, h: ^sim.Weapon_Handler, wd: ^sim.Weapon, at: si
 // nearest first: a target's hit circle (entity_collisions' radius) within
 // half the width of the line, its centre ahead of the gun, and on screen.
 beam_targets :: proc "contextless" (s: ^sim.State, from: sim.Vec, width: f32, out: []sim.Entity) -> int {
-	w := sim.single(s, sim.Pool)
 	n := 0
-	g := w.active.head
-	for g != sim.NO_LINK {
-		i := sim.group_at(s, g).entities.head
-		for i != sim.NO_LINK {
-			e := sim.entity_at(s, i)
-			i = sim.link_of(sim.entity_links(s), i).next
-			if n >= len(out) || !air_shot_can_hit(s, e) || e.shields <= 0 {
-				continue
-			}
-			b := lifecycle.object_bounds(e.obj)
-			r := f32(lifecycle.halve(b.bottom - b.top))
-			if abs(e.loc.x - from.x) > r + width / 2 || e.loc.y >= from.y || e.loc.y + r < 0 {
-				continue
-			}
-			// Insertion by distance, then by number, so the order is the
-			// same however the groups are linked.
-			j := n
-			for j > 0 && beam_before(e, out[j - 1]) {
-				out[j] = out[j - 1]
-				j -= 1
-			}
-			out[j] = e
-			n += 1
+	walk := sim.walk_entities(s)
+	for e in sim.walk_next(&walk) {
+		if n >= len(out) || !air_shot_can_hit(s, e) || e.shields <= 0 {
+			continue
 		}
-		g = sim.link_of(sim.group_links(s), g).next
+		b := lifecycle.object_bounds(e.obj)
+		r := f32(lifecycle.halve(b.bottom - b.top))
+		if abs(e.loc.x - from.x) > r + width / 2 || e.loc.y >= from.y || e.loc.y + r < 0 {
+			continue
+		}
+		// Insertion by distance, then by number, so the order is the
+		// same however the groups are linked.
+		j := n
+		for j > 0 && beam_before(e, out[j - 1]) {
+			out[j] = out[j - 1]
+			j -= 1
+		}
+		out[j] = e
+		n += 1
 	}
 	return n
 }

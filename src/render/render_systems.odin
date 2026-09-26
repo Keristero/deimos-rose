@@ -132,26 +132,22 @@ view_render :: proc(r: ^Renderer, s: ^sim.State, f: ^Frame) {
 @(private = "file")
 entities_render :: proc(r: ^Renderer, s: ^sim.State, f: ^Frame) {
 	prev := f.prev
-	pool := sim.single(s, sim.Pool)
-	for g := pool.active.head; g != sim.NO_LINK; g = sim.link_of(sim.group_links(s), g).next {
-		for i := sim.group_at(s, g).entities.head; i != sim.NO_LINK; i = sim.link_of(sim.entity_links(s), i).next {
-			e := sim.entity_at(s, i)
-			// G_EG_BuildDrawList draws neither an entity nor its shadow
-			// until its appear delay (+0xa4) has run out; units waiting
-			// just off the field would otherwise show there, or cast a
-			// shadow onto it.
-			if e.appear_delay >= 1 {
-				continue
-			}
-			u := &s.defs.units[e.unit]
-			// The same slot holding the same entity a step ago (numbers are
-			// unique, so a reused slot does not match).
-			before: ^sim.Game_Object
-			if prev != nil && prev.numbers[i] == e.number {
-				before = &prev.objects[i]
-			}
-			draw_object(r, s, e.obj, u.casts_shadows, before, shot_accent(r, s, e))
+	walk := sim.walk_entities(s)
+	for e, i in sim.walk_next(&walk) {
+		// G_EG_BuildDrawList draws neither an entity nor its shadow until
+		// its appear delay (+0xa4) has run out; units waiting just off the
+		// field would otherwise show there, or cast a shadow onto it.
+		if e.appear_delay >= 1 {
+			continue
 		}
+		u := &s.defs.units[e.unit]
+		// The same slot holding the same entity a step ago (numbers are
+		// unique, so a reused slot does not match).
+		before: ^sim.Game_Object
+		if prev != nil && prev.numbers[i] == e.number {
+			before = &prev.objects[i]
+		}
+		draw_object(r, s, e.obj, u.casts_shadows, before, shot_accent(r, s, e))
 	}
 }
 

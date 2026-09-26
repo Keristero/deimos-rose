@@ -284,25 +284,20 @@ weapons_process :: proc(
 
 // G_EG_ChangeStateOnWeaponPowerupReleaseByUniqueEntityNum.
 powerup_release :: proc(s: ^sim.State, entity: i32, time: i32) {
-	w := sim.single(s, sim.Pool)
-	g := w.active.head
-	for g != sim.NO_LINK {
-		i := sim.group_at(s, g).entities.head
-		for i != sim.NO_LINK {
-			if e := sim.entity_at(s, i); e.number == entity {
-				// G_Entity::ChangeToWeaponPowerupReleaseState: the first state
-				// flagged for a weapon-powerup release.
-				for &st in sim.unit_of(s, e).states {
-					if st.use_this_state_on_weapon_powerup_release {
-						_, _ = lifecycle.change_state(s, e, false, st.name, time)
-						break
-					}
-				}
-				return
-			}
-			i = sim.link_of(sim.entity_links(s), i).next
+	walk := sim.walk_entities(s)
+	for e in sim.walk_next(&walk) {
+		if e.number != entity {
+			continue
 		}
-		g = sim.link_of(sim.group_links(s), g).next
+		// G_Entity::ChangeToWeaponPowerupReleaseState: the first state
+		// flagged for a weapon-powerup release.
+		for &st in sim.unit_of(s, e).states {
+			if st.use_this_state_on_weapon_powerup_release {
+				_, _ = lifecycle.change_state(s, e, false, st.name, time)
+				break
+			}
+		}
+		return
 	}
 }
 

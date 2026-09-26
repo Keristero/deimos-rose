@@ -99,6 +99,93 @@ list_remove :: proc "contextless" (l: ^List, links: []Link, i: i32, c: ^Cursor =
 }
 
 
+// Every entity in the groups' lists, group by group, head to tail: the walk
+// G_EG's lookups make (FUN_0041b740 and its kin), for
+// `walk := walk_entities(s); for e, i in walk_next(&walk)`. Each next link
+// is read as the walk moves on, so an entity appended while the walk is on
+// its group's last is reached too.
+Entity_Walk :: struct {
+	s:       ^State,
+	group:   i32,
+	at:      i32,
+	entered: bool, // `at` is in `group`'s list
+}
+
+walk_entities :: proc "contextless" (s: ^State) -> Entity_Walk {
+	return {s = s, group = single(s, Pool).active.head, at = NO_LINK}
+}
+
+walk_next :: proc "contextless" (w: ^Entity_Walk) -> (e: Entity, index: i32, ok: bool) {
+	for w.group != NO_LINK {
+		if !w.entered {
+			w.entered = true
+			w.at = group_at(w.s, w.group).entities.head
+		} else if w.at != NO_LINK {
+			w.at = w.s.ecs.pool_links[w.at].next
+		}
+		if w.at != NO_LINK {
+			return entity_at(w.s, w.at), w.at, true
+		}
+		w.group = w.s.ecs.group_links[w.group].next
+		w.entered = false
+	}
+	return
+}
+
+// U_LinkedList's walk by count through cursors, as G_EG_Process and the
+// sweep make it: the active groups through one cursor, each group's
+// entities through another, so an entity or group deleted through them
+// (list_remove) leaves the walk on the one after. For
+// `walk := cursor_walk(s, fixed); for e, i in cursor_next(&walk)`.
+//
+// With `fixed` each count is taken as its list is entered; without, before
+// every step, as G_EG_Process does, so what is appended meanwhile is
+// reached.
+Cursor_Walk :: struct {
+	s:         ^State,
+	fixed:     bool,
+	gc, ec:    Cursor,
+	group:     i32, // the group being walked
+	in_group:  bool,
+	groups:    i32, // taken so far
+	entities:  i32,
+	group_end: i32, // the counts, when fixed
+	entity_end: i32,
+}
+
+cursor_walk :: proc "contextless" (s: ^State, fixed: bool) -> Cursor_Walk {
+	return {s = s, fixed = fixed, gc = {NO_LINK}, group_end = single(s, Pool).active.count}
+}
+
+cursor_next :: proc "contextless" (w: ^Cursor_Walk) -> (e: Entity, index: i32, ok: bool) {
+	pool := single(w.s, Pool)
+	for {
+		if w.in_group {
+			entities := &group_at(w.s, w.group).entities
+			if w.entities < (w.fixed ? w.entity_end : entities.count) {
+				w.entities += 1
+				i := list_next(entities, entity_links(w.s), &w.ec)
+				return entity_at(w.s, i), i, true
+			}
+			w.in_group = false
+		}
+		if w.groups >= (w.fixed ? w.group_end : pool.active.count) {
+			return
+		}
+		w.groups += 1
+		w.group = list_next(&pool.active, group_links(w.s), &w.gc)
+		w.ec = {NO_LINK}
+		w.entities = 0
+		w.entity_end = group_at(w.s, w.group).entities.count
+		w.in_group = true
+	}
+}
+
+// Leaves the rest of the group being walked, as after deleting it.
+cursor_leave_group :: #force_inline proc "contextless" (w: ^Cursor_Walk) {
+	w.in_group = false
+}
+
 // G_GameObject: the common base of players, groups and entities. Only the
 // fields the simulation reads are kept; offsets are the original's.
 Game_Object :: struct {

@@ -41,46 +41,39 @@ angle_from_sprite :: proc "contextless" (s: ^sim.State, e: sim.Entity) -> i32 {
 // FUN_0041b2d0: remove deleted entities, and groups that have emptied.
 sweep_deleted :: proc(s: ^sim.State) {
 	w := sim.single(s, sim.Pool)
-	n := w.active.count
-	gc := sim.Cursor{sim.NO_LINK}
-	groups: for _ in 0 ..< n {
-		gi := sim.list_next(&w.active, sim.group_links(s), &gc)
-		count := sim.group_at(s, gi).entities.count
-		ec := sim.Cursor{sim.NO_LINK}
-		for k: i32 = 0; k < count; k += 1 {
-			ei := sim.list_next(&sim.group_at(s, gi).entities, sim.entity_links(s), &ec)
-			e := sim.entity_at(s, ei)
-			if !e.deleted {
-				continue
-			}
-			u := sim.unit_of(s, e)
-			if u.include_in_ground_accuracy_count {
-				w.ground_targets -= 1
-			}
-			// The wreck is burned into the map as the entity is swept up, so
-			// it stays where it fell and scrolls with the ground.
-			if u.destruct_draw_to_terrain {
-				sim.stamp_object(s, e.obj, u.casts_shadows)
-			}
-			if e.destroyed {
-				if sim.state_of(s, e).destroy_owner_on_destruction && sim.ref_valid(s, e.owner) {
-					o := sim.entity_at(s, e.owner.index)
-					if !o.deleted {
-						entity_destroy(s, o, e.target_player, sim.single(s, sim.Clock).time)
-					}
+	walk := sim.cursor_walk(s, fixed = true)
+	for e, ei in sim.cursor_next(&walk) {
+		gi := walk.group
+		if !e.deleted {
+			continue
+		}
+		u := sim.unit_of(s, e)
+		if u.include_in_ground_accuracy_count {
+			w.ground_targets -= 1
+		}
+		// The wreck is burned into the map as the entity is swept up, so
+		// it stays where it fell and scrolls with the ground.
+		if u.destruct_draw_to_terrain {
+			sim.stamp_object(s, e.obj, u.casts_shadows)
+		}
+		if e.destroyed {
+			if sim.state_of(s, e).destroy_owner_on_destruction && sim.ref_valid(s, e.owner) {
+				o := sim.entity_at(s, e.owner.index)
+				if !o.deleted {
+					entity_destroy(s, o, e.target_player, sim.single(s, sim.Clock).time)
 				}
 			}
-			if u.deletion_spawn != sim.NONE && !e.destroyed && can_spawn_on_media(s, e) {
-				spawn_from(s, e, u.deletion_spawn)
-			}
-			group_emptied := remove_from_group(s, gi, e, e.destroyed, e.target_player != -1)
-			sim.list_remove(&sim.group_at(s, gi).entities, sim.entity_links(s), ei, &ec)
-			entity_free(s, ei)
-			if group_emptied && sim.group_at(s, gi).unit != sim.PERM_GROUP_UNIT {
-				sim.list_remove(&w.active, sim.group_links(s), gi, &gc)
-				sim.group_free(s, gi)
-				continue groups
-			}
+		}
+		if u.deletion_spawn != sim.NONE && !e.destroyed && can_spawn_on_media(s, e) {
+			spawn_from(s, e, u.deletion_spawn)
+		}
+		group_emptied := remove_from_group(s, gi, e, e.destroyed, e.target_player != -1)
+		sim.list_remove(&sim.group_at(s, gi).entities, sim.entity_links(s), ei, &walk.ec)
+		entity_free(s, ei)
+		if group_emptied && sim.group_at(s, gi).unit != sim.PERM_GROUP_UNIT {
+			sim.list_remove(&w.active, sim.group_links(s), gi, &walk.gc)
+			sim.group_free(s, gi)
+			sim.cursor_leave_group(&walk)
 		}
 	}
 }
@@ -127,27 +120,18 @@ remove_from_group :: proc(s: ^sim.State, gi: i32, e: sim.Entity, destroyed, by_p
 // children follow if their state allows it. The group totals are decremented
 // here and again when the sweep reaches the child -- as in the original.
 children_follow :: proc(s: ^sim.State, parent: sim.Entity, destroyed: bool) {
-	w := sim.single(s, sim.Pool)
-	n := w.active.count
-	gc := sim.Cursor{sim.NO_LINK}
-	for _ in 0 ..< n {
-		gi := sim.list_next(&w.active, sim.group_links(s), &gc)
-		m := sim.group_at(s, gi).entities.count
-		ec := sim.Cursor{sim.NO_LINK}
-		for _ in 0 ..< m {
-			ci := sim.list_next(&sim.group_at(s, gi).entities, sim.entity_links(s), &ec)
-			c := sim.entity_at(s, ci)
-			if c == parent || c.owner.number != parent.number {
-				continue
+	walk := sim.cursor_walk(s, fixed = true)
+	for c in sim.cursor_next(&walk) {
+		if c == parent || c.owner.number != parent.number {
+			continue
+		}
+		st := sim.state_of(s, c)
+		if destroyed {
+			if st.can_be_destroyed_on_owner_destruction {
+				remove_from_group(s, walk.group, c, true, c.target_player != -1)
 			}
-			st := sim.state_of(s, c)
-			if destroyed {
-				if st.can_be_destroyed_on_owner_destruction {
-					remove_from_group(s, gi, c, true, c.target_player != -1)
-				}
-			} else if st.can_be_deleted_on_owner_deletion {
-				remove_from_group(s, gi, c, false, false)
-			}
+		} else if st.can_be_deleted_on_owner_deletion {
+			remove_from_group(s, walk.group, c, false, false)
 		}
 	}
 }

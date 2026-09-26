@@ -115,17 +115,11 @@ group_size :: proc "contextless" (s: ^sim.State, u: ^sim.Unit) -> i32 {
 
 // FUN_0041b740: live entities of a unit.
 count_of_unit :: proc "contextless" (s: ^sim.State, id: sim.Res_ID) -> (n: i32) {
-	w := sim.single(s, sim.Pool)
-	g := w.active.head
-	for g != sim.NO_LINK {
-		e := sim.group_at(s, g).entities.head
-		for e != sim.NO_LINK {
-			if s.defs.units[sim.entity_at(s, e).unit].id == id {
-				n += 1
-			}
-			e = sim.link_of(sim.entity_links(s), e).next
+	walk := sim.walk_entities(s)
+	for e in sim.walk_next(&walk) {
+		if s.defs.units[e.unit].id == id {
+			n += 1
 		}
-		g = sim.link_of(sim.group_links(s), g).next
 	}
 	return
 }
@@ -158,18 +152,10 @@ eg_request_spawn :: proc(s: ^sim.State, req: sim.Spawn_Request) -> sim.Entity_Re
 	}
 	// FUN_0041b820: this player's existing entities of the same unit make way.
 	if u.delete_existing_entities_of_this_type_owned_by_player && req.owner_player != -1 {
-		n := w.active.count
-		gc := sim.Cursor{sim.NO_LINK}
-		for _ in 0 ..< n {
-			gi := sim.list_next(&w.active, sim.group_links(s), &gc)
-			m := sim.group_at(s, gi).entities.count
-			ec := sim.Cursor{sim.NO_LINK}
-			for _ in 0 ..< m {
-				ei := sim.list_next(&sim.group_at(s, gi).entities, sim.entity_links(s), &ec)
-				o := sim.entity_at(s, ei)
-				if s.defs.units[o.unit].id == req.unit && o.owner_player == req.owner_player {
-					remove_from_group(s, gi, o, false, false)
-				}
+		walk := sim.cursor_walk(s, fixed = true)
+		for o in sim.cursor_next(&walk) {
+			if s.defs.units[o.unit].id == req.unit && o.owner_player == req.owner_player {
+				remove_from_group(s, walk.group, o, false, false)
 			}
 		}
 	}
