@@ -201,14 +201,21 @@ notices_render :: proc(r: ^Renderer, s: ^sim.State, f: ^Frame) {
 
 // Effect systems: presentation stepped once a sim step, after the
 // simulation's own particles, like particles_step -- a plugin's effects in
-// play, such as the passives' motes and sparks. Each runs only in a session
-// with its plugin on.
+// play, such as the passives' motes and sparks or the Discharge Beam. Each
+// runs only in a session with its plugin on. One that keeps its own effects
+// draws them over a layer of its choosing and forgets them when a level
+// starts, as the original's particles are (flow_effects_sync).
 MAX_EFFECT_SYSTEMS :: 8
 
 Effect_System :: struct {
 	name:   string,
 	plugin: sim.Plugin_ID,
 	step:   proc(r: ^Renderer, s: ^sim.State, p: ^Particles),
+	// Optional: draws over draw layer `layer` and under the next.
+	draw:   proc(r: ^Renderer, scale, side, t: f32),
+	layer:  int,
+	// Optional: forgets everything it keeps.
+	clear:  proc(),
 }
 
 @(private = "file")
@@ -221,8 +228,28 @@ effect_system_register :: proc(sys: Effect_System) {
 
 effect_systems_step :: proc(r: ^Renderer, s: ^sim.State, p: ^Particles) {
 	for &sys in sim.registry_items(&effect_systems) {
-		if sim.mod_on(s, sys.plugin) {
+		if sim.mod_on(s, sys.plugin) && sys.step != nil {
 			sys.step(r, s, p)
+		}
+	}
+}
+
+// Those that draw over `layer`, for present. `t` is how far the frame is
+// from the last step to this one.
+effect_systems_draw :: proc(r: ^Renderer, s: ^sim.State, layer: int, scale, side, t: f32) {
+	for &sys in sim.registry_items(&effect_systems) {
+		if sys.draw != nil && sys.layer == layer && sim.mod_on(s, sys.plugin) {
+			sys.draw(r, scale, side, t)
+		}
+	}
+}
+
+// Every effect system forgets what it keeps, whether its plugin is on or
+// not: what is on screen belongs to the session that is ending.
+effect_systems_clear :: proc() {
+	for &sys in sim.registry_items(&effect_systems) {
+		if sys.clear != nil {
+			sys.clear()
 		}
 	}
 }

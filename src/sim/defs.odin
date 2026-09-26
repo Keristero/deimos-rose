@@ -95,6 +95,8 @@ Weapon :: struct {
 	extra:         bool,
 	aimed_release: bool, // the charge fires aimed volleys at the nearest enemy
 	beam:          Beam_Def, // an instant laser instead of projectiles (weapon_system/beam.odin)
+	// The values of the keys plugins register (def_keys.odin), by Weapon_Key.
+	keys:          [MAX_WEAPON_KEYS]u32,
 }
 
 // Weapon types (Wep_Def.type), compared as ids by the original.

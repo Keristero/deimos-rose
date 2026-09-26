@@ -41,6 +41,28 @@ Weapon_Filter :: struct {
 	allows: proc "contextless" (w: ^Weapon) -> bool,
 }
 
+// A plugin's own way for a weapon to fire: new content whose shots are not
+// the original's spawned projectiles. Which weapons it fires is the
+// plugin's to say, from keys it registered on their definitions
+// (def_keys.odin). Each part is optional; where one is nil, the original's
+// firing stands.
+//
+// Unlike the other hooks it is not gated by the session's mods. How a
+// weapon fires is part of that weapon's definition, and such a weapon only
+// reaches a session through the plugin's own Weapon_Filter; a tool that
+// flies the weapon alone (tools/dps) sees it fire as it does in play.
+Weapon_Fire :: struct {
+	plugin:  Plugin_ID,
+	fires:   proc "contextless" (w: ^Weapon) -> bool,
+	// With every press, after the weapon's own spawns.
+	shot:    proc(s: ^State, h: ^Weapon_Handler, w: ^Weapon, at: Vec, time: i32),
+	// A charge let go all at once, whatever level it reached, in place of
+	// one volley per level.
+	release: proc(s: ^State, h: ^Weapon_Handler, w: ^Weapon, at: Vec, level: i32, time: i32),
+	// One of a charge's volleys, in place of spawning the release unit.
+	volley:  proc(s: ^State, h: ^Weapon_Handler, w: ^Weapon, at: Vec),
+}
+
 @(private = "file")
 stat_providers: Registry(Stat_Provider, MAX_HOOKS)
 @(private = "file")
@@ -49,6 +71,8 @@ holds: Registry(Hold, MAX_HOOKS)
 choosers: Registry(Weapon_Chooser, MAX_HOOKS)
 @(private = "file")
 filters: Registry(Weapon_Filter, MAX_HOOKS)
+@(private = "file")
+fires: Registry(Weapon_Fire, MAX_HOOKS)
 
 stat_provider_register :: proc(p: Stat_Provider) {
 	registry_add(&stat_providers, p)
@@ -64,6 +88,20 @@ weapon_chooser_register :: proc(c: Weapon_Chooser) {
 
 weapon_filter_register :: proc(f: Weapon_Filter) {
 	registry_add(&filters, f)
+}
+
+weapon_fire_register :: proc(f: Weapon_Fire) {
+	registry_add(&fires, f)
+}
+
+// How `w` fires, when a plugin fires it: the first registered that does.
+weapon_fire :: proc "contextless" (w: ^Weapon) -> (^Weapon_Fire, bool) {
+	for &f in registry_items(&fires) {
+		if f.fires(w) {
+			return &f, true
+		}
+	}
+	return nil, false
 }
 
 // Every provider's contribution to `stat`, summed: percentages and extras

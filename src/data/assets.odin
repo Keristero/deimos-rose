@@ -515,7 +515,34 @@ weapons_append :: proc(weapons: ^[dynamic]sim.Weapon, root: string, extra: bool,
 			}
 			beam_fill(&wp.beam, header)
 		}
+		weapon_keys_fill(&wp, header)
 		append(weapons, wp)
+	}
+}
+
+// The keys plugins registered (sim/def_keys.odin), each by its type; one
+// the definition leaves out takes its type's default.
+@(private = "file")
+weapon_keys_fill :: proc(w: ^sim.Weapon, header: []Tag) {
+	for k, i in sim.registered_weapon_keys() {
+		w.keys[i] = sim.def_key_default(k.kind)
+		v, ok := def_find(header, k.name)
+		if !ok {
+			continue
+		}
+		switch k.kind {
+		case .Bool:
+			b, _ := tag_bool(v)
+			sim.weapon_key_set(w, sim.Weapon_Key(i), b)
+		case .Int:
+			n, _ := tag_int(v)
+			sim.weapon_key_set(w, sim.Weapon_Key(i), i32(n))
+		case .Float:
+			f, _ := tag_float(v)
+			sim.weapon_key_set(w, sim.Weapon_Key(i), f32(f))
+		case .Id:
+			sim.weapon_key_set(w, sim.Weapon_Key(i), sim.Res_ID(def_fourcc(header, k.name)))
+		}
 	}
 }
 

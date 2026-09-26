@@ -54,6 +54,7 @@ State :: struct {
 	stamps:       Stamp_Queue,    // this step's marks on the terrain
 	blurs:        Blur_Queue,     // this step's new motion-blur ghosts
 	beams:        Beam_Queue,     // this step's laser shots, for presentation (weapon_system/beam.odin)
+	effects:      Effect_Queue,   // plugins' presentation events (queue_effects.odin)
 	notices:      Notice_Queue,   // this step's new notices, for presentation
 	// Optional record of every RandomInt/RandomFloat call, for diffing
 	// against the original's gdb trace (see oracle/). nil in normal play
@@ -226,6 +227,7 @@ clear_step_events :: proc "contextless" (s: ^State) {
 	s.stamps.count = 0
 	s.blurs.count = 0
 	s.beams.count = 0
+	s.effects.count = 0
 	s.notices.count = 0
 }
 
