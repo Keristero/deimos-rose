@@ -140,6 +140,16 @@ description = "Run the Odin test suite"
 depends = ["setup"]
 run = "odin test tests $DR_COLL $DR_LINK -out:$DR_BUILD/tests$DR_EXT"
 
+[tasks.coverage]
+description = "Block coverage of the simulation by the test suite (build/coverage/missed.txt lists what never ran)"
+depends = ["setup"]
+run = [
+  "python3 tools/coverage/coverage.py instrument . $DR_BUILD/coverage",
+  "rm -f $DR_BUILD/coverage/hits.bin",
+  "DR_COV_OUT=$DR_BUILD/coverage/hits.bin odin test $DR_BUILD/coverage/tests -collection:dr=$DR_BUILD/coverage $DR_LINK -out:$DR_BUILD/coverage/run-tests$DR_EXT",
+  "python3 tools/coverage/coverage.py report $DR_BUILD/coverage",
+]
+
 [tasks.purity]
 description = "Enforce: sim/ imports no raylib and performs no I/O"
 run = "bash tools/purity/check.sh"

@@ -365,6 +365,21 @@ them from its flags (`mods_from_flags`).
   the netplay lobby states, the reward and loadout screens, and the
   Chaingun in play.
 
+## Coverage
+
+Odin has no coverage instrumentation, so `tools/coverage/coverage.py`
+adds its own. It copies the source tree to `build/coverage/`, puts a
+counter at the head of every block of the simulation's code (`sim/` and
+the plugins' simulation halves, not their `view/` packages), and builds
+and runs the test suite from the copy. The counters are a file mapped
+into memory, so they reach the disk however the test runner exits. A
+block is a procedure body, the body of an `if`, `else`, `for` or `when`,
+or a `case`, where it starts on a line of its own.
+
+`mise run coverage` prints each package's share and lists every block
+never run. The first run gave 1,479 of 1,772 blocks (83.5%): from 71% in
+`sim/stats` to 100% in the debris system.
+
 ## Still open
 
 - **The renderer still knows about accents.** `Renderer.accents` and
@@ -384,9 +399,12 @@ them from its flags (`mods_from_flags`).
 - **Some flags are still read directly.** The spawn sets are walked from
   the definitions, and lifecycle procedures such as change_state read
   their state's flags. Each can move to components the same way.
-- **Behavioural coverage is not measured.** The golden runs cover four
-  demos and three sessions with the additions on. There is no coverage
-  tool to say which paths they miss.
+- **Coverage is 83.5% of the simulation's blocks, not 100%.** `mise run
+  coverage` measures it (see [Coverage](#coverage)). What the tests never
+  reach is listed in `build/coverage/missed.txt`: mostly defensive
+  checks, paths no shipped definition takes, and parts of the original
+  that the four demos never exercise, such as random bonus drops and
+  spawning on water.
 - **A session with the passives but not Easy Mode** has no way to earn a
   passive. It runs, and is the same as neither.
 - **The new Start is untested between two builds** and on two machines,
