@@ -289,14 +289,8 @@ powerup_release :: proc(s: ^sim.State, entity: i32, time: i32) {
 		if e.number != entity {
 			continue
 		}
-		// G_Entity::ChangeToWeaponPowerupReleaseState: the first state
-		// flagged for a weapon-powerup release.
-		for &st in sim.unit_of(s, e).states {
-			if st.use_this_state_on_weapon_powerup_release {
-				_, _ = lifecycle.change_state(s, e, false, st.name, time)
-				break
-			}
-		}
+		// G_Entity::ChangeToWeaponPowerupReleaseState.
+		lifecycle.change_to_first(s, e, lifecycle.on_powerup_release, time)
 		return
 	}
 }

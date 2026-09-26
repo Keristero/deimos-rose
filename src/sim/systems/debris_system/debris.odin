@@ -8,16 +8,23 @@ import "dr:sim"
 
 // G_Debris_New.
 debris_new :: proc "contextless" (s: ^sim.State, r: sim.Rect) {
-	if sim.single(s, sim.Debris).count < sim.MAX_DEBRIS {
-		sim.single(s, sim.Debris).rects[sim.single(s, sim.Debris).count] = r
-		sim.single(s, sim.Debris).count += 1
+	debris := sim.single(s, sim.Debris)
+	if debris.count < sim.MAX_DEBRIS {
+		debris.rects[debris.count] = r
+		debris.count += 1
 	}
+}
+
+// The wreckage there is now.
+debris_rects :: proc "contextless" (s: ^sim.State) -> []sim.Rect {
+	debris := sim.single(s, sim.Debris)
+	return debris.rects[:debris.count]
 }
 
 // G_Debris_Process: ride the scroll.
 debris_process :: proc "contextless" (s: ^sim.State) {
 	d := sim.single(s, sim.Bgnd).scrolled
-	for &r in sim.single(s, sim.Debris).rects[:sim.single(s, sim.Debris).count] {
+	for &r in debris_rects(s) {
 		r.top += d
 		r.bottom += d
 	}
@@ -25,7 +32,7 @@ debris_process :: proc "contextless" (s: ^sim.State) {
 
 // G_Debris_CheckCollision.
 debris_hits :: proc "contextless" (s: ^sim.State, r: sim.Rect) -> bool {
-	for &d in sim.single(s, sim.Debris).rects[:sim.single(s, sim.Debris).count] {
+	for &d in debris_rects(s) {
 		if d.top <= r.bottom && r.top <= d.bottom && d.left <= r.right && r.left <= d.right {
 			return true
 		}

@@ -60,7 +60,7 @@ level_end_step :: proc(s: ^sim.State, time: i32) {
 level_end_begin :: proc(s: ^sim.State, time: i32) {
 	l := sim.single(s, sim.Level_End)
 	n := i32(len(s.defs.levels))
-	if sim.single(s, sim.Level_Info).number == n && sim.single(s, sim.Level_Info).played == n {
+	if info := sim.single(s, sim.Level_Info); info.number == n && info.played == n {
 		l.all_done = true
 	}
 	notice := s.defs.perm_objects[l.all_done ? 0x17 : 0x16]
@@ -80,8 +80,9 @@ level_end_begin :: proc(s: ^sim.State, time: i32) {
 	l.state_time = time
 	l.count_time = time
 	percent: f32 = 0
-	if sim.single(s, sim.Accuracy).targets >= 1 {
-		percent = f32(sim.single(s, sim.Accuracy).destroyed) / f32(sim.single(s, sim.Accuracy).targets) * 100
+	acc := sim.single(s, sim.Accuracy)
+	if acc.targets >= 1 {
+		percent = f32(acc.destroyed) / f32(acc.targets) * 100
 	}
 	l.percent = sim.trunc_i32(percent)
 	// The thresholds step down from 100 by whole multiples of perm float
@@ -91,7 +92,7 @@ level_end_begin :: proc(s: ^sim.State, time: i32) {
 	switch {
 	case percent >= 100:
 		// Remembered for the next level's accuracy reward.
-		sim.single(s, sim.Accuracy).perfect_level = true
+		acc.perfect_level = true
 		tier = 0xbd
 	case percent >= f32(100 - gap):
 		tier = 0xbe

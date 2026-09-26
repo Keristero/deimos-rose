@@ -298,10 +298,9 @@ spawn_entity :: proc(
 	if u.draw_layer == sim.res_id("hud ") {
 		e.scrolls_sideways = false
 	}
-	for &st in u.states {
-		if len(st.spawn_sets) > 0 {
-			e.has_spawn_info = true
-		}
+	// Set, never cleared: a reused slot keeps what its last unit had.
+	if first_state(u, has_spawn_sets) != nil {
+		e.has_spawn_info = true
 	}
 
 	e.owner = req.owner
@@ -316,11 +315,8 @@ spawn_entity :: proc(
 	e.anim_time = time
 	e.anim_backwards = false
 	e.killed_by_player = false
-	for &st in u.states {
-		if st.use_this_state_on_shield_depletion {
-			e.has_depletion_state = true
-			break
-		}
+	if first_state(u, on_shield_depletion) != nil {
+		e.has_depletion_state = true
 	}
 	vis := f64(u.initial_visibility_percent)
 	e.hittable = vis == 100 || (vis < 100 && u.hittable_when_invisible)

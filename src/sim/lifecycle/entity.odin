@@ -154,6 +154,39 @@ reset_spawn_info :: proc "contextless" (s: ^sim.State, e: sim.Entity, time: i32)
 	}
 }
 
+// A test of a state's definition, for first_state.
+State_Flag :: #type proc "contextless" (st: ^sim.Unit_State) -> bool
+
+on_shield_depletion :: proc "contextless" (st: ^sim.Unit_State) -> bool {
+	return st.use_this_state_on_shield_depletion
+}
+
+on_powerup_release :: proc "contextless" (st: ^sim.Unit_State) -> bool {
+	return st.use_this_state_on_weapon_powerup_release
+}
+
+has_spawn_sets :: proc "contextless" (st: ^sim.Unit_State) -> bool {
+	return len(st.spawn_sets) > 0
+}
+
+// The first of u's states that `flagged` picks out, or nil: the original
+// looks special states up by flag, in definition order.
+first_state :: proc "contextless" (u: ^sim.Unit, flagged: State_Flag) -> ^sim.Unit_State {
+	for &st in u.states {
+		if flagged(&st) {
+			return &st
+		}
+	}
+	return nil
+}
+
+// Into the first state `flagged` picks out, if the unit has one.
+change_to_first :: proc(s: ^sim.State, e: sim.Entity, flagged: State_Flag, time: i32) {
+	if st := first_state(sim.unit_of(s, e), flagged); st != nil {
+		_, _ = change_state(s, e, false, st.name, time)
+	}
+}
+
 // G_Entity::ChangeState. Returns whether the entity is to be deleted or
 // destroyed (the original's two out-parameters).
 change_state :: proc(s: ^sim.State, e: sim.Entity, init: bool, name: string, time: i32) -> (delete, destroy: bool) {

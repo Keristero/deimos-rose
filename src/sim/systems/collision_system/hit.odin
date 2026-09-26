@@ -86,13 +86,7 @@ entity_hit :: proc(s: ^sim.State, e: sim.Entity, damage: f32, player: i32, time:
 
 // G_Entity::Priv_ChangeStateOnShieldDepletion: the first state flagged for it.
 change_state_on_depletion :: proc(s: ^sim.State, e: sim.Entity, time: i32) {
-	u := sim.unit_of(s, e)
-	for &st in u.states {
-		if st.use_this_state_on_shield_depletion {
-			_, _ = lifecycle.change_state(s, e, false, st.name, time)
-			return
-		}
-	}
+	lifecycle.change_to_first(s, e, lifecycle.on_shield_depletion, time)
 }
 
 // Who takes a hit meant for `e`: its owner, when e's state passes hits on

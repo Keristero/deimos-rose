@@ -90,18 +90,20 @@ level_transition_system :: proc(s: ^sim.State, step: ^sim.Step) {
 }
 
 first_player_system :: proc(s: ^sim.State, step: ^sim.Step) {
-	if !sim.single(s, sim.Game_Status).player1_seen_playing && sim.player_at(s, 0).state == .Playing {
-		sim.single(s, sim.Game_Status).player1_seen_playing = true
+	gs := sim.single(s, sim.Game_Status)
+	if !gs.player1_seen_playing && sim.player_at(s, 0).state == .Playing {
+		gs.player1_seen_playing = true
 	}
 }
 
 game_over_system :: proc(s: ^sim.State, step: ^sim.Step) {
+	gs := sim.single(s, sim.Game_Status)
 	for p in sim.players_of(s) {
 		if p.active {
 			return
 		}
 	}
-	sim.single(s, sim.Game_Status).game_over = true
+	gs.game_over = true
 	// FUN_00420280 LAB_0042037a: the first step no player is left in
 	// game spawns the Notice_GameOver banner (perm object 0x18) once, at
 	// screen centre -- the same position formula level_end_begin uses
@@ -115,12 +117,12 @@ game_over_system :: proc(s: ^sim.State, step: ^sim.Step) {
 	// of lives needs it for the replay to stay in sync -- no shipped
 	// demo film reaches game over, so oracle:diff never exercised this
 	// gap before.
-	if !sim.single(s, sim.Game_Status).game_over_notice {
+	if !gs.game_over_notice {
 		notice := s.defs.perm_objects[0x18]
 		if notice != sim.NONE {
 			lifecycle.spawn_at(s, notice, lifecycle.screen_centre(s))
 		}
-		sim.single(s, sim.Game_Status).game_over_notice = true
+		gs.game_over_notice = true
 	}
 }
 
