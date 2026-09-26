@@ -41,7 +41,8 @@ left room, and what is still provisional. The cross-cutting choice is D36 in
     starts.
   - Every stat is worked out from the levels held whenever it is needed. It
     is never stored.
-- **Presentation** (`game/reward.odin`, `game/passives.odin`):
+- **Presentation** (`plugins/easy_mode/view/reward.odin`,
+  `plugins/passives/view/passives.odin`):
   - The overlay is drawn over the dimmed play area. The HUD stays as it
     was.
   - Each passive has a 32x32 icon composited from the game's sprites (see

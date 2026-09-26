@@ -1,9 +1,10 @@
-package game
+package loadout_view
 
-// New Weapons' loadout screen, drawn over the frozen play area while
-// its screen is open (plugins/loadout holds it and takes the choices). New content: no original screen to match. Everything is read
-// from the state, so both netplay peers draw the same screen from the same
-// frame.
+// New Weapons' loadout screen, an overlay (ui/overlays.odin) drawn over the
+// frozen play area while the screen is open: plugins/loadout holds it and
+// takes the choices. New content, with no original screen to match.
+// Everything is read from the state, so both netplay peers draw the same
+// screen from the same frame.
 //
 // One panel for each player choosing, stacked. A panel has a row of cells
 // for each of the board's rows that is shown: the new weapons still to be
@@ -14,13 +15,13 @@ package game
 // accent, until it is put down. Under the rows, the weapon under the cursor
 // (or the one being moved) is named and described.
 
+import "base:runtime"
 import "core:fmt"
 import "core:strings"
 
 import rl "vendor:raylib"
 
 import "dr:plugins/loadout"
-import "dr:prefs"
 import "dr:render"
 import "dr:sim"
 import "dr:ui"
@@ -56,14 +57,6 @@ loadout_accent :: proc(hue: f32, bright: bool) -> rl.Color {
 }
 
 @(private = "file")
-loadout_player_label :: proc(fl: ^Flow, i: int) -> string {
-	if fl.session_named {
-		return prefs.name_string(&fl.session_names[i])
-	}
-	return i == 0 ? "P1" : "P2"
-}
-
-@(private = "file")
 window_rect :: proc(r: rl.Rectangle) -> rl.Rectangle {
 	return {r.x * render.WINDOW_SCALE, r.y * render.WINDOW_SCALE, r.width * render.WINDOW_SCALE, r.height * render.WINDOW_SCALE}
 }
@@ -82,8 +75,13 @@ panel_height :: proc(b: ^loadout.Loadout_Board) -> f32 {
 	return h + READY_H + 4 + 3 * LINE + PAD
 }
 
-loadout_draw :: proc(fl: ^Flow, r: ^render.Renderer) {
-	s := fl.state
+@(init)
+register_loadout_view :: proc "contextless" () {
+	context = runtime.default_context()
+	ui.overlay_register({name = "loadout", plugin = loadout.ID, draw = loadout_draw})
+}
+
+loadout_draw :: proc(r: ^render.Renderer, s: ^sim.State, names: ^ui.Player_Names) {
 	l := loadout.loadout_of(s)
 	if l == nil || !l.active {
 		return
@@ -101,14 +99,13 @@ loadout_draw :: proc(fl: ^Flow, r: ^render.Renderer) {
 		}
 		b := &l.boards[i]
 		h := panel_height(b)
-		loadout_draw_panel(fl, r, i, b, {PANEL_X, y, PANEL_W, h})
+		loadout_draw_panel(r, s, names, i, b, {PANEL_X, y, PANEL_W, h})
 		y += h + PANEL_GAP
 	}
 }
 
 @(private = "file")
-loadout_draw_panel :: proc(fl: ^Flow, r: ^render.Renderer, i: int, b: ^loadout.Loadout_Board, panel: rl.Rectangle) {
-	s := fl.state
+loadout_draw_panel :: proc(r: ^render.Renderer, s: ^sim.State, names: ^ui.Player_Names, i: int, b: ^loadout.Loadout_Board, panel: rl.Rectangle) {
 	white := rl.Color{255, 255, 255, 255}
 	dim := rl.Color{170, 170, 170, 255}
 	header := rl.Color{ui.HIGH_SCORES_HEADER_RGB[0], ui.HIGH_SCORES_HEADER_RGB[1], ui.HIGH_SCORES_HEADER_RGB[2], 255}
@@ -119,7 +116,7 @@ loadout_draw_panel :: proc(fl: ^Flow, r: ^render.Renderer, i: int, b: ^loadout.L
 
 	left, right := i32(panel.x) + PAD, i32(panel.x + panel.width) - PAD
 	y := i32(panel.y) + PAD
-	ui.menu_draw_text(r, loadout_player_label(fl, i), left, y, accent)
+	ui.menu_draw_text(r, names[i], left, y, accent)
 	status := b.ready ? "READY" : b.holding ? "MOVING A WEAPON" : "CHOOSING"
 	ui.menu_draw_text(r, status, right, y, b.ready ? accent : dim, .Right)
 	y += LINE

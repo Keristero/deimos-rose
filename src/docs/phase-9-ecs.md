@@ -222,6 +222,42 @@ when the plugin is off. Every layer's items matched the previous
 `build_frame`'s for all 3,000 steps of each demo film, with and without
 accents.
 
+### Presentation packages (D46)
+
+Presentation is split the way the simulation is, so that plugins can
+draw without the game:
+
+| Package | What it holds |
+|---|---|
+| `render` | assets, the renderer and its render systems, text, the score bar, the effects (particles, blurs, beams, notices), sounds, the screen's size |
+| `ui` | the menus' widgets, and the overlay registry |
+| `plugins/*/view` | each plugin's presentation: its settings, render systems, overlays and effects |
+| `game` | the flow between screens, the menus, preferences, netplay, `main` |
+
+Each imports only those above it in the table. A plugin's view registers
+what it draws from its `@(init)`, through three registries:
+- **render systems** (`render.render_system_register`): Accent Color's
+  Self Outline;
+- **overlays** (`ui.overlay_register`), drawn over the play field after
+  the frame: Easy Mode's reward screen and the loadout;
+- **effect systems** (`render.effect_system_register`), stepped with the
+  particles after each sim step: the passives' motes and sparks.
+
+Each runs only while its plugin is on. The game names no plugin's screen:
+`game/plugins.odin` imports each plugin and its view, which is all it
+takes to put one in the build. The screens' only use of the game had been
+the players' names from the lobby, which the game now hands to every
+overlay (`ui.Player_Names`).
+
+The Mods page used to list mods in registration order, which is the order
+packages initialise in, so moving packages reordered it. It now lists
+each mod under the mod it needs most deeply, siblings by label
+(`mods_order`).
+
+Draw lists matched the previous build for all four demo films, and every
+menu shot was pixel-identical, apart from the Mods page and the version
+string.
+
 ### Plugins (D40)
 
 Each plugin is a folder under `plugins/` that registers itself, its
@@ -330,13 +366,13 @@ them from its flags (`mods_from_flags`).
 
 ## Still open
 
-- **Plugin presentation still lives in `game/`.** Only the settings
-  moved: the reward, loadout and passives screens (`game/reward.odin`,
-  `game/loadout.odin`, `game/passives.odin`) and the outline render
-  system are still game code gated by plugin ID. Moving them into their
-  plugins' `view/` needs the renderer's types in a package below `game`,
-  so a view package can register a render system without importing
-  `game`.
+- **The renderer still knows about accents.** `Renderer.accents` and
+  the accent shader are the renderer's own, and `game` sets them from
+  Accent Color's settings. Moving them into the plugin's view would need
+  a hook in `draw_object` for recolouring.
+- **Game-side screens still ask for mods by ID** where the original's
+  menus gained a switch: the Easy Mode toggle on Level Select and in the
+  lobby, and the netplay button on the title screen.
 - **Entity stages still run entity by entity.** A stage is matched
   against each entity in group order, and the entity goes through every
   stage before the next starts. Running one stage over all its entities

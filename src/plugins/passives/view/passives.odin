@@ -1,10 +1,12 @@
-package game
+package passives_view
 
 // Easy mode's passive upgrades as the player sees them: names, icons and
-// how each stat reads on the reward screen (game/reward.odin), and the two
-// effects that show a passive at work in play. The passives themselves are
-// sim/passives.odin; nothing here feeds back into the simulation.
+// how each stat reads on the reward screen (plugins/easy_mode/view), and the
+// two effects that show a passive at work in play, an effect system
+// (render/render_systems.odin). The passives themselves are plugins/passives;
+// nothing here feeds back into the simulation.
 
+import "base:runtime"
 import "core:fmt"
 import "core:math"
 import "core:math/rand"
@@ -120,8 +122,14 @@ stat_text :: proc(levels: ^passives.Passive_Levels, stat: sim.Stat, weapon: sim.
 @(private = "file") SPARK_MAX :: 3        // sparks a step at the raised maximum
 @(private = "file") SPARK_SPEED :: 3
 
-passive_particles_step :: proc(p: ^render.Particles, s: ^sim.State, r: ^render.Renderer) {
-	if !sim.mod_on(s, passives.ID) || sim.session_frozen(s) {
+@(init)
+register_passives_view :: proc "contextless" () {
+	context = runtime.default_context()
+	render.effect_system_register({name = "passive_particles", plugin = passives.ID, step = passive_particles_step})
+}
+
+passive_particles_step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles) {
+	if sim.session_frozen(s) {
 		return
 	}
 	for pl, i in sim.players_of(s) {

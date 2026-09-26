@@ -546,6 +546,14 @@ flow_sim_step :: proc(fl: ^Flow, r: ^render.Renderer, particles: ^render.Particl
 	render.sounds_step(&r.textures, fl.state)
 }
 
+// How the overlays name each player: as the lobby named them, or P1 and P2.
+flow_player_names :: proc(fl: ^Flow) -> (names: ui.Player_Names) {
+	for i in 0 ..< sim.MAX_PLAYERS {
+		names[i] = fl.session_named ? prefs.name_string(&fl.session_names[i]) : (i == 0 ? "P1" : "P2")
+	}
+	return
+}
+
 // The presentation effects' step, after a sim step. They freeze with the
 // game: under the netplay pause and the reward and loadout screens, which
 // all stop the sim's clock while it keeps stepping.
@@ -554,7 +562,7 @@ flow_effects_step :: proc(fl: ^Flow, r: ^render.Renderer, particles: ^render.Par
 		return
 	}
 	render.particles_step(particles, fl.state)
-	passive_particles_step(particles, fl.state, r)
+	render.effect_systems_step(r, fl.state, particles)
 	render.blurs_step(blurs, fl.state)
 	render.notices_step(notices, fl.state)
 }
@@ -721,8 +729,8 @@ flow_draw :: proc(fl: ^Flow, r: ^render.Renderer, particles: ^render.Particles, 
 	render.build_frame(r, fl.state, blurs, notices)
 	render.present(r, fl.state, particles, scale)
 	if fl.mode == .Playing || fl.mode == .Paused {
-		reward_draw(fl, r)
-		loadout_draw(fl, r)
+		names := flow_player_names(fl)
+		ui.overlays_draw(r, fl.state, &names)
 	}
 	switch fl.mode {
 	case .Paused:

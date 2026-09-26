@@ -18,7 +18,7 @@ if [ -d "$SRC/plugins" ]; then
     while IFS= read -r d; do DIRS+=("$d"); done < <(
         find "$SRC/plugins" -name '*.odin' -not -path '*/view/*' -printf '%h\n' | sort -u)
 fi
-BANNED='vendor:raylib|core:os|core:fmt|core:time|core:math/rand|core:thread|core:net|dr:game|dr:prefs|dr:net'
+BANNED='vendor:raylib|core:os|core:fmt|core:time|core:math/rand|core:thread|core:net|dr:game|dr:render|dr:ui|dr:prefs|dr:net'
 for d in "${DIRS[@]}"; do
     # Only this folder's own files: a plugin's view/ is a separate package.
     files=$(find "$d" -maxdepth 1 -name '*.odin')

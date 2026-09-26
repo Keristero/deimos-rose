@@ -17,8 +17,8 @@ Passive :: passives.Passive
 
 MAX_REWARD_OPTIONS :: sim.MAX_PLAYERS + 1
 
-// At most this many options to a row (game/reward.odin draws the grid the
-// same way); more wrap onto further rows.
+// At most this many options to a row (plugins/easy_mode/view draws the
+// grid the same way); more wrap onto further rows.
 REWARD_MAX_COLUMNS :: 6
 
 // On the session entity.

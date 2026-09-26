@@ -857,3 +857,18 @@ declares `with` and `without` sets and runs only on entities that match.
   order, since the random draws depend on it. A query decides whether a
   stage runs for an entity, not the order entities are visited in.
 
+### D46 — Presentation is in packages below the game, and plugins draw their own
+
+`render` (the renderer, assets, text, effects and render systems) and `ui`
+(menu widgets and overlays) sit below `game`. Each plugin's presentation
+is in its `view/` package, which registers its render systems, overlays
+and effect systems itself. The game imports each plugin and view in one
+file (`game/plugins.odin`) and names none of their screens.
+
+Before this, `game` drew the reward, loadout and passives screens and the
+Self Outline, each gated by plugin ID, because a view package could not
+reach the renderer's types without importing `game`, and `game` imports
+the views. Moving the renderer down removed the cycle. `sim` and the
+plugins' simulation halves may not import `render` or `ui`
+(`mise run purity`).
+

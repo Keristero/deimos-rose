@@ -1,9 +1,10 @@
-package game
+package easy_mode_view
 
-// Easy mode's reward screen, drawn over the frozen play area while
-// its screen is open (plugins/easy_mode holds it and takes the choices). New content: no original screen to match. Everything is read
-// from the state, so both netplay peers draw the same screen from the same
-// frame.
+// Easy mode's reward screen, an overlay (ui/overlays.odin) drawn over the
+// frozen play area while the screen is open: plugins/easy_mode holds it
+// and takes the choices. New content, with no original screen to match.
+// Everything is read from the state, so both netplay peers draw the same
+// screen from the same frame.
 //
 // A grid of icons, as many columns and rows as the options need, above a
 // description box of fixed size that the grid never runs into. Each player
@@ -13,13 +14,14 @@ package game
 // are on: every stat it changes at the level it would give them, current
 // value to new.
 
+import "base:runtime"
 import "core:fmt"
 
 import rl "vendor:raylib"
 
 import "dr:plugins/easy_mode"
 import "dr:plugins/passives"
-import "dr:prefs"
+import passives_view "dr:plugins/passives/view"
 import "dr:render"
 import "dr:sim"
 import "dr:ui"
@@ -48,14 +50,6 @@ reward_accent :: proc(hue: f32, locked: bool) -> rl.Color {
 	return locked ? rl.ColorFromHSV(hue, render.ACCENT_SATURATION, 1) : rl.ColorFromHSV(hue, 0.35, 0.55)
 }
 
-@(private = "file")
-reward_player_label :: proc(fl: ^Flow, i: int) -> string {
-	if fl.session_named {
-		return prefs.name_string(&fl.session_names[i])
-	}
-	return i == 0 ? "P1" : "P2"
-}
-
 // Where option k's cell sits, in menu coordinates.
 @(private = "file")
 reward_cell :: proc(count, k: i32) -> rl.Rectangle {
@@ -77,8 +71,13 @@ window_rect :: proc(r: rl.Rectangle) -> rl.Rectangle {
 	return {r.x * render.WINDOW_SCALE, r.y * render.WINDOW_SCALE, r.width * render.WINDOW_SCALE, r.height * render.WINDOW_SCALE}
 }
 
-reward_draw :: proc(fl: ^Flow, r: ^render.Renderer) {
-	s := fl.state
+@(init)
+register_reward_view :: proc "contextless" () {
+	context = runtime.default_context()
+	ui.overlay_register({name = "reward", plugin = easy_mode.ID, draw = reward_draw})
+}
+
+reward_draw :: proc(r: ^render.Renderer, s: ^sim.State, names: ^ui.Player_Names) {
 	rw := easy_mode.reward_of(s)
 	if rw == nil || !rw.active {
 		return
@@ -120,17 +119,17 @@ reward_draw :: proc(fl: ^Flow, r: ^render.Renderer) {
 		levels := passives.levels_of(s, i)
 		def := &passives.PASSIVES[pa]
 		accent := reward_accent(r.accents[i].hue, true)
-		ui.menu_draw_text(r, reward_player_label(fl, i), left, y, accent)
+		ui.menu_draw_text(r, names[i], left, y, accent)
 		status := rw.locked[i] ? "LOCKED IN" : easy_mode.reward_ready(s, i) ? "NOTHING LEFT TO TAKE" : "CHOOSING"
 		ui.menu_draw_text(r, status, right, y, rw.locked[i] ? accent : dim, .Right)
 		y += LINE
 		if passives.passive_maxed(levels, pa) {
-			ui.menu_draw_text(r, fmt.tprintf("%s: AT ITS HIGHEST LEVEL", PASSIVE_NAMES[pa]), left, y, dim)
+			ui.menu_draw_text(r, fmt.tprintf("%s: AT ITS HIGHEST LEVEL", passives_view.PASSIVE_NAMES[pa]), left, y, dim)
 			y += LINE + LINE / 2
 			continue
 		}
 		next := levels[pa] + 1
-		ui.menu_draw_text(r, fmt.tprintf("%s  LEVEL %d/%d", PASSIVE_NAMES[pa], next, def.levels), left, y, white)
+		ui.menu_draw_text(r, fmt.tprintf("%s  LEVEL %d/%d", passives_view.PASSIVE_NAMES[pa], next, def.levels), left, y, white)
 		y += LINE
 		if !easy_mode.reward_selectable(s, i, rw.cursor[i]) {
 			ui.menu_draw_text(r, "TAKEN BY THE OTHER PLAYER", left, y, dim)
@@ -143,8 +142,8 @@ reward_draw :: proc(fl: ^Flow, r: ^render.Renderer) {
 			if m.at[next - 1] == passives.X {
 				continue
 			}
-			ui.menu_draw_text(r, STAT_DISPLAY[m.stat].label, left + 8, y, dim)
-			change := fmt.tprintf("%s -> %s", stat_text(levels, m.stat, def.weapon), stat_text(&after, m.stat, def.weapon))
+			ui.menu_draw_text(r, passives_view.STAT_DISPLAY[m.stat].label, left + 8, y, dim)
+			change := fmt.tprintf("%s -> %s", passives_view.stat_text(levels, m.stat, def.weapon), passives_view.stat_text(&after, m.stat, def.weapon))
 			ui.menu_draw_text(r, change, right, y, white, .Right)
 			y += LINE
 		}
@@ -156,7 +155,7 @@ reward_draw :: proc(fl: ^Flow, r: ^render.Renderer) {
 // its size, in window pixels, that fits.
 @(private = "file")
 reward_draw_icon :: proc(r: ^render.Renderer, pa: passives.Passive, cell: rl.Rectangle) {
-	tex, ok := passive_icon(&r.textures, pa)
+	tex, ok := passives_view.passive_icon(&r.textures, pa)
 	if !ok {
 		return
 	}

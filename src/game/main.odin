@@ -324,7 +324,7 @@ run_menu_shot :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, r
 		flow.mode = .Level_Select
 		level_select_init(&flow.level_select)
 	case "reward", "reward_2p":
-		// Easy mode's reward screen (game/reward.odin), opened straight over
+		// Easy mode's reward screen (plugins/easy_mode/view), opened straight over
 		// a level a couple of seconds in rather than played to its end. New
 		// content: a visual check. Player 1 already holds the first level
 		// of the first option, so its values read current -> next; in
@@ -348,7 +348,7 @@ run_menu_shot :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, r
 		}
 		flow.mode = .Playing
 	case "loadout", "loadout_2p", "loadout_placed":
-		// New Weapons' loadout screen (game/loadout.odin), played until the
+		// New Weapons' loadout screen (plugins/loadout/view), played until the
 		// stage's title fades and the screen opens. New content: a visual
 		// check.
 		// - loadout: Level Select's stage 7, where the Chaingun unlocks. Five

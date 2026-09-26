@@ -12,7 +12,6 @@ package render
 
 import "base:runtime"
 
-import "dr:plugins/accent"
 import "dr:sim"
 
 MAX_RENDER_SYSTEMS :: 32
@@ -88,12 +87,7 @@ register_core_render_systems :: proc "contextless" () {
 	render_system_register({name = "players", run = players_render})
 	render_system_register({name = "blurs", run = blurs_render})
 	render_system_register({name = "notices", run = notices_render})
-	// Self Outline: under the local player's ship, so ahead of it.
-	render_system_register({name = "outline", before = OUTLINE_BEFORE, plugin = accent.ID, run = outline_render})
 }
-
-@(private = "file", rodata)
-OUTLINE_BEFORE := []string{"players"}
 
 @(private = "file")
 layers_clear_render :: proc(r: ^Renderer, s: ^sim.State, f: ^Frame) {
@@ -162,7 +156,6 @@ entities_render :: proc(r: ^Renderer, s: ^sim.State, f: ^Frame) {
 }
 
 // A playing ship as it was a step ago, when it was playing then too.
-@(private = "file")
 ship_before :: proc(f: ^Frame, k: int) -> ^sim.Game_Object {
 	if f.prev != nil && f.prev.players[k].active && f.prev.players[k].state == .Playing {
 		return &f.prev.players[k].obj
@@ -198,32 +191,6 @@ players_render :: proc(r: ^Renderer, s: ^sim.State, f: ^Frame) {
 	}
 }
 
-// The ship's own shape in its accent, one pixel out in each of the eight
-// directions: Self Outline, for the local player.
-@(private = "file")
-outline_render :: proc(r: ^Renderer, s: ^sim.State, f: ^Frame) {
-	for p, k in sim.players_of(s) {
-		ac := r.accents[k]
-		if !ac.outline || !p.active || p.state != .Playing {
-			continue
-		}
-		place, ok := object_place(r, p.obj, ship_before(f, k))
-		if !ok {
-			continue
-		}
-		alpha := u8(clamp(p.obj.visibility, 0, 100) * 255 / 100)
-		for d in ([8][2]f32{{-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}}) {
-			dst := place.dst
-			dst.x += d.x
-			dst.y += d.y
-			push_item(r, place.layer, Item {
-				texture = place.texture, src = place.src, dst = dst, tint = {255, 255, 255, alpha},
-				effect = .Silhouette, hue = ac.hue, sat = ACCENT_SATURATION,
-			})
-		}
-	}
-}
-
 // Motion blur ghosts. The original builds them in Process, ahead of the
 // entities and players; since every draw only appends to its own layer, the
 // order only matters within one.
@@ -238,4 +205,36 @@ blurs_render :: proc(r: ^Renderer, s: ^sim.State, f: ^Frame) {
 @(private = "file")
 notices_render :: proc(r: ^Renderer, s: ^sim.State, f: ^Frame) {
 	notices_draw(r, f.notices)
+}
+
+// Effect systems: presentation stepped once a sim step, after the
+// simulation's own particles, like particles_step -- a plugin's effects in
+// play, such as the passives' motes and sparks. Each runs only in a session
+// with its plugin on.
+MAX_EFFECT_SYSTEMS :: 8
+
+Effect_System :: struct {
+	name:   string,
+	plugin: sim.Plugin_ID,
+	step:   proc(r: ^Renderer, s: ^sim.State, p: ^Particles),
+}
+
+@(private = "file")
+effect_systems: [MAX_EFFECT_SYSTEMS]Effect_System
+@(private = "file")
+effect_system_count: int
+
+// Called from `@(init)` procedures only.
+effect_system_register :: proc(sys: Effect_System) {
+	assert(effect_system_count < MAX_EFFECT_SYSTEMS, "render: too many effect systems")
+	effect_systems[effect_system_count] = sys
+	effect_system_count += 1
+}
+
+effect_systems_step :: proc(r: ^Renderer, s: ^sim.State, p: ^Particles) {
+	for &sys in effect_systems[:effect_system_count] {
+		if sim.mod_on(s, sys.plugin) {
+			sys.step(r, s, p)
+		}
+	}
 }

@@ -201,7 +201,7 @@ the five. It was raised to 1.6 to meet the others' 6.00 ahead.
 
 ### Presentation
 
-The drawing is in `game/loadout.odin`:
+The drawing is in `plugins/loadout/view/loadout.odin`:
 - There is one panel per player choosing, stacked: rows NEW, LOADOUT and
   SPARE, then READY.
 - The weapons are drawn with their score bar symbols (`wesy`).
