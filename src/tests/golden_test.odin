@@ -21,6 +21,14 @@ package tests
 //     DR_GOLDEN_UPDATE=1 mise run test
 //
 // which rewrites tests/golden/fingerprints.txt.
+//
+// The wide runs (golden_wide_runs_match_the_recorded_fingerprints) are
+// there for coverage (mise run coverage): every level, with players that
+// can die, and sessions with the mods in other combinations. Nothing checks
+// them against the original, so they pin behaviour rather than prove it;
+// they were recorded after the refactor, from a build whose demos matched
+// the original call for call. DR_GOLDEN_WIDE_UPDATE=1 rewrites
+// tests/golden/wide.txt, and leaves fingerprints.txt alone.
 
 import "core:fmt"
 import "core:log"
@@ -224,24 +232,26 @@ Golden_Session :: struct {
 	loadout:   bool,
 	seed:      u32,
 	steps:     int,
+	mortal:    bool,     // players can be hit and die, as in a real game
+	extra:     sim.Mods, // session plugins besides easy and loadout's
 }
 
 GOLDEN_SESSIONS := [?]Golden_Session {
-	{"coop_extras_l6", 5, .Co_Op, true, true, 1234, 12_000}, // into stage 7's loadout, the Chaingun
-	{"coop_extras_l10", 9, .Co_Op, true, true, 99, 12_000}, // stage 10's, the Discharge Beam
-	{"single_easy_l1", 0, .Single, true, false, 7, 9000}, // the reward screen after stage 1
+	{"coop_extras_l6", 5, .Co_Op, true, true, 1234, 12_000, false, {}}, // into stage 7's loadout, the Chaingun
+	{"coop_extras_l10", 9, .Co_Op, true, true, 99, 12_000, false, {}}, // stage 10's, the Discharge Beam
+	{"single_easy_l1", 0, .Single, true, false, 7, 9000, false, {}}, // the reward screen after stage 1
 }
 
 @(private = "file")
-golden_session :: proc(defs: ^sim.Defs, g: Golden_Session, allocator := context.allocator) -> Golden_Run {
-	log := sim.Draw_Log{draws = make([]sim.Draw, 1_000_000, allocator)}
-	s := new(sim.State, allocator)
+golden_session :: proc(defs: ^sim.Defs, g: Golden_Session, allocator := context.allocator, scratch := context.allocator) -> Golden_Run {
+	log := sim.Draw_Log{draws = make([]sim.Draw, 1_000_000, scratch)}
+	s := new(sim.State, scratch)
 	defer sim.destroy(s)
 	session := sim.Session {
 		seed      = g.seed,
 		level_id  = defs.levels[g.level].id,
 		game_type = g.game_type,
-		mods      = session_mods(g.easy, g.loadout),
+		mods      = sim.mods_session(sim.mods_with_deps(session_mods(g.easy, g.loadout) + g.extra)),
 	}
 	sim.init(s, session, defs, &log)
 	// The input's own generator, apart from the state's.
@@ -276,8 +286,10 @@ golden_session :: proc(defs: ^sim.Defs, g: Golden_Session, allocator := context.
 		// Kept in play as session_test.odin keeps its players: the flags
 		// alone, every step (a new level clears invulnerable).
 		for p in sim.players_of(s) {
-			p.invulnerable_always = true
-			p.invulnerable = true
+			if !g.mortal {
+				p.invulnerable_always = true
+				p.invulnerable = true
+			}
 		}
 		sim.session_step(s, input)
 		r.steps += 1
@@ -395,16 +407,23 @@ golden_runs_match_the_recorded_fingerprints :: proc(t: ^testing.T) {
 		append(&runs, golden_session(&defs, g, alloc))
 	}
 
-	if os.get_env("DR_GOLDEN_UPDATE", context.temp_allocator) != "" {
+	golden_check(t, runs[:], GOLDEN_PATH, "DR_GOLDEN_UPDATE", alloc)
+}
+
+// Compares runs with the fingerprints recorded at `path`, or records them
+// when the environment variable `update` is set.
+@(private = "file")
+golden_check :: proc(t: ^testing.T, runs: []Golden_Run, path, update: string, alloc := context.allocator) {
+	if os.get_env(update, context.temp_allocator) != "" {
 		os.make_directory("tests/golden")
-		werr := os.write_entire_file(GOLDEN_PATH, transmute([]u8)golden_format(runs[:]))
-		testing.expectf(t, werr == nil, "writing %s", GOLDEN_PATH)
-		log.infof("recorded %d golden runs in %s", len(runs), GOLDEN_PATH)
+		werr := os.write_entire_file(path, transmute([]u8)golden_format(runs))
+		testing.expectf(t, werr == nil, "writing %s", path)
+		log.infof("recorded %d golden runs in %s", len(runs), path)
 		return
 	}
 
-	text, rerr := os.read_entire_file(GOLDEN_PATH, alloc)
-	if !testing.expectf(t, rerr == nil, "no %s: record it with DR_GOLDEN_UPDATE=1", GOLDEN_PATH) {
+	text, rerr := os.read_entire_file(path, alloc)
+	if !testing.expectf(t, rerr == nil, "no %s: record it with %s=1", path, update) {
 		return
 	}
 	want := golden_parse(string(text), alloc)
@@ -425,3 +444,61 @@ golden_runs_match_the_recorded_fingerprints :: proc(t: ^testing.T) {
 		}
 	}
 }
+
+GOLDEN_WIDE_PATH :: "tests/golden/wide.txt"
+GOLDEN_WIDE_STEPS :: 6000
+
+// Every level, played by one mortal player on random input: dying, losing
+// lives and the game over, on every level's units. Then co-op sessions
+// with every session mod on, and the passives without Easy Mode.
+@(private = "file")
+golden_wide_sessions :: proc(defs: ^sim.Defs, allocator := context.allocator) -> []Golden_Session {
+	out := make([dynamic]Golden_Session, allocator)
+	for level in 0 ..< len(defs.levels) {
+		append(&out, Golden_Session {
+			name = fmt.aprintf("wide_l%d_single", level + 1, allocator = allocator),
+			level = level, game_type = .Single, seed = u32(100 + level), steps = GOLDEN_WIDE_STEPS, mortal = true,
+		})
+	}
+	for level in ([?]int{2, 5, 8, 11}) {
+		append(&out, Golden_Session {
+			name = fmt.aprintf("wide_l%d_coop_mods", level + 1, allocator = allocator),
+			level = level, game_type = .Co_Op, easy = true, loadout = true, seed = u32(200 + level),
+			steps = GOLDEN_WIDE_STEPS, mortal = true,
+		})
+	}
+	append(&out, Golden_Session {
+		name = "wide_l4_passives", level = 3, game_type = .Single, seed = 304, steps = GOLDEN_WIDE_STEPS,
+		extra = {int(passives.ID)},
+	})
+	return out[:]
+}
+
+@(test)
+golden_wide_runs_match_the_recorded_fingerprints :: proc(t: ^testing.T) {
+	if !os.exists("assets/data/index.json") {
+		log.info("skipped: needs the extracted assets tree")
+		return
+	}
+	arena: vmem.Arena
+	testing.expect(t, vmem.arena_init_growing(&arena) == nil)
+	defer vmem.arena_destroy(&arena)
+	alloc := vmem.arena_allocator(&arena)
+	context.allocator = alloc
+
+	defs, _ := data.assets_defs_load("assets", alloc)
+	data.extra_defs_load("assets", &defs, alloc)
+	if !testing.expect(t, len(defs.levels) == 12, "the level list must load") {
+		return
+	}
+	runs := make([dynamic]Golden_Run, alloc)
+	for g in golden_wide_sessions(&defs, alloc) {
+		// Each run's draw log and state in an arena of its own.
+		run_arena: vmem.Arena
+		testing.expect(t, vmem.arena_init_growing(&run_arena) == nil)
+		append(&runs, golden_session(&defs, g, alloc, vmem.arena_allocator(&run_arena)))
+		vmem.arena_destroy(&run_arena)
+	}
+	golden_check(t, runs[:], GOLDEN_WIDE_PATH, "DR_GOLDEN_WIDE_UPDATE", alloc)
+}
+

@@ -380,6 +380,15 @@ or a `case`, where it starts on a line of its own.
 never run. The first run gave 1,479 of 1,772 blocks (83.5%): from 71% in
 `sim/stats` to 100% in the debris system.
 
+The golden runs were then widened (`tests/golden/wide.txt`, apart from
+`fingerprints.txt`, which is untouched): every level with a mortal
+player, co-op with every session mod on four levels, and the passives
+without Easy Mode. Nothing checks those against the original, so they
+pin behaviour rather than prove it. They added only 10 blocks (84.0%):
+what is left is mostly paths random play and the shipped definitions
+never take, such as aux weapons, ground pickups, rule conditions no unit
+uses and the perfect-game bonus.
+
 ## Still open
 
 - **The renderer still knows about accents.** `Renderer.accents` and
