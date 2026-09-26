@@ -25,12 +25,30 @@ Test_Padded_Array :: struct {
 	items: [2]Test_Padded,
 }
 
+// A matrix is laid out element by element, in case its columns are padded
+// (they are not, in the Odin this builds with).
+Test_Matrix :: struct {
+	flag: u8,
+	m:    matrix[3, 3]f32,
+}
+
+// An empty array holds nothing, and a tag has no fields at all.
+Test_Empty_Array :: struct {
+	none: [0]u32,
+	n:    i32,
+}
+
+Test_Tag :: struct {}
+
 @(init)
 register_test_components :: proc "contextless" () {
 	context = runtime.default_context()
 	sim.component_register(Test_Padded)
 	sim.component_register(Test_Dense)
 	sim.component_register(Test_Padded_Array)
+	sim.component_register(Test_Matrix)
+	sim.component_register(Test_Empty_Array)
+	sim.component_register(Test_Tag)
 }
 
 @(private = "file")
@@ -53,6 +71,31 @@ component_layouts_leave_out_padding :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(arr.runs), 4)
 	testing.expect_value(t, arr.runs[2], sim.Byte_Run{12, 1})
 	testing.expect_value(t, arr.runs[3], sim.Byte_Run{16, 5})
+}
+
+// A matrix's elements are data, and the padding before it is not; an empty
+// array and a tag lay out nothing.
+@(test)
+component_layouts_cover_matrices_and_empty_types :: proc(t: ^testing.T) {
+	m := type_of_id(sim.component_id(Test_Matrix))
+	testing.expect_value(t, len(m.runs), 2)
+	testing.expect_value(t, m.runs[0], sim.Byte_Run{0, 1})
+	testing.expect_value(t, m.runs[1], sim.Byte_Run{4, 36})
+	empty := type_of_id(sim.component_id(Test_Empty_Array))
+	testing.expect_value(t, len(empty.runs), 1)
+	testing.expect_value(t, empty.runs[0], sim.Byte_Run{0, 4})
+	testing.expect_value(t, len(type_of_id(sim.component_id(Test_Tag)).runs), 0)
+}
+
+// Registering a type again is a no-op: a plugin and the core may both ask
+// for the same component.
+@(test)
+component_registration_is_idempotent :: proc(t: ^testing.T) {
+	n := len(sim.component_types())
+	id := sim.component_id(Test_Dense)
+	sim.component_register(Test_Dense)
+	testing.expect_value(t, len(sim.component_types()), n)
+	testing.expect_value(t, sim.component_id(Test_Dense), id)
 }
 
 @(test)
@@ -235,4 +278,67 @@ registered_systems_name_only_registered_systems :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(sim.schedule_unknown(items[:], context.temp_allocator)), 0)
 	_, ok = sim.schedule(items[:], context.temp_allocator)
 	testing.expect(t, ok, "the entity stages' order has a cycle")
+}
+
+// A tag has no storage, but an entity holding one keeps it through a
+// snapshot.
+@(test)
+tags_survive_snapshots :: proc(t: ^testing.T) {
+	e := sim.ecs_create()
+	defer sim.ecs_destroy(e)
+	sim.add(e, sim.pool_entity(3), Test_Dense{n = 3})
+	sim.add(e, sim.pool_entity(3), Test_Tag{})
+	saved := snapshot(e)
+	sim.remove(e, sim.pool_entity(3), Test_Tag)
+	_, ok := sim.ecs_read(e, saved)
+	testing.expect(t, ok)
+	testing.expect(t, sim.has(e, sim.pool_entity(3), Test_Tag))
+	testing.expect_value(t, sim.get(e, sim.pool_entity(3), Test_Dense).n, 3)
+}
+
+// A snapshot that is not one this build could have written -- another
+// build's catalog, entities out of order or out of range, a component the
+// catalog does not have, too short to hold even its header -- is refused
+// whole, and the world is left as it was.
+@(test)
+snapshots_from_elsewhere_change_nothing :: proc(t: ^testing.T) {
+	e := sim.ecs_create()
+	defer sim.ecs_destroy(e)
+	sim.add(e, sim.pool_entity(1), Test_Dense{n = 1})
+	sim.add(e, sim.pool_entity(2), Test_Dense{n = 2})
+	saved := snapshot(e)
+	sim.get(e, sim.pool_entity(1), Test_Dense).n = 5
+	before := digest(e)
+
+	// The layout: a 16-byte header (catalog hash, entity count), then per
+	// entity its u32 index, its u128 mask and its components' data.
+	MASK :: size_of(sim.Component_Mask)
+	entry := 4 + MASK + size_of(Test_Dense)
+	corrupt :: proc(saved: []byte, at: int, bytes: []byte) -> []byte {
+		out := make([]byte, len(saved), context.temp_allocator)
+		copy(out, saved)
+		copy(out[at:], bytes)
+		return out
+	}
+	u32_bytes :: proc(v: u32) -> []byte {
+		out := make([]byte, 4, context.temp_allocator)
+		(transmute(^u32)raw_data(out))^ = v
+		return out
+	}
+	cases := [?]struct {
+		what: string,
+		data: []byte,
+	} {
+		{"shorter than its header", saved[:10]},
+		{"another build's catalog", corrupt(saved, 0, {0xff})},
+		{"an entity out of order", corrupt(saved, 16 + entry, u32_bytes(u32(sim.pool_entity(0))))},
+		{"an entity out of range", corrupt(saved, 16, u32_bytes(u32(sim.FIXED_ENTITIES + 1)))},
+		{"a component the catalog lacks", corrupt(saved, 16 + 4 + MASK - 1, {0x80})},
+		{"cut off in an entity's data", saved[:16 + entry - 2]},
+	}
+	for c in cases {
+		_, ok := sim.ecs_read(e, c.data)
+		testing.expectf(t, !ok, "%s: must be refused", c.what)
+		testing.expectf(t, digest(e) == before, "%s: must change nothing", c.what)
+	}
 }

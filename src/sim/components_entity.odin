@@ -116,13 +116,6 @@ list_remove :: proc "contextless" (l: ^List, links: $L, i: i32, c: ^Cursor = nil
 	link_of(links, i)^ = {NO_LINK, NO_LINK}
 }
 
-list_nth :: proc "contextless" (l: ^List, links: $L, n: i32) -> i32 {
-	i := l.head
-	for _ in 0 ..< n {
-		i = link_of(links, i).next
-	}
-	return i
-}
 
 // G_GameObject: the common base of players, groups and entities. Only the
 // fields the simulation reads are kept; offsets are the original's.

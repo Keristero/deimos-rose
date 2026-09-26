@@ -119,11 +119,6 @@ frame_of :: #force_inline proc "contextless" (s: ^State) -> u32 {
 	return single(s, Clock).frame
 }
 
-// Game steps into this level.
-time_of :: #force_inline proc "contextless" (s: ^State) -> i32 {
-	return single(s, Clock).time
-}
-
 level_number_of :: #force_inline proc "contextless" (s: ^State) -> i32 {
 	return single(s, Level_Info).number
 }

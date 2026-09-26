@@ -49,13 +49,6 @@ speed_from_vector :: proc "contextless" (v: Vec) -> f32 {
 	return math.sqrt(v.x * v.x + v.y * v.y)
 }
 
-// U_Math_GetUnitVector: note the squared length is truncated to an integer
-// before the square root, so short vectors normalise coarsely -- faithfully.
-unit_vector :: proc "contextless" (x, y: f32) -> Vec {
-	len := m_sqrt(trunc_i32(x * x + y * y))
-	return {x / len, y / len}
-}
-
 // U_Math_GetDistanceToTarget: integer-truncated squared distance, then sqrt.
 distance_to :: proc "contextless" (a, b: Vec) -> f32 {
 	dx, dy := b.x - a.x, b.y - a.y

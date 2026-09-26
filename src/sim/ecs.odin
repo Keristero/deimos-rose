@@ -181,7 +181,8 @@ layout_runs :: proc(ti: ^runtime.Type_Info, base: int) -> bool {
 	case runtime.Type_Info_Enumerated_Array:
 		return layout_elems(v.elem, v.elem_size, v.count, base)
 	case runtime.Type_Info_Matrix:
-		// Column-major with padded columns: element by element.
+		// Column-major, each column elem_stride long, of which the first
+		// row_count are elements: element by element, so padding is left out.
 		for i in 0 ..< v.elem_stride * v.column_count {
 			if i % v.elem_stride < v.row_count {
 				emit_run(base + i * v.elem_size, v.elem_size)

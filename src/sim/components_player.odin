@@ -121,10 +121,6 @@ player_def :: #force_inline proc "contextless" (s: ^State, p: Player) -> ^Player
 	return &s.defs.players[p.def].def
 }
 
-player_in_play :: #force_inline proc "contextless" (p: Player) -> bool {
-	return p.state == .Playing
-}
-
 NO_WEAPON :: -1
 
 // Weapon slot bookkeeping shared by the air (+0x5d) and ground (+0x77) slots.

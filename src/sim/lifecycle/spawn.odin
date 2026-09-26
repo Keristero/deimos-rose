@@ -183,7 +183,7 @@ eg_request_spawn :: proc(s: ^sim.State, req: sim.Spawn_Request) -> sim.Entity_Re
 		alone = sim.entity_at(s, req.owner.index).group == sim.FIRST_GROUP_ID
 	}
 	if alone {
-		gi = sim.list_nth(&w.active, sim.group_links(s), 0)
+		gi = w.active.head // the first active group
 		g := sim.group_at(s, gi)
 		g.count = count
 		g.total += count
