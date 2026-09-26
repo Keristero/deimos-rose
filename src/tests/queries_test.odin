@@ -13,17 +13,15 @@ import "dr:sim/lifecycle"
 import "dr:sim/systems/entity_system"
 
 // Component queries (docs/phase-9-ecs.md, D45): a stage runs for the
-// entities whose components, their own and their unit's and state's,
-// match it, so a plugin can give any unit a core behaviour, and an entity's
-// own component overrides its prefabs'. The test builders and stages here
-// belong to 30FPS Unlock, which no real session carries (it is not a
-// session plugin), so they reach only the sessions below, which name it.
+// entities whose unit's and state's components match it, so a plugin can
+// give any unit a core behaviour, and a state's component overrides its
+// unit's. The test builders and stages here belong to 30FPS Unlock, which
+// no real session carries (it is not a session plugin), so they reach only
+// the sessions below, which name it.
 
 Test_Mark :: struct {
 	v: i32,
 }
-
-Test_Player_Tag :: struct {}
 
 @(private = "file")
 MINE :: sim.Res_ID{'m', 'i', 'n', 'e'}
@@ -34,8 +32,7 @@ player_stage_runs: [sim.MAX_PLAYERS]int
 @(init)
 register_query_tests :: proc "contextless" () {
 	context = runtime.default_context()
-	sim.prefab_component_register(Test_Mark)
-	sim.component_register(Test_Player_Tag, sim.MAX_PLAYERS)
+	sim.component_register(Test_Mark)
 	sim.prefab_builder_register({
 		name = "test_queries",
 		plugin = fps_unlock.ID,
@@ -53,9 +50,8 @@ register_query_tests :: proc "contextless" () {
 		},
 	})
 	sim.player_stage_register({
-		name = "test_tagged_players",
+		name = "test_player_stage",
 		plugin = fps_unlock.ID,
-		with = sim.mask_of(Test_Player_Tag),
 		run = proc(s: ^sim.State, p: sim.Player, ps: ^sim.Player_Step) -> bool {
 			player_stage_runs[p.number] += 1
 			return true
@@ -125,7 +121,7 @@ a_plugins_builder_gives_a_unit_a_core_behaviour :: proc(t: ^testing.T) {
 }
 
 @(test)
-an_entitys_own_component_overrides_its_prefabs :: proc(t: ^testing.T) {
+a_states_component_overrides_its_units :: proc(t: ^testing.T) {
 	f: Query_Fixture
 	defer vmem.arena_destroy(&f.arena)
 	if !query_fixture(t, &f, true) {
@@ -135,41 +131,26 @@ an_entitys_own_component_overrides_its_prefabs :: proc(t: ^testing.T) {
 	if !ok {
 		return
 	}
-	// The state's prefab over the unit's.
-	testing.expect_value(t, sim.entity_component(f.s, e, Test_Mark).v, i32(2))
 	es := sim.entity_step(f.s, e, 0)
 	testing.expect_value(t, sim.step_component(f.s, e, &es, Test_Mark).v, i32(2))
 	testing.expect(t, sim.step_has(&es, entity_system.Pauses_Scrolling))
 	testing.expect(t, sim.entity_has(f.s, e, entity_system.Pauses_Scrolling))
 	testing.expect(t, !sim.entity_has(f.s, e, entity_system.Motion_Blur))
-
-	// The entity's own over both. Giving it a component moves its row, and
-	// the row moved into the gap it leaves, so any view into that table --
-	// its own and other entities' -- is found again from its index, not
-	// read through the old one.
-	index := e.pool_index
-	sim.add(f.s.ecs, sim.pool_entity(index), Test_Mark{3})
-	e = sim.entity_at(f.s, index)
-	testing.expect_value(t, sim.entity_component(f.s, e, Test_Mark).v, i32(3))
-	es = sim.entity_step(f.s, e, 0)
-	testing.expect_value(t, sim.step_component(f.s, e, &es, Test_Mark).v, i32(3))
-	sim.remove(f.s.ecs, sim.pool_entity(index), Test_Mark)
-	e = sim.entity_at(f.s, index)
-	testing.expect_value(t, sim.entity_component(f.s, e, Test_Mark).v, i32(2))
 }
 
+// A plugin's player stage runs for every player in play, and only in a
+// session with the plugin on.
 @(test)
-a_player_stage_runs_for_the_players_that_match_it :: proc(t: ^testing.T) {
-	f: Query_Fixture
-	defer vmem.arena_destroy(&f.arena)
-	if !query_fixture(t, &f, true) {
-		return
+a_plugins_player_stage_runs_with_its_plugin :: proc(t: ^testing.T) {
+	for builders in ([2]bool{false, true}) {
+		f: Query_Fixture
+		defer vmem.arena_destroy(&f.arena)
+		if !query_fixture(t, &f, builders) {
+			return
+		}
+		player_stage_runs = {}
+		sim.session_step(f.s, {})
+		want := builders ? 1 : 0
+		testing.expect_value(t, player_stage_runs[0], want)
 	}
-	player_stage_runs = {}
-	sim.session_step(f.s, {})
-	testing.expect_value(t, player_stage_runs, [sim.MAX_PLAYERS]int{})
-	sim.add(f.s.ecs, sim.player_entity(0), Test_Player_Tag{})
-	sim.session_step(f.s, {})
-	testing.expect_value(t, player_stage_runs[0], 1)
-	testing.expect_value(t, player_stage_runs[1], 0)
 }

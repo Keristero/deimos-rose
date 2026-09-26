@@ -14,7 +14,7 @@ Targetable :: struct {}
 @(init)
 register_components :: proc "contextless" () {
 	context = runtime.default_context()
-	sim.prefab_component_register(Targetable)
+	sim.component_register(Targetable)
 }
 
 weapon_prefab :: proc(p: sim.Prefab, u: ^sim.Unit, st: ^sim.Unit_State) {

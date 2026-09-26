@@ -38,14 +38,14 @@ Blocked_By_Wreckage :: struct {
 @(init)
 register_components :: proc "contextless" () {
 	context = runtime.default_context()
-	sim.prefab_component_register(Collides)
-	sim.prefab_component_register(Collides_With_Players)
-	sim.prefab_component_register(Harmless_To_Players)
-	sim.prefab_component_register(Passes_Hits_To_Owner)
-	sim.prefab_component_register(Blocked_By_Wreckage)
-	sim.prefab_component_register(Ground_Based)
-	sim.prefab_component_register(Player_Projectile)
-	sim.prefab_component_register(Hittable_By_Player_Shots)
+	sim.component_register(Collides)
+	sim.component_register(Collides_With_Players)
+	sim.component_register(Harmless_To_Players)
+	sim.component_register(Passes_Hits_To_Owner)
+	sim.component_register(Blocked_By_Wreckage)
+	sim.component_register(Ground_Based)
+	sim.component_register(Player_Projectile)
+	sim.component_register(Hittable_By_Player_Shots)
 
 	air_shot_targets = {
 		with    = sim.mask_of(Collides, Hittable_By_Player_Shots),

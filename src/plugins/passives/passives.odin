@@ -263,7 +263,7 @@ Passive_State :: struct {
 }
 
 levels_of :: #force_inline proc "contextless" (s: ^sim.State, player: $I) -> ^Passive_Levels {
-	return &sim.get(s.ecs, sim.player_entity(i32(player)), Passive_State).passives
+	return &sim.player_component(s, player, Passive_State).passives
 }
 
 // Everything the passives a player holds add to a stat.
@@ -333,7 +333,7 @@ shield_regen_stage :: proc(s: ^sim.State, p: sim.Player, ps: ^sim.Player_Step) -
 	if p.state != .Playing || !stats.player_stat(s, p.number, .Shield_Regenerates).enabled {
 		return true
 	}
-	st := sim.get(s.ecs, sim.player_entity(p.number), Passive_State)
+	st := sim.player_component(s, p.number, Passive_State)
 	if p.calm == 0 {
 		st.regen_acc = 0
 	}
@@ -361,27 +361,12 @@ player_regenerating :: proc "contextless" (s: ^sim.State, p: sim.Player) -> bool
 	return p.calm >= regen_wait(s, p)
 }
 
-// Gives the players their passives, none held, as the session starts.
-@(private = "file")
-setup_system :: proc(s: ^sim.State, step: ^sim.Step) {
-	for i in 0 ..< i32(sim.MAX_PLAYERS) {
-		sim.add(s.ecs, sim.player_entity(i), Passive_State{})
-	}
-}
-
 ID: sim.Plugin_ID
 
 @(private = "file", rodata)
 DEPS := []string{"extra_prefs"}
 @(private = "file", rodata)
 BEFORE_CALM := []string{"calm"}
-
-// Its components go on the session's entities once they exist, and before
-// the players are set up with them.
-@(private = "file", rodata)
-SETUP_AFTER := []string{"session_setup"}
-@(private = "file", rodata)
-SETUP_BEFORE := []string{"players_setup"}
 
 @(init)
 register :: proc "contextless" () {
@@ -393,13 +378,11 @@ register :: proc "contextless" () {
 		deps        = DEPS,
 		session     = true,
 	})
-	sim.component_register(Passive_State, sim.MAX_PLAYERS)
-	sim.system_register({name = "passives_setup", after = SETUP_AFTER, before = SETUP_BEFORE, plugin = ID, kind = .Setup, run = setup_system})
+	// None held, as the session starts.
+	sim.kind_component(.Player, Passive_State{}, ID)
 	// Where G_Player::Process would have them: after the weapons fire, and
 	// ahead of the core's count of the ship's calm, which they read.
-	// Both for the players holding passives.
-	holds := sim.mask_of(Passive_State)
-	sim.player_stage_register({name = "shield_regen", before = BEFORE_CALM, plugin = ID, with = holds, run = shield_regen_stage})
-	sim.player_stage_register({name = "risky_reward", before = BEFORE_CALM, plugin = ID, with = holds, run = risky_reward_stage})
+	sim.player_stage_register({name = "shield_regen", before = BEFORE_CALM, plugin = ID, run = shield_regen_stage})
+	sim.player_stage_register({name = "risky_reward", before = BEFORE_CALM, plugin = ID, run = risky_reward_stage})
 	sim.stat_provider_register({plugin = ID, total = provide, shapes = shapes})
 }

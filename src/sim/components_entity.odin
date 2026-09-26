@@ -1,14 +1,12 @@
 package sim
 
-import ecs "dr:third_party/odecs"
-
 // The entity world: G_EntityGroup's groups and G_Entity's entities.
 //
 // The original keeps entities in a pool of 1,000 preallocated objects
 // (FUN_0041d1d0) and groups in heap-allocated U_LinkedLists. Here both are
-// fixed ranges of the world's entities (ecs.odin): pool slot i is
-// pool_entity(i) and group i is group_entity(i). Which are in use, and the
-// lists, are in the Pool singleton. List membership is intrusive: each
+// kinds of the world's entities (ecs.odin), made with the world: pool slot i
+// is the i-th Pool entity and group i the i-th Group. Which are in use, and
+// the lists, are in the Pool singleton. List membership is intrusive: each
 // member's Link component holds its neighbours' indices. The lists reproduce
 // U_LinkedList exactly: CreateAndAddLink appends at the tail, iteration runs
 // from the head, and deleting through a cursor steps the cursor back to the
@@ -47,37 +45,21 @@ list_init :: proc "contextless" () -> List {
 	return {head = NO_LINK, tail = NO_LINK}
 }
 
-// The Link components of one range of the world's entities, by index from
-// the range's first.
-Links :: struct {
-	ecs:   ^Ecs,
-	first: i32,
+// The pool's links and the groups', by index.
+entity_links :: #force_inline proc "contextless" (s: ^State) -> []Link {
+	return s.ecs.pool_links
 }
 
-entity_links :: #force_inline proc "contextless" (s: ^State) -> Links {
-	return {s.ecs, FIRST_POOL_ENTITY}
+group_links :: #force_inline proc "contextless" (s: ^State) -> []Link {
+	return s.ecs.group_links
 }
 
-group_links :: #force_inline proc "contextless" (s: ^State) -> Links {
-	return {s.ecs, FIRST_GROUP_ENTITY}
-}
-
-// Member i's link. The lists take plain slices too, for tests.
-link_of :: proc {
-	link_in_world,
-	link_in_slice,
-}
-
-link_in_world :: #force_inline proc "contextless" (links: Links, i: i32) -> ^Link {
-	return get(links.ecs, ecs.EntityID(links.first + i), Link)
-}
-
-link_in_slice :: #force_inline proc "contextless" (links: []Link, i: i32) -> ^Link {
+link_of :: #force_inline proc "contextless" (links: []Link, i: i32) -> ^Link {
 	return &links[i]
 }
 
 // U_LinkedList::CreateAndAddLink.
-list_append :: proc "contextless" (l: ^List, links: $L, i: i32) {
+list_append :: proc "contextless" (l: ^List, links: []Link, i: i32) {
 	link_of(links, i)^ = {prev = l.tail, next = NO_LINK}
 	if l.head == NO_LINK {
 		l.head = i
@@ -91,13 +73,13 @@ list_append :: proc "contextless" (l: ^List, links: $L, i: i32) {
 
 // U_LinkedList::GetNextLinkObject. Callers bound their loops by a count, as
 // the original does, so running off the end is a caller bug.
-list_next :: proc "contextless" (l: ^List, links: $L, c: ^Cursor) -> i32 {
+list_next :: proc "contextless" (l: ^List, links: []Link, c: ^Cursor) -> i32 {
 	c.at = c.at == NO_LINK ? l.head : link_of(links, c.at).next
 	return c.at
 }
 
 // U_LinkedList::DeleteLink(link, ref): unlinks and steps the cursor back.
-list_remove :: proc "contextless" (l: ^List, links: $L, i: i32, c: ^Cursor = nil) {
+list_remove :: proc "contextless" (l: ^List, links: []Link, i: i32, c: ^Cursor = nil) {
 	lk := link_of(links, i)^
 	if i == l.head {
 		l.head = lk.next
@@ -292,8 +274,7 @@ Shaped :: struct {
 }
 
 // One pool entity: its components, as G_Entity's fields. A view, passed by
-// value; its pointers stay good for the session, since a pool slot keeps
-// its components (entity_alloc).
+// value, found when the world is built and good for the session (ecs.odin).
 Entity :: struct {
 	using obj:     ^Game_Object,
 	using actor:   ^Actor,
@@ -305,34 +286,9 @@ Entity :: struct {
 	using shaped:  ^Shaped,
 }
 
-// Every pool entity's components. Its list membership is a Link.
-pool_components :: proc "contextless" () -> Component_Mask {
-	return {
-		component_id(Game_Object),
-		component_id(Actor),
-		component_id(Anim),
-		component_id(Motion),
-		component_id(Owned),
-		component_id(Spawner),
-		component_id(Effects),
-		component_id(Shaped),
-		component_id(Link),
-	}
-}
-
-// Pool slot i, which must have held an entity this session.
+// Pool slot i. A slot never used this session holds its start values.
 entity_at :: #force_inline proc "contextless" (s: ^State, i: i32) -> Entity {
-	id := pool_entity(i)
-	return {
-		obj     = get(s.ecs, id, Game_Object),
-		actor   = get(s.ecs, id, Actor),
-		anim    = get(s.ecs, id, Anim),
-		motion  = get(s.ecs, id, Motion),
-		owned   = get(s.ecs, id, Owned),
-		spawner = get(s.ecs, id, Spawner),
-		effects = get(s.ecs, id, Effects),
-		shaped  = get(s.ecs, id, Shaped),
-	}
+	return s.ecs.entities[i]
 }
 
 // A group: its own component, and a Link for the active or required list.
@@ -349,13 +305,9 @@ Group :: struct {
 	terrain_effects: bool, // +0xaf
 }
 
-group_components :: proc "contextless" () -> Component_Mask {
-	return {component_id(Group), component_id(Link)}
-}
-
-// Group i, which must have been allocated this session.
+// Group i.
 group_at :: #force_inline proc "contextless" (s: ^State, i: i32) -> ^Group {
-	return get(s.ecs, group_entity(i), Group)
+	return s.ecs.groups[i]
 }
 
 // The pool's bookkeeping: G_EG's globals.
@@ -372,18 +324,11 @@ Pool :: struct {
 	limit_warned:    bool, // DAT_004e3499
 }
 
-// A group slot gets its components the first time it is used and keeps
-// them, so no allocation moves another group's (a group is allocated while
-// others are being walked).
-group_alloc :: proc(s: ^State) -> i32 {
+group_alloc :: proc "contextless" (s: ^State) -> i32 {
 	w := single(s, Pool)
 	for used, i in w.group_used {
 		if !used {
 			w.group_used[i] = true
-			id := group_entity(i32(i))
-			if !has(s.ecs, id, Group) {
-				ecs_set_components(s.ecs, id, group_components())
-			}
 			group_at(s, i32(i))^ = Group{entities = list_init()}
 			return i32(i)
 		}

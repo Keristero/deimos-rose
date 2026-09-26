@@ -134,7 +134,7 @@ golden_state_hash :: proc(s: ^sim.State) -> u64 {
 		mixb(&f, p.invulnerable)
 		// A plugin that is off hashes as its components would start.
 		levels: passives.Passive_Levels
-		if st := sim.get(s.ecs, sim.player_entity(p.number), passives.Passive_State); st != nil {
+		if st := sim.player_component(s, p.number, passives.Passive_State); st != nil {
 			levels = st.passives
 		}
 		for lv in levels {

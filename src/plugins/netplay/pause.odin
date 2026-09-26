@@ -20,7 +20,7 @@ Pause :: struct {
 
 // The session's pause; nil when netplay is not on.
 pause_of :: #force_inline proc "contextless" (s: ^sim.State) -> ^Pause {
-	return sim.get(s.ecs, sim.SESSION_ENTITY, Pause)
+	return sim.single(s, Pause)
 }
 
 // Whether the session is paused.
@@ -58,11 +58,6 @@ pause_system :: proc(s: ^sim.State, step: ^sim.Step) {
 }
 
 @(private = "file")
-setup_system :: proc(s: ^sim.State, step: ^sim.Step) {
-	sim.add(s.ecs, sim.SESSION_ENTITY, Pause{})
-}
-
-@(private = "file")
 held :: proc "contextless" (s: ^sim.State) -> bool {
 	return pause_of(s).paused
 }
@@ -72,13 +67,6 @@ ID: sim.Plugin_ID
 // First of all, ahead of the game step and anything else around it.
 @(private = "file", rodata)
 BEFORE := []string{"step_events"}
-
-// Its components go on the session's entities once they exist, and before
-// the players are set up with them.
-@(private = "file", rodata)
-SETUP_AFTER := []string{"session_setup"}
-@(private = "file", rodata)
-SETUP_BEFORE := []string{"players_setup"}
 
 @(init)
 register :: proc "contextless" () {
@@ -90,8 +78,7 @@ register :: proc "contextless" () {
 		session     = true,
 		default_on  = true,
 	})
-	sim.component_register(Pause, 1)
-	sim.system_register({name = "netplay_setup", after = SETUP_AFTER, before = SETUP_BEFORE, plugin = ID, kind = .Setup, run = setup_system})
+	sim.kind_component(.Session, Pause{}, ID)
 	sim.system_register({name = "netplay_pause", before = BEFORE, plugin = ID, kind = .Session, run = pause_system})
 	sim.hold_register({plugin = ID, held = held})
 }

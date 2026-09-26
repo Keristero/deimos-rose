@@ -75,7 +75,7 @@ Buttons :: sim.Buttons
 
 // The session's loadout screen; nil when the plugin is not on.
 loadout_of :: #force_inline proc "contextless" (s: ^sim.State) -> ^Loadout {
-	return sim.get(s.ecs, sim.SESSION_ENTITY, Loadout)
+	return sim.single(s, Loadout)
 }
 
 // Whether the loadout screen is open.
@@ -86,7 +86,7 @@ loadout_open :: proc "contextless" (s: ^sim.State) -> bool {
 
 // A player's slots; nil when the plugin is not on.
 slots_of :: #force_inline proc "contextless" (s: ^sim.State, player: $I) -> ^Loadout_Slots {
-	return sim.get(s.ecs, sim.player_entity(i32(player)), Loadout_Slots)
+	return sim.player_component(s, player, Loadout_Slots)
 }
 
 // A weapon a player may hold by `level`. The last level it is available on
@@ -411,16 +411,6 @@ open_system :: proc(s: ^sim.State, step: ^sim.Step) {
 }
 
 @(private = "file")
-setup_system :: proc(s: ^sim.State, step: ^sim.Step) {
-	sim.add(s.ecs, sim.SESSION_ENTITY, Loadout{})
-	for i in 0 ..< i32(MAX_PLAYERS) {
-		h := sim.add(s.ecs, sim.player_entity(i), Loadout_Slots{})
-		h.loadout = NO_WEAPON
-		h.spare = NO_WEAPON
-	}
-}
-
-@(private = "file")
 held :: proc "contextless" (s: ^sim.State) -> bool {
 	return loadout_of(s).active
 }
@@ -440,13 +430,6 @@ OPEN_AFTER := []string{"reward_open"}
 @(private = "file", rodata)
 OPEN_BEFORE := []string{"level_transition"}
 
-// Its components go on the session's entities once they exist, and before
-// the players are set up with them.
-@(private = "file", rodata)
-SETUP_AFTER := []string{"session_setup"}
-@(private = "file", rodata)
-SETUP_BEFORE := []string{"players_setup"}
-
 @(init)
 register :: proc "contextless" () {
 	context = runtime.default_context()
@@ -457,9 +440,12 @@ register :: proc "contextless" () {
 		deps        = DEPS,
 		session     = true,
 	})
-	sim.component_register(Loadout, 1)
-	sim.component_register(Loadout_Slots, MAX_PLAYERS)
-	sim.system_register({name = "loadout_setup", after = SETUP_AFTER, before = SETUP_BEFORE, plugin = ID, kind = .Setup, run = setup_system})
+	sim.kind_component(.Session, Loadout{}, ID)
+	// No weapon in any slot until the first stage's screen fills them.
+	slots: Loadout_Slots
+	slots.loadout = NO_WEAPON
+	slots.spare = NO_WEAPON
+	sim.kind_component(.Player, slots, ID)
 	sim.system_register({
 		name   = "loadout_screen",
 		after  = SCREEN_AFTER,

@@ -23,10 +23,8 @@ eg_reset :: proc(s: ^sim.State, level: ^sim.Level_Def) {
 	w.entity_used = {}
 	w.group_used = {}
 	for i in 0 ..< i32(sim.MAX_GROUPS) {
-		if sim.has(s.ecs, sim.group_entity(i), sim.Group) {
-			sim.group_at(s, i)^ = {}
-			sim.link_of(sim.group_links(s), i)^ = {}
-		}
+		sim.group_at(s, i)^ = {}
+		sim.group_links(s)[i] = {}
 	}
 	w.active = sim.list_init()
 	w.required = sim.list_init()
@@ -239,10 +237,9 @@ eg_request_spawn :: proc(s: ^sim.State, req: sim.Spawn_Request) -> sim.Entity_Re
 
 // FUN_0041d1d0: take a pool slot. The hint is the last slot freed.
 //
-// A slot gets its components the first time it is taken and keeps them for
-// the session, as the original's pool keeps its preallocated objects: so no
-// allocation moves another entity's components while the step holds them,
-// and a stale Entity_Ref still reads what the slot's last entity left.
+// A slot keeps its components for the session, as the original's pool keeps
+// its preallocated objects, so a stale Entity_Ref still reads what the
+// slot's last entity left.
 entity_alloc :: proc(s: ^sim.State) -> i32 {
 	w := sim.single(s, sim.Pool)
 	if w.used_count >= sim.MAX_ENTITIES {
@@ -262,9 +259,6 @@ entity_alloc :: proc(s: ^sim.State) -> i32 {
 	}
 	w.used_count += 1
 	w.entity_used[i] = true
-	if !sim.has(s.ecs, sim.pool_entity(i), sim.Actor) {
-		sim.ecs_set_components(s.ecs, sim.pool_entity(i), sim.pool_components())
-	}
 	entity_reset(sim.entity_at(s, i), i)
 	w.free_hint = -1
 	return i

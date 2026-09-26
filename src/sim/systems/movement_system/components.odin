@@ -36,14 +36,14 @@ Orbits_Owner :: struct {}
 @(init)
 register_components :: proc "contextless" () {
 	context = runtime.default_context()
-	sim.prefab_component_register(Deleted_Without_Players)
-	sim.prefab_component_register(Destructs_Without_Players)
-	sim.prefab_component_register(Flees_Without_Players)
-	sim.prefab_component_register(Cyclic_Motion)
-	sim.prefab_component_register(Constrained_To_Play_Area)
-	sim.prefab_component_register(Locked_To_Owner)
-	sim.prefab_component_register(Linked_To_Owner)
-	sim.prefab_component_register(Orbits_Owner)
+	sim.component_register(Deleted_Without_Players)
+	sim.component_register(Destructs_Without_Players)
+	sim.component_register(Flees_Without_Players)
+	sim.component_register(Cyclic_Motion)
+	sim.component_register(Constrained_To_Play_Area)
+	sim.component_register(Locked_To_Owner)
+	sim.component_register(Linked_To_Owner)
+	sim.component_register(Orbits_Owner)
 }
 
 // A unit's or state's components, from the flags its definition sets.

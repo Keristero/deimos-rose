@@ -67,12 +67,14 @@ hit_spawn :: proc(t: ^testing.T, s: ^sim.State, id: string, loc: sim.Vec, owner 
 	return e, r
 }
 
-// Gives the entity a component of its own. Its row moves, and with it
-// others in its table, so every view found before is found again from its
-// index afterwards.
+// Makes every state of unit `id` pass its hits on to its owner, or stop:
+// the definitions edited, and the prefabs built again from them.
 @(private = "file")
-hit_give :: proc(s: ^sim.State, r: sim.Entity_Ref, c: $T) {
-	sim.add(s.ecs, sim.pool_entity(r.index), c)
+hit_pass_on :: proc(s: ^sim.State, id: string, on: bool) {
+	for &st in s.defs.units[sim.unit_index(s.defs, sim.res_id(id))].states {
+		st.pass_hits_to_owner = on
+	}
+	sim.prefabs_build(s.prefabs, s.defs, s.session.mods)
 }
 
 // The live entity with this unique number, if there is one.
@@ -441,8 +443,8 @@ spent_shields_change_state_when_the_unit_asks :: proc(t: ^testing.T) {
 // FUN_0041b920's hit half with statePassHitsToOwner: a shot that passes its
 // hits on sends the target's damage to its owner and is untouched; and a
 // target that passes its hits on sends the shot's damage to the *shot's*
-// owner, not its own -- the original's slip, kept. The component is given
-// to the entities directly: no shipped shot or mine has it. The shot is a
+// owner, not its own -- the original's slip, kept. No shipped shot or mine
+// passes its hits on, so the test's definitions make them. The shot is a
 // Bacta Gun bullet (0.6 damage) with a mine as its owner; the target is a
 // mine (2 damage).
 @(test)
@@ -464,7 +466,8 @@ passed_hits_land_on_the_shots_owner :: proc(t: ^testing.T) {
 		if !sim.ref_valid(s, oref) || !sim.ref_valid(s, tref) || !sim.ref_valid(s, sref) {
 			return
 		}
-		hit_give(s, tref, collision_system.Passes_Hits_To_Owner{})
+		hit_pass_on(s, "mine", true)
+		defer hit_pass_on(s, "mine", false)
 		owner, target, shot := sim.entity_at(s, oref.index), sim.entity_at(s, tref.index), sim.entity_at(s, sref.index)
 		owner.shields = 500
 		collision_system.collide_entities(s, shot, target, hit_now(s))
@@ -480,7 +483,7 @@ passed_hits_land_on_the_shots_owner :: proc(t: ^testing.T) {
 		if !sim.ref_valid(s, oref) || !sim.ref_valid(s, tref) || !sim.ref_valid(s, sref) {
 			return
 		}
-		hit_give(s, sref, collision_system.Passes_Hits_To_Owner{})
+		hit_pass_on(s, "bagb", true)
 		owner, target, shot := sim.entity_at(s, oref.index), sim.entity_at(s, tref.index), sim.entity_at(s, sref.index)
 		owner.shields = 500
 		collision_system.collide_entities(s, shot, target, hit_now(s))
@@ -492,7 +495,8 @@ passed_hits_land_on_the_shots_owner :: proc(t: ^testing.T) {
 
 // Touching a player, an entity whose state passes hits on sends the
 // collision's damage (perm float 0xa1) to its owner and takes none itself;
-// the player is hit as usual. Given the component directly, as above.
+// the player is hit as usual. The definitions make the mine pass hits on,
+// as above.
 @(test)
 touching_a_player_hurts_the_owner_of_a_passing_entity :: proc(t: ^testing.T) {
 	f: Hit_Fixture
@@ -508,7 +512,7 @@ touching_a_player_hurts_the_owner_of_a_passing_entity :: proc(t: ^testing.T) {
 	if !sim.ref_valid(s, oref) || !sim.ref_valid(s, cref) {
 		return
 	}
-	hit_give(s, cref, collision_system.Passes_Hits_To_Owner{})
+	hit_pass_on(s, "mine", true)
 	owner, child := sim.entity_at(s, oref.index), sim.entity_at(s, cref.index)
 	owner.shields = 500
 	p.hit_time = -10000

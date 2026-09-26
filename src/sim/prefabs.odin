@@ -33,11 +33,11 @@ import ecs "dr:third_party/odecs"
 MAX_PREFAB_BUILDERS :: 64
 
 Prefabs :: struct {
-	world:       ^Ecs,
+	world:       ^ecs.World,
 	defs:        ^Defs,
 	mods:        Mods,
-	// Prefab entity of unit u is u + 1; the prefab of state k of unit u is
-	// first_state[u] + k.
+	// Unit u's prefab is ids[u]; state k of unit u's is ids[first_state[u] + k].
+	ids:         []ecs.EntityID,
 	first_state: []i32,
 	unit_mask:   []Component_Mask,
 	state_mask:  []Component_Mask,
@@ -46,7 +46,7 @@ Prefabs :: struct {
 
 // Where a builder puts the components it makes.
 Prefab :: struct {
-	world: ^Ecs,
+	world: ^ecs.World,
 	id:    ecs.EntityID,
 }
 
@@ -70,22 +70,17 @@ prefab_builder_register :: proc(b: Prefab_Builder) {
 	builder_count += 1
 }
 
-// Adds T, a component only prefabs hold, to the catalog: from `@(init)`
-// procedures only, like component_register. No entity of the pool holds one
-// itself, so no rows are reserved for it: the prefab world grows only while
-// it is built, and nothing points into it until it is done.
-prefab_component_register :: proc($T: typeid) {
-	component_register(T, 0)
-}
-
-// Gives the prefab component T, holding `value`.
+// Gives the prefab component T, holding `value`. T must be in the catalog
+// (component_register).
 prefab_add :: proc(p: Prefab, value: $T) {
-	add(p.world, p.id, value)
+	assert(component_id(T) >= 0, "sim: a prefab component must be registered")
+	ecs.add_component(p.world, p.id, value)
 }
 
 // Builds the prefabs for defs and a session's plugins, reusing pf's memory
 // where it has any.
 prefabs_build :: proc(pf: ^Prefabs, defs: ^Defs, mods: Mods, allocator := context.allocator) {
+	runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
 	prefabs_destroy(pf)
 	pf.allocator = allocator
 	pf.defs = defs
@@ -94,40 +89,54 @@ prefabs_build :: proc(pf: ^Prefabs, defs: ^Defs, mods: Mods, allocator := contex
 	pf.first_state = make([]i32, n, allocator)
 	total := n
 	for &u, i in defs.units {
-		pf.first_state[i] = i32(total + 1)
+		pf.first_state[i] = i32(total)
 		total += len(u.states)
 	}
-	pf.world = ecs_create(allocator, total)
-	pf.unit_mask = make([]Component_Mask, n, allocator)
-	pf.state_mask = make([]Component_Mask, total - n, allocator)
+	pf.world = ecs.create_world(allocator, allocator)
+	for c in component_types() {
+		c.register(pf.world)
+	}
+	pf.ids = make([]ecs.EntityID, total, allocator)
+	index := make(map[ecs.EntityID]int, total, context.temp_allocator)
+	for &id, i in pf.ids {
+		id = ecs.add_entity(pf.world)
+		index[id] = i
+	}
 	for &u, i in defs.units {
-		unit := Prefab{pf.world, ecs.EntityID(i + 1)}
 		for b in builders[:builder_count] {
 			if b.plugin == CORE || int(b.plugin) in mods {
-				b.build(unit, &u, nil)
+				b.build({pf.world, pf.ids[i]}, &u, nil)
 			}
 		}
-		pf.unit_mask[i] = components_of(pf.world, unit.id)
 		for &st, k in u.states {
-			state := Prefab{pf.world, ecs.EntityID(int(pf.first_state[i]) + k)}
 			for b in builders[:builder_count] {
 				if b.plugin == CORE || int(b.plugin) in mods {
-					b.build(state, &u, &st)
+					b.build({pf.world, pf.ids[int(pf.first_state[i]) + k]}, &u, &st)
 				}
 			}
-			pf.state_mask[int(pf.first_state[i]) - n - 1 + k] = components_of(pf.world, state.id)
 		}
 	}
+	// Each prefab's components, from the world: which prefabs hold each one.
+	masks := make([]Component_Mask, total, allocator)
+	for c, ci in component_types() {
+		for arch in ecs.query_raw(pf.world, {c.type}) {
+			for id in ecs.get_entities(arch) {
+				masks[index[id]] += {ci}
+			}
+		}
+	}
+	pf.unit_mask = masks[:n]
+	pf.state_mask = masks[n:]
 }
 
 prefabs_destroy :: proc(pf: ^Prefabs) {
 	if pf.world == nil {
 		return
 	}
-	ecs_destroy(pf.world)
+	ecs.delete_world(pf.world)
+	delete(pf.ids, pf.allocator)
 	delete(pf.first_state, pf.allocator)
-	delete(pf.unit_mask, pf.allocator)
-	delete(pf.state_mask, pf.allocator)
+	delete(raw_data(pf.unit_mask)[:len(pf.unit_mask) + len(pf.state_mask)], pf.allocator)
 	pf^ = {}
 }
 
@@ -144,14 +153,25 @@ prefabs_ensure :: proc(s: ^State) {
 	}
 }
 
-prefab_unit_id :: #force_inline proc "contextless" (unit: i32) -> ecs.EntityID {
-	return ecs.EntityID(unit + 1)
+prefab_unit_id :: #force_inline proc "contextless" (pf: ^Prefabs, unit: i32) -> ecs.EntityID {
+	return pf.ids[unit]
 }
 
 prefab_state_id :: #force_inline proc "contextless" (pf: ^Prefabs, unit, state: i32) -> ecs.EntityID {
-	return ecs.EntityID(pf.first_state[unit] + state)
+	return pf.ids[pf.first_state[unit] + state]
 }
 
 prefab_state_mask :: #force_inline proc "contextless" (pf: ^Prefabs, unit, state: i32) -> Component_Mask {
-	return pf.state_mask[int(pf.first_state[unit]) - len(pf.unit_mask) - 1 + int(state)]
+	return pf.state_mask[int(pf.first_state[unit]) - len(pf.unit_mask) + int(state)]
+}
+
+// T for the entity as the stage sees it: its state's (the state `es`
+// holds), else its unit's. nil when neither has one, and for a tag, which
+// has nothing to point at (step_has).
+step_component :: proc(s: ^State, e: Entity, es: ^Entity_Step, $T: typeid) -> ^T {
+	pf := s.prefabs
+	if c := ecs.get_component(pf.world, prefab_state_id(pf, e.unit, es.state), T); c != nil {
+		return c
+	}
+	return ecs.get_component(pf.world, prefab_unit_id(pf, e.unit), T)
 }

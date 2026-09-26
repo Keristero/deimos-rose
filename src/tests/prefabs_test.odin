@@ -8,6 +8,7 @@ import "dr:sim"
 import _ "dr:sim/core"
 import "dr:sim/systems/entity_system"
 import "dr:sim/systems/movement_system"
+import ecs "dr:third_party/odecs"
 
 // Prefabs (sim/prefabs.odin): a unit's states become prefab entities whose
 // components follow the definitions' flags, and a plugin's builder runs only
@@ -18,7 +19,7 @@ Test_Prefab_Tag :: struct {}
 @(init)
 register_test_prefab :: proc "contextless" () {
 	context = runtime.default_context()
-	sim.prefab_component_register(Test_Prefab_Tag)
+	sim.component_register(Test_Prefab_Tag)
 	sim.prefab_builder_register({
 		name = "test_prefab",
 		plugin = fps_unlock.ID,
@@ -79,16 +80,16 @@ prefabs_follow_the_state_flags :: proc(t: ^testing.T) {
 	testing.expect_value(t, pf.unit_mask[0], sim.Component_Mask{})
 	testing.expect_value(t, pf.unit_mask[1], sim.mask_of(movement_system.Flees_Without_Players, movement_system.Constrained_To_Play_Area))
 
-	p := sim.get(pf.world, sim.prefab_state_id(&pf, 0, 0), entity_system.Emits_Particles)
+	p := ecs.get_component(pf.world, sim.prefab_state_id(&pf, 0, 0), entity_system.Emits_Particles)
 	testing.expect(t, p != nil)
 	testing.expect_value(t, p.particles, sim.Res_ID{1, 2, 3, 4})
 	testing.expect_value(t, p.repeat_delay, i32(7))
-	b := sim.get(pf.world, sim.prefab_state_id(&pf, 0, 2), entity_system.Motion_Blur)
+	b := ecs.get_component(pf.world, sim.prefab_state_id(&pf, 0, 2), entity_system.Motion_Blur)
 	testing.expect_value(t, b.min_gap, i32(3))
-	look := sim.get(pf.world, sim.prefab_state_id(&pf, 1, 0), entity_system.Follows_Owner_Look)
+	look := ecs.get_component(pf.world, sim.prefab_state_id(&pf, 1, 0), entity_system.Follows_Owner_Look)
 	testing.expect_value(t, look^, entity_system.Follows_Owner_Look{scale = true})
 	// North wins where a unit sets both, as in the original's test order.
-	flee := sim.get(pf.world, sim.prefab_unit_id(1), movement_system.Flees_Without_Players)
+	flee := ecs.get_component(pf.world, sim.prefab_unit_id(&pf, 1), movement_system.Flees_Without_Players)
 	testing.expect_value(t, flee.flee, sim.res_id("nora"))
 }
 
@@ -100,11 +101,11 @@ prefab_builders_follow_the_session_plugins :: proc(t: ^testing.T) {
 	defer sim.prefabs_destroy(&pf)
 
 	sim.prefabs_build(&pf, &defs, {})
-	testing.expect(t, !sim.has(pf.world, sim.prefab_unit_id(1), Test_Prefab_Tag))
+	testing.expect(t, !ecs.has_component(pf.world, sim.prefab_unit_id(&pf, 1), Test_Prefab_Tag))
 
 	// A rebuild with the plugin on reuses pf and gives every unit the tag.
 	sim.prefabs_build(&pf, &defs, {int(fps_unlock.ID)})
-	testing.expect(t, sim.has(pf.world, sim.prefab_unit_id(1), Test_Prefab_Tag))
-	testing.expect(t, sim.has(pf.world, sim.prefab_unit_id(0), Test_Prefab_Tag))
+	testing.expect(t, ecs.has_component(pf.world, sim.prefab_unit_id(&pf, 1), Test_Prefab_Tag))
+	testing.expect(t, ecs.has_component(pf.world, sim.prefab_unit_id(&pf, 0), Test_Prefab_Tag))
 	testing.expect_value(t, sim.prefab_state_mask(&pf, 1, 0), sim.mask_of(entity_system.Follows_Owner_Look))
 }

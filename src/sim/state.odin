@@ -92,19 +92,20 @@ unported :: proc "contextless" (s: ^State, site: Site) {
 	}
 }
 
-// Starts a session: an empty world, the systems of the core and of the
-// session's plugins in order, and their Setup systems run (the original's
-// set-up is dr:sim/core's).
+// Starts a session: a world for its plugins, the systems of the core and of
+// the session's plugins in order, and their Setup systems run (the
+// original's set-up is dr:sim/core's).
 //
-// The state's world is made on first use and kept, emptied, for the next
-// session; destroy frees it.
+// The state's world is kept for the next session, put back to its start
+// values, while the plugins stay the same; destroy frees it.
 init :: proc(s: ^State, session: Session, defs: ^Defs, log: ^Draw_Log = nil, events: ^Event_Log = nil) {
 	world, prefabs := s.ecs, s.prefabs
 	s^ = State{}
-	if world == nil {
-		world = ecs_create()
+	if world != nil && world.mods == session.mods {
+		ecs_reset(world)
 	} else {
-		ecs_clear(world)
+		ecs_destroy(world)
+		world = ecs_create(session.mods)
 	}
 	s.ecs = world
 	s.session = session
@@ -143,9 +144,10 @@ state_write :: proc(s: ^State, buf: ^[dynamic]byte) {
 	ecs_write(s.ecs, buf)
 }
 
-// Makes s the state state_write wrote into data. s keeps its own world,
-// definitions, draw log and event log. Fails, changing nothing, if data is
-// not a state from this build.
+// Makes s the state state_write wrote into data. s keeps its definitions,
+// draw log and event log, and its world if that holds the same plugins'
+// components. Fails, changing nothing, if data is not a state from this
+// build.
 state_read :: proc(s: ^State, data: []byte) -> bool {
 	if len(data) < size_of(State) {
 		return false
@@ -153,9 +155,21 @@ state_read :: proc(s: ^State, data: []byte) -> bool {
 	plain := new(State)
 	defer free(plain)
 	runtime.mem_copy_non_overlapping(plain, raw_data(data), size_of(State))
-	rest, ok := ecs_read(s.ecs, data[size_of(State):])
-	if !ok || len(rest) != 0 {
+	world := s.ecs
+	if world == nil || world.mods != plain.session.mods {
+		world = ecs_create(plain.session.mods)
+	}
+	world_data := data[size_of(State):]
+	if !ecs_readable(world, world_data) || len(world_data) != ecs_written_size(world) {
+		if world != s.ecs {
+			ecs_destroy(world)
+		}
 		return false
+	}
+	ecs_read(world, world_data)
+	if world != s.ecs {
+		ecs_destroy(s.ecs)
+		s.ecs = world
 	}
 	restore_plain(s, plain)
 	prefabs_ensure(s)

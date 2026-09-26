@@ -1016,14 +1016,12 @@ netplay_begin_resync_receive :: proc(nl: ^Netplay) {
 }
 
 // Restores fl.state from the sender's sim.state_write. The state keeps this
-// process's own definitions (never sent) and event log.
+// process's own definitions (never sent) and event log; state_read builds
+// the world the sender's plugins need.
 @(private = "file")
 netplay_finish_resync_receive :: proc(fl: ^Flow, nl: ^Netplay) {
 	fl.state.defs = fl.defs
 	fl.state.events = nil
-	if fl.state.ecs == nil {
-		fl.state.ecs = sim.ecs_create()
-	}
 	if !sim.state_read(fl.state, nl.recv_buf) {
 		fmt.eprintln("netplay: the game state received is not from this build")
 	}

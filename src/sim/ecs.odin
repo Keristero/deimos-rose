@@ -1,20 +1,28 @@
 package sim
 
-// The entity component system the simulation's state lives in (D39).
+// The entity component system the simulation's state lives in (D39, D47).
 //
-// odecs stores the components. This file adds what the simulation needs on
-// top of it:
+// odecs holds the world, and this file uses only its public API. What the
+// simulation adds on top:
 // - a catalog of component types, each with a fixed id and a byte layout
 //   that leaves out padding, so a world can be written out and hashed the
 //   same on every machine;
-// - a fixed set of entities, created once in a fixed order and never
-//   destroyed, so every world numbers them alike;
-// - moving an entity straight to the archetype for a set of components,
-//   with room reserved so no move reallocates a column;
+// - entity kinds: the session's entity, the players, their crosshairs, the
+//   groups and the entity pool, each built with the components the core
+//   and the session's plugins give that kind;
 // - writing a world out, reading it back and hashing it, for rollback,
 //   reconnection and desync detection.
+//
+// A world is built once per session, every entity with all its components,
+// as the original preallocates its pool (FUN_0041d1d0), and nothing is
+// added or removed after. odecs moves a component only when an entity's
+// components change or an entity is added, so every view taken once the
+// world is built (entity_at, player_at, single) stays good for the
+// session, and both peers' worlds are laid out alike.
 
+import "base:intrinsics"
 import "base:runtime"
+import "core:slice"
 import ecs "dr:third_party/odecs"
 
 // ---------------------------------------------------------------------------
@@ -23,7 +31,7 @@ import ecs "dr:third_party/odecs"
 
 MAX_COMPONENTS :: 128
 
-// Which components an entity has, by catalog id.
+// Which components something has, by catalog id.
 Component_Mask :: bit_set[0 ..< MAX_COMPONENTS; u128]
 
 // A stretch of a component's bytes that holds data. Padding is left out, so
@@ -33,13 +41,15 @@ Byte_Run :: struct {
 }
 
 Component_Type :: struct {
-	type:  typeid,
-	name:  string,
-	size:  int,
-	runs:  []Byte_Run,
-	// How many rows to reserve in each archetype holding it: see
-	// ecs_set_components.
-	rows:  int,
+	type:     typeid,
+	name:     string,
+	size:     int,
+	runs:     []Byte_Run,
+	// odecs's calls take the type at compile time; these are them, made
+	// for this type, so a world can be walked by the catalog.
+	register: proc(w: ^ecs.World),
+	get:      proc(w: ^ecs.World, id: ecs.EntityID) -> rawptr,
+	table:    proc(w: ^ecs.World, arch: ^ecs.Archetype) -> []byte,
 }
 
 @(private = "file")
@@ -83,7 +93,7 @@ mask_of :: proc(types: ..typeid) -> (m: Component_Mask) {
 //
 // T must be plain data: a snapshot copies its bytes, so a pointer, slice,
 // string or map would copy an address, not a value.
-component_register :: proc($T: typeid, rows := MAX_ENTITIES) {
+component_register :: proc($T: typeid) {
 	slot := component_slot(T)
 	if slot^ >= 0 {
 		return
@@ -103,7 +113,15 @@ component_register :: proc($T: typeid, rows := MAX_ENTITIES) {
 		name = name,
 		size = size_of(T),
 		runs = run_pool[first:run_used],
-		rows = rows,
+		register = proc(w: ^ecs.World) {
+			ecs.register_component(w, T)
+		},
+		get = proc(w: ^ecs.World, id: ecs.EntityID) -> rawptr {
+			return ecs.get_component(w, id, T)
+		},
+		table = proc(w: ^ecs.World, arch: ^ecs.Archetype) -> []byte {
+			return slice.to_bytes(ecs.get_table(w, arch, T))
+		},
 	}
 	slot^ = i32(catalog_count)
 	catalog_count += 1
@@ -115,21 +133,6 @@ component_types :: proc "contextless" () -> []Component_Type {
 
 component_id :: #force_inline proc "contextless" ($T: typeid) -> int {
 	return int(component_slot(T)^)
-}
-
-// odecs numbers components from 1, in registration order; the catalog from
-// 0.
-@(private = "file")
-CID_BASE :: 1
-
-@(private = "file")
-cid_of :: #force_inline proc "contextless" (id: int) -> ecs.ComponentID {
-	return ecs.ComponentID(id + CID_BASE)
-}
-
-@(private = "file")
-id_of :: #force_inline proc "contextless" (cid: ecs.ComponentID) -> int {
-	return int(cid) - CID_BASE
 }
 
 // A digest of the catalog: the names, sizes and layouts in id order. Two
@@ -225,71 +228,203 @@ layout_elems :: proc(elem: ^runtime.Type_Info, elem_size, count, base: int) -> b
 }
 
 // ---------------------------------------------------------------------------
-// Worlds
+// Entity kinds
 // ---------------------------------------------------------------------------
 
-// The fixed entities, in creation order. odecs numbers entities from 1 and
-// never recycles one that is never destroyed, so these are their ids.
-SESSION_ENTITY :: ecs.EntityID(1)
-FIRST_PLAYER_ENTITY :: 2
-FIRST_CROSSHAIR_ENTITY :: FIRST_PLAYER_ENTITY + MAX_PLAYERS
-FIRST_GROUP_ENTITY :: FIRST_CROSSHAIR_ENTITY + MAX_PLAYERS
-FIRST_POOL_ENTITY :: FIRST_GROUP_ENTITY + MAX_GROUPS
-FIXED_ENTITIES :: FIRST_POOL_ENTITY + MAX_ENTITIES - 1
-
-player_entity :: #force_inline proc "contextless" (i: i32) -> ecs.EntityID {
-	return ecs.EntityID(FIRST_PLAYER_ENTITY + i)
+// What each of the world's entities is. A world holds kind_count(kind) of
+// each, made in this order.
+Kind :: enum u8 {
+	Session,   // the singletons (components_session.odin)
+	Player,    // components_player.odin
+	Crosshair, // each player's ground crosshair
+	Group,     // components_entity.odin
+	Pool,      // the entity pool
 }
 
-crosshair_entity :: #force_inline proc "contextless" (i: i32) -> ecs.EntityID {
-	return ecs.EntityID(FIRST_CROSSHAIR_ENTITY + i)
-}
-
-group_entity :: #force_inline proc "contextless" (i: i32) -> ecs.EntityID {
-	return ecs.EntityID(FIRST_GROUP_ENTITY + i)
-}
-
-pool_entity :: #force_inline proc "contextless" (i: i32) -> ecs.EntityID {
-	return ecs.EntityID(FIRST_POOL_ENTITY + i)
-}
-
-Ecs :: struct {
-	world:      ^ecs.World,
-	entities:   int, // how many, from 1: FIXED_ENTITIES for a session's world
-	allocator:  runtime.Allocator,
-	archetypes: map[Component_Mask]^ecs.Archetype,
-	// Each component's column in the archetype it was last read from, so
-	// a read finds it without searching the archetype's signature. An
-	// archetype lives as long as its world, so an entry never outlives its
-	// archetype.
-	columns:    [MAX_COMPONENTS]Column_Cache,
+kind_count :: #force_inline proc "contextless" (k: Kind) -> int {
+	switch k {
+	case .Session:
+		return 1
+	case .Player, .Crosshair:
+		return MAX_PLAYERS
+	case .Group:
+		return MAX_GROUPS
+	case .Pool:
+		return MAX_ENTITIES
+	}
+	return 0
 }
 
 @(private = "file")
-Column_Cache :: struct {
-	arch: ^ecs.Archetype,
-	col:  i32, // -1: the archetype does not have the component
+Kind_Component :: struct {
+	kind:      Kind,
+	component: int,
+	plugin:    Plugin_ID,
+	value:     rawptr, // what each entity of the kind starts with
 }
 
-ecs_create :: proc(allocator := context.allocator, entities := FIXED_ENTITIES) -> ^Ecs {
+@(private = "file")
+kind_components: [MAX_COMPONENTS]Kind_Component
+@(private = "file")
+kind_component_count: int
+// u128s, for the alignment of any component.
+@(private = "file")
+start_values: [1024]u128
+@(private = "file")
+start_used: int
+
+// Gives every entity of `kind` a T, starting as `value`, in a session with
+// `plugin` on. Called from `@(init)` procedures only, like
+// component_register, which it does for T.
+kind_component :: proc(kind: Kind, value: $T, plugin := CORE) {
+	component_register(T)
+	id := component_id(T)
+	for kc in kind_components[:kind_component_count] {
+		assert(kc.kind != kind || kc.component != id, "ecs: a kind is given the same component twice")
+	}
+	assert(kind_component_count < len(kind_components), "ecs: too many kind components")
+	start_used = (start_used + align_of(T) - 1) &~ (align_of(T) - 1)
+	assert(start_used + size_of(T) <= size_of(start_values), "ecs: too many start values")
+	p := &([^]byte)(&start_values)[start_used]
+	start_used += size_of(T)
+	(^T)(p)^ = value
+	kind_components[kind_component_count] = {kind, id, plugin, p}
+	kind_component_count += 1
+}
+
+@(private = "file")
+kind_component_on :: #force_inline proc "contextless" (kc: Kind_Component, mods: Mods) -> bool {
+	return kc.plugin == CORE || int(kc.plugin) in mods
+}
+
+// ---------------------------------------------------------------------------
+// Worlds
+// ---------------------------------------------------------------------------
+
+Ecs :: struct {
+	world:       ^ecs.World,
+	allocator:   runtime.Allocator,
+	mods:        Mods, // the plugins whose components it holds
+	ids:         [Kind][]ecs.EntityID,
+	// Views into the world, found once it is built (see the top of the
+	// file).
+	entities:    []Entity,
+	groups:      []^Group,
+	players:     [MAX_PLAYERS]Player,
+	pool_links:  []Link,
+	group_links: []Link,
+	singletons:  [MAX_COMPONENTS]rawptr, // the session entity's, by catalog id
+	player_part: [MAX_PLAYERS][MAX_COMPONENTS]rawptr,
+	// Every data component's table, by catalog id, then in the order
+	// odecs keeps its archetypes: what a snapshot holds.
+	tables:      [dynamic]Table,
+	// The tables' components and sizes, which only a world built alike
+	// shares, and how many bytes a written world takes.
+	shape:       u64,
+	size:        int,
+}
+
+Table :: struct {
+	component: int,
+	arch:      ^ecs.Archetype,
+}
+
+// A world for a session with `mods`: every entity of every kind, holding
+// its start values.
+ecs_create :: proc(mods: Mods, allocator := context.allocator) -> ^Ecs {
+	runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
 	e := new(Ecs, allocator)
 	e.allocator = allocator
-	e.entities = entities
+	e.mods = mods
 	e.world = ecs.create_world(allocator, allocator)
-	// An archetype that empties stays, with its reserved rows, for the next
-	// entity to need it.
-	e.world.auto_cleanup_archetypes = false
-	e.archetypes = make(map[Component_Mask]^ecs.Archetype, allocator = allocator)
-	for c, i in catalog[:catalog_count] {
-		cid := ecs.register_component_dynamic(e.world, c.type)
-		assert(cid == cid_of(i), "ecs: odecs numbered a component differently")
+	w := e.world
+	for c in catalog[:catalog_count] {
+		c.register(w)
 	}
-	e.archetypes[{}] = e.world.empty_archetype
-	for i in 1 ..= entities {
-		id := ecs.add_entity(e.world)
-		assert(id == ecs.EntityID(i), "ecs: fixed entity numbered differently")
+	parts := make([dynamic]any, context.temp_allocator)
+	for kind in Kind {
+		clear(&parts)
+		for kc in kind_components[:kind_component_count] {
+			if kc.kind == kind && kind_component_on(kc, mods) {
+				append(&parts, any{kc.value, catalog[kc.component].type})
+			}
+		}
+		e.ids[kind] = make([]ecs.EntityID, kind_count(kind), allocator)
+		for &id in e.ids[kind] {
+			id = ecs.add_entity(w, ..parts[:])
+		}
 	}
+	find_views(e)
 	return e
+}
+
+// Every view into the world, now that nothing more will be added to it.
+@(private = "file")
+find_views :: proc(e: ^Ecs) {
+	w := e.world
+	get :: proc(w: ^ecs.World, id: ecs.EntityID, $T: typeid) -> ^T {
+		return ecs.get_component(w, id, T)
+	}
+	e.entities = make([]Entity, MAX_ENTITIES, e.allocator)
+	for id, i in e.ids[.Pool] {
+		e.entities[i] = {
+			obj     = get(w, id, Game_Object),
+			actor   = get(w, id, Actor),
+			anim    = get(w, id, Anim),
+			motion  = get(w, id, Motion),
+			owned   = get(w, id, Owned),
+			spawner = get(w, id, Spawner),
+			effects = get(w, id, Effects),
+			shaped  = get(w, id, Shaped),
+		}
+	}
+	e.groups = make([]^Group, MAX_GROUPS, e.allocator)
+	for id, i in e.ids[.Group] {
+		e.groups[i] = get(w, id, Group)
+	}
+	for id, i in e.ids[.Player] {
+		aim := e.ids[.Crosshair][i]
+		e.players[i] = {
+			obj     = get(w, id, Game_Object),
+			ship    = get(w, id, Ship),
+			purse   = get(w, id, Purse),
+			hull    = get(w, id, Hull),
+			surge   = get(w, id, Overload),
+			weapons = {handler = get(w, id, Weapon_Handler), crosshair = get(w, aim, Game_Object), aim = get(w, aim, Crosshair)},
+		}
+	}
+	e.pool_links = kind_table(e, .Pool, Link)
+	e.group_links = kind_table(e, .Group, Link)
+	for c, i in catalog[:catalog_count] {
+		e.singletons[i] = c.get(w, e.ids[.Session][0])
+		for id, p in e.ids[.Player] {
+			e.player_part[p][i] = c.get(w, id)
+		}
+	}
+	h := hasher()
+	for c, i in catalog[:catalog_count] {
+		if c.size == 0 {
+			continue // a tag has no table
+		}
+		for arch in ecs.query_raw(w, {c.type}) {
+			append(&e.tables, Table{i, arch})
+			rows := len(ecs.get_entities(arch))
+			hash_u64(&h, u64(i) | u64(rows) << 32)
+			for r in c.runs {
+				e.size += rows * int(r.size)
+			}
+		}
+	}
+	e.shape = h.sum
+}
+
+// T of every entity of a kind, by index: the kind's table, whose rows are
+// its entities in the order they were made.
+@(private = "file")
+kind_table :: proc(e: ^Ecs, kind: Kind, $T: typeid) -> []T {
+	arch := ecs.get_entity_archetype(e.world, e.ids[kind][0])
+	assert(slice.equal(ecs.get_entities(arch), e.ids[kind]), "ecs: a kind shares its table")
+	return ecs.get_table(e.world, arch, T)
 }
 
 ecs_destroy :: proc(e: ^Ecs) {
@@ -298,121 +433,29 @@ ecs_destroy :: proc(e: ^Ecs) {
 	}
 	allocator := e.allocator
 	ecs.delete_world(e.world)
-	delete(e.archetypes)
+	for ids in e.ids {
+		delete(ids, allocator)
+	}
+	delete(e.entities, allocator)
+	delete(e.groups, allocator)
+	delete(e.tables)
 	free(e, allocator)
 }
 
-// Takes every component off every entity.
-ecs_clear :: proc(e: ^Ecs) {
-	for i in 1 ..= e.entities {
-		ecs_set_components(e, ecs.EntityID(i), {})
-	}
-}
-
-// T on entity id, or nil. The pointer is good until the next structural
-// change to the entity's archetype (D39).
-get :: #force_inline proc "contextless" (e: ^Ecs, id: ecs.EntityID, $T: typeid) -> ^T #no_bounds_check {
-	rec := &e.world.records[u64(id) & ecs.ENTITY_INDEX_MASK]
-	arch := rec.archetype
-	slot := component_slot(T)^
-	cache := &e.columns[slot]
-	if cache.arch != arch {
-		cache^ = {arch, -1}
-		cid := cid_of(int(slot))
-		for c, i in arch.signature {
-			if c == cid {
-				cache.col = i32(arch.column_indices[i])
-				break
+// Puts every entity back to its start values.
+ecs_reset :: proc(e: ^Ecs) {
+	for kind in Kind {
+		arch := ecs.get_entity_archetype(e.world, e.ids[kind][0])
+		for kc in kind_components[:kind_component_count] {
+			if kc.kind != kind || !kind_component_on(kc, e.mods) {
+				continue
+			}
+			c := &catalog[kc.component]
+			rows := catalog[kc.component].table(e.world, arch)
+			for at := 0; at < len(rows); at += c.size {
+				runtime.mem_copy_non_overlapping(&rows[at], kc.value, c.size)
 			}
 		}
-	}
-	if cache.col < 0 {
-		return nil
-	}
-	col := &arch.columns[cache.col]
-	return cast(^T)(uintptr(raw_data(col.data)) + uintptr(rec.row * size_of(T)))
-}
-
-has :: #force_inline proc "contextless" (e: ^Ecs, id: ecs.EntityID, $T: typeid) -> bool {
-	arch := e.world.records[u64(id) & ecs.ENTITY_INDEX_MASK].archetype
-	cid := cid_of(int(component_slot(T)^))
-	for c in arch.signature {
-		if c == cid {
-			return true
-		}
-	}
-	return false
-}
-
-components_of :: proc "contextless" (e: ^Ecs, id: ecs.EntityID) -> (m: Component_Mask) {
-	arch := e.world.records[u64(id) & ecs.ENTITY_INDEX_MASK].archetype
-	for c in arch.signature {
-		m += {id_of(c)}
-	}
-	return
-}
-
-// Moves entity id to the archetype holding exactly `mask`. Components it
-// keeps keep their values; new ones start zeroed. One move, not one per
-// component, so no in-between archetype is made.
-//
-// Each archetype reserves rows for as many entities as could ever share it
-// (the least Component_Type.rows of its components) when it is made, so no
-// later move reallocates its columns: a pointer to one entity's component stays good while another
-// entity spawns into the same archetype, which the sim does mid-step.
-ecs_set_components :: proc(e: ^Ecs, id: ecs.EntityID, mask: Component_Mask) {
-	w := e.world
-	rec := &w.records[u64(id) & ecs.ENTITY_INDEX_MASK]
-	from := rec.archetype
-	to, found := e.archetypes[mask]
-	if !found {
-		sig: [MAX_COMPONENTS]ecs.ComponentID
-		n := 0
-		rows := max(int)
-		for c in mask {
-			sig[n] = cid_of(c)
-			n += 1
-			rows = min(rows, catalog[c].rows)
-		}
-		rows = mask == {} ? 0 : rows
-		to = ecs.get_or_create_archetype(w, sig[:n])
-		for &col in to.columns {
-			reserve(&col.data, rows * col.elem_size)
-		}
-		e.archetypes[mask] = to
-	}
-	if to == from {
-		return
-	}
-	col_map: [MAX_COMPONENTS]i16
-	for to_col in 0 ..< len(to.columns) {
-		col_map[to_col] = -1
-	}
-	for cid, i in to.signature {
-		to_col := to.column_indices[i]
-		if to_col >= 0 {
-			col_map[to_col] = i16(ecs.archetype_get_column(from, cid))
-		}
-	}
-	ecs.move_entity(w, id, from, to, col_map[:len(to.columns)])
-}
-
-// Adds T to entity id with `value`, or sets it if it is already there.
-add :: proc(e: ^Ecs, id: ecs.EntityID, value: $T) -> ^T {
-	if !has(e, id, T) {
-		ecs_set_components(e, id, components_of(e, id) + {component_id(T)})
-	}
-	p := get(e, id, T)
-	// A tag (a component with no fields) has no storage to write.
-	when size_of(T) > 0 {
-		p^ = value
-	}
-	return p
-}
-
-remove :: proc(e: ^Ecs, id: ecs.EntityID, $T: typeid) {
-	if has(e, id, T) {
-		ecs_set_components(e, id, components_of(e, id) - {component_id(T)})
 	}
 }
 
@@ -420,7 +463,8 @@ remove :: proc(e: ^Ecs, id: ecs.EntityID, $T: typeid) {
 // Snapshots
 // ---------------------------------------------------------------------------
 
-// FNV-1a, byte by byte, the same on every machine.
+// FNV-1a over 8-byte words, then the bytes left over: the same on every
+// machine, which reads the words little-endian.
 Hasher :: struct {
 	sum: u64,
 }
@@ -431,7 +475,12 @@ hasher :: proc "contextless" () -> Hasher {
 
 hash_bytes :: proc "contextless" (h: ^Hasher, p: rawptr, n: int) {
 	b := ([^]u8)(p)
-	for i in 0 ..< n {
+	words := n / 8
+	for i in 0 ..< words {
+		h.sum ~= u64(intrinsics.unaligned_load((^u64le)(&b[i * 8])))
+		h.sum *= 0x100000001b3
+	}
+	for i in words * 8 ..< n {
 		h.sum ~= u64(b[i])
 		h.sum *= 0x100000001b3
 	}
@@ -442,166 +491,94 @@ hash_u64 :: proc "contextless" (h: ^Hasher, v: u64) {
 	hash_bytes(h, &x, 8)
 }
 
-// Where a world's bytes go: appended to a buffer, or only hashed.
 @(private = "file")
-Sink :: struct {
-	buf:  ^[dynamic]byte,
-	hash: ^Hasher,
+HEADER :: 16
+
+// The header: the catalog and the world's shape, so a world only reads
+// what a world built alike wrote.
+@(private = "file")
+header_of :: proc(e: ^Ecs) -> [2]u64 {
+	return {catalog_hash(), e.shape}
 }
 
+// The world's state: its tables, row by row, each row's data bytes, into
+// out (ecs_written_size bytes). The rows are the entities in the order they
+// were made, which no step changes, so equal worlds write equal bytes.
 @(private = "file")
-sink_write :: proc(s: ^Sink, p: rawptr, n: int) {
-	if s.buf != nil {
-		append(s.buf, ..([^]u8)(p)[:n])
-	} else {
-		hash_bytes(s.hash, p, n)
-	}
-}
-
-@(private = "file")
-END_OF_ENTITIES :: ~u32(0)
-
-// The world's state, in an order and form that does not depend on its
-// history: for each entity with components, in id order, its id, which
-// components it has, and each one's data bytes in id order. What odecs keeps
-// on the side -- archetypes, rows, edges, caches -- is not written; reading
-// rebuilds it.
-@(private = "file")
-ecs_emit :: proc(e: ^Ecs, s: ^Sink) {
-	header := [2]u64{catalog_hash(), u64(FIXED_ENTITIES)}
-	sink_write(s, &header, size_of(header))
-	w := e.world
-	for i in 1 ..= FIXED_ENTITIES {
-		rec := &w.records[i]
-		arch := rec.archetype
-		if len(arch.signature) == 0 {
+ecs_pack :: proc(e: ^Ecs, out: []byte) {
+	header := header_of(e)
+	runtime.mem_copy_non_overlapping(raw_data(out), &header, HEADER)
+	at := HEADER
+	for t in e.tables {
+		c := &catalog[t.component]
+		rows := c.table(e.world, t.arch)
+		if len(c.runs) == 1 && int(c.runs[0].size) == c.size {
+			copy(out[at:], rows) // no padding: the table as it is
+			at += len(rows)
 			continue
 		}
-		index := u32(i)
-		sink_write(s, &index, 4)
-		m: Component_Mask
-		for c in arch.signature {
-			m += {id_of(c)}
-		}
-		sink_write(s, &m, size_of(m))
-		// The signature is sorted by id, so this is id order.
-		for c, k in arch.signature {
-			col_i := arch.column_indices[k]
-			if col_i < 0 {
-				continue
-			}
-			col := &arch.columns[col_i]
-			base := &col.data[rec.row * col.elem_size]
-			for r in catalog[id_of(c)].runs {
-				sink_write(s, rawptr(uintptr(base) + uintptr(r.offset)), int(r.size))
+		for row := 0; row < len(rows); row += c.size {
+			for r in c.runs {
+				runtime.mem_copy_non_overlapping(&out[at], &rows[row + int(r.offset)], int(r.size))
+				at += int(r.size)
 			}
 		}
 	}
-	end := END_OF_ENTITIES
-	sink_write(s, &end, 4)
 }
 
 // Appends the world's state to buf.
 ecs_write :: proc(e: ^Ecs, buf: ^[dynamic]byte) {
-	s := Sink{buf = buf}
-	ecs_emit(e, &s)
+	start := len(buf)
+	resize(buf, start + ecs_written_size(e))
+	ecs_pack(e, buf[start:])
 }
 
 // Mixes the world's state into h: the same bytes ecs_write would write.
 ecs_hash :: proc(e: ^Ecs, h: ^Hasher) {
-	s := Sink{hash = h}
-	ecs_emit(e, &s)
+	runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
+	out := make([]byte, ecs_written_size(e), context.temp_allocator)
+	ecs_pack(e, out)
+	hash_bytes(h, raw_data(out), len(out))
+}
+
+// How many bytes ecs_write writes for e.
+ecs_written_size :: proc "contextless" (e: ^Ecs) -> int {
+	return HEADER + e.size
+}
+
+// Whether data starts with a world e can read.
+ecs_readable :: proc(e: ^Ecs, data: []byte) -> bool {
+	if len(data) < HEADER + e.size {
+		return false
+	}
+	header: [2]u64
+	runtime.mem_copy_non_overlapping(&header, raw_data(data), HEADER)
+	return header == header_of(e)
 }
 
 // Makes the world hold what `data` (from ecs_write) holds, and returns the
 // bytes after it. Fails, leaving the world unchanged, if the data came from
-// a build with a different catalog or is cut short.
+// a build with a different catalog or a world built otherwise, or is cut
+// short.
 ecs_read :: proc(e: ^Ecs, data: []byte) -> (rest: []byte, ok: bool) {
-	// Check it all first, so a bad snapshot changes nothing.
-	end, valid := ecs_scan(data)
-	if !valid {
+	if !ecs_readable(e, data) {
 		return data, false
 	}
-	at := 16
-	next := 1
-	take :: proc(data: []byte, at: ^int, $T: typeid) -> T {
-		v: T
-		runtime.mem_copy_non_overlapping(&v, &data[at^], size_of(T))
-		at^ += size_of(T)
-		return v
-	}
-	for {
-		index := take(data, &at, u32)
-		limit := index == END_OF_ENTITIES ? FIXED_ENTITIES + 1 : int(index)
-		for ; next < limit; next += 1 {
-			ecs_set_components(e, ecs.EntityID(next), {})
+	at := HEADER
+	for t in e.tables {
+		c := &catalog[t.component]
+		rows := c.table(e.world, t.arch)
+		if len(c.runs) == 1 && int(c.runs[0].size) == c.size {
+			copy(rows, data[at:at + len(rows)])
+			at += len(rows)
+			continue
 		}
-		if index == END_OF_ENTITIES {
-			break
-		}
-		id := ecs.EntityID(index)
-		mask := take(data, &at, Component_Mask)
-		ecs_set_components(e, id, mask)
-		rec := &e.world.records[index]
-		arch := rec.archetype
-		for c, k in arch.signature {
-			col_i := arch.column_indices[k]
-			if col_i < 0 {
-				continue
-			}
-			col := &arch.columns[col_i]
-			base := &col.data[rec.row * col.elem_size]
-			for r in catalog[id_of(c)].runs {
-				runtime.mem_copy_non_overlapping(rawptr(uintptr(base) + uintptr(r.offset)), &data[at], int(r.size))
+		for row := 0; row < len(rows); row += c.size {
+			for r in c.runs {
+				runtime.mem_copy_non_overlapping(&rows[row + int(r.offset)], &data[at], int(r.size))
 				at += int(r.size)
 			}
 		}
-		next = int(index) + 1
 	}
-	return data[end:], true
-}
-
-// Walks data as ecs_read would, without changing anything, and returns
-// where it ends.
-@(private = "file")
-ecs_scan :: proc(data: []byte) -> (end: int, ok: bool) {
-	if len(data) < 16 {
-		return
-	}
-	header: [2]u64
-	runtime.mem_copy_non_overlapping(&header, &data[0], 16)
-	if header[0] != catalog_hash() || header[1] != u64(FIXED_ENTITIES) {
-		return
-	}
-	at := 16
-	last := 0
-	for {
-		if at + 4 > len(data) {
-			return
-		}
-		index: u32
-		runtime.mem_copy_non_overlapping(&index, &data[at], 4)
-		at += 4
-		if index == END_OF_ENTITIES {
-			return at, true
-		}
-		if int(index) <= last || int(index) > FIXED_ENTITIES || at + size_of(Component_Mask) > len(data) {
-			return
-		}
-		last = int(index)
-		mask: Component_Mask
-		runtime.mem_copy_non_overlapping(&mask, &data[at], size_of(mask))
-		at += size_of(mask)
-		for c in mask {
-			if c >= catalog_count {
-				return
-			}
-			for r in catalog[c].runs {
-				at += int(r.size)
-			}
-		}
-		if at > len(data) {
-			return
-		}
-	}
+	return data[at:], true
 }

@@ -3,10 +3,13 @@ package tests
 import "base:runtime"
 import "core:testing"
 
+import "dr:plugins/fps_unlock"
+import "dr:plugins/loadout"
 import "dr:sim"
+import ecs "dr:third_party/odecs"
 
-// The ECS host (sim/ecs.odin): layouts, fixed entities, moves between
-// archetypes, and snapshots that depend only on the world's contents.
+// The ECS host (sim/ecs.odin): layouts, the entity kinds a world is built
+// with, and snapshots that depend only on the world's contents.
 
 Test_Padded :: struct {
 	a: u8,
@@ -43,7 +46,9 @@ Test_Tag :: struct {}
 @(init)
 register_test_components :: proc "contextless" () {
 	context = runtime.default_context()
-	sim.component_register(Test_Padded)
+	// On every pool entity in a session with 30FPS Unlock, which no real
+	// session names: something padded to scribble on.
+	sim.kind_component(.Pool, Test_Padded{}, fps_unlock.ID)
 	sim.component_register(Test_Dense)
 	sim.component_register(Test_Padded_Array)
 	sim.component_register(Test_Matrix)
@@ -98,39 +103,66 @@ component_registration_is_idempotent :: proc(t: ^testing.T) {
 	testing.expect_value(t, sim.component_id(Test_Dense), id)
 }
 
-@(test)
-fixed_entities_start_empty :: proc(t: ^testing.T) {
-	e := sim.ecs_create()
-	defer sim.ecs_destroy(e)
-	testing.expect_value(t, sim.components_of(e, sim.SESSION_ENTITY), sim.Component_Mask{})
-	testing.expect(t, sim.get(e, sim.pool_entity(sim.MAX_ENTITIES - 1), Test_Dense) == nil)
+@(private = "file")
+world_state :: proc(e: ^sim.Ecs) -> sim.State {
+	return sim.State{ecs = e}
 }
 
-@(test)
-components_survive_moves_between_archetypes :: proc(t: ^testing.T) {
-	e := sim.ecs_create()
-	defer sim.ecs_destroy(e)
-	id := sim.pool_entity(3)
-	sim.add(e, id, Test_Dense{v = {1, 2, 3}, n = 4})
-	sim.add(e, id, Test_Padded{a = 5, b = 6, c = true})
-	testing.expect_value(t, sim.get(e, id, Test_Dense).n, 4)
-	sim.remove(e, id, Test_Padded)
-	testing.expect(t, !sim.has(e, id, Test_Padded))
-	testing.expect_value(t, sim.get(e, id, Test_Dense).v, [3]f32{1, 2, 3})
+@(private = "file")
+pool_padded :: proc(e: ^sim.Ecs, i: int) -> ^Test_Padded {
+	return ecs.get_component(e.world, e.ids[.Pool][i], Test_Padded)
 }
 
-// The sim holds a pointer to the entity it is processing while that entity
-// spawns others into the same archetype: the columns must not move.
+// Every entity has its kind's components from the start, a plugin's only
+// in a session with the plugin on, each holding the value it was given.
 @(test)
-component_pointers_survive_other_entities_arriving :: proc(t: ^testing.T) {
-	e := sim.ecs_create()
+entities_start_with_their_kinds_components :: proc(t: ^testing.T) {
+	plain := sim.ecs_create({})
+	defer sim.ecs_destroy(plain)
+	with := sim.ecs_create({int(loadout.ID)})
+	defer sim.ecs_destroy(with)
+	a, b := world_state(plain), world_state(with)
+	testing.expect(t, sim.single(&a, sim.Clock) != nil)
+	testing.expect(t, sim.single(&a, loadout.Loadout) == nil)
+	testing.expect(t, sim.player_component(&a, 1, loadout.Loadout_Slots) == nil)
+	testing.expect(t, sim.single(&b, loadout.Loadout) != nil)
+	slots := sim.player_component(&b, 1, loadout.Loadout_Slots)
+	testing.expect_value(t, slots.spare, sim.NO_WEAPON)
+	testing.expect_value(t, slots.loadout[0], sim.NO_WEAPON)
+	testing.expect(t, pool_padded(plain, 0) == nil)
+	testing.expect_value(t, len(plain.pool_links), sim.MAX_ENTITIES)
+	testing.expect_value(t, len(plain.group_links), sim.MAX_GROUPS)
+}
+
+// Each pool slot's view is its own entity's components.
+@(test)
+views_are_each_entitys_own :: proc(t: ^testing.T) {
+	e := sim.ecs_create({})
 	defer sim.ecs_destroy(e)
-	p := sim.add(e, sim.pool_entity(0), Test_Dense{n = 42})
-	for i in 1 ..< i32(sim.MAX_ENTITIES) {
-		sim.add(e, sim.pool_entity(i), Test_Dense{n = i})
+	s := world_state(e)
+	for i in 0 ..< i32(sim.MAX_ENTITIES) {
+		v := sim.entity_at(&s, i)
+		testing.expect_value(t, v.actor, ecs.get_component(e.world, e.ids[.Pool][i], sim.Actor))
+		testing.expect_value(t, v.obj, ecs.get_component(e.world, e.ids[.Pool][i], sim.Game_Object))
 	}
-	testing.expect_value(t, p, sim.get(e, sim.pool_entity(0), Test_Dense))
-	testing.expect_value(t, p.n, 42)
+	testing.expect_value(t, sim.player_at(&s, 1).ship, ecs.get_component(e.world, e.ids[.Player][1], sim.Ship))
+	testing.expect_value(t, sim.weapons_of(&s, 1).aim, ecs.get_component(e.world, e.ids[.Crosshair][1], sim.Crosshair))
+}
+
+// Resetting a world puts every entity back to its start values.
+@(test)
+a_reset_world_holds_its_start_values :: proc(t: ^testing.T) {
+	e := sim.ecs_create({int(loadout.ID)})
+	defer sim.ecs_destroy(e)
+	fresh := digest(e)
+	s := world_state(e)
+	sim.single(&s, sim.Clock).time = 5
+	sim.entity_at(&s, 7).number = 9
+	sim.player_component(&s, 0, loadout.Loadout_Slots).spare = 2
+	testing.expect(t, digest(e) != fresh)
+	sim.ecs_reset(e)
+	testing.expect_value(t, digest(e), fresh)
+	testing.expect_value(t, sim.player_component(&s, 0, loadout.Loadout_Slots).spare, sim.NO_WEAPON)
 }
 
 @(private = "file")
@@ -147,68 +179,51 @@ digest :: proc(e: ^sim.Ecs) -> u64 {
 	return h.sum
 }
 
+// Padding is not state: two worlds holding equal values, whatever is in
+// the bytes between them, write and hash alike.
 @(test)
 snapshots_depend_only_on_contents :: proc(t: ^testing.T) {
-	// The same contents reached in different orders put the rows in
-	// different places and leave different garbage in the padding.
-	a := sim.ecs_create()
+	mods := sim.Mods{int(fps_unlock.ID)}
+	a := sim.ecs_create(mods)
 	defer sim.ecs_destroy(a)
-	b := sim.ecs_create()
+	b := sim.ecs_create(mods)
 	defer sim.ecs_destroy(b)
-	for i in i32(0) ..< 10 {
-		sim.add(a, sim.pool_entity(i), Test_Padded{a = u8(i), b = i * 3})
-	}
-	for i := i32(9); i >= 0; i -= 1 {
-		sim.add(b, sim.pool_entity(i), Test_Dense{})
-		p := sim.add(b, sim.pool_entity(i), Test_Padded{a = u8(i), b = i * 3})
+	for i in 0 ..< 10 {
+		pool_padded(a, i)^ = {a = u8(i), b = i32(i) * 3}
+		p := pool_padded(b, i)
+		p^ = {a = u8(i), b = i32(i) * 3}
 		(transmute(^[12]u8)p)[1] = 0xAA // scribble on padding
-		sim.remove(b, sim.pool_entity(i), Test_Dense)
 	}
 	testing.expect_value(t, digest(a), digest(b))
 	sa, sb := snapshot(a), snapshot(b)
 	testing.expect_value(t, len(sa), len(sb))
 	testing.expect(t, string(sa) == string(sb))
+	testing.expect_value(t, len(sa), sim.ecs_written_size(a))
 }
 
 @(test)
 snapshots_restore_the_world :: proc(t: ^testing.T) {
-	e := sim.ecs_create()
+	e := sim.ecs_create({int(fps_unlock.ID)})
 	defer sim.ecs_destroy(e)
-	sim.add(e, sim.SESSION_ENTITY, Test_Dense{n = 1})
-	sim.add(e, sim.pool_entity(5), Test_Padded{a = 2})
-	sim.add(e, sim.pool_entity(7), Test_Padded_Array{items = {{a = 3}, {c = true}}})
+	s := world_state(e)
+	sim.single(&s, sim.Clock).time = 1
+	pool_padded(e, 5).a = 2
+	sim.entity_at(&s, 7).number = 3
 	saved := snapshot(e)
 	before := digest(e)
 
-	// Change values, add and take away components, then go back.
-	sim.get(e, sim.SESSION_ENTITY, Test_Dense).n = 99
-	sim.remove(e, sim.pool_entity(5), Test_Padded)
-	sim.add(e, sim.pool_entity(6), Test_Dense{n = 6})
-	sim.add(e, sim.pool_entity(7), Test_Dense{n = 7})
+	sim.single(&s, sim.Clock).time = 99
+	pool_padded(e, 5)^ = {}
+	sim.entity_at(&s, 7).number = 4
 	testing.expect(t, digest(e) != before)
 
 	rest, ok := sim.ecs_read(e, saved)
 	testing.expect(t, ok)
 	testing.expect_value(t, len(rest), 0)
 	testing.expect_value(t, digest(e), before)
-	testing.expect_value(t, sim.get(e, sim.SESSION_ENTITY, Test_Dense).n, 1)
-	testing.expect_value(t, sim.get(e, sim.pool_entity(5), Test_Padded).a, 2)
-	testing.expect(t, !sim.has(e, sim.pool_entity(6), Test_Dense))
-	testing.expect(t, !sim.has(e, sim.pool_entity(7), Test_Dense))
-	testing.expect_value(t, sim.get(e, sim.pool_entity(7), Test_Padded_Array).items[1].c, true)
-}
-
-@(test)
-a_cut_short_snapshot_changes_nothing :: proc(t: ^testing.T) {
-	e := sim.ecs_create()
-	defer sim.ecs_destroy(e)
-	sim.add(e, sim.pool_entity(1), Test_Dense{n = 1})
-	saved := snapshot(e)
-	sim.get(e, sim.pool_entity(1), Test_Dense).n = 2
-	before := digest(e)
-	_, ok := sim.ecs_read(e, saved[:len(saved) - 1])
-	testing.expect(t, !ok)
-	testing.expect_value(t, digest(e), before)
+	testing.expect_value(t, sim.single(&s, sim.Clock).time, i32(1))
+	testing.expect_value(t, pool_padded(e, 5).a, 2)
+	testing.expect_value(t, sim.entity_at(&s, 7).number, i32(3))
 }
 
 @(test)
@@ -280,61 +295,33 @@ registered_systems_name_only_registered_systems :: proc(t: ^testing.T) {
 	testing.expect(t, ok, "the entity stages' order has a cycle")
 }
 
-// A tag has no storage, but an entity holding one keeps it through a
-// snapshot.
-@(test)
-tags_survive_snapshots :: proc(t: ^testing.T) {
-	e := sim.ecs_create()
-	defer sim.ecs_destroy(e)
-	sim.add(e, sim.pool_entity(3), Test_Dense{n = 3})
-	sim.add(e, sim.pool_entity(3), Test_Tag{})
-	saved := snapshot(e)
-	sim.remove(e, sim.pool_entity(3), Test_Tag)
-	_, ok := sim.ecs_read(e, saved)
-	testing.expect(t, ok)
-	testing.expect(t, sim.has(e, sim.pool_entity(3), Test_Tag))
-	testing.expect_value(t, sim.get(e, sim.pool_entity(3), Test_Dense).n, 3)
-}
-
-// A snapshot that is not one this build could have written -- another
-// build's catalog, entities out of order or out of range, a component the
-// catalog does not have, too short to hold even its header -- is refused
-// whole, and the world is left as it was.
+// A snapshot that is not one this build could have written for this
+// world -- another build's catalog, a world built for other plugins, cut
+// short, too short to hold even its header -- is refused whole, and the
+// world is left as it was.
 @(test)
 snapshots_from_elsewhere_change_nothing :: proc(t: ^testing.T) {
-	e := sim.ecs_create()
+	e := sim.ecs_create({})
 	defer sim.ecs_destroy(e)
-	sim.add(e, sim.pool_entity(1), Test_Dense{n = 1})
-	sim.add(e, sim.pool_entity(2), Test_Dense{n = 2})
+	other := sim.ecs_create({int(loadout.ID)})
+	defer sim.ecs_destroy(other)
+	s := world_state(e)
+	sim.entity_at(&s, 1).number = 1
 	saved := snapshot(e)
-	sim.get(e, sim.pool_entity(1), Test_Dense).n = 5
+	sim.entity_at(&s, 1).number = 5
 	before := digest(e)
 
-	// The layout: a 16-byte header (catalog hash, entity count), then per
-	// entity its u32 index, its u128 mask and its components' data.
-	MASK :: size_of(sim.Component_Mask)
-	entry := 4 + MASK + size_of(Test_Dense)
-	corrupt :: proc(saved: []byte, at: int, bytes: []byte) -> []byte {
-		out := make([]byte, len(saved), context.temp_allocator)
-		copy(out, saved)
-		copy(out[at:], bytes)
-		return out
-	}
-	u32_bytes :: proc(v: u32) -> []byte {
-		out := make([]byte, 4, context.temp_allocator)
-		(transmute(^u32)raw_data(out))^ = v
-		return out
-	}
+	corrupt := make([]byte, len(saved), context.temp_allocator)
+	copy(corrupt, saved)
+	corrupt[0] ~= 0xff
 	cases := [?]struct {
 		what: string,
 		data: []byte,
 	} {
 		{"shorter than its header", saved[:10]},
-		{"another build's catalog", corrupt(saved, 0, {0xff})},
-		{"an entity out of order", corrupt(saved, 16 + entry, u32_bytes(u32(sim.pool_entity(0))))},
-		{"an entity out of range", corrupt(saved, 16, u32_bytes(u32(sim.FIXED_ENTITIES + 1)))},
-		{"a component the catalog lacks", corrupt(saved, 16 + 4 + MASK - 1, {0x80})},
-		{"cut off in an entity's data", saved[:16 + entry - 2]},
+		{"another build's catalog", corrupt},
+		{"another world's shape", snapshot(other)},
+		{"cut off in its data", saved[:len(saved) - 1]},
 	}
 	for c in cases {
 		_, ok := sim.ecs_read(e, c.data)

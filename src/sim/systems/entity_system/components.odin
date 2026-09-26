@@ -60,13 +60,13 @@ Motion_Blur :: struct {
 @(init)
 register_components :: proc "contextless" () {
 	context = runtime.default_context()
-	sim.prefab_component_register(Emits_Particles)
-	sim.prefab_component_register(Entry_Sound)
-	sim.prefab_component_register(Follows_Rules)
-	sim.prefab_component_register(Follows_Owner_Look)
-	sim.prefab_component_register(Pauses_Scrolling)
-	sim.prefab_component_register(Destructs_While_Scrolling)
-	sim.prefab_component_register(Motion_Blur)
+	sim.component_register(Emits_Particles)
+	sim.component_register(Entry_Sound)
+	sim.component_register(Follows_Rules)
+	sim.component_register(Follows_Owner_Look)
+	sim.component_register(Pauses_Scrolling)
+	sim.component_register(Destructs_While_Scrolling)
+	sim.component_register(Motion_Blur)
 }
 
 // A state's components, from the flags its definition sets. Each test is

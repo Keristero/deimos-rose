@@ -62,17 +62,14 @@ Player_Step :: struct {
 	film:  ^Film,
 }
 
-// A stage returns false when the player is done for this step. It runs for
-// a player only when the player's entity has every component in `with` and
-// none in `without`.
+// A stage returns false when the player is done for this step. Every player
+// has the same components (ecs.odin), so a stage runs for them all.
 Player_Stage :: struct {
-	name:    string,
-	after:   []string,
-	before:  []string,
-	plugin:  Plugin_ID,
-	with:    Component_Mask,
-	without: Component_Mask,
-	run:     proc(s: ^State, p: Player, ps: ^Player_Step) -> bool,
+	name:   string,
+	after:  []string,
+	before: []string,
+	plugin: Plugin_ID,
+	run:    proc(s: ^State, p: Player, ps: ^Player_Step) -> bool,
 }
 
 // One entity's pass through the stages, and what the stages hand each
@@ -231,15 +228,8 @@ run_systems :: proc(s: ^State, step: ^Step, kinds: bit_set[System_Kind]) {
 // Runs the session's player stages on one player, in order, until one says
 // the player is done.
 run_player_stages :: proc(s: ^State, p: Player, ps: ^Player_Step) {
-	// A player's components change only when a session is set up, never
-	// during its step.
-	mask := components_of(s.ecs, player_entity(p.number))
 	for idx in s.schedule.player_stages[:s.schedule.player_stage_count] {
-		stage := &player_stages[idx]
-		if !matches({stage.with, stage.without}, mask) {
-			continue
-		}
-		if !stage.run(s, p, ps) {
+		if !player_stages[idx].run(s, p, ps) {
 			return
 		}
 	}
@@ -276,23 +266,10 @@ entity_step_state :: proc(s: ^State, e: Entity, es: ^Entity_Step) {
 	es.mask = entity_mask(s, e)
 }
 
-// T for the entity as the stage sees it: its own, else its state's (the
-// state `es` holds), else its unit's. nil when none of them has one, and
-// for a tag, which has nothing to point at (entity_has).
-step_component :: proc(s: ^State, e: Entity, es: ^Entity_Step, $T: typeid) -> ^T {
-	if c := get(s.ecs, pool_entity(e.pool_index), T); c != nil {
-		return c
-	}
-	if c := get(s.prefabs.world, prefab_state_id(s.prefabs, e.unit, es.state), T); c != nil {
-		return c
-	}
-	return get(s.prefabs.world, prefab_unit_id(e.unit), T)
-}
-
-// The entity's components as it is now: its own, its unit's and its
-// current state's.
+// The entity's components as it is now: its unit's and its current
+// state's. Its own are the pool's, which no query asks for.
 entity_mask :: proc "contextless" (s: ^State, e: Entity) -> Component_Mask {
-	return components_of(s.ecs, pool_entity(e.pool_index)) + s.prefabs.unit_mask[e.unit] + prefab_state_mask(s.prefabs, e.unit, e.state)
+	return s.prefabs.unit_mask[e.unit] + prefab_state_mask(s.prefabs, e.unit, e.state)
 }
 
 // Whether the entity as the stage sees it has T: what a tag is asked with.
@@ -300,22 +277,7 @@ step_has :: #force_inline proc "contextless" (es: ^Entity_Step, $T: typeid) -> b
 	return component_id(T) in es.mask
 }
 
-// Whether the entity as it is now has T, its own or shared: what a tag
-// (a component with no fields, so nothing to get) is asked with.
-entity_has :: proc(s: ^State, e: Entity, $T: typeid) -> bool {
-	return has(s.ecs, pool_entity(e.pool_index), T) ||
-		has(s.prefabs.world, prefab_state_id(s.prefabs, e.unit, e.state), T) ||
-		has(s.prefabs.world, prefab_unit_id(e.unit), T)
-}
-
-// T for the entity as it is now: its own, else its current state's, else
-// its unit's.
-entity_component :: proc(s: ^State, e: Entity, $T: typeid) -> ^T {
-	if c := get(s.ecs, pool_entity(e.pool_index), T); c != nil {
-		return c
-	}
-	if c := get(s.prefabs.world, prefab_state_id(s.prefabs, e.unit, e.state), T); c != nil {
-		return c
-	}
-	return get(s.prefabs.world, prefab_unit_id(e.unit), T)
+// Whether the entity as it is now has T, which may be a tag.
+entity_has :: proc "contextless" (s: ^State, e: Entity, $T: typeid) -> bool {
+	return component_id(T) in entity_mask(s, e)
 }

@@ -41,7 +41,7 @@ reward_grid_columns :: proc "contextless" (count: i32) -> i32 {
 
 // The session's reward screen; nil when easy mode is not on.
 reward_of :: #force_inline proc "contextless" (s: ^sim.State) -> ^Reward {
-	return sim.get(s.ecs, sim.SESSION_ENTITY, Reward)
+	return sim.single(s, Reward)
 }
 
 // Whether the reward screen is open.
@@ -230,11 +230,6 @@ open_system :: proc(s: ^sim.State, step: ^sim.Step) {
 }
 
 @(private = "file")
-setup_system :: proc(s: ^sim.State, step: ^sim.Step) {
-	sim.add(s.ecs, sim.SESSION_ENTITY, Reward{})
-}
-
-@(private = "file")
 held :: proc "contextless" (s: ^sim.State) -> bool {
 	return reward_of(s).active
 }
@@ -252,13 +247,6 @@ SCREEN_BEFORE := []string{"step_events"}
 @(private = "file", rodata)
 OPEN_BEFORE := []string{"level_transition"}
 
-// Its components go on the session's entities once they exist, and before
-// the players are set up with them.
-@(private = "file", rodata)
-SETUP_AFTER := []string{"session_setup"}
-@(private = "file", rodata)
-SETUP_BEFORE := []string{"players_setup"}
-
 @(init)
 register :: proc "contextless" () {
 	context = runtime.default_context()
@@ -269,8 +257,7 @@ register :: proc "contextless" () {
 		deps        = DEPS,
 		session     = true,
 	})
-	sim.component_register(Reward, 1)
-	sim.system_register({name = "reward_setup", after = SETUP_AFTER, before = SETUP_BEFORE, plugin = ID, kind = .Setup, run = setup_system})
+	sim.kind_component(.Session, Reward{}, ID)
 	sim.system_register({
 		name   = "reward_screen",
 		after  = SCREEN_AFTER,

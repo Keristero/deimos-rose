@@ -2,7 +2,7 @@ package sim
 
 // The core's components (D39): plain data, as notes/ecs-refactor.md asks.
 // Everything a step reads from one step to the next is one of these, on one
-// of the fixed entities (ecs.odin). What acts on them is the systems under
+// of the world's entities (ecs.odin). What acts on them is the systems under
 // sim/systems/, and the entity lifecycle in sim/lifecycle/.
 //
 // This file holds the session entity's: the singletons, one of each for the
@@ -58,60 +58,43 @@ Game_Status :: struct {
 register_core_components :: proc "contextless" () {
 	context = runtime.default_context()
 	// Singletons, on the session entity only.
-	component_register(Clock, 1)
-	component_register(Rng, 1)
-	component_register(Film_Cursor, 1)
-	component_register(Level_Info, 1)
-	component_register(Accuracy, 1)
-	component_register(Game_Status, 1)
-	component_register(Bgnd, 1)
-	component_register(Debris, 1)
-	component_register(Notice_State, 1)
-	component_register(Level_End, 1)
-	component_register(Pool, 1)
-	// Every object: the players, their crosshairs and the entity pool.
-	component_register(Game_Object, MAX_ENTITIES)
-	// The players.
-	component_register(Ship, MAX_PLAYERS)
-	component_register(Purse, MAX_PLAYERS)
-	component_register(Hull, MAX_PLAYERS)
-	component_register(Overload, MAX_PLAYERS)
-	component_register(Weapon_Handler, MAX_PLAYERS)
-	component_register(Crosshair, MAX_PLAYERS)
-	// The entity pool.
-	component_register(Actor, MAX_ENTITIES)
-	component_register(Anim, MAX_ENTITIES)
-	component_register(Motion, MAX_ENTITIES)
-	component_register(Owned, MAX_ENTITIES)
-	component_register(Spawner, MAX_ENTITIES)
-	component_register(Effects, MAX_ENTITIES)
-	component_register(Shaped, MAX_ENTITIES)
-	// The groups.
-	component_register(Group, MAX_GROUPS)
-	// List membership, for pool entities and groups alike.
-	component_register(Link, max(MAX_GROUPS, MAX_ENTITIES))
+	kind_component(.Session, Clock{})
+	kind_component(.Session, Rng{})
+	kind_component(.Session, Film_Cursor{})
+	kind_component(.Session, Level_Info{})
+	kind_component(.Session, Accuracy{})
+	kind_component(.Session, Game_Status{})
+	kind_component(.Session, Bgnd{})
+	kind_component(.Session, Debris{})
+	kind_component(.Session, Notice_State{})
+	kind_component(.Session, Level_End{})
+	kind_component(.Session, Pool{})
+	// The players, and each one's crosshair.
+	kind_component(.Player, Game_Object{})
+	kind_component(.Player, Ship{})
+	kind_component(.Player, Purse{})
+	kind_component(.Player, Hull{})
+	kind_component(.Player, Overload{})
+	kind_component(.Player, Weapon_Handler{})
+	kind_component(.Crosshair, Game_Object{})
+	kind_component(.Crosshair, Crosshair{})
+	// The entity pool, and the groups; a Link is each one's place in a list.
+	kind_component(.Pool, Game_Object{})
+	kind_component(.Pool, Actor{})
+	kind_component(.Pool, Anim{})
+	kind_component(.Pool, Motion{})
+	kind_component(.Pool, Owned{})
+	kind_component(.Pool, Spawner{})
+	kind_component(.Pool, Effects{})
+	kind_component(.Pool, Shaped{})
+	kind_component(.Pool, Link{})
+	kind_component(.Group, Group{})
+	kind_component(.Group, Link{})
 }
 
-// Gives the session entity its singletons, zeroed.
-add_singletons :: proc(s: ^State) {
-	ecs_set_components(s.ecs, SESSION_ENTITY, {
-		component_id(Clock),
-		component_id(Rng),
-		component_id(Film_Cursor),
-		component_id(Level_Info),
-		component_id(Accuracy),
-		component_id(Game_Status),
-		component_id(Bgnd),
-		component_id(Debris),
-		component_id(Notice_State),
-		component_id(Level_End),
-		component_id(Pool),
-	})
-}
-
-// The session's T.
+// The session's T; nil for a plugin's that is off.
 single :: #force_inline proc "contextless" (s: ^State, $T: typeid) -> ^T {
-	return get(s.ecs, SESSION_ENTITY, T)
+	return (^T)(s.ecs.singletons[component_id(T)])
 }
 
 // Steps taken this session: what rollback and netplay count frames by.

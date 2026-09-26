@@ -1,8 +1,8 @@
 package sim
 
-// The players' components. Each player is an entity (2..3) holding a
+// The players' components. Each player is an entity holding a
 // Game_Object, Ship, Purse, Hull, Overload and Weapon_Handler; each ground
-// crosshair is its own entity (4..5) with a Game_Object and a Crosshair.
+// crosshair is its own entity with a Game_Object and a Crosshair.
 // Player and Weapons are views of one player's components, found once and
 // passed by value. player_system, weapon_system and collision_system act on
 // them.
@@ -73,8 +73,8 @@ Overload :: struct {
 	overload_warnings: i32,      // +0x217
 }
 
-// One player's components, found once (player_at). Good for the step it
-// was found in (D39).
+// One player's components, found when the world is built and good for the
+// session (ecs.odin).
 Player :: struct {
 	using obj:     ^Game_Object,
 	using ship:    ^Ship,
@@ -84,37 +84,18 @@ Player :: struct {
 	weapons:       Weapons,
 }
 
-player_components :: proc "contextless" () -> Component_Mask {
-	return {
-		component_id(Game_Object),
-		component_id(Ship),
-		component_id(Purse),
-		component_id(Hull),
-		component_id(Overload),
-		component_id(Weapon_Handler),
-	}
-}
-
 // Both players, in order.
-players_of :: proc "contextless" (s: ^State) -> (all: [MAX_PLAYERS]Player) {
-	for &p, i in all {
-		p = player_at(s, i)
-	}
-	return
+players_of :: #force_inline proc "contextless" (s: ^State) -> [MAX_PLAYERS]Player {
+	return s.ecs.players
 }
 
-player_at :: proc "contextless" (s: ^State, index: $I) -> Player {
-	i := i32(index)
-	id := player_entity(i)
-	e := s.ecs
-	return {
-		obj      = get(e, id, Game_Object),
-		ship     = get(e, id, Ship),
-		purse    = get(e, id, Purse),
-		hull     = get(e, id, Hull),
-		surge    = get(e, id, Overload),
-		weapons  = weapons_of(s, i),
-	}
+player_at :: #force_inline proc "contextless" (s: ^State, index: $I) -> Player {
+	return s.ecs.players[index]
+}
+
+// Player i's T; nil for a plugin's that is off.
+player_component :: #force_inline proc "contextless" (s: ^State, i: $I, $T: typeid) -> ^T {
+	return (^T)(s.ecs.player_part[i][component_id(T)])
 }
 
 player_def :: #force_inline proc "contextless" (s: ^State, p: Player) -> ^Player_Def {
@@ -188,17 +169,8 @@ Weapons :: struct {
 	using aim:     ^Crosshair,
 }
 
-crosshair_components :: proc "contextless" () -> Component_Mask {
-	return {component_id(Game_Object), component_id(Crosshair)}
-}
-
-weapons_of :: proc "contextless" (s: ^State, i: i32) -> Weapons {
-	e := s.ecs
-	return {
-		handler   = get(e, player_entity(i), Weapon_Handler),
-		crosshair = get(e, crosshair_entity(i), Game_Object),
-		aim       = get(e, crosshair_entity(i), Crosshair),
-	}
+weapons_of :: #force_inline proc "contextless" (s: ^State, i: i32) -> Weapons {
+	return s.ecs.players[i].weapons
 }
 
 Weapon_Result :: enum i32 {

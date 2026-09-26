@@ -26,9 +26,9 @@ import "dr:sim/systems/background_system"
 register :: proc "contextless" () {
 	context = runtime.default_context()
 
-	// A session's set-up, G_Game_Play's: the session's entities and their
-	// components, then (after the plugins have given them theirs) both
-	// players, then the first level.
+	// A session's set-up, G_Game_Play's: the seed, then both players, then
+	// the first level. The world comes built, every entity with its
+	// components and the session plugins' (sim/ecs.odin).
 	sim.system_register({name = "session_setup", kind = .Setup, run = session_setup_system})
 	sim.system_register({name = "players_setup", kind = .Setup, run = players_setup_system})
 	sim.system_register({name = "level_setup", kind = .Setup, run = level_setup_system})
@@ -106,14 +106,8 @@ register :: proc "contextless" () {
 	sim.entity_stage_register({name = "shot_collisions", with = sim.mask_of(collision_system.Collides, collision_system.Harmless_To_Players), run = collision_system.shot_collisions_stage})
 }
 
-// The session's singletons, and the players' and crosshairs' components,
-// zeroed; srand(seed).
+// srand(seed).
 session_setup_system :: proc(s: ^sim.State, step: ^sim.Step) {
-	sim.add_singletons(s)
-	for i in 0 ..< i32(sim.MAX_PLAYERS) {
-		sim.ecs_set_components(s.ecs, sim.player_entity(i), sim.player_components())
-		sim.ecs_set_components(s.ecs, sim.crosshair_entity(i), sim.crosshair_components())
-	}
 	sim.single(s, sim.Rng).next = s.session.seed
 }
 
