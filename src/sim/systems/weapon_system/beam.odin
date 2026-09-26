@@ -44,7 +44,10 @@ beam_fire :: proc(s: ^sim.State, h: ^sim.Weapon_Handler, wd: ^sim.Weapon, at: si
 	left := damage
 	for e in targets[:n] {
 		if e.deleted {
-			continue // gone in an earlier kill's explosion
+			// Kills are only marked here and swept after the step, so nothing
+			// the beam hits deletes another target on the line; kept in case
+			// a hit ever does.
+			continue
 		}
 		loc := e.loc
 		before := e.shields
