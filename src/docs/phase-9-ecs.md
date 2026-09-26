@@ -453,5 +453,7 @@ none of the four demos reaches them:
 - **A session with the passives but not Easy Mode** has no way to earn a
   passive. It runs, and is the same as neither.
 - **The new Start is untested between two builds** and on two machines,
-  as is all of Phase 6 stage 6. `tools/netplay/loopback_check.sh` was not
-  run.
+  as is all of Phase 6 stage 6. On one machine,
+  `tools/netplay/loopback_check.sh` and `reconnect_check.sh` pass; running
+  them found two crashes, a Level_Choice buffer too small for the mods and
+  interpolation reading a world before the first session, both fixed.
