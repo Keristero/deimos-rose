@@ -703,6 +703,9 @@ timing, so Improved Charge and Auto Charge apply unchanged.
 
 ### D39 — The simulation's state lives in odecs, created once in a fixed order
 
+*The first rule is tightened by D47: a slot now gets its components when
+the world is built, and nothing is added or removed after.*
+
 notes/ecs-refactor.md moves the sim to an entity component system: data in
 components, behaviour in systems, and new content in plugins that add their
 own of each. The ECS is odecs (NateTheGreatt/odecs), vendored unmodified in
@@ -834,6 +837,9 @@ end.
 
 ### D45 — Definition flags are components on prefab entities, and stages query them
 
+*Revised by D47: one prefab per (unit, state), holding both levels'
+components, and stages match through queries run once at build.*
+
 Each unit and each of its states is a prefab entity in a world owned by
 the state but not part of it. Builders registered by the system packages
 turn the definitions' flags into components on those prefabs when a
@@ -871,4 +877,51 @@ reach the renderer's types without importing `game`, and `game` imports
 the views. Moving the renderer down removed the cycle. `sim` and the
 plugins' simulation halves may not import `render` or `ui`
 (`mise run purity`).
+
+### D47 — odecs through its public API only: a fixed world, merged prefabs
+
+The first ECS pass wrapped odecs in its own machinery: it read the
+world's records and archetype signatures, moved entities between
+archetypes itself, reserved column rows, did arithmetic on entity ids,
+and matched stages with a component bitmask of its own. It worked, but
+it depended on internals odecs does not promise, and duplicated what the
+library's API already does.
+
+Now the sim calls only odecs's public procedures: `create_world`,
+`delete_world`, `register_component`, `add_entity`, `add_component`
+(building prefabs only), `get_component`, `has_component`, `query_raw`,
+`get_table`, `get_entities` and `get_entity_archetype`. `mise run purity`
+fails on any use of its internals or of its encoded query terms outside
+`third_party/`.
+
+- **A fixed world, built through the API.** Every entity is made once,
+  with `add_entity`, carrying every component its kind (session, player,
+  crosshair, group, pool slot) will ever need for the session's mods, the
+  way the original's pools are fixed. Nothing is added or removed after,
+  so the world never changes shape in a session: the pointers and tables
+  taken after the last `add_entity` stay good (odecs's own rule), and the
+  ids are the same on every peer without depending on how odecs numbers
+  them. A plugin contributes components to a kind (`kind_component`)
+  instead of adding them in a setup system.
+- **Snapshots walk the tables.** For each component, in catalog order,
+  the archetype tables `query_raw` finds, row by row. The rows are in
+  creation order and never move, so two worlds with the same mods lay out
+  the same. The header carries the catalog's and the world's shapes, and
+  a read into a world of another shape is refused.
+- **One prefab per (unit, state).** Builders get the unit and the state
+  together and add the unit's components first, so the state's value is
+  the one kept, as flecs's Inherit trait overrides. Each stage's `with`
+  and `without` become a prefab query, run once over the prefab world
+  when it is built; each prefab keeps the set of queries it matches, so
+  whether a stage runs for an entity is one bit test.
+- **No encoded terms.** odecs builds `not`, `or` and pair terms through
+  a package-global counter that each query resets, which parallel tests
+  race on, and its query cache keys `or` groups ambiguously. `without` is
+  done by subtracting archetype sets instead.
+
+The cost is size: every pool slot is written in every snapshot, 617 KB
+of it, where the first pass wrote only live rows. A snapshot takes about
+64 µs and a checksum about 170 µs (`mise run bench`), both well inside
+a frame. Writing only up to the highest slot used is the next step if
+the ring's memory or the time ever matters.
 

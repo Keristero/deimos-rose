@@ -47,19 +47,31 @@ The old checksum missed the difference. They now keep the last send.
 
 ## What was built
 
-### The world (D39)
+### The world (D39, D47)
 
-odecs is vendored unmodified in `third_party/odecs/`. `sim/ecs.odin` wraps
-it:
-- a process-wide component catalog;
-- fixed entities: the session (1), the players (2–3), the crosshairs
-  (4–5), the 1,024 groups, then the 1,000-slot entity pool;
+odecs is vendored unmodified in `third_party/odecs/`, and the sim uses
+only its public API (`mise run purity` checks). `sim/ecs.odin` holds:
+- a process-wide component catalog, registered with every world in the
+  same order;
+- five kinds of entity: the session, the players, the crosshairs, the
+  1,024 groups and the 1,000-slot entity pool, each with the components
+  its kind is given (`kind_component`), core's and the session's
+  plugins';
 - snapshots, restore and hashing from the world's contents alone.
 
-Every entity is created when the world is, in the same order, and is
-never destroyed. Spawning adds components to a pool slot, and freeing
-removes them. So an entity's id is the same on every machine and after
-every rollback.
+Every entity is created with `add_entity` when the world is, in the same
+order, with every component it will ever have, and is never destroyed.
+Spawning fills a free pool slot; nothing is added or removed after. So
+the world never changes shape in a session: the views taken once it is
+built (entities, groups, players, singletons, the list links) stay good,
+and an entity's id is the same on every machine and after every
+rollback.
+
+A snapshot walks, for each component in catalog order, the archetype
+tables `query_raw` finds, packing each row by its layout. The rows are in
+creation order, so two worlds with the same mods lay out the same, and a
+state read in from another machine builds a world for its mods and reads
+into that, swapped in only if the read succeeds.
 
 32 component types cover what `State` held, among them:
 - the session singletons: clock, RNG, film cursor, level info, game
@@ -83,11 +95,10 @@ are three registries:
   - Step: the game step, FUN_00420280, in its 12 parts;
   - Session: around the game step in a played session, such as the level
     change and the plugins' screens;
-  - Setup: once as a session starts, where a plugin gives the session's
-    entities its components;
+  - Setup: once as a session starts, seeding the RNG, the players and the
+    level;
 - **player stages**: G_Player::Process in 7 parts, run for one player at
-  a time, each for the players whose components match its `with` and
-  `without` (the passives' stages ask for Passive_State);
+  a time; a plugin's stages run only in sessions with it on;
 - **entity stages**: G_EG_Process's body in 28 parts, run for one entity
   at a time, in group order. Each stage names the components an entity
   must have for it to run (see [Prefabs and queries](#prefabs-and-queries-d45)).
@@ -143,20 +154,22 @@ state definitions, tested inside long procedures ("if the state orbits
 its owner, orbit"). Those flags are now components, and the stages that
 act on them ask for them.
 
-Each unit is a **prefab entity**, and so is each of its states, in a
-world of their own (`sim/prefabs.odin`). Builders, registered by the
-package that owns each component, read the definitions when a session
-starts and give each prefab its components: `Emits_Particles` for a state
+Each state of each unit is a **prefab entity**, in a world of its own
+(`sim/prefabs.odin`). Builders, registered by the package that owns each
+component, read the unit's and the state's definitions when a session
+starts and give the prefab its components, the unit's first so that the
+state's value wins where both give one: `Emits_Particles` for a state
 with particles, `Orbits_Owner` for one that orbits,
 `Constrained_To_Play_Area` for a unit that bounces off the edges, and so
 on. A component holds the parameters its stage reads, copied from the
 definition, and a tag (no fields) is a behaviour with nothing to set.
 
-An entity then has three sets of components: its own (the pool slot's),
-its unit's and its current state's. A stage declares `with` and
-`without` sets, and runs for an entity only when the union matches. So
-changing state changes which systems an entity takes part in, and two
-units that share a component share the behaviour. A plugin can give an
+An entity inherits its current state's prefab, as a flecs instance
+inherits through IsA. A stage declares the components it needs `with`
+and those it must be `without`; that is a query, run over the prefab
+world once as it is built, and each prefab keeps the set of queries it
+matches. So changing state changes which systems an entity takes part
+in, and two units that share a component share the behaviour. A plugin can give an
 existing behaviour to any unit or state by adding the component in a
 builder of its own, and its builders run only in sessions with it on.
 
@@ -168,9 +181,9 @@ builder of its own, and its builders run only in sessions with it on.
 | `weapon_system` | `Targetable` |
 
 Components are shared between systems, not owned by one. What a shot can
-hit is a query (`collision_system.shot_query`): Collides and
-Hittable_By_Player_Shots, not Harmless_To_Players, and on the ground if
-the shot is. The Chaingun's aim and the Discharge Beam ask the same
+hit is a set of queries (`collision_system/components.odin`): Collides
+and Hittable_By_Player_Shots, not Harmless_To_Players, and on the ground
+if the shot is. The Chaingun's aim and the Discharge Beam ask the same
 components (`air_shot_targets`), and a ground crosshair locks onto what
 has Ground_Based, Hittable_By_Player_Shots and the state's Targetable.
 The shot collision stage itself runs only for entities with Collides and
@@ -194,15 +207,13 @@ Why prefabs rather than components on each entity:
   session's plugins, neither of which changes in a session. Snapshots
   leave them out, like `defs`, and the golden fingerprints did not move.
 - **The step's local.** G_EG_Process holds the state in a local that it
-  refreshes only at some points. The step's mask is refreshed at the same
-  points (`entity_step_state`), so a stage sees the state the original's
-  code would have read.
+  refreshes only at some points. The step's prefab is refreshed at the
+  same points (`entity_step_state`), so a stage sees the state the
+  original's code would have read.
 
-Lookups: `step_component` and `step_has` answer for the entity as the
-step sees it; `entity_component` and `entity_has` for the entity as it
-is now, which is what code outside the step, such as a hit, reads.
-Either looks at the entity's own components first, then its state's,
-then its unit's.
+Lookups: `prefab_component(s, es.prefab, T)` reads the prefab as the step
+sees it; `prefab_of(s, e)` is the entity's prefab as it is now, which is
+what code outside the step, such as a hit, reads.
 
 ### Render systems
 
@@ -352,7 +363,7 @@ them from its flags (`mods_from_flags`).
 
 ## Verification
 
-- `mise run ci`: 165 tests. The new ones are the prefab builds (their
+- `mise run ci`: 264 tests. The new ones are the prefab builds (their
   components follow the definitions' flags, and a plugin's builder runs
   only with the plugin on), and the golden runs, plugin
   dependencies and order, render schedule, mods and settings save format,
@@ -360,6 +371,10 @@ them from its flags (`mods_from_flags`).
   session.
 - `mise run oracle:diff`: 42,446 / 81,184 / 112,286 / 95,085, exact at
   every commit.
+- `mise run bench` (`tools/simbench`) times the simulation alone. After
+  the move to odecs's public API (D47): demos 23 µs a step, every level
+  in co-op 32 µs, snapshot 64 µs, restore 60 µs, checksum 168 µs, for a
+  617 KB world.
 - `tests/golden/fingerprints.txt`: unchanged since it was recorded.
 - Looked at: menu shots of Preferences, the Mods page, the Extras page,
   the netplay lobby states, the reward and loadout screens, and the
