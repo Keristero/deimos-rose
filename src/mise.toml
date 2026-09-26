@@ -127,6 +127,7 @@ run = [
   "odin check tools/extract $DR_COLL -vet -strict-style",
   "odin check tools/verify  $DR_COLL -vet -strict-style",
   "odin check tools/records $DR_COLL -vet -strict-style",
+  "odin check tools/simbench $DR_COLL -vet -strict-style",
   "odin check tools/diff    $DR_COLL -vet -strict-style",
   "odin check tools/rngcheck $DR_COLL -vet -strict-style",
   "odin check tools/icons   $DR_COLL -vet -strict-style",
@@ -309,6 +310,10 @@ DR_ASSETS=$DR_ASSETS DR_FILM=${FILM:-de01} DR_SHOT=/dev/null DR_SHOT_AT=${UNTIL:
 [tasks."oracle:diff"]
 description = "Compare the simulation's random calls with the original's trace, per demo film"
 run = "odin run tools/diff $DR_COLL -out:$DR_BUILD/oracle-diff$DR_EXT --"
+
+[tasks.bench]
+description = "Time the simulation alone: demo replays, every level in co-op, and rollback snapshots (needs extracted assets)"
+run = "odin run tools/simbench $DR_COLL -o:speed -out:$DR_BUILD/simbench$DR_EXT"
 
 [tasks."rng:determinism"]
 description = "Build tools/rngcheck under several codegen configs (-o:none/-speed, -microarch:native, explicit -target-features:fma) and confirm they all print the same RNG digest -- the practical stand-in, on a host with no working Windows cross-link and no second OS to test against, for 'does sim/'s RNG produce the same bits on every platform' (see docs/decisions.md D27 and tests/rand_test.odin's rand_sequence_digest_is_codegen_stable)"

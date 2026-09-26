@@ -29,4 +29,14 @@ for d in "${DIRS[@]}"; do
         exit 1
     fi
 done
+
+# odecs through its public API only (D47). Its internals change between
+# versions, and its encoded query terms (not/or/pair...) share a global
+# counter that parallel tests race on, so no code outside the library may
+# use either.
+INTERNALS='\.records\b|\.signature\b|\.columns\b|column_indices|move_entity|get_or_create_archetype|archetype_get_column|register_component_dynamic|empty_archetype|auto_cleanup_archetypes|ENTITY_INDEX_MASK|ecs\.EntityID\(|ecs\.(not|or|and|none|some|pair|up|down)\('
+if grep -rnE --include='*.odin' "$INTERNALS" "$SRC" --exclude-dir=third_party --exclude-dir=build --exclude-dir=.deps; then
+    echo "purity: use odecs's public API, not its internals or encoded terms" >&2
+    exit 1
+fi
 echo "purity: sim/ and its dependencies are clean"
