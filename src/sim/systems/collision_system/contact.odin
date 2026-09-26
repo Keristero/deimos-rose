@@ -27,7 +27,7 @@ player_contact_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step)
 			if u.pickup_type == sim.NONE {
 				// Both sides take damage; a state can pass hits to its owner.
 				hit_owner := false
-				if sim.step_has(es, Passes_Hits_To_Owner) && sim.ref_valid(s, e.owner) {
+				if sim.prefab_has(s, es.prefab, Passes_Hits_To_Owner) && sim.ref_valid(s, e.owner) {
 					entity_hit(s, sim.entity_at(s, e.owner.index), s.defs.perm_floats[0xa1], p.number, sim.single(s, sim.Clock).time)
 					hit_owner = true
 				}
@@ -51,7 +51,7 @@ ground_obstacles_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Ste
 		if debris_system.debris_hits(s, lifecycle.object_bounds(e.obj)) {
 			e.vel = {}
 			e.stationary = true
-			if sim.step_component(s, e, es, Blocked_By_Wreckage).becomes_wreckage {
+			if sim.prefab_component(s, es.prefab, Blocked_By_Wreckage).becomes_wreckage {
 				debris_system.debris_new(s, lifecycle.object_bounds(e.obj))
 			}
 		}
@@ -75,20 +75,17 @@ circles_collide :: proc "contextless" (a: sim.Vec, ra: f32, b: sim.Vec, rb: f32)
 	return sim.m_sqrt(sim.trunc_i32(d.x * d.x + d.y * d.y)) < ra + rb
 }
 
-// What shot `es` can hit: an entity that collides and is not a shot
-// itself, on the ground if the shot is, and -- for a shot that is not a
-// player's -- only a player's shot it can hit.
-shot_query :: proc "contextless" (es: ^sim.Entity_Step) -> sim.Query {
-	q := shot_targets
-	if ground_based & es.mask != {} {
-		q.with += ground_based
-	} else {
-		q.without += ground_based
+// Whether a shot can hit a target, by their prefabs: one that collides and
+// is not a shot itself, on the ground if the shot is, and -- for a shot
+// that is not a player's -- only a player's shot it can hit.
+shot_hits :: proc "contextless" (s: ^sim.State, shot, target: i32) -> bool {
+	if !sim.prefab_is(s, target, shot_targets) {
+		return false
 	}
-	if player_projectile & es.mask == {} {
-		q.with += player_projectile
+	if sim.prefab_is(s, shot, ground_based) != sim.prefab_is(s, target, ground_based) {
+		return false
 	}
-	return q
+	return sim.prefab_is(s, shot, player_projectile) || sim.prefab_is(s, target, player_projectile)
 }
 
 // FUN_0041b920: collisions between a "harmless to players" entity (player
@@ -96,10 +93,9 @@ shot_query :: proc "contextless" (es: ^sim.Entity_Step) -> sim.Query {
 entity_collisions :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) {
 	w := sim.single(s, sim.Pool)
 	me := lifecycle.object_bounds(e.obj)
-	if player_projectile & es.mask != {} && me.bottom < 0 {
+	if sim.prefab_is(s, es.prefab, player_projectile) && me.bottom < 0 {
 		return
 	}
-	targets := shot_query(es)
 	n := w.active.count
 	gc := sim.Cursor{sim.NO_LINK}
 	for _ in 0 ..< n {
@@ -109,12 +105,15 @@ entity_collisions :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) {
 		for _ in 0 ..< m {
 			oi := sim.list_next(&sim.group_at(s, gi).entities, sim.entity_links(s), &ec)
 			o := sim.entity_at(s, oi)
-			om := sim.entity_mask(s, o)
-			if !sim.matches(targets, om) || o.deleted || !o.hittable || o.number == e.number || o.appear_delay >= 1 {
+			if o.deleted || !o.hittable || o.number == e.number || o.appear_delay >= 1 {
+				continue
+			}
+			op := sim.prefab_of(s, o)
+			if !shot_hits(s, es.prefab, op) {
 				continue
 			}
 			ob := lifecycle.object_bounds(o.obj)
-			if player_projectile & om != {} && ob.bottom < 0 {
+			if sim.prefab_is(s, op, player_projectile) && ob.bottom < 0 {
 				continue
 			}
 			if !(ob.top <= me.bottom && me.top <= ob.bottom && ob.left <= me.right && me.left <= ob.right) {

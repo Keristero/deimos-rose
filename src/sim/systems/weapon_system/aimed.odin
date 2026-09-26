@@ -74,7 +74,7 @@ air_shot_can_hit :: proc "contextless" (s: ^sim.State, e: sim.Entity) -> bool {
 	if e.deleted || !e.hittable || e.state < 0 || e.appear_delay >= 1 {
 		return false
 	}
-	return sim.matches(collision_system.air_shot_targets, sim.entity_mask(s, e))
+	return sim.prefab_is(s, sim.prefab_of(s, e), collision_system.air_shot_targets)
 }
 
 // Where to aim, relative to the shooter, to meet a target at `offset`

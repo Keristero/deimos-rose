@@ -18,7 +18,7 @@ register_components :: proc "contextless" () {
 }
 
 weapon_prefab :: proc(p: sim.Prefab, u: ^sim.Unit, st: ^sim.Unit_State) {
-	if st != nil && st.is_targetable {
+	if st.is_targetable {
 		sim.prefab_add(p, Targetable{})
 	}
 }

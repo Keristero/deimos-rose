@@ -55,7 +55,7 @@ alone_flee_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> 
 	if e.fleeing || es.nearest.found {
 		return true
 	}
-	lifecycle.entity_flee(s, e, sim.step_component(s, e, es, Flees_Without_Players).flee)
+	lifecycle.entity_flee(s, e, sim.prefab_component(s, es.prefab, Flees_Without_Players).flee)
 	return true
 }
 
@@ -296,7 +296,7 @@ adjust_to_required_velocity :: proc(s: ^sim.State, e: sim.Entity) {
 	}
 	st := sim.state_of(s, e)
 	// An orbit's speed is its angle's: see orbit_owner.
-	if sim.entity_has(s, e, Orbits_Owner) {
+	if sim.prefab_has(s, sim.prefab_of(s, e), Orbits_Owner) {
 		top := st.max_speed
 		if e.vel.x < top {
 			e.vel.x += st.delta

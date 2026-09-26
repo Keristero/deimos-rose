@@ -46,18 +46,16 @@ register_components :: proc "contextless" () {
 	sim.component_register(Orbits_Owner)
 }
 
-// A unit's or state's components, from the flags its definition sets.
+// A state's components, from the flags its unit's and its own definitions
+// set.
 movement_prefab :: proc(p: sim.Prefab, u: ^sim.Unit, st: ^sim.Unit_State) {
-	if st == nil {
-		if u.flees_north_on_no_active_players {
-			sim.prefab_add(p, Flees_Without_Players{sim.res_id("nora")})
-		} else if u.flees_south_on_no_active_players {
-			sim.prefab_add(p, Flees_Without_Players{sim.res_id("sora")})
-		}
-		if u.constrain_in_game_area {
-			sim.prefab_add(p, Constrained_To_Play_Area{})
-		}
-		return
+	if u.flees_north_on_no_active_players {
+		sim.prefab_add(p, Flees_Without_Players{sim.res_id("nora")})
+	} else if u.flees_south_on_no_active_players {
+		sim.prefab_add(p, Flees_Without_Players{sim.res_id("sora")})
+	}
+	if u.constrain_in_game_area {
+		sim.prefab_add(p, Constrained_To_Play_Area{})
 	}
 	if st.delete_on_no_active_players {
 		sim.prefab_add(p, Deleted_Without_Players{})

@@ -40,11 +40,10 @@ register_query_tests :: proc "contextless" () {
 			if u.id != MINE {
 				return
 			}
-			if st == nil {
-				sim.prefab_add(p, Test_Mark{1})
-				return
-			}
-			// The mine holds the scroll, as a state that pauses it does.
+			// The mine holds the scroll, as a state that pauses it does. A
+			// value the builder gives twice keeps the later: the state's,
+			// over the unit's.
+			sim.prefab_add(p, Test_Mark{1})
 			sim.prefab_add(p, entity_system.Pauses_Scrolling{})
 			sim.prefab_add(p, Test_Mark{2})
 		},
@@ -121,7 +120,7 @@ a_plugins_builder_gives_a_unit_a_core_behaviour :: proc(t: ^testing.T) {
 }
 
 @(test)
-a_states_component_overrides_its_units :: proc(t: ^testing.T) {
+a_later_value_overrides_an_earlier :: proc(t: ^testing.T) {
 	f: Query_Fixture
 	defer vmem.arena_destroy(&f.arena)
 	if !query_fixture(t, &f, true) {
@@ -132,10 +131,10 @@ a_states_component_overrides_its_units :: proc(t: ^testing.T) {
 		return
 	}
 	es := sim.entity_step(f.s, e, 0)
-	testing.expect_value(t, sim.step_component(f.s, e, &es, Test_Mark).v, i32(2))
-	testing.expect(t, sim.step_has(&es, entity_system.Pauses_Scrolling))
-	testing.expect(t, sim.entity_has(f.s, e, entity_system.Pauses_Scrolling))
-	testing.expect(t, !sim.entity_has(f.s, e, entity_system.Motion_Blur))
+	testing.expect_value(t, es.prefab, sim.prefab_of(f.s, e))
+	testing.expect_value(t, sim.prefab_component(f.s, es.prefab, Test_Mark).v, i32(2))
+	testing.expect(t, sim.prefab_has(f.s, es.prefab, entity_system.Pauses_Scrolling))
+	testing.expect(t, !sim.prefab_has(f.s, es.prefab, entity_system.Motion_Blur))
 }
 
 // A plugin's player stage runs for every player in play, and only in a

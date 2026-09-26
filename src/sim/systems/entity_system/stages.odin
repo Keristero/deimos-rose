@@ -49,7 +49,7 @@ appear_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool
 
 // Entities with Emits_Particles.
 state_particles_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool {
-	p := sim.step_component(s, e, es, Emits_Particles)
+	p := sim.prefab_component(s, es.prefab, Emits_Particles)
 	due := false
 	if !p.repeat {
 		due = e.particle_count == 0
@@ -68,7 +68,7 @@ state_particles_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step
 
 // Entities with Entry_Sound.
 entry_sound_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool {
-	snd := sim.step_component(s, e, es, Entry_Sound)
+	snd := sim.prefab_component(s, es.prefab, Entry_Sound)
 	play := false
 	if !snd.loop {
 		if e.entry_counts[e.state] == 1 {
@@ -170,7 +170,7 @@ appearance_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> 
 // (visuallyReflectOwnerHits) its hit glow, so a turret's dome flashes with
 // its base. Entities with Follows_Owner_Look.
 owner_look_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool {
-	look := sim.step_component(s, e, es, Follows_Owner_Look)
+	look := sim.prefab_component(s, es.prefab, Follows_Owner_Look)
 	if !sim.ref_valid(s, e.owner) {
 		return true
 	}
@@ -215,7 +215,7 @@ spawn_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool 
 
 // Entities with Motion_Blur.
 motion_blur_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool {
-	b := sim.step_component(s, e, es, Motion_Blur)
+	b := sim.prefab_component(s, es.prefab, Motion_Blur)
 	if e.sprite != sim.NONE {
 		gap := sim.roll_int(s, b.min_gap, b.max_gap, 0x418d92)
 		if e.blur_time + gap < es.time {

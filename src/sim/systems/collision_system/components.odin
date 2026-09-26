@@ -47,47 +47,41 @@ register_components :: proc "contextless" () {
 	sim.component_register(Player_Projectile)
 	sim.component_register(Hittable_By_Player_Shots)
 
-	air_shot_targets = {
-		with    = sim.mask_of(Collides, Hittable_By_Player_Shots),
-		without = sim.mask_of(Ground_Based, Harmless_To_Players, Player_Projectile),
-	}
-	shot_targets = {
-		with    = sim.mask_of(Collides, Hittable_By_Player_Shots),
-		without = sim.mask_of(Harmless_To_Players),
-	}
-	ground_based = sim.mask_of(Ground_Based)
-	player_projectile = sim.mask_of(Player_Projectile)
+	air_shot_targets = sim.prefab_query_register(
+		{Collides, Hittable_By_Player_Shots},
+		{Ground_Based, Harmless_To_Players, Player_Projectile},
+	)
+	shot_targets = sim.prefab_query_register({Collides, Hittable_By_Player_Shots}, {Harmless_To_Players})
+	ground_based = sim.prefab_query_register({Ground_Based})
+	player_projectile = sim.prefab_query_register({Player_Projectile})
 }
 
 // What a player's air shot can hit, bar where it is (FUN_0041b920's tests
 // for a player projectile in the air).
-air_shot_targets: sim.Query
+air_shot_targets: sim.Prefab_Query
 
 // What any shot can hit, before its own ground-ness and kind narrow it
-// (shot_query).
+// (shot_hits).
 @(private)
-shot_targets: sim.Query
+shot_targets: sim.Prefab_Query
 @(private)
-ground_based, player_projectile: sim.Component_Mask
+ground_based, player_projectile: sim.Prefab_Query
 
 collision_prefab :: proc(p: sim.Prefab, u: ^sim.Unit, st: ^sim.Unit_State) {
-	if st == nil {
-		if u.harmless_to_players {
-			sim.prefab_add(p, Harmless_To_Players{})
-		}
-		if u.is_ground_based {
-			sim.prefab_add(p, Ground_Based{})
-		}
-		if u.player_projectile {
-			sim.prefab_add(p, Player_Projectile{})
-		}
-		if u.can_be_hit_by_player_projectile {
-			sim.prefab_add(p, Hittable_By_Player_Shots{})
-		}
-		if u.collides_with_ground_obstacles {
-			sim.prefab_add(p, Blocked_By_Wreckage{becomes_wreckage = u.destruct_create_obstacle})
-		}
-		return
+	if u.harmless_to_players {
+		sim.prefab_add(p, Harmless_To_Players{})
+	}
+	if u.is_ground_based {
+		sim.prefab_add(p, Ground_Based{})
+	}
+	if u.player_projectile {
+		sim.prefab_add(p, Player_Projectile{})
+	}
+	if u.can_be_hit_by_player_projectile {
+		sim.prefab_add(p, Hittable_By_Player_Shots{})
+	}
+	if u.collides_with_ground_obstacles {
+		sim.prefab_add(p, Blocked_By_Wreckage{becomes_wreckage = u.destruct_create_obstacle})
 	}
 	if st.collides {
 		sim.prefab_add(p, Collides{})

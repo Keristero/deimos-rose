@@ -10,11 +10,15 @@ import "dr:sim/systems/entity_system"
 import "dr:sim/systems/movement_system"
 import ecs "dr:third_party/odecs"
 
-// Prefabs (sim/prefabs.odin): a unit's states become prefab entities whose
-// components follow the definitions' flags, and a plugin's builder runs only
-// in a session with that plugin on.
+// Prefabs (sim/prefabs.odin): each state of a unit becomes a prefab entity
+// whose components follow its unit's and its own flags, a plugin's builder
+// runs only in a session with that plugin on, and a query finds the
+// prefabs with the components it asks for and without those it rules out.
 
 Test_Prefab_Tag :: struct {}
+
+@(private = "file")
+particles_without_rules: sim.Prefab_Query
 
 @(init)
 register_test_prefab :: proc "contextless" () {
@@ -24,11 +28,21 @@ register_test_prefab :: proc "contextless" () {
 		name = "test_prefab",
 		plugin = fps_unlock.ID,
 		build = proc(p: sim.Prefab, u: ^sim.Unit, st: ^sim.Unit_State) {
-			if st == nil {
-				sim.prefab_add(p, Test_Prefab_Tag{})
-			}
+			sim.prefab_add(p, Test_Prefab_Tag{})
 		},
 	})
+	particles_without_rules = sim.prefab_query_register({entity_system.Emits_Particles}, {entity_system.Follows_Rules})
+}
+
+// Whether the prefab of state k of unit u has T.
+@(private = "file")
+holds :: proc(pf: ^sim.Prefabs, u, k: i32, $T: typeid) -> bool {
+	return ecs.has_component(pf.world, pf.ids[pf.first_state[u] + k], T)
+}
+
+@(private = "file")
+component_of :: proc(pf: ^sim.Prefabs, u, k: i32, $T: typeid) -> ^T {
+	return ecs.get_component(pf.world, pf.ids[pf.first_state[u] + k], T)
 }
 
 @(private = "file")
@@ -73,24 +87,53 @@ prefabs_follow_the_state_flags :: proc(t: ^testing.T) {
 	sim.prefabs_build(&pf, &defs, {})
 	defer sim.prefabs_destroy(&pf)
 
-	testing.expect_value(t, sim.prefab_state_mask(&pf, 0, 0), sim.mask_of(entity_system.Emits_Particles, entity_system.Follows_Rules))
-	testing.expect_value(t, sim.prefab_state_mask(&pf, 0, 1), sim.Component_Mask{})
-	testing.expect_value(t, sim.prefab_state_mask(&pf, 0, 2), sim.mask_of(entity_system.Pauses_Scrolling, entity_system.Motion_Blur))
-	testing.expect_value(t, sim.prefab_state_mask(&pf, 1, 0), sim.mask_of(entity_system.Follows_Owner_Look))
-	testing.expect_value(t, pf.unit_mask[0], sim.Component_Mask{})
-	testing.expect_value(t, pf.unit_mask[1], sim.mask_of(movement_system.Flees_Without_Players, movement_system.Constrained_To_Play_Area))
+	testing.expect(t, holds(&pf, 0, 0, entity_system.Emits_Particles))
+	testing.expect(t, holds(&pf, 0, 0, entity_system.Follows_Rules))
+	testing.expect(t, !holds(&pf, 0, 0, entity_system.Pauses_Scrolling))
+	for k in i32(0) ..< 3 {
+		testing.expect(t, !holds(&pf, 0, k, movement_system.Flees_Without_Players), "unit 0 flees from nothing")
+	}
+	testing.expect(t, !holds(&pf, 0, 1, entity_system.Emits_Particles))
+	testing.expect(t, !holds(&pf, 0, 1, entity_system.Follows_Rules))
+	testing.expect(t, holds(&pf, 0, 2, entity_system.Pauses_Scrolling))
+	testing.expect(t, holds(&pf, 0, 2, entity_system.Motion_Blur))
+	// A state carries its unit's components as well as its own.
+	testing.expect(t, holds(&pf, 1, 0, entity_system.Follows_Owner_Look))
+	testing.expect(t, holds(&pf, 1, 0, movement_system.Flees_Without_Players))
+	testing.expect(t, holds(&pf, 1, 0, movement_system.Constrained_To_Play_Area))
 
-	p := ecs.get_component(pf.world, sim.prefab_state_id(&pf, 0, 0), entity_system.Emits_Particles)
+	p := component_of(&pf, 0, 0, entity_system.Emits_Particles)
 	testing.expect(t, p != nil)
 	testing.expect_value(t, p.particles, sim.Res_ID{1, 2, 3, 4})
 	testing.expect_value(t, p.repeat_delay, i32(7))
-	b := ecs.get_component(pf.world, sim.prefab_state_id(&pf, 0, 2), entity_system.Motion_Blur)
+	b := component_of(&pf, 0, 2, entity_system.Motion_Blur)
 	testing.expect_value(t, b.min_gap, i32(3))
-	look := ecs.get_component(pf.world, sim.prefab_state_id(&pf, 1, 0), entity_system.Follows_Owner_Look)
+	look := component_of(&pf, 1, 0, entity_system.Follows_Owner_Look)
 	testing.expect_value(t, look^, entity_system.Follows_Owner_Look{scale = true})
 	// North wins where a unit sets both, as in the original's test order.
-	flee := ecs.get_component(pf.world, sim.prefab_unit_id(&pf, 1), movement_system.Flees_Without_Players)
+	flee := component_of(&pf, 1, 0, movement_system.Flees_Without_Players)
 	testing.expect_value(t, flee.flee, sim.res_id("nora"))
+
+	// Particles but no rules: state 0 of unit 0 has both, so only the
+	// states with particles alone would match, and there are none.
+	for m in pf.matches {
+		testing.expect(t, int(particles_without_rules) not_in m)
+	}
+}
+
+// A query's `without` rules out only the prefabs that have what it names.
+@(test)
+a_query_rules_out_what_it_names :: proc(t: ^testing.T) {
+	defs := prefab_defs()
+	defer prefab_defs_free(&defs)
+	rules := defs.units[0].states[0].rules
+	defs.units[0].states[0].rules = nil
+	defer defs.units[0].states[0].rules = rules
+	pf: sim.Prefabs
+	sim.prefabs_build(&pf, &defs, {})
+	defer sim.prefabs_destroy(&pf)
+	testing.expect(t, int(particles_without_rules) in pf.matches[pf.first_state[0]])
+	testing.expect(t, int(particles_without_rules) not_in pf.matches[pf.first_state[0] + 1])
 }
 
 @(test)
@@ -101,11 +144,11 @@ prefab_builders_follow_the_session_plugins :: proc(t: ^testing.T) {
 	defer sim.prefabs_destroy(&pf)
 
 	sim.prefabs_build(&pf, &defs, {})
-	testing.expect(t, !ecs.has_component(pf.world, sim.prefab_unit_id(&pf, 1), Test_Prefab_Tag))
+	testing.expect(t, !holds(&pf, 1, 0, Test_Prefab_Tag))
 
-	// A rebuild with the plugin on reuses pf and gives every unit the tag.
+	// A rebuild with the plugin on reuses pf and gives every state the tag.
 	sim.prefabs_build(&pf, &defs, {int(fps_unlock.ID)})
-	testing.expect(t, ecs.has_component(pf.world, sim.prefab_unit_id(&pf, 1), Test_Prefab_Tag))
-	testing.expect(t, ecs.has_component(pf.world, sim.prefab_unit_id(&pf, 0), Test_Prefab_Tag))
-	testing.expect_value(t, sim.prefab_state_mask(&pf, 1, 0), sim.mask_of(entity_system.Follows_Owner_Look))
+	testing.expect(t, holds(&pf, 1, 0, Test_Prefab_Tag))
+	testing.expect(t, holds(&pf, 0, 2, Test_Prefab_Tag))
+	testing.expect(t, holds(&pf, 1, 0, entity_system.Follows_Owner_Look))
 }

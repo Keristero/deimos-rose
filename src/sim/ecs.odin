@@ -31,9 +31,6 @@ import ecs "dr:third_party/odecs"
 
 MAX_COMPONENTS :: 128
 
-// Which components something has, by catalog id.
-Component_Mask :: bit_set[0 ..< MAX_COMPONENTS; u128]
-
 // A stretch of a component's bytes that holds data. Padding is left out, so
 // two worlds holding equal values write equal bytes.
 Byte_Run :: struct {
@@ -70,21 +67,6 @@ run_bytes: int // data bytes laid out so far, to tell padded types from dense on
 component_slot :: #force_inline proc "contextless" ($T: typeid) -> ^i32 {
 	@(static) id: i32 = -1
 	return &id
-}
-
-// The components of `types`, for a query (Entity_Stage.with). Every one
-// must be registered.
-mask_of :: proc(types: ..typeid) -> (m: Component_Mask) {
-	outer: for t in types {
-		for c, i in catalog[:catalog_count] {
-			if c.type == t {
-				m += {i}
-				continue outer
-			}
-		}
-		panic("ecs: a query names a component that is not registered")
-	}
-	return
 }
 
 // Adds T to the catalog. Called from `@(init)` procedures only, the sim's

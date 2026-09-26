@@ -73,9 +73,6 @@ register_components :: proc "contextless" () {
 // the one the original makes before the behaviour, so a stage asking for
 // the component runs exactly where the original's test passes.
 state_prefab :: proc(p: sim.Prefab, u: ^sim.Unit, st: ^sim.Unit_State) {
-	if st == nil {
-		return
-	}
 	if st.particles != sim.NONE {
 		sim.prefab_add(p, Emits_Particles {
 			particles = st.particles,

@@ -67,43 +67,43 @@ register :: proc "contextless" () {
 	// G_EG_Process's body for one entity, in the original's order. A stage
 	// with a `with` set runs only on the entities that have it.
 	sim.entity_stage_register({name = "appear", run = entity_system.appear_stage})
-	sim.entity_stage_register({name = "state_particles", with = sim.mask_of(entity_system.Emits_Particles), run = entity_system.state_particles_stage})
-	sim.entity_stage_register({name = "entry_sound", with = sim.mask_of(entity_system.Entry_Sound), run = entity_system.entry_sound_stage})
+	sim.entity_stage_register({name = "state_particles", with = {entity_system.Emits_Particles}, run = entity_system.state_particles_stage})
+	sim.entity_stage_register({name = "entry_sound", with = {entity_system.Entry_Sound}, run = entity_system.entry_sound_stage})
 	sim.entity_stage_register({name = "state_timer", run = entity_system.state_timer_stage})
-	sim.entity_stage_register({name = "scroll_pause", with = sim.mask_of(entity_system.Pauses_Scrolling), run = entity_system.scroll_pause_stage})
+	sim.entity_stage_register({name = "scroll_pause", with = {entity_system.Pauses_Scrolling}, run = entity_system.scroll_pause_stage})
 	sim.entity_stage_register({name = "animate", run = entity_system.animate_stage})
-	sim.entity_stage_register({name = "rules", with = sim.mask_of(entity_system.Follows_Rules), run = entity_system.rules_stage})
+	sim.entity_stage_register({name = "rules", with = {entity_system.Follows_Rules}, run = entity_system.rules_stage})
 	sim.entity_stage_register({name = "appearance", run = entity_system.appearance_stage})
-	sim.entity_stage_register({name = "owner_look", with = sim.mask_of(entity_system.Follows_Owner_Look), run = entity_system.owner_look_stage})
-	sim.entity_stage_register({name = "scroll_destruct", with = sim.mask_of(entity_system.Destructs_While_Scrolling), run = entity_system.scroll_destruct_stage})
+	sim.entity_stage_register({name = "owner_look", with = {entity_system.Follows_Owner_Look}, run = entity_system.owner_look_stage})
+	sim.entity_stage_register({name = "scroll_destruct", with = {entity_system.Destructs_While_Scrolling}, run = entity_system.scroll_destruct_stage})
 	sim.entity_stage_register({name = "flee_steer", run = movement_system.flee_steer_stage})
 	sim.entity_stage_register({name = "sense_players", run = movement_system.sense_players_stage})
-	sim.entity_stage_register({name = "alone_delete", with = sim.mask_of(movement_system.Deleted_Without_Players), run = movement_system.alone_delete_stage})
-	sim.entity_stage_register({name = "alone_destruct", with = sim.mask_of(movement_system.Destructs_Without_Players), run = movement_system.alone_destruct_stage})
-	sim.entity_stage_register({name = "alone_flee", with = sim.mask_of(movement_system.Flees_Without_Players), run = movement_system.alone_flee_stage})
-	sim.entity_stage_register({name = "cyclic_motion", with = sim.mask_of(movement_system.Cyclic_Motion), run = movement_system.cyclic_motion_stage})
-	sim.entity_stage_register({name = "constrain", with = sim.mask_of(movement_system.Constrained_To_Play_Area), run = movement_system.constrain_stage})
+	sim.entity_stage_register({name = "alone_delete", with = {movement_system.Deleted_Without_Players}, run = movement_system.alone_delete_stage})
+	sim.entity_stage_register({name = "alone_destruct", with = {movement_system.Destructs_Without_Players}, run = movement_system.alone_destruct_stage})
+	sim.entity_stage_register({name = "alone_flee", with = {movement_system.Flees_Without_Players}, run = movement_system.alone_flee_stage})
+	sim.entity_stage_register({name = "cyclic_motion", with = {movement_system.Cyclic_Motion}, run = movement_system.cyclic_motion_stage})
+	sim.entity_stage_register({name = "constrain", with = {movement_system.Constrained_To_Play_Area}, run = movement_system.constrain_stage})
 	sim.entity_stage_register({name = "hunt", run = movement_system.hunt_stage})
 	sim.entity_stage_register({name = "move", run = movement_system.move_stage})
-	sim.entity_stage_register({name = "lock_to_owner", with = sim.mask_of(movement_system.Locked_To_Owner), run = movement_system.lock_to_owner_stage})
-	sim.entity_stage_register({name = "link_to_owner", with = sim.mask_of(movement_system.Linked_To_Owner), run = movement_system.link_to_owner_stage})
-	sim.entity_stage_register({name = "orbit_owner", with = sim.mask_of(movement_system.Orbits_Owner), run = movement_system.orbit_owner_stage})
+	sim.entity_stage_register({name = "lock_to_owner", with = {movement_system.Locked_To_Owner}, run = movement_system.lock_to_owner_stage})
+	sim.entity_stage_register({name = "link_to_owner", with = {movement_system.Linked_To_Owner}, run = movement_system.link_to_owner_stage})
+	sim.entity_stage_register({name = "orbit_owner", with = {movement_system.Orbits_Owner}, run = movement_system.orbit_owner_stage})
 	sim.entity_stage_register({name = "spawn", run = entity_system.spawn_stage})
 	sim.entity_stage_register({
 		name = "player_contact",
-		with = sim.mask_of(collision_system.Collides, collision_system.Collides_With_Players),
-		without = sim.mask_of(collision_system.Harmless_To_Players),
+		with = {collision_system.Collides, collision_system.Collides_With_Players},
+		without = {collision_system.Harmless_To_Players},
 		run = collision_system.player_contact_stage,
 	})
-	sim.entity_stage_register({name = "motion_blur", with = sim.mask_of(entity_system.Motion_Blur), run = entity_system.motion_blur_stage})
+	sim.entity_stage_register({name = "motion_blur", with = {entity_system.Motion_Blur}, run = entity_system.motion_blur_stage})
 	sim.entity_stage_register({
 		name = "crosshair_lock",
-		with = sim.mask_of(collision_system.Ground_Based, collision_system.Hittable_By_Player_Shots, weapon_system.Targetable),
-		without = sim.mask_of(collision_system.Harmless_To_Players),
+		with = {collision_system.Ground_Based, collision_system.Hittable_By_Player_Shots, weapon_system.Targetable},
+		without = {collision_system.Harmless_To_Players},
 		run = weapon_system.crosshair_lock_stage,
 	})
-	sim.entity_stage_register({name = "ground_obstacles", with = sim.mask_of(collision_system.Blocked_By_Wreckage), run = collision_system.ground_obstacles_stage})
-	sim.entity_stage_register({name = "shot_collisions", with = sim.mask_of(collision_system.Collides, collision_system.Harmless_To_Players), run = collision_system.shot_collisions_stage})
+	sim.entity_stage_register({name = "ground_obstacles", with = {collision_system.Blocked_By_Wreckage}, run = collision_system.ground_obstacles_stage})
+	sim.entity_stage_register({name = "shot_collisions", with = {collision_system.Collides, collision_system.Harmless_To_Players}, run = collision_system.shot_collisions_stage})
 }
 
 // srand(seed).

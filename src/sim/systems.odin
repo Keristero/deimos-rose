@@ -81,10 +81,9 @@ Entity_Step :: struct {
 	// the original refreshes it, which is not after every state change
 	// (entity_step_state).
 	st:      ^Unit_State,
-	state:   i32,
-	// The entity's components, its unit's and those of `st`: what a stage's
-	// query is matched against.
-	mask:    Component_Mask,
+	// The prefab of `st`, which the stages' queries are matched against and
+	// the components they read come from (prefabs.odin).
+	prefab:  i32,
 	pause:   bool, // the state holds the scroll
 	// The nearest player in play, as the movement AI found it before the
 	// entity moved: the stages after it act on the same sighting.
@@ -99,29 +98,19 @@ Sighting :: struct {
 	found:  bool,
 }
 
-// Components an entity must have (with) and must not (without): what a
-// system asks for, matched against an entity's own components and its
-// prefabs' (entity_mask, Entity_Step.mask).
-Query :: struct {
-	with, without: Component_Mask,
-}
-
-matches :: #force_inline proc "contextless" (q: Query, m: Component_Mask) -> bool {
-	return q.with - m == {} && q.without & m == {}
-}
-
 // A stage returns false when the entity is done for this step (deleted,
 // destroyed, or not yet appeared). It runs for an entity only when the
-// entity has every component in `with` and none in `without` (mask_of),
-// its own or shared from its prefabs (prefabs.odin).
+// entity's prefab has every component in `with` and none in `without`
+// (prefabs.odin).
 Entity_Stage :: struct {
 	name:    string,
 	after:   []string,
 	before:  []string,
 	plugin:  Plugin_ID,
-	with:    Component_Mask,
-	without: Component_Mask,
+	with:    []typeid,
+	without: []typeid,
 	run:     proc(s: ^State, e: Entity, es: ^Entity_Step) -> bool,
+	query:   Prefab_Query, // set by entity_stage_register
 }
 
 @(private = "file")
@@ -153,9 +142,13 @@ player_stage_register :: proc(stage: Player_Stage) {
 	player_stage_count += 1
 }
 
+// The stage's `with` and `without` are copied (prefab_query_register), so
+// they may be slice literals.
 entity_stage_register :: proc(stage: Entity_Stage) {
 	assert(stage_count < MAX_STAGES, "sim: too many entity stages")
 	stages[stage_count] = stage
+	stages[stage_count].query = prefab_query_register(stage.with, stage.without)
+	stages[stage_count].with, stages[stage_count].without = nil, nil
 	stage_count += 1
 }
 
@@ -236,13 +229,13 @@ run_player_stages :: proc(s: ^State, p: Player, ps: ^Player_Step) {
 }
 
 // Runs the session's entity stages on one entity, in order, until one
-// says the entity is done. A stage whose query the entity does not match
-// is passed over; the entity's components are matched as they are when the
-// stage comes up, since an earlier stage may have changed its state.
+// says the entity is done. A stage whose query the entity's prefab does not
+// match is passed over; the prefab is the one `es` holds when the stage
+// comes up, since an earlier stage may have refreshed it.
 run_entity_stages :: proc(s: ^State, e: Entity, es: ^Entity_Step) {
 	for idx in s.schedule.stages[:s.schedule.stage_count] {
 		stage := &stages[idx]
-		if !matches({stage.with, stage.without}, es.mask) {
+		if !prefab_is(s, es.prefab, stage.query) {
 			continue
 		}
 		if !stage.run(s, e, es) {
@@ -259,25 +252,8 @@ entity_step :: proc(s: ^State, e: Entity, time: i32) -> Entity_Step {
 }
 
 // Takes the entity's state as it is now, where G_EG_Process refreshes its
-// local: the state, and so the components the later stages see.
+// local: the state, and so the prefab the later stages see.
 entity_step_state :: proc(s: ^State, e: Entity, es: ^Entity_Step) {
 	es.st = state_of(s, e)
-	es.state = e.state
-	es.mask = entity_mask(s, e)
-}
-
-// The entity's components as it is now: its unit's and its current
-// state's. Its own are the pool's, which no query asks for.
-entity_mask :: proc "contextless" (s: ^State, e: Entity) -> Component_Mask {
-	return s.prefabs.unit_mask[e.unit] + prefab_state_mask(s.prefabs, e.unit, e.state)
-}
-
-// Whether the entity as the stage sees it has T: what a tag is asked with.
-step_has :: #force_inline proc "contextless" (es: ^Entity_Step, $T: typeid) -> bool {
-	return component_id(T) in es.mask
-}
-
-// Whether the entity as it is now has T, which may be a tag.
-entity_has :: proc "contextless" (s: ^State, e: Entity, $T: typeid) -> bool {
-	return component_id(T) in entity_mask(s, e)
+	es.prefab = prefab_of(s, e)
 }
