@@ -143,8 +143,10 @@ an_entitys_own_component_overrides_its_prefabs :: proc(t: ^testing.T) {
 	testing.expect(t, sim.entity_has(f.s, e, entity_system.Pauses_Scrolling))
 	testing.expect(t, !sim.entity_has(f.s, e, entity_system.Motion_Blur))
 
-	// The entity's own over both. Giving it a component moves its row, so
-	// the view is found again from its index, not read through the old one.
+	// The entity's own over both. Giving it a component moves its row, and
+	// the row moved into the gap it leaves, so any view into that table --
+	// its own and other entities' -- is found again from its index, not
+	// read through the old one.
 	index := e.pool_index
 	sim.add(f.s.ecs, sim.pool_entity(index), Test_Mark{3})
 	e = sim.entity_at(f.s, index)

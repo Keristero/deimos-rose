@@ -364,7 +364,12 @@ spawn_entity :: proc(
 	spawn_velocity(s, g, e, use_heading, h, req.owner, req.speed_scale)
 	del, des := change_state(s, e, true, u.states[0].name, time)
 	if del || des {
-		sim.unported(s, 0x41ab1c) // first state is Delete/Destroy
+		// A first state of Delete or Destroy: not ported, and no shipped
+		// unit has one. The entity is left in its first state, so everything
+		// that reads its state still can, and deleted at once.
+		sim.unported(s, 0x41ab1c)
+		e.state = 0
+		entity_delete(e)
 	}
 	st := sim.state_of(s, e)
 	e.is_air = !u.is_ground_based
