@@ -277,7 +277,7 @@ assets_open :: proc(root: string, allocator := context.allocator) -> (a: Assets)
 		}
 	}
 	// The menus' "Interface Music Loop" streams as music too
-	// (game/assets.odin's MENU_MUSIC); decoding its ~60s into memory as a
+	// (render/assets.odin's MENU_MUSIC); decoding its ~60s into memory as a
 	// sound effect as well would only waste ~10 MB.
 	exclude["inmu"] = true
 	sounds := make([dynamic]string, 0, 99, allocator)

@@ -205,7 +205,7 @@ then its unit's.
 
 ### Render systems
 
-`build_frame` is a loop over render systems (`game/render_systems.odin`),
+`build_frame` is a loop over render systems (`render/render_systems.odin`),
 ordered the same way:
 - clearing the layers;
 - terrain;

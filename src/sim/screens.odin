@@ -12,7 +12,7 @@ package sim
 // beat to see the last choice land, and to take it back. Provisional.
 SCREEN_RESUME_DELAY :: 10
 
-// The menu's own sounds (game/menu.odin, game/menu_level_select.odin).
+// The menu's own sounds (ui/menu.odin, game/menu_level_select.odin).
 SCREEN_SOUND_MOVE :: Res_ID{'m', 'b', 'r', 'o'}
 SCREEN_SOUND_LOCK :: Res_ID{'l', 's', 's', 'e'}
 SCREEN_SOUND_REFUSE :: Res_ID{'l', 's', 'n', 'a'}

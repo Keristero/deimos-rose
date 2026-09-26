@@ -20,7 +20,9 @@ import "core:fmt"
 import rl "vendor:raylib"
 
 import "dr:prefs"
+import "dr:render"
 import "dr:sim"
+import "dr:ui"
 
 @(private = "file") PREFS_TITLE_Y :: 34
 @(private = "file") PREFS_PLAYER_Y :: 64
@@ -85,13 +87,13 @@ Preferences :: struct {
 	capture_button: prefs.Action,
 	capture_slot:   int,
 
-	player_prev, player_next: Text_Button,
-	keys:                     [prefs.Action][prefs.BINDING_SLOTS]Text_Button,
-	reset:                    Text_Button,
-	volume_down, volume_up:   [Option]Text_Button, // only .Sound and .Music use these
-	toggle:                   [Option]Text_Button, // .Display/.Diagnostics/.Classic/.Mods, and the volume readouts
-	open_extras:              Text_Button,         // beside .Mods
-	back:                     Text_Button,
+	player_prev, player_next: ui.Text_Button,
+	keys:                     [prefs.Action][prefs.BINDING_SLOTS]ui.Text_Button,
+	reset:                    ui.Text_Button,
+	volume_down, volume_up:   [Option]ui.Text_Button, // only .Sound and .Music use these
+	toggle:                   [Option]ui.Text_Button, // .Display/.Diagnostics/.Classic/.Mods, and the volume readouts
+	open_extras:              ui.Text_Button,         // beside .Mods
+	back:                     ui.Text_Button,
 }
 
 preferences_init :: proc(p: ^Preferences) {
@@ -126,9 +128,9 @@ option_value :: proc(ps: ^Prefs_State, o: Option) -> string {
 // Labels show live values (key names, volumes), so every button is
 // re-centred on its current label each frame before hit-testing.
 @(private = "file")
-preferences_layout :: proc(r: ^Renderer, p: ^Preferences, ps: ^Prefs_State) {
-	text_button_relabel(r, &p.player_prev, "<", PREFS_VALUE_X - PREFS_ARROW_DX, PREFS_PLAYER_Y)
-	text_button_relabel(r, &p.player_next, ">", PREFS_VALUE_X + PREFS_ARROW_DX, PREFS_PLAYER_Y)
+preferences_layout :: proc(r: ^render.Renderer, p: ^Preferences, ps: ^Prefs_State) {
+	ui.text_button_relabel(r, &p.player_prev, "<", PREFS_VALUE_X - PREFS_ARROW_DX, PREFS_PLAYER_Y)
+	ui.text_button_relabel(r, &p.player_next, ">", PREFS_VALUE_X + PREFS_ARROW_DX, PREFS_PLAYER_Y)
 	slot_x := PREFS_SLOT_X
 	for button in prefs.Action {
 		y := PREFS_KEYS_Y + f32(button) * PREFS_ROW
@@ -137,29 +139,29 @@ preferences_layout :: proc(r: ^Renderer, p: ^Preferences, ps: ^Prefs_State) {
 			if p.capturing && p.capture_button == button && p.capture_slot == slot {
 				label = "PRESS A KEY"
 			}
-			text_button_relabel(r, &p.keys[button][slot], label, slot_x[slot], y)
+			ui.text_button_relabel(r, &p.keys[button][slot], label, slot_x[slot], y)
 		}
 	}
-	text_button_relabel(r, &p.reset, fmt.tprintf("RESET PLAYER %d KEYS", p.player + 1), SCREEN_W / 2, PREFS_RESET_Y)
+	ui.text_button_relabel(r, &p.reset, fmt.tprintf("RESET PLAYER %d KEYS", p.player + 1), render.SCREEN_W / 2, PREFS_RESET_Y)
 	for o in Option {
 		y := option_y(o)
 		if o == .Mods {
 			// Two pages on one row, where the key slots' columns are.
-			text_button_relabel(r, &p.toggle[o], option_value(ps, o), slot_x[0], y)
-			text_button_relabel(r, &p.open_extras, "EXTRAS", slot_x[1], y)
+			ui.text_button_relabel(r, &p.toggle[o], option_value(ps, o), slot_x[0], y)
+			ui.text_button_relabel(r, &p.open_extras, "EXTRAS", slot_x[1], y)
 			continue
 		}
-		text_button_relabel(r, &p.toggle[o], option_value(ps, o), PREFS_VALUE_X, y)
+		ui.text_button_relabel(r, &p.toggle[o], option_value(ps, o), PREFS_VALUE_X, y)
 		if o == .Sound || o == .Music {
-			text_button_relabel(r, &p.volume_down[o], "<", PREFS_VALUE_X - PREFS_ARROW_DX, y)
-			text_button_relabel(r, &p.volume_up[o], ">", PREFS_VALUE_X + PREFS_ARROW_DX, y)
+			ui.text_button_relabel(r, &p.volume_down[o], "<", PREFS_VALUE_X - PREFS_ARROW_DX, y)
+			ui.text_button_relabel(r, &p.volume_up[o], ">", PREFS_VALUE_X + PREFS_ARROW_DX, y)
 		}
 	}
-	text_button_relabel(r, &p.back, "BACK", SCREEN_W / 2, PREFS_BACK_Y)
+	ui.text_button_relabel(r, &p.back, "BACK", render.SCREEN_W / 2, PREFS_BACK_Y)
 }
 
 // Called once per render frame from flow_handle_input's .Preferences case.
-preferences_update :: proc(fl: ^Flow, r: ^Renderer, p: ^Preferences) {
+preferences_update :: proc(fl: ^Flow, r: ^render.Renderer, p: ^Preferences) {
 	ps := fl.prefs
 	switch p.page {
 	case .Main:
@@ -181,22 +183,22 @@ preferences_update :: proc(fl: ^Flow, r: ^Renderer, p: ^Preferences) {
 		return
 	}
 
-	mouse := menu_mouse_pos()
+	mouse := ui.menu_mouse_pos()
 	dt := rl.GetFrameTime()
 
-	prev := text_button_update(r, &p.player_prev, mouse, dt)
-	next := text_button_update(r, &p.player_next, mouse, dt)
+	prev := ui.text_button_update(r, &p.player_prev, mouse, dt)
+	next := ui.text_button_update(r, &p.player_next, mouse, dt)
 	if prev || next {
 		p.player = (p.player + (next ? 1 : sim.MAX_PLAYERS - 1)) % sim.MAX_PLAYERS
 	}
 	for button in prefs.Action {
 		for slot in 0 ..< prefs.BINDING_SLOTS {
-			if text_button_update(r, &p.keys[button][slot], mouse, dt) {
+			if ui.text_button_update(r, &p.keys[button][slot], mouse, dt) {
 				p.capturing, p.capture_button, p.capture_slot = true, button, slot
 			}
 		}
 	}
-	if text_button_update(r, &p.reset, mouse, dt) {
+	if ui.text_button_update(r, &p.reset, mouse, dt) {
 		// Re-bound one key at a time so any default the other player has
 		// since taken is moved back, not left bound twice.
 		d := prefs.defaults()
@@ -212,38 +214,38 @@ preferences_update :: proc(fl: ^Flow, r: ^Renderer, p: ^Preferences) {
 		switch o {
 		case .Sound, .Music:
 			v := o == .Sound ? &ps.saved.sfx_volume : &ps.saved.music_volume
-			if text_button_update(r, &p.volume_down[o], mouse, dt) {
+			if ui.text_button_update(r, &p.volume_down[o], mouse, dt) {
 				prefs.step_volume(v, -1)
 				prefs_state_save(ps)
 			}
-			if text_button_update(r, &p.volume_up[o], mouse, dt) {
+			if ui.text_button_update(r, &p.volume_up[o], mouse, dt) {
 				prefs.step_volume(v, 1)
 				prefs_state_save(ps)
 			}
-			_ = update_hover_click(p.toggle[o].rect, &p.toggle[o].hover_time, mouse, dt) // a readout: hilites, but silent
+			_ = ui.update_hover_click(p.toggle[o].rect, &p.toggle[o].hover_time, mouse, dt) // a readout: hilites, but silent
 		case .Display:
-			if text_button_update(r, &p.toggle[o], mouse, dt) {
+			if ui.text_button_update(r, &p.toggle[o], mouse, dt) {
 				prefs_set_fullscreen(ps, !prefs_fullscreen(ps))
 			}
 		case .Mods:
-			if text_button_update(r, &p.toggle[o], mouse, dt) {
+			if ui.text_button_update(r, &p.toggle[o], mouse, dt) {
 				p.page = .Mods
 			}
-			if extras_available(ps) && text_button_update(r, &p.open_extras, mouse, dt) {
+			if extras_available(ps) && ui.text_button_update(r, &p.open_extras, mouse, dt) {
 				p.page = .Extras
 			}
 		case .Diagnostics:
-			if text_button_update(r, &p.toggle[o], mouse, dt) {
+			if ui.text_button_update(r, &p.toggle[o], mouse, dt) {
 				prefs_set_diagnostics(ps, !prefs_diagnostics(ps))
 			}
 		case .Classic:
-			if text_button_update(r, &p.toggle[o], mouse, dt) {
+			if ui.text_button_update(r, &p.toggle[o], mouse, dt) {
 				prefs_set_classic(ps, !prefs_classic(ps))
 			}
 		}
 	}
 
-	if text_button_update(r, &p.back, mouse, dt) || rl.IsKeyPressed(.ESCAPE) {
+	if ui.text_button_update(r, &p.back, mouse, dt) || rl.IsKeyPressed(.ESCAPE) {
 		fl.mode = .Title
 	}
 }
@@ -273,7 +275,7 @@ preferences_capture :: proc(p: ^Preferences, ps: ^Prefs_State) {
 	p.capturing = false
 }
 
-preferences_draw :: proc(r: ^Renderer, p: ^Preferences, ps: ^Prefs_State) {
+preferences_draw :: proc(r: ^render.Renderer, p: ^Preferences, ps: ^Prefs_State) {
 	switch p.page {
 	case .Main:
 	case .Mods:
@@ -283,39 +285,39 @@ preferences_draw :: proc(r: ^Renderer, p: ^Preferences, ps: ^Prefs_State) {
 		extras_page_draw(r, &p.extras, ps)
 		return
 	}
-	menu_draw_background(r, "back")
+	ui.menu_draw_background(r, "back")
 	white := rl.Color{255, 255, 255, 255}
 	dim := rl.Color{190, 190, 190, 255}
-	header := rl.Color{HIGH_SCORES_HEADER_RGB[0], HIGH_SCORES_HEADER_RGB[1], HIGH_SCORES_HEADER_RGB[2], 255}
+	header := rl.Color{ui.HIGH_SCORES_HEADER_RGB[0], ui.HIGH_SCORES_HEADER_RGB[1], ui.HIGH_SCORES_HEADER_RGB[2], 255}
 
-	menu_draw_text(r, "PREFERENCES", SCREEN_W / 2, PREFS_TITLE_Y, header, .Centre)
+	ui.menu_draw_text(r, "PREFERENCES", render.SCREEN_W / 2, PREFS_TITLE_Y, header, .Centre)
 
-	menu_draw_text(r, "CONTROLS FOR", PREFS_LABEL_X, PREFS_PLAYER_Y + 5, header)
-	menu_draw_text(r, fmt.tprintf("PLAYER %d", p.player + 1), PREFS_VALUE_X, PREFS_PLAYER_Y + 5, white, .Centre)
-	text_button_draw(r, &p.player_prev)
-	text_button_draw(r, &p.player_next)
+	ui.menu_draw_text(r, "CONTROLS FOR", PREFS_LABEL_X, PREFS_PLAYER_Y + 5, header)
+	ui.menu_draw_text(r, fmt.tprintf("PLAYER %d", p.player + 1), PREFS_VALUE_X, PREFS_PLAYER_Y + 5, white, .Centre)
+	ui.text_button_draw(r, &p.player_prev)
+	ui.text_button_draw(r, &p.player_next)
 
 	for button in prefs.Action {
 		y := PREFS_KEYS_Y + i32(button) * PREFS_ROW
-		menu_draw_text(r, BUTTON_NAMES[button], PREFS_LABEL_X, y + 5, white)
+		ui.menu_draw_text(r, BUTTON_NAMES[button], PREFS_LABEL_X, y + 5, white)
 		for slot in 0 ..< prefs.BINDING_SLOTS {
-			text_button_draw(r, &p.keys[button][slot])
+			ui.text_button_draw(r, &p.keys[button][slot])
 		}
 	}
-	text_button_draw(r, &p.reset)
+	ui.text_button_draw(r, &p.reset)
 
 	for o in Option {
-		menu_draw_text(r, OPTION_NAMES[o], PREFS_LABEL_X, i32(option_y(o)) + 5, white)
-		text_button_draw(r, &p.toggle[o])
+		ui.menu_draw_text(r, OPTION_NAMES[o], PREFS_LABEL_X, i32(option_y(o)) + 5, white)
+		ui.text_button_draw(r, &p.toggle[o])
 		if o == .Mods {
-			text_button_draw(r, &p.open_extras, extras_available(ps))
+			ui.text_button_draw(r, &p.open_extras, extras_available(ps))
 		}
 		if o == .Sound || o == .Music {
-			text_button_draw(r, &p.volume_down[o])
-			text_button_draw(r, &p.volume_up[o])
+			ui.text_button_draw(r, &p.volume_down[o])
+			ui.text_button_draw(r, &p.volume_up[o])
 		}
 	}
-	text_button_draw(r, &p.back)
+	ui.text_button_draw(r, &p.back)
 
 	status: string
 	switch {
@@ -327,5 +329,5 @@ preferences_draw :: proc(r: ^Renderer, p: ^Preferences, ps: ^Prefs_State) {
 	case:
 		status = "PLAYER 1'S KEYS ARE ALSO YOURS IN NETPLAY"
 	}
-	menu_draw_text(r, status, SCREEN_W / 2, PREFS_STATUS_Y, dim, .Centre)
+	ui.menu_draw_text(r, status, render.SCREEN_W / 2, PREFS_STATUS_Y, dim, .Centre)
 }

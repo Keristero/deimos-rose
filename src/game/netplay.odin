@@ -34,8 +34,8 @@ package game
 import "core:fmt"
 import "core:strings"
 import "core:time"
-
 import core_net "core:net"
+
 import rl "vendor:raylib"
 
 import "dr:data"
@@ -44,7 +44,9 @@ import accent_view "dr:plugins/accent/view"
 import "dr:plugins/easy_mode"
 import "dr:plugins/new_weapons"
 import "dr:prefs"
+import "dr:render"
 import "dr:sim"
+import "dr:ui"
 
 // Chosen from IANA's dynamic/private port range (49152-65535) to avoid
 // colliding with a registered service; both peers just need to agree on the
@@ -160,14 +162,14 @@ Netplay :: struct {
 	// mirrored to the guest in every Level_Choice and fixed by Start.
 	mods:        sim.Mods,
 
-	menu_host:  Text_Button,
-	menu_join:  Text_Button,
-	menu_back:  Text_Button,
-	level_prev: Text_Button,
-	level_next: Text_Button,
-	ready_btn:  Text_Button,
-	easy_btn:   Text_Button,
-	weapons_btn: Text_Button,
+	menu_host:  ui.Text_Button,
+	menu_join:  ui.Text_Button,
+	menu_back:  ui.Text_Button,
+	level_prev: ui.Text_Button,
+	level_next: ui.Text_Button,
+	ready_btn:  ui.Text_Button,
+	easy_btn:   ui.Text_Button,
+	weapons_btn: ui.Text_Button,
 	buttons_at: f32, // cy the above were last built for; rebuilt if it ever needs to change
 
 	// Live session, once both sides are Playing (see Flow.netplay_active).
@@ -226,28 +228,28 @@ netplay_reset :: proc(nl: ^Netplay) {
 	nl^ = {}
 }
 
-netplay_lobby_init :: proc(nl: ^Netplay, r: ^Renderer) {
+netplay_lobby_init :: proc(nl: ^Netplay, r: ^render.Renderer) {
 	netplay_reset(nl)
 	netplay_build_buttons(nl, r)
 }
 
 @(private = "file")
-netplay_build_buttons :: proc(nl: ^Netplay, r: ^Renderer) {
-	nl.menu_host = text_button_at(r, "HOST GAME", 220)
-	nl.menu_join = text_button_at(r, "JOIN GAME", 250)
-	nl.menu_back = text_button_at(r, "BACK", 300)
-	nl.level_prev = text_button_at_x(r, "<", SCREEN_W / 2 - 110, 262)
-	nl.level_next = text_button_at_x(r, ">", SCREEN_W / 2 + 110, 262)
-	nl.ready_btn = text_button_at(r, "READY", 300)
-	nl.easy_btn = text_button_at_x(r, mod_label({}, easy_mode.ID), EASY_X, EASY_Y)
-	nl.weapons_btn = text_button_at_x(r, mod_label({}, new_weapons.ID), WEAPONS_X, EASY_Y)
+netplay_build_buttons :: proc(nl: ^Netplay, r: ^render.Renderer) {
+	nl.menu_host = ui.text_button_at(r, "HOST GAME", 220)
+	nl.menu_join = ui.text_button_at(r, "JOIN GAME", 250)
+	nl.menu_back = ui.text_button_at(r, "BACK", 300)
+	nl.level_prev = ui.text_button_at_x(r, "<", render.SCREEN_W / 2 - 110, 262)
+	nl.level_next = ui.text_button_at_x(r, ">", render.SCREEN_W / 2 + 110, 262)
+	nl.ready_btn = ui.text_button_at(r, "READY", 300)
+	nl.easy_btn = ui.text_button_at_x(r, mod_label({}, easy_mode.ID), EASY_X, EASY_Y)
+	nl.weapons_btn = ui.text_button_at_x(r, mod_label({}, new_weapons.ID), WEAPONS_X, EASY_Y)
 }
 
 // Below the accent slider, clear of everything else on the connected
 // screen: easy mode on the left, new weapons on the right.
 @(private = "file") EASY_Y :: 440
-@(private = "file") EASY_X :: SCREEN_W / 2 - 110
-@(private = "file") WEAPONS_X :: SCREEN_W / 2 + 110
+@(private = "file") EASY_X :: render.SCREEN_W / 2 - 110
+@(private = "file") WEAPONS_X :: render.SCREEN_W / 2 + 110
 
 @(private = "file")
 mod_label :: proc(mods: sim.Mods, id: sim.Plugin_ID) -> string {
@@ -255,7 +257,7 @@ mod_label :: proc(mods: sim.Mods, id: sim.Plugin_ID) -> string {
 }
 
 // Called once per render frame from flow_handle_input's .Netplay_Lobby case.
-netplay_lobby_update :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
+netplay_lobby_update :: proc(fl: ^Flow, r: ^render.Renderer, nl: ^Netplay) {
 	if nl.have_sock {
 		netplay_poll(fl, r, nl)
 	}
@@ -296,16 +298,16 @@ netplay_lobby_update :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 }
 
 @(private = "file")
-netplay_update_menu :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
-	mouse := menu_mouse_pos()
+netplay_update_menu :: proc(fl: ^Flow, r: ^render.Renderer, nl: ^Netplay) {
+	mouse := ui.menu_mouse_pos()
 	dt := rl.GetFrameTime()
-	if text_button_update(r, &nl.menu_host, mouse, dt) {
+	if ui.text_button_update(r, &nl.menu_host, mouse, dt) {
 		netplay_begin_name_entry(fl, nl, .Host)
 	}
-	if text_button_update(r, &nl.menu_join, mouse, dt) {
+	if ui.text_button_update(r, &nl.menu_join, mouse, dt) {
 		netplay_begin_name_entry(fl, nl, .Guest)
 	}
-	if text_button_update(r, &nl.menu_back, mouse, dt) || rl.IsKeyPressed(.ESCAPE) {
+	if ui.text_button_update(r, &nl.menu_back, mouse, dt) || rl.IsKeyPressed(.ESCAPE) {
 		fl.mode = .Title
 	}
 }
@@ -330,7 +332,7 @@ netplay_begin_name_entry :: proc(fl: ^Flow, nl: ^Netplay, role: Netplay_Role) {
 
 @(private = "file")
 accent_slider_rect :: proc() -> rl.Rectangle {
-	return {SCREEN_W / 2 - ACCENT_SLIDER_W / 2, ACCENT_SLIDER_Y, ACCENT_SLIDER_W, HUE_SLIDER_H}
+	return {render.SCREEN_W / 2 - ACCENT_SLIDER_W / 2, ACCENT_SLIDER_Y, ACCENT_SLIDER_W, ui.HUE_SLIDER_H}
 }
 
 @(private = "file")
@@ -412,7 +414,7 @@ netplay_lobby_start_from_flag :: proc(nl: ^Netplay, saved: ^prefs.Prefs, mode: s
 }
 
 @(private = "file")
-netplay_update_enter_address :: proc(nl: ^Netplay, r: ^Renderer) {
+netplay_update_enter_address :: proc(nl: ^Netplay, r: ^render.Renderer) {
 	for c := rl.GetCharPressed(); c != 0; c = rl.GetCharPressed() {
 		netplay_addr_append(nl, c)
 	}
@@ -521,7 +523,7 @@ netplay_join :: proc(nl: ^Netplay, text: string) {
 }
 
 @(private = "file")
-netplay_update_connecting :: proc(nl: ^Netplay, r: ^Renderer) {
+netplay_update_connecting :: proc(nl: ^Netplay, r: ^render.Renderer) {
 	// Cancels hosting (still waiting for anyone) or joining, back to the
 	// lobby menu -- the screen has always said "ESC TO CANCEL", but nothing
 	// read it. Same exit as the Connected screen's Escape; the Goodbye only
@@ -545,14 +547,14 @@ netplay_update_connecting :: proc(nl: ^Netplay, r: ^Renderer) {
 }
 
 @(private = "file")
-netplay_update_connected :: proc(fl: ^Flow, nl: ^Netplay, r: ^Renderer) {
+netplay_update_connected :: proc(fl: ^Flow, nl: ^Netplay, r: ^render.Renderer) {
 	if !net.reliable_tick(&nl.rc, &nl.sock) {
 		netplay_fail(nl, "connection timed out")
 		return
 	}
 	netplay_tick_ping(nl)
 
-	mouse := menu_mouse_pos()
+	mouse := ui.menu_mouse_pos()
 	dt := rl.GetFrameTime()
 
 	// Host picks the level; the guest only ever mirrors nl.level_index via
@@ -564,18 +566,18 @@ netplay_update_connected :: proc(fl: ^Flow, nl: ^Netplay, r: ^Renderer) {
 	}
 	if nl.role == .Host && !nl.local_ready {
 		n := len(fl.defs.levels)
-		if text_button_update(r, &nl.level_prev, mouse, dt) {
+		if ui.text_button_update(r, &nl.level_prev, mouse, dt) {
 			nl.level_index = (nl.level_index - 1 + n) % n
 		}
-		if text_button_update(r, &nl.level_next, mouse, dt) {
+		if ui.text_button_update(r, &nl.level_next, mouse, dt) {
 			nl.level_index = (nl.level_index + 1) % n
 		}
-		text_button_relabel(r, &nl.easy_btn, mod_label(nl.mods, easy_mode.ID), EASY_X, EASY_Y)
-		if text_button_update(r, &nl.easy_btn, mouse, dt) {
+		ui.text_button_relabel(r, &nl.easy_btn, mod_label(nl.mods, easy_mode.ID), EASY_X, EASY_Y)
+		if ui.text_button_update(r, &nl.easy_btn, mouse, dt) {
 			prefs_mod_toggle(fl.prefs, easy_mode.ID)
 		}
-		text_button_relabel(r, &nl.weapons_btn, mod_label(nl.mods, new_weapons.ID), WEAPONS_X, EASY_Y)
-		if text_button_update(r, &nl.weapons_btn, mouse, dt) {
+		ui.text_button_relabel(r, &nl.weapons_btn, mod_label(nl.mods, new_weapons.ID), WEAPONS_X, EASY_Y)
+		if ui.text_button_update(r, &nl.weapons_btn, mouse, dt) {
 			prefs_mod_toggle(fl.prefs, new_weapons.ID)
 		}
 	}
@@ -592,10 +594,10 @@ netplay_update_connected :: proc(fl: ^Flow, nl: ^Netplay, r: ^Renderer) {
 	// progress in a co-op session the host already vouches for is not a new
 	// problem this stage needs to solve.
 	host_locked := nl.role == .Host && nl.level_index >= fl.highest_reached
-	if !nl.local_ready && hue_slider_update(&nl.local_hue, accent_slider_rect(), true) {
+	if !nl.local_ready && ui.hue_slider_update(&nl.local_hue, accent_slider_rect(), true) {
 		nl.hue_dirty = true
 	}
-	if !nl.local_ready && !host_locked && text_button_update(r, &nl.ready_btn, mouse, dt) {
+	if !nl.local_ready && !host_locked && ui.text_button_update(r, &nl.ready_btn, mouse, dt) {
 		nl.local_ready = true
 		nl.ready_unsent = true
 	}
@@ -674,7 +676,7 @@ netplay_fail :: proc(nl: ^Netplay, msg: string) {
 // this side finally polls for it, which works, but only if polling itself
 // is unconditional).
 @(private = "file")
-netplay_poll :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
+netplay_poll :: proc(fl: ^Flow, r: ^render.Renderer, nl: ^Netplay) {
 	// Sized for the biggest packet on the wire, State_Chunk's 3-byte header
 	// plus a full STATE_CHUNK_SIZE payload (Phase 8 stage 4) -- everything
 	// else fits in a fraction of this.
@@ -1062,7 +1064,7 @@ netplay_disconnect_banner :: proc(nl: ^Netplay) -> (title, sub: cstring) {
 // whenever Flow.netplay_active -- network I/O runs at render rate exactly
 // like the lobby's own polling, independent of how many (0-4) fixed sim
 // steps flow_step runs this frame.
-netplay_playing_poll :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
+netplay_playing_poll :: proc(fl: ^Flow, r: ^render.Renderer, nl: ^Netplay) {
 	netplay_poll(fl, r, nl)
 	switch nl.link_state {
 	case .Live:
@@ -1106,7 +1108,7 @@ netplay_should_stall :: proc(nl: ^Netplay) -> bool {
 
 // Called from flow.odin's .Playing branch of flow_step, once per fixed sim
 // tick, instead of the single-player gather_input()+sim.step path.
-netplay_playing_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs, notices: ^Notices, nl: ^Netplay) {
+netplay_playing_step :: proc(fl: ^Flow, r: ^render.Renderer, particles: ^render.Particles, blurs: ^render.Blurs, notices: ^render.Notices, nl: ^Netplay) {
 	if netplay_should_stall(nl) {
 		return
 	}
@@ -1119,7 +1121,7 @@ netplay_playing_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blu
 	flow_effects_sync(fl, particles, blurs, notices)
 	// While paused nothing moves; existing particles and ghosts freeze too.
 	flow_effects_step(fl, r, particles, blurs, notices)
-	sounds_step(&r.textures, fl.state)
+	render.sounds_step(&r.textures, fl.state)
 
 	win: [NETPLAY_INPUT_WINDOW]sim.Buttons
 	start, count := net.rollback_session_local_window(&nl.rs, NETPLAY_INPUT_WINDOW, win[:])
@@ -1152,13 +1154,13 @@ netplay_disconnect :: proc(nl: ^Netplay) {
 	netplay_reset(nl)
 }
 
-netplay_lobby_draw :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
-	menu_draw_background(r, "back") // no original screen to match; reused purely for visual consistency with the rest of this menu family
+netplay_lobby_draw :: proc(fl: ^Flow, r: ^render.Renderer, nl: ^Netplay) {
+	ui.menu_draw_background(r, "back") // no original screen to match; reused purely for visual consistency with the rest of this menu family
 	white := rl.Color{255, 255, 255, 255}
 	dim := rl.Color{190, 190, 190, 255}
 	bad := rl.Color{230, 90, 90, 255}
 
-	menu_draw_text(r, "NETPLAY", SCREEN_W / 2, 130, white, .Centre)
+	ui.menu_draw_text(r, "NETPLAY", render.SCREEN_W / 2, 130, white, .Centre)
 
 	// Phase 8 stage 4: a reconnecting client's chunk transfer runs while
 	// nl.phase is still whatever the ordinary handshake left it at
@@ -1166,52 +1168,52 @@ netplay_lobby_draw :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 	// so it overrides that screen rather than drawing underneath it.
 	if nl.link_state == .Resync_Receiving {
 		pct := nl.recv_chunks > 0 ? nl.recv_got_count * 100 / nl.recv_chunks : 0
-		menu_draw_text(r, fmt.tprintf("RECONNECTING -- RECEIVING GAME STATE... %d%%", pct), SCREEN_W / 2, 220, white, .Centre)
+		ui.menu_draw_text(r, fmt.tprintf("RECONNECTING -- RECEIVING GAME STATE... %d%%", pct), render.SCREEN_W / 2, 220, white, .Centre)
 		return
 	}
 
 	switch nl.phase {
 	case .Menu:
-		text_button_draw(r, &nl.menu_host)
-		text_button_draw(r, &nl.menu_join)
-		text_button_draw(r, &nl.menu_back)
+		ui.text_button_draw(r, &nl.menu_host)
+		ui.text_button_draw(r, &nl.menu_join)
+		ui.text_button_draw(r, &nl.menu_back)
 		if nl.error != "" {
-			menu_draw_text(r, nl.error, SCREEN_W / 2, 340, bad, .Centre)
+			ui.menu_draw_text(r, nl.error, render.SCREEN_W / 2, 340, bad, .Centre)
 		}
 	case .Enter_Name:
-		menu_draw_text(r, "ENTER YOUR NAME, THEN PRESS ENTER", SCREEN_W / 2, 200, dim, .Centre)
-		menu_draw_text(r, "HIGH SCORES ARE RECORDED UNDER IT", SCREEN_W / 2, 215, dim, .Centre)
+		ui.menu_draw_text(r, "ENTER YOUR NAME, THEN PRESS ENTER", render.SCREEN_W / 2, 200, dim, .Centre)
+		ui.menu_draw_text(r, "HIGH SCORES ARE RECORDED UNDER IT", render.SCREEN_W / 2, 215, dim, .Centre)
 		name := prefs.name_string(&nl.local_name)
 		if nl.local_name.len < prefs.NAME_MAX && int(rl.GetTime() * 2) % 2 == 0 {
 			name = fmt.tprintf("%s_", name)
 		}
-		menu_draw_text(r, name, SCREEN_W / 2, 240, accent_color(nl.local_hue), .Centre)
-		menu_draw_text(r, "ESC TO CANCEL", SCREEN_W / 2, 270, dim, .Centre)
+		ui.menu_draw_text(r, name, render.SCREEN_W / 2, 240, render.accent_color(nl.local_hue), .Centre)
+		ui.menu_draw_text(r, "ESC TO CANCEL", render.SCREEN_W / 2, 270, dim, .Centre)
 		if nl.error != "" {
-			menu_draw_text(r, nl.error, SCREEN_W / 2, 340, bad, .Centre)
+			ui.menu_draw_text(r, nl.error, render.SCREEN_W / 2, 340, bad, .Centre)
 		}
 	case .Enter_Address:
-		menu_draw_text(r, "JOIN -- ENTER HOST ADDRESS, THEN PRESS ENTER", SCREEN_W / 2, 200, dim, .Centre)
-		menu_draw_text(r, string(nl.addr_buf[:nl.addr_len]), SCREEN_W / 2, 230, nl.addr_default ? dim : white, .Centre)
-		menu_draw_text(r, "CTRL+V TO PASTE -- ESC TO CANCEL", SCREEN_W / 2, 300, dim, .Centre)
+		ui.menu_draw_text(r, "JOIN -- ENTER HOST ADDRESS, THEN PRESS ENTER", render.SCREEN_W / 2, 200, dim, .Centre)
+		ui.menu_draw_text(r, string(nl.addr_buf[:nl.addr_len]), render.SCREEN_W / 2, 230, nl.addr_default ? dim : white, .Centre)
+		ui.menu_draw_text(r, "CTRL+V TO PASTE -- ESC TO CANCEL", render.SCREEN_W / 2, 300, dim, .Centre)
 		if nl.error != "" {
-			menu_draw_text(r, nl.error, SCREEN_W / 2, 340, bad, .Centre)
+			ui.menu_draw_text(r, nl.error, render.SCREEN_W / 2, 340, bad, .Centre)
 		}
 	case .Resolving:
-		menu_draw_text(r, "RESOLVING", SCREEN_W / 2, 200, dim, .Centre)
-		menu_draw_text(r, string(nl.addr_buf[:nl.addr_len]), SCREEN_W / 2, 230, white, .Centre)
+		ui.menu_draw_text(r, "RESOLVING", render.SCREEN_W / 2, 200, dim, .Centre)
+		ui.menu_draw_text(r, string(nl.addr_buf[:nl.addr_len]), render.SCREEN_W / 2, 230, white, .Centre)
 	case .Connecting:
 		msg := nl.role == .Host ? "WAITING FOR A PLAYER TO CONNECT..." : "CONNECTING..."
-		menu_draw_text(r, msg, SCREEN_W / 2, 220, white, .Centre)
+		ui.menu_draw_text(r, msg, render.SCREEN_W / 2, 220, white, .Centre)
 		if nl.role == .Host {
-			menu_draw_text(r, fmt.tprintf("GIVE THIS MACHINE'S ADDRESS AND PORT %d TO THE OTHER PLAYER", NETPLAY_PORT),
-				SCREEN_W / 2, 250, dim, .Centre)
+			ui.menu_draw_text(r, fmt.tprintf("GIVE THIS MACHINE'S ADDRESS AND PORT %d TO THE OTHER PLAYER", NETPLAY_PORT),
+				render.SCREEN_W / 2, 250, dim, .Centre)
 		}
-		menu_draw_text(r, "ESC TO CANCEL", SCREEN_W / 2, 300, dim, .Centre)
+		ui.menu_draw_text(r, "ESC TO CANCEL", render.SCREEN_W / 2, 300, dim, .Centre)
 	case .Connected, .Starting:
-		menu_draw_text(r, "CONNECTED", SCREEN_W / 2, 220, white, .Centre)
+		ui.menu_draw_text(r, "CONNECTED", render.SCREEN_W / 2, 220, white, .Centre)
 		if nl.ping_ms > 0 {
-			menu_draw_text(r, fmt.tprintf("PING %.0f MS", nl.ping_ms), SCREEN_W / 2, 245, dim, .Centre)
+			ui.menu_draw_text(r, fmt.tprintf("PING %.0f MS", nl.ping_ms), render.SCREEN_W / 2, 245, dim, .Centre)
 		}
 
 		host_locked := nl.role == .Host && nl.level_index >= fl.highest_reached
@@ -1227,34 +1229,34 @@ netplay_lobby_draw :: proc(fl: ^Flow, r: ^Renderer, nl: ^Netplay) {
 		case:
 			level_label = fmt.tprintf("HOST HAS CHOSEN: %s", level_name)
 		}
-		menu_draw_text(r, level_label, SCREEN_W / 2, 262, host_locked ? bad : white, .Centre)
+		ui.menu_draw_text(r, level_label, render.SCREEN_W / 2, 262, host_locked ? bad : white, .Centre)
 		if nl.role == .Host && !nl.local_ready {
-			text_button_draw(r, &nl.level_prev)
-			text_button_draw(r, &nl.level_next)
-			text_button_draw(r, &nl.easy_btn)
-			text_button_draw(r, &nl.weapons_btn)
+			ui.text_button_draw(r, &nl.level_prev)
+			ui.text_button_draw(r, &nl.level_next)
+			ui.text_button_draw(r, &nl.easy_btn)
+			ui.text_button_draw(r, &nl.weapons_btn)
 		} else {
 			chosen := fmt.tprintf("%s  --  %s", mod_label(nl.mods, easy_mode.ID), mod_label(nl.mods, new_weapons.ID))
 			if nl.role == .Guest {
 				chosen = fmt.tprintf("HOST HAS CHOSEN %s", chosen)
 			}
-			menu_draw_text(r, chosen, SCREEN_W / 2, EASY_Y + 5, dim, .Centre)
+			ui.menu_draw_text(r, chosen, render.SCREEN_W / 2, EASY_Y + 5, dim, .Centre)
 		}
 
 		you := fmt.tprintf("%s (YOU): %s", prefs.name_string(&nl.local_name), nl.local_ready ? "READY" : "NOT READY")
 		them := fmt.tprintf("%s: %s", prefs.name_string(&nl.peer_name), nl.remote_ready ? "READY" : "NOT READY")
 		// Each name in its player's accent, so the colours can be told
 		// apart before the game starts.
-		menu_draw_text(r, you, SCREEN_W / 2, 335, accent_color(nl.local_hue), .Centre)
-		menu_draw_text(r, them, SCREEN_W / 2, 355, accent_color(nl.peer_hue), .Centre)
+		ui.menu_draw_text(r, you, render.SCREEN_W / 2, 335, render.accent_color(nl.local_hue), .Centre)
+		ui.menu_draw_text(r, them, render.SCREEN_W / 2, 355, render.accent_color(nl.peer_hue), .Centre)
 		if !nl.local_ready {
-			menu_draw_text(r, "YOUR ACCENT COLOUR -- DRAG, OR LEFT/RIGHT", SCREEN_W / 2, ACCENT_SLIDER_Y - 18, dim, .Centre)
-			hue_slider_draw(nl.local_hue, accent_slider_rect())
+			ui.menu_draw_text(r, "YOUR ACCENT COLOUR -- DRAG, OR LEFT/RIGHT", render.SCREEN_W / 2, ACCENT_SLIDER_Y - 18, dim, .Centre)
+			ui.hue_slider_draw(nl.local_hue, accent_slider_rect())
 		}
 		if !nl.local_ready {
-			text_button_draw(r, &nl.ready_btn, !host_locked)
+			ui.text_button_draw(r, &nl.ready_btn, !host_locked)
 		} else if nl.phase == .Starting {
-			menu_draw_text(r, "STARTING...", SCREEN_W / 2, 375, dim, .Centre)
+			ui.menu_draw_text(r, "STARTING...", render.SCREEN_W / 2, 375, dim, .Centre)
 		}
 	}
 }

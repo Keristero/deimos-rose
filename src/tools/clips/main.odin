@@ -30,11 +30,12 @@ import "dr:game"
 import "dr:plugins/loadout"
 import "dr:plugins/new_weapons"
 import "dr:prefs"
+import "dr:render"
+import "dr:sim"
 // The original game's systems, which a session runs.
 import _ "dr:sim/core"
-import "dr:sim"
-import "dr:sim/systems/weapon_system"
 import "dr:sim/systems/player_system"
+import "dr:sim/systems/weapon_system"
 
 WARM :: 150
 TAPS :: 60
@@ -59,12 +60,12 @@ main :: proc() {
 
 	rl.SetTraceLogLevel(.WARNING)
 	rl.SetConfigFlags({.WINDOW_HIDDEN})
-	rl.InitWindow(game.SCREEN_W * game.WINDOW_SCALE, game.SCREEN_H * game.WINDOW_SCALE, "clips")
+	rl.InitWindow(render.SCREEN_W * render.WINDOW_SCALE, render.SCREEN_H * render.WINDOW_SCALE, "clips")
 	defer rl.CloseWindow()
-	r: game.Renderer
-	game.renderer_init(&r, root, false, false)
-	defer game.renderer_destroy(&r)
-	r.canvas = rl.LoadRenderTexture(game.SCREEN_W * game.WINDOW_SCALE, game.SCREEN_H * game.WINDOW_SCALE)
+	r: render.Renderer
+	render.renderer_init(&r, root, false, false)
+	defer render.renderer_destroy(&r)
+	r.canvas = rl.LoadRenderTexture(render.SCREEN_W * render.WINDOW_SCALE, render.SCREEN_H * render.WINDOW_SCALE)
 
 	state := new(sim.State)
 	defer free(state)
@@ -76,7 +77,7 @@ main :: proc() {
 	}
 }
 
-clip :: proc(r: ^game.Renderer, defs: ^sim.Defs, state: ^sim.State, root, id, out_dir: string) -> bool {
+clip :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, root, id, out_dir: string) -> bool {
 	wi := -1
 	for &w, i in defs.weapons {
 		if w.id == sim.res_id(id) {
@@ -100,13 +101,13 @@ clip :: proc(r: ^game.Renderer, defs: ^sim.Defs, state: ^sim.State, root, id, ou
 	fl: game.Flow
 	game.flow_init(&fl, root, defs, state, r, &ps)
 	defer game.flow_destroy(&fl)
-	particles: game.Particles
-	game.particles_init(&particles)
-	defer game.particles_destroy(&particles)
-	blurs: game.Blurs
-	game.blurs_init(&blurs)
-	defer game.blurs_destroy(&blurs)
-	notices: game.Notices
+	particles: render.Particles
+	render.particles_init(&particles)
+	defer render.particles_destroy(&particles)
+	blurs: render.Blurs
+	render.blurs_init(&blurs)
+	defer render.blurs_destroy(&blurs)
+	notices: render.Notices
 
 	game.flow_start_session(&fl, SEED, .Single, max(int(wd.minimum_level_available) - 1, 0))
 	loadout.loadout_of(state).shown = sim.single(state, sim.Level_Info).played
@@ -150,7 +151,7 @@ clip :: proc(r: ^game.Renderer, defs: ^sim.Defs, state: ^sim.State, root, id, ou
 		}
 		rl.BeginTextureMode(r.canvas)
 		rl.ClearBackground(rl.Color{0, 0, 0, 255})
-		game.flow_draw(&fl, r, &particles, &blurs, &notices, game.WINDOW_SCALE)
+		game.flow_draw(&fl, r, &particles, &blurs, &notices, render.WINDOW_SCALE)
 		rl.EndTextureMode()
 		img := rl.LoadImageFromTexture(r.canvas.texture)
 		rl.ImageFlipVertical(&img) // render textures are bottom-up

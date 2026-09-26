@@ -1,4 +1,4 @@
-package game
+package render
 
 // G_Notice_BuildDrawList: the banner across the top of the play field for a
 // unit's entry/destruct notice. No shipped unit sets either field (see

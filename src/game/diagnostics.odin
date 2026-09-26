@@ -16,7 +16,10 @@ package game
 // (Netplay.ping_ms, net/reliable.odin's Ping/Pong round trip).
 
 import "core:fmt"
+
 import rl "vendor:raylib"
+
+import "dr:render"
 
 DIAGNOSTICS_WINDOW :: 1.0 // seconds
 
@@ -74,8 +77,8 @@ diagnostics_draw :: proc(d: ^Diagnostics, netplay_active: bool, ping_ms: f32) {
 	}
 	w: i32 = 190
 	h: i32 = i32(lines) * 16 + 8
-	x := SCREEN_W * WINDOW_SCALE - w - 8
-	y := SCREEN_H * WINDOW_SCALE - h - 8
+	x := render.SCREEN_W * render.WINDOW_SCALE - w - 8
+	y := render.SCREEN_H * render.WINDOW_SCALE - h - 8
 	rl.DrawRectangle(x, y, w, h, rl.Color{0, 0, 0, 150})
 	ty := y + 4
 	rl.DrawText(fmt.ctprintf("FPS %d", rl.GetFPS()), x + 6, ty, 14, rl.Color{180, 255, 180, 255})

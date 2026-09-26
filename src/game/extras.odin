@@ -15,7 +15,9 @@ import accent_view "dr:plugins/accent/view"
 import "dr:plugins/extra_prefs"
 import "dr:plugins/fps_unlock"
 import "dr:prefs"
+import "dr:render"
 import "dr:sim"
+import "dr:ui"
 
 // The mods in effect: the saved ones whose dependencies are all on, and
 // none in classic mode. -highrefreshrate turns on 30FPS Unlock for the
@@ -70,77 +72,6 @@ setting_set :: proc(ps: ^Prefs_State, id: prefs.Setting_ID, v: int) {
 	prefs_state_save(ps)
 }
 
-// A strip of every hue: dragged with the mouse, or nudged with Left/Right
-// when `keys` (which type nothing into a name being entered beside it).
-// Menu coordinates. Returns whether the hue changed.
-HUE_SLIDER_H :: 8
-@(private = "file") HUE_KEY_STEP :: 5
-
-hue_slider_update :: proc(hue: ^int, rect: rl.Rectangle, keys: bool) -> bool {
-	before := hue^
-	if keys && (rl.IsKeyPressed(.LEFT) || rl.IsKeyPressedRepeat(.LEFT)) {
-		hue^ = prefs.hue_wrap(hue^ - HUE_KEY_STEP)
-	}
-	if keys && (rl.IsKeyPressed(.RIGHT) || rl.IsKeyPressedRepeat(.RIGHT)) {
-		hue^ = prefs.hue_wrap(hue^ + HUE_KEY_STEP)
-	}
-	if rl.IsMouseButtonDown(.LEFT) {
-		m := menu_mouse_pos()
-		grab := rl.Rectangle{rect.x - 4, rect.y - 6, rect.width + 8, rect.height + 12}
-		if rl.CheckCollisionPointRec(m, grab) {
-			hue^ = min(int(clamp((m.x - rect.x) / rect.width, 0, 1) * 360), 359)
-		}
-	}
-	return hue^ != before
-}
-
-hue_slider_draw :: proc(hue: int, rect: rl.Rectangle, dim := false) {
-	s := f32(WINDOW_SCALE)
-	for i in 0 ..< i32(rect.width) {
-		c := rl.ColorFromHSV(f32(i) * 360 / rect.width, ACCENT_SATURATION, dim ? 0.45 : 1)
-		rl.DrawRectangle((i32(rect.x) + i) * WINDOW_SCALE, i32(rect.y) * WINDOW_SCALE, WINDOW_SCALE, i32(rect.height) * WINDOW_SCALE, c)
-	}
-	x := (rect.x + f32(hue) * rect.width / 360) * s
-	rl.DrawRectangleLinesEx({x - 3, (rect.y - 3) * s, 7, (rect.height + 6) * s}, 2, rl.WHITE)
-}
-
-// A column of rows too many for the screen: the mouse wheel and Page
-// Up/Down move it a row at a time. `first` is the first row shown.
-Scroll_Rows :: struct {
-	first: int,
-}
-
-scroll_rows_update :: proc(sc: ^Scroll_Rows, rows, shown: int) {
-	step := 0
-	if wheel := rl.GetMouseWheelMove(); wheel != 0 {
-		step = wheel > 0 ? -1 : 1
-	}
-	if rl.IsKeyPressed(.PAGE_UP) {
-		step = -shown
-	}
-	if rl.IsKeyPressed(.PAGE_DOWN) {
-		step = shown
-	}
-	sc.first = clamp(sc.first + step, 0, max(rows - shown, 0))
-}
-
-// A bar beside the rows, when they do not all fit, showing where the
-// shown ones are among them. Menu coordinates.
-scroll_rows_draw :: proc(sc: ^Scroll_Rows, rows, shown: int, x, top, height: f32) {
-	if rows <= shown {
-		return
-	}
-	s := f32(WINDOW_SCALE)
-	track := rl.Color{110, 110, 110, 255}
-	rl.DrawRectangleLinesEx({x * s, top * s, 4 * s, height * s}, 1, track)
-	thumb_h := height * f32(shown) / f32(rows)
-	thumb_y := top + height * f32(sc.first) / f32(rows)
-	rl.DrawRectangleRec({x * s, thumb_y * s, 4 * s, thumb_h * s}, rl.Color{190, 190, 190, 255})
-}
-
-// The Extras page of Preferences: the Extra Preferences mod's, listing the
-// settings of every mod that is on.
-
 @(private = "file") EXTRAS_TITLE_Y :: 34
 @(private = "file") EXTRAS_ROW0_Y :: 90
 @(private = "file") EXTRAS_ROW :: 44
@@ -162,9 +93,9 @@ scroll_rows_draw :: proc(sc: ^Scroll_Rows, rows, shown: int, x, top, height: f32
 @(private = "file") PREVIEW_GAP :: 70
 
 Extras_Page :: struct {
-	scroll:  Scroll_Rows,
-	toggles: [prefs.MAX_SETTINGS]Text_Button,
-	back:    Text_Button,
+	scroll:  ui.Scroll_Rows,
+	toggles: [prefs.MAX_SETTINGS]ui.Text_Button,
+	back:    ui.Text_Button,
 }
 
 // The settings listed: those of the saved mods, dimmed but still there in
@@ -192,29 +123,29 @@ extras_row_y :: proc(x: ^Extras_Page, row: int) -> (f32, bool) {
 
 @(private = "file")
 extras_slider_rect :: proc(y: f32) -> rl.Rectangle {
-	return {EXTRAS_VALUE_X - EXTRAS_SLIDER_W / 2, y + 6, EXTRAS_SLIDER_W, HUE_SLIDER_H}
+	return {EXTRAS_VALUE_X - EXTRAS_SLIDER_W / 2, y + 6, EXTRAS_SLIDER_W, ui.HUE_SLIDER_H}
 }
 
 // Toggles show their live value, so they are re-laid each frame.
 @(private = "file")
-extras_page_layout :: proc(r: ^Renderer, x: ^Extras_Page, ps: ^Prefs_State, listed: []prefs.Setting_ID) {
+extras_page_layout :: proc(r: ^render.Renderer, x: ^Extras_Page, ps: ^Prefs_State, listed: []prefs.Setting_ID) {
 	settings := prefs.registered_settings()
 	for id, row in listed {
 		y, shown := extras_row_y(x, row)
 		if shown && settings[id].kind == .Toggle {
-			text_button_relabel(r, &x.toggles[id], ps.saved.settings[id] != 0 ? "ON" : "OFF", EXTRAS_VALUE_X, y)
+			ui.text_button_relabel(r, &x.toggles[id], ps.saved.settings[id] != 0 ? "ON" : "OFF", EXTRAS_VALUE_X, y)
 		}
 	}
-	text_button_relabel(r, &x.back, "BACK", SCREEN_W / 2, EXTRAS_BACK_Y)
+	ui.text_button_relabel(r, &x.back, "BACK", render.SCREEN_W / 2, EXTRAS_BACK_Y)
 }
 
 // Returns true when the page is left (Back or Escape).
-extras_page_update :: proc(r: ^Renderer, x: ^Extras_Page, ps: ^Prefs_State) -> (leave: bool) {
+extras_page_update :: proc(r: ^render.Renderer, x: ^Extras_Page, ps: ^Prefs_State) -> (leave: bool) {
 	buf: [prefs.MAX_SETTINGS]prefs.Setting_ID
 	listed := extras_listed(ps, &buf)
-	scroll_rows_update(&x.scroll, len(listed), EXTRAS_ROWS_SHOWN)
+	ui.scroll_rows_update(&x.scroll, len(listed), EXTRAS_ROWS_SHOWN)
 	extras_page_layout(r, x, ps, listed)
-	mouse := menu_mouse_pos()
+	mouse := ui.menu_mouse_pos()
 	dt := rl.GetFrameTime()
 	settings := prefs.registered_settings()
 	for id, row in listed {
@@ -224,12 +155,12 @@ extras_page_update :: proc(r: ^Renderer, x: ^Extras_Page, ps: ^Prefs_State) -> (
 		}
 		switch settings[id].kind {
 		case .Toggle:
-			if text_button_update(r, &x.toggles[id], mouse, dt) {
+			if ui.text_button_update(r, &x.toggles[id], mouse, dt) {
 				setting_set(ps, id, 1 - ps.saved.settings[id])
 			}
 		case .Hue:
 			hue := ps.saved.settings[id]
-			if hue_slider_update(&hue, extras_slider_rect(y), true) {
+			if ui.hue_slider_update(&hue, extras_slider_rect(y), true) {
 				ps.saved.settings[id] = hue // saved once the drag ends, not every frame of it
 			}
 			if rl.IsMouseButtonReleased(.LEFT) || rl.IsKeyReleased(.LEFT) || rl.IsKeyReleased(.RIGHT) {
@@ -237,41 +168,41 @@ extras_page_update :: proc(r: ^Renderer, x: ^Extras_Page, ps: ^Prefs_State) -> (
 			}
 		}
 	}
-	return text_button_update(r, &x.back, mouse, dt) || rl.IsKeyPressed(.ESCAPE)
+	return ui.text_button_update(r, &x.back, mouse, dt) || rl.IsKeyPressed(.ESCAPE)
 }
 
-extras_page_draw :: proc(r: ^Renderer, x: ^Extras_Page, ps: ^Prefs_State) {
+extras_page_draw :: proc(r: ^render.Renderer, x: ^Extras_Page, ps: ^Prefs_State) {
 	buf: [prefs.MAX_SETTINGS]prefs.Setting_ID
 	listed := extras_listed(ps, &buf)
 	extras_page_layout(r, x, ps, listed)
-	menu_draw_background(r, "back")
+	ui.menu_draw_background(r, "back")
 	white := rl.Color{255, 255, 255, 255}
 	dim := rl.Color{190, 190, 190, 255}
-	header := rl.Color{HIGH_SCORES_HEADER_RGB[0], HIGH_SCORES_HEADER_RGB[1], HIGH_SCORES_HEADER_RGB[2], 255}
+	header := rl.Color{ui.HIGH_SCORES_HEADER_RGB[0], ui.HIGH_SCORES_HEADER_RGB[1], ui.HIGH_SCORES_HEADER_RGB[2], 255}
 	classic := prefs_classic(ps)
 
-	menu_draw_text(r, "EXTRAS", SCREEN_W / 2, EXTRAS_TITLE_Y, header, .Centre)
+	ui.menu_draw_text(r, "EXTRAS", render.SCREEN_W / 2, EXTRAS_TITLE_Y, header, .Centre)
 	settings := prefs.registered_settings()
 	for id, row in listed {
 		y, shown := extras_row_y(x, row)
 		if !shown {
 			continue
 		}
-		menu_draw_text(r, settings[id].label, EXTRAS_LABEL_X, i32(y) + 5, classic ? dim : white)
+		ui.menu_draw_text(r, settings[id].label, EXTRAS_LABEL_X, i32(y) + 5, classic ? dim : white)
 		switch settings[id].kind {
 		case .Toggle:
-			text_button_draw(r, &x.toggles[id])
+			ui.text_button_draw(r, &x.toggles[id])
 		case .Hue:
-			hue_slider_draw(ps.saved.settings[id], extras_slider_rect(y), classic)
+			ui.hue_slider_draw(ps.saved.settings[id], extras_slider_rect(y), classic)
 		}
 	}
-	scroll_rows_draw(&x.scroll, len(listed), EXTRAS_ROWS_SHOWN, EXTRAS_SCROLL_X, EXTRAS_ROW0_Y, EXTRAS_ROWS_SHOWN * EXTRAS_ROW - 20)
+	ui.scroll_rows_draw(&x.scroll, len(listed), EXTRAS_ROWS_SHOWN, EXTRAS_SCROLL_X, EXTRAS_ROW0_Y, EXTRAS_ROWS_SHOWN * EXTRAS_ROW - 20)
 	if int(accent.ID) in sim.mods_resolve(ps.saved.mods) {
 		hues := [2]prefs.Setting_ID{accent_view.HUE_P1, accent_view.HUE_P2}
 		for id, i in PREVIEW_SHIPS {
 			px := PREVIEW_X + (f32(i) - 0.5) * PREVIEW_GAP
 			preview_ship(r, ps, id, hues[i], i == 0, px, PREVIEW_Y)
-			menu_draw_text(r, i == 0 ? "P1" : "P2", i32(px), PREVIEW_Y + 26, dim, .Centre)
+			ui.menu_draw_text(r, i == 0 ? "P1" : "P2", i32(px), PREVIEW_Y + 26, dim, .Centre)
 		}
 	}
 	note: string
@@ -283,8 +214,8 @@ extras_page_draw :: proc(r: ^Renderer, x: ^Extras_Page, ps: ^Prefs_State) {
 	case:
 		note = "SETTINGS FOR THE MODS THAT ARE ON -- NONE APPLY IN CLASSIC MODE"
 	}
-	menu_draw_text(r, note, SCREEN_W / 2, EXTRAS_NOTE_Y, dim, .Centre)
-	text_button_draw(r, &x.back)
+	ui.menu_draw_text(r, note, render.SCREEN_W / 2, EXTRAS_NOTE_Y, dim, .Centre)
+	ui.text_button_draw(r, &x.back)
 }
 
 // Whether the Extras page can be opened: its mod is on.
@@ -296,13 +227,13 @@ extras_available :: proc(ps: ^Prefs_State) -> bool {
 // coordinates: through the same draw_item the game uses, so the preview
 // cannot drift from the real thing.
 @(private = "file")
-preview_ship :: proc(r: ^Renderer, ps: ^Prefs_State, id: sim.Res_ID, hue_id: prefs.Setting_ID, local: bool, x, y: f32) {
+preview_ship :: proc(r: ^render.Renderer, ps: ^Prefs_State, id: sim.Res_ID, hue_id: prefs.Setting_ID, local: bool, x, y: f32) {
 	outline := local && setting_on(ps, accent_view.SELF_OUTLINE)
-	tex, src, ok := frame_rect(&r.textures, id, 0)
+	tex, src, ok := render.frame_rect(&r.textures, id, 0)
 	if !ok {
 		return
 	}
-	s := f32(WINDOW_SCALE)
+	s := f32(render.WINDOW_SCALE)
 	dst := rl.Rectangle{(x - src.width / 2) * s, (y - src.height / 2) * s, src.width * s, src.height * s}
 	hue := f32(ps.saved.settings[hue_id])
 	white := rl.Color{255, 255, 255, 255}
@@ -311,11 +242,11 @@ preview_ship :: proc(r: ^Renderer, ps: ^Prefs_State, id: sim.Res_ID, hue_id: pre
 			o := dst
 			o.x += d.x * s
 			o.y += d.y * s
-			draw_item(r, {texture = tex, src = src, tint = white, effect = .Silhouette, hue = hue, sat = ACCENT_SATURATION}, o)
+			render.draw_item(r, {texture = tex, src = src, tint = white, effect = .Silhouette, hue = hue, sat = render.ACCENT_SATURATION}, o)
 		}
 	}
-	draw_item(r, {texture = tex, src = src, tint = white}, dst)
-	if trim, tok := ship_trim(&r.textures, id); prefs_mod_on(ps, accent.ID) && tok {
-		draw_item(r, {texture = trim, src = src, tint = white, effect = .Recolour, hue = hue, sat = TRIM_SATURATION, shine = TRIM_SHINE}, dst)
+	render.draw_item(r, {texture = tex, src = src, tint = white}, dst)
+	if trim, tok := render.ship_trim(&r.textures, id); prefs_mod_on(ps, accent.ID) && tok {
+		render.draw_item(r, {texture = trim, src = src, tint = white, effect = .Recolour, hue = hue, sat = render.TRIM_SATURATION, shine = render.TRIM_SHINE}, dst)
 	}
 }

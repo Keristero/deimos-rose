@@ -15,15 +15,17 @@ import rl "vendor:raylib"
 
 import "dr:data"
 import "dr:net"
-import "dr:prefs"
+import "dr:plugins/accent"
+import accent_view "dr:plugins/accent/view"
 import "dr:plugins/easy_mode"
 import netplay_plugin "dr:plugins/netplay"
 import "dr:plugins/new_weapons"
-import "dr:plugins/accent"
-import accent_view "dr:plugins/accent/view"
+import "dr:prefs"
+import "dr:render"
+import "dr:sim"
 // The original game's systems, which a session runs.
 import _ "dr:sim/core"
-import "dr:sim"
+import "dr:ui"
 
 Flow_Mode :: enum {
 	Title,
@@ -152,7 +154,7 @@ Flow :: struct {
 // content). A netplay pause is a state inside the simulation both peers
 // share (sim.session_step), not .Paused, but looks the same.
 Pause_Menu :: struct {
-	main_menu: Text_Button,
+	main_menu: ui.Text_Button,
 	notice:    bool, // the notice is up, or still fading after a resume
 	blend:     i32, // the notice's blend, 0 opaque .. 32 gone
 }
@@ -164,22 +166,22 @@ Pause_Menu :: struct {
 
 // Whether the pause menu's button was clicked this frame.
 @(private = "file")
-pause_menu_update :: proc(r: ^Renderer, m: ^Pause_Menu) -> (main_menu: bool) {
+pause_menu_update :: proc(r: ^render.Renderer, m: ^Pause_Menu) -> (main_menu: bool) {
 	if m.main_menu.rect.width == 0 {
-		m.main_menu = text_button_at_x(r, "MAIN MENU", VIEW_X + PLAY_W / 2, PAUSE_MAIN_MENU_Y)
+		m.main_menu = ui.text_button_at_x(r, "MAIN MENU", render.VIEW_X + render.PLAY_W / 2, PAUSE_MAIN_MENU_Y)
 	}
-	return text_button_update(r, &m.main_menu, menu_mouse_pos(), rl.GetFrameTime())
+	return ui.text_button_update(r, &m.main_menu, ui.menu_mouse_pos(), rl.GetFrameTime())
 }
 
 // What G_Interface_PauseGame does on the way in, and the notice going up.
 @(private = "file")
-pause_begin :: proc(fl: ^Flow, r: ^Renderer) {
+pause_begin :: proc(fl: ^Flow, r: ^render.Renderer) {
 	for _, &clip in r.textures.sounds {
 		for v in clip.voices {
 			rl.StopSound(v)
 		}
 	}
-	menu_play_sound(r, fl.defs.perm_sounds[PS_PAUSE])
+	ui.menu_play_sound(r, fl.defs.perm_sounds[PS_PAUSE])
 	fl.pause_menu.notice, fl.pause_menu.blend = true, 0
 }
 
@@ -199,11 +201,11 @@ pause_notice_step :: proc(fl: ^Flow) {
 // key; otherwise the same words for the key bound, cased like the
 // original's ("Press Escape").
 @(private = "file")
-pause_notice_text :: proc(fl: ^Flow, r: ^Renderer) -> string {
+pause_notice_text :: proc(fl: ^Flow, r: ^render.Renderer) -> string {
 	for b in fl.prefs.saved.bindings {
 		for k in b[.Pause] {
 			if k == prefs.KEY_CAPS_LOCK {
-				return game_string(r, GS_PRESS_CAPS_LOCK)
+				return render.game_string(r, GS_PRESS_CAPS_LOCK)
 			}
 			if k != prefs.KEY_NONE {
 				name := transmute([]u8)strings.to_lower(key_name(k), context.temp_allocator)
@@ -216,13 +218,13 @@ pause_notice_text :: proc(fl: ^Flow, r: ^Renderer) -> string {
 			}
 		}
 	}
-	return game_string(r, GS_PRESS_CAPS_LOCK)
+	return render.game_string(r, GS_PRESS_CAPS_LOCK)
 }
 
 // G_Notice_BuildDrawList: the preset with the notice's blend added to the
 // text's and its strip's, the strip dropped once that passes 32.
 @(private = "file")
-pause_draw :: proc(fl: ^Flow, r: ^Renderer, scale: f32, paused: bool, note: string) {
+pause_draw :: proc(fl: ^Flow, r: ^render.Renderer, scale: f32, paused: bool, note: string) {
 	m := &fl.pause_menu
 	if m.notice {
 		t := r.textures.assets.text[data.Text_Preset.Game_Notice]
@@ -231,12 +233,12 @@ pause_draw :: proc(fl: ^Flow, r: ^Renderer, scale: f32, paused: bool, note: stri
 		if t.strip_blend > 32 {
 			t.strip = false
 		}
-		text_preset_draw(r, t, pause_notice_text(fl, r), VIEW_X, scale, t.blend + m.blend)
+		render.text_preset_draw(r, t, pause_notice_text(fl, r), render.VIEW_X, scale, t.blend + m.blend)
 	}
 	if paused && !r.classic && m.main_menu.rect.width != 0 {
-		text_button_draw(r, &m.main_menu)
+		ui.text_button_draw(r, &m.main_menu)
 		if note != "" {
-			menu_draw_text(r, note, VIEW_X + PLAY_W / 2, PAUSE_MAIN_MENU_Y + 30, rl.Color{190, 190, 190, 255}, .Centre)
+			ui.menu_draw_text(r, note, render.VIEW_X + render.PLAY_W / 2, PAUSE_MAIN_MENU_Y + 30, rl.Color{190, 190, 190, 255}, .Centre)
 		}
 	}
 }
@@ -251,7 +253,7 @@ pause_key_pressed :: proc(fl: ^Flow) -> bool {
 	return sim.player_at(fl.state, 1).active && binding_pressed(&fl.prefs.saved.bindings[1], .Pause)
 }
 
-flow_init :: proc(fl: ^Flow, root: string, defs: ^sim.Defs, state: ^sim.State, r: ^Renderer, ps: ^Prefs_State) {
+flow_init :: proc(fl: ^Flow, root: string, defs: ^sim.Defs, state: ^sim.State, r: ^render.Renderer, ps: ^Prefs_State) {
 	fl.root = root
 	fl.prefs = ps
 	fl.defs = defs
@@ -276,7 +278,7 @@ flow_destroy :: proc(fl: ^Flow) {
 // presses only. flow_step (which runs 0-4 times per frame, MAX_STEPS_PER_FRAME)
 // never reads input, so a slow frame catching up on several steps can't fire
 // the same transition twice.
-flow_handle_input :: proc(fl: ^Flow, r: ^Renderer) {
+flow_handle_input :: proc(fl: ^Flow, r: ^render.Renderer) {
 	switch fl.mode {
 	case .Title:
 		// Mouse-driven, like the original's own button list -- see
@@ -422,7 +424,7 @@ flow_finish_session :: proc(fl: ^Flow) {
 // sim.single(s, sim.Game_Status).game_over { l.started = true; return }"). Reacting to game_over directly
 // means the game-over screen appears the moment play actually ends, rather
 // than only after (and if) the level happens to finish scrolling.
-flow_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs, notices: ^Notices) {
+flow_step :: proc(fl: ^Flow, r: ^render.Renderer, particles: ^render.Particles, blurs: ^render.Blurs, notices: ^render.Notices) {
 	switch fl.mode {
 	case .Title, .Level_Select, .Credits, .High_Scores, .Score_Entry, .Preferences, .Netplay_Lobby, .Paused:
 	// nothing to step
@@ -493,18 +495,18 @@ MENU_MUSIC_KEY :: sim.Res_ID{'i', 'n', 'm', 'u'}
 // what *should* be playing change and restarts from the top -- stopping the
 // old stream first, so a level's track no longer carries on under the title
 // screen after a game.
-flow_music_update :: proc(fl: ^Flow, r: ^Renderer) {
+flow_music_update :: proc(fl: ^Flow, r: ^render.Renderer) {
 	key: sim.Res_ID
 	want: rl.Music
 	ok: bool
 	switch fl.mode {
 	case .Title, .Level_Select, .Credits, .High_Scores, .Score_Entry, .Preferences, .Netplay_Lobby:
 		key = MENU_MUSIC_KEY
-		want, ok = music_load(&r.textures, MENU_MUSIC)
+		want, ok = render.music_load(&r.textures, render.MENU_MUSIC)
 	case .Playing, .Paused, .Game_Over, .Complete, .Attract:
 		if sim.level_def(fl.state) != nil {
 			key = sim.level_def(fl.state).id
-			want, ok = music_track(&r.textures, key)
+			want, ok = render.music_track(&r.textures, key)
 		}
 	}
 	if key != fl.music_key {
@@ -533,7 +535,7 @@ flow_music_update :: proc(fl: ^Flow, r: ^Renderer) {
 }
 
 @(private = "file")
-flow_sim_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs, notices: ^Notices, input: sim.Frame_Input, film: ^sim.Film, session: bool) {
+flow_sim_step :: proc(fl: ^Flow, r: ^render.Renderer, particles: ^render.Particles, blurs: ^render.Blurs, notices: ^render.Notices, input: sim.Frame_Input, film: ^sim.Film, session: bool) {
 	if session {
 		_ = sim.session_step(fl.state, input, film)
 	} else {
@@ -541,20 +543,20 @@ flow_sim_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Bl
 	}
 	flow_effects_sync(fl, particles, blurs, notices)
 	flow_effects_step(fl, r, particles, blurs, notices)
-	sounds_step(&r.textures, fl.state)
+	render.sounds_step(&r.textures, fl.state)
 }
 
 // The presentation effects' step, after a sim step. They freeze with the
 // game: under the netplay pause and the reward and loadout screens, which
 // all stop the sim's clock while it keeps stepping.
-flow_effects_step :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs, notices: ^Notices) {
+flow_effects_step :: proc(fl: ^Flow, r: ^render.Renderer, particles: ^render.Particles, blurs: ^render.Blurs, notices: ^render.Notices) {
 	if sim.session_frozen(fl.state) {
 		return
 	}
-	particles_step(particles, fl.state)
+	render.particles_step(particles, fl.state)
 	passive_particles_step(particles, fl.state, r)
-	blurs_step(blurs, fl.state)
-	notices_step(notices, fl.state)
+	render.blurs_step(blurs, fl.state)
+	render.notices_step(notices, fl.state)
 }
 
 // After every sim.init: whatever the last session left on screen is not
@@ -572,7 +574,7 @@ flow_session_began :: proc(fl: ^Flow) {
 // begins. Call it after a sim step and before the effects take that step's
 // events, so a new level's first effects survive. flow_draw calls it too,
 // for a session started with no step yet taken.
-flow_effects_sync :: proc(fl: ^Flow, particles: ^Particles, blurs: ^Blurs, notices: ^Notices) {
+flow_effects_sync :: proc(fl: ^Flow, particles: ^render.Particles, blurs: ^render.Blurs, notices: ^render.Notices) {
 	if fl.effects_level == sim.single(fl.state, sim.Level_Info).played {
 		return
 	}
@@ -686,7 +688,7 @@ flow_load_demo :: proc(fl: ^Flow, index: int) -> bool {
 // pipeline to draw into, which Title doesn't have, so these overlays go
 // through raylib's own font directly instead -- the same shortcut
 // draw_debug already takes for its dev overlay.
-flow_draw :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs, notices: ^Notices, scale: f32) {
+flow_draw :: proc(fl: ^Flow, r: ^render.Renderer, particles: ^render.Particles, blurs: ^render.Blurs, notices: ^render.Notices, scale: f32) {
 	if sim.level_def(fl.state) != nil {
 		flow_effects_sync(fl, particles, blurs, notices)
 	}
@@ -716,8 +718,8 @@ flow_draw :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 	}
 	flow_set_accents(fl, r)
 	r.replay = fl.mode == .Attract
-	build_frame(r, fl.state, blurs, notices)
-	present(r, fl.state, particles, scale)
+	render.build_frame(r, fl.state, blurs, notices)
+	render.present(r, fl.state, particles, scale)
 	if fl.mode == .Playing || fl.mode == .Paused {
 		reward_draw(fl, r)
 		loadout_draw(fl, r)
@@ -732,7 +734,7 @@ flow_draw :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 	case .Attract:
 		if !r.classic { // the original labels a demo "REPLAY" and nothing more
 			rl.DrawText("DEMO -- press any key for the title screen",
-				16, SCREEN_H * WINDOW_SCALE - 28, 18, rl.Color{200, 200, 200, 200})
+				16, render.SCREEN_H * render.WINDOW_SCALE - 28, 18, rl.Color{200, 200, 200, 200})
 		}
 	case .Playing:
 		// Phase 8 stage 3: frozen waiting on a peer -- title == "" (link_state
@@ -754,9 +756,9 @@ flow_draw :: proc(fl: ^Flow, r: ^Renderer, particles: ^Particles, blurs: ^Blurs,
 @(private = "file")
 draw_banner :: proc(line, sub: cstring) {
 	tw := rl.MeasureText(line, 40)
-	cx := i32(SCREEN_W * WINDOW_SCALE / 2)
-	cy := i32(SCREEN_H * WINDOW_SCALE / 2)
-	rl.DrawRectangle(0, cy - 50, SCREEN_W * WINDOW_SCALE, 100, rl.Color{0, 0, 0, 160})
+	cx := i32(render.SCREEN_W * render.WINDOW_SCALE / 2)
+	cy := i32(render.SCREEN_H * render.WINDOW_SCALE / 2)
+	rl.DrawRectangle(0, cy - 50, render.SCREEN_W * render.WINDOW_SCALE, 100, rl.Color{0, 0, 0, 160})
 	rl.DrawText(line, cx - tw / 2, cy - 30, 40, rl.Color{255, 255, 255, 255})
 	if sub != "" {
 		sw := rl.MeasureText(sub, 18)
@@ -772,7 +774,7 @@ draw_banner :: proc(line, sub: cstring) {
 // is separate, and only ever rings the ship of the player at this machine.
 // The plugins drawn with (Renderer.mods) are set here with them.
 @(private = "file")
-flow_set_accents :: proc(fl: ^Flow, r: ^Renderer) {
+flow_set_accents :: proc(fl: ^Flow, r: ^render.Renderer) {
 	r.accents = {}
 	r.mods = fl.state.session.mods
 	if fl.mode == .Attract || prefs_classic(fl.prefs) {

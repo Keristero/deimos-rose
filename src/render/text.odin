@@ -1,4 +1,4 @@
-package game
+package render
 
 // Text is sprites. G_Text_Draw maps each character to a frame of one sprite
 // group and blits it like anything else, so there is no font file: the glyphs

@@ -133,7 +133,7 @@ the sound.
   pulse's.
 - **Drawing.** `sim.State.beams` holds this step's beams, like the
   particle and blur queues: where each started, where it stopped, its
-  width and whether it was charged. `game/beams.odin` keeps each for 6
+  width and whether it was charged. `render/beams.odin` keeps each for 6
   steps (12 charged), drawn additively as a soft glow, a body and a white
   core, with a flare where it stopped. It fades from the first frame.
 
@@ -272,7 +272,7 @@ Balance), but its feel is untested by hand:
 - the sound: the Laser Gun Bullet's (`lgbu`), pitched down, a stand-in
   for a proper zap;
 - in the code: the kill burst's size and colour (`sim/systems/weapon_system/beam.odin`), and
-  the beam's lifetimes, widths and colours (`game/beams.odin`).
+  the beam's lifetimes, widths and colours (`render/beams.odin`).
 
 ## Content
 

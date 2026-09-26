@@ -19,16 +19,18 @@ import "core:strings"
 
 import rl "vendor:raylib"
 
-import "dr:prefs"
 import "dr:plugins/loadout"
+import "dr:prefs"
+import "dr:render"
 import "dr:sim"
+import "dr:ui"
 
-@(private = "file") CX :: VIEW_X + PLAY_W / 2
+@(private = "file") CX :: render.VIEW_X + render.PLAY_W / 2
 @(private = "file") TITLE_Y :: 48
 @(private = "file") HINT_Y :: 68
 @(private = "file") PANELS_TOP :: 84
-@(private = "file") PANEL_X :: VIEW_X + 16
-@(private = "file") PANEL_W :: PLAY_W - 32
+@(private = "file") PANEL_X :: render.VIEW_X + 16
+@(private = "file") PANEL_W :: render.PLAY_W - 32
 @(private = "file") PANEL_GAP :: 8
 @(private = "file") PAD :: 6
 @(private = "file") LINE :: 14
@@ -50,7 +52,7 @@ ROW_LABELS := [loadout.Loadout_Row]string {
 
 @(private = "file")
 loadout_accent :: proc(hue: f32, bright: bool) -> rl.Color {
-	return bright ? rl.ColorFromHSV(hue, ACCENT_SATURATION, 1) : rl.ColorFromHSV(hue, 0.35, 0.55)
+	return bright ? rl.ColorFromHSV(hue, render.ACCENT_SATURATION, 1) : rl.ColorFromHSV(hue, 0.35, 0.55)
 }
 
 @(private = "file")
@@ -63,7 +65,7 @@ loadout_player_label :: proc(fl: ^Flow, i: int) -> string {
 
 @(private = "file")
 window_rect :: proc(r: rl.Rectangle) -> rl.Rectangle {
-	return {r.x * WINDOW_SCALE, r.y * WINDOW_SCALE, r.width * WINDOW_SCALE, r.height * WINDOW_SCALE}
+	return {r.x * render.WINDOW_SCALE, r.y * render.WINDOW_SCALE, r.width * render.WINDOW_SCALE, r.height * render.WINDOW_SCALE}
 }
 
 // A panel's height: its header, a line for each row shown, READY, and the
@@ -80,17 +82,17 @@ panel_height :: proc(b: ^loadout.Loadout_Board) -> f32 {
 	return h + READY_H + 4 + 3 * LINE + PAD
 }
 
-loadout_draw :: proc(fl: ^Flow, r: ^Renderer) {
+loadout_draw :: proc(fl: ^Flow, r: ^render.Renderer) {
 	s := fl.state
 	l := loadout.loadout_of(s)
 	if l == nil || !l.active {
 		return
 	}
 	dim := rl.Color{170, 170, 170, 255}
-	header := rl.Color{HIGH_SCORES_HEADER_RGB[0], HIGH_SCORES_HEADER_RGB[1], HIGH_SCORES_HEADER_RGB[2], 255}
-	rl.DrawRectangleRec(window_rect({VIEW_X, 0, PLAY_W, PLAY_H}), {0, 0, 0, 170})
-	menu_draw_text(r, "LOADOUT", CX, TITLE_Y, header, .Centre)
-	menu_draw_text(r, "FIRE AIR PICKS UP AND PUTS DOWN -- FIRE GROUND PUTS BACK", CX, HINT_Y, dim, .Centre)
+	header := rl.Color{ui.HIGH_SCORES_HEADER_RGB[0], ui.HIGH_SCORES_HEADER_RGB[1], ui.HIGH_SCORES_HEADER_RGB[2], 255}
+	rl.DrawRectangleRec(window_rect({render.VIEW_X, 0, render.PLAY_W, render.PLAY_H}), {0, 0, 0, 170})
+	ui.menu_draw_text(r, "LOADOUT", CX, TITLE_Y, header, .Centre)
+	ui.menu_draw_text(r, "FIRE AIR PICKS UP AND PUTS DOWN -- FIRE GROUND PUTS BACK", CX, HINT_Y, dim, .Centre)
 
 	y := f32(PANELS_TOP)
 	for i in 0 ..< sim.MAX_PLAYERS {
@@ -105,28 +107,28 @@ loadout_draw :: proc(fl: ^Flow, r: ^Renderer) {
 }
 
 @(private = "file")
-loadout_draw_panel :: proc(fl: ^Flow, r: ^Renderer, i: int, b: ^loadout.Loadout_Board, panel: rl.Rectangle) {
+loadout_draw_panel :: proc(fl: ^Flow, r: ^render.Renderer, i: int, b: ^loadout.Loadout_Board, panel: rl.Rectangle) {
 	s := fl.state
 	white := rl.Color{255, 255, 255, 255}
 	dim := rl.Color{170, 170, 170, 255}
-	header := rl.Color{HIGH_SCORES_HEADER_RGB[0], HIGH_SCORES_HEADER_RGB[1], HIGH_SCORES_HEADER_RGB[2], 255}
+	header := rl.Color{ui.HIGH_SCORES_HEADER_RGB[0], ui.HIGH_SCORES_HEADER_RGB[1], ui.HIGH_SCORES_HEADER_RGB[2], 255}
 	hue := r.accents[i].hue
 	accent := loadout_accent(hue, true)
 	rl.DrawRectangleRec(window_rect(panel), {10, 12, 18, 235})
-	rl.DrawRectangleLinesEx(window_rect(panel), WINDOW_SCALE, {90, 100, 112, 255})
+	rl.DrawRectangleLinesEx(window_rect(panel), render.WINDOW_SCALE, {90, 100, 112, 255})
 
 	left, right := i32(panel.x) + PAD, i32(panel.x + panel.width) - PAD
 	y := i32(panel.y) + PAD
-	menu_draw_text(r, loadout_player_label(fl, i), left, y, accent)
+	ui.menu_draw_text(r, loadout_player_label(fl, i), left, y, accent)
 	status := b.ready ? "READY" : b.holding ? "MOVING A WEAPON" : "CHOOSING"
-	menu_draw_text(r, status, right, y, b.ready ? accent : dim, .Right)
+	ui.menu_draw_text(r, status, right, y, b.ready ? accent : dim, .Right)
 	y += LINE
 
 	for row in loadout.Loadout_Row {
 		if row == .Ready || b.width[row] == 0 {
 			continue
 		}
-		menu_draw_text(r, ROW_LABELS[row], left, y + (CELL - LINE) / 2 + 2, row == .Fresh ? header : dim)
+		ui.menu_draw_text(r, ROW_LABELS[row], left, y + (CELL - LINE) / 2 + 2, row == .Fresh ? header : dim)
 		for col in 0 ..< b.width[row] {
 			cell := rl.Rectangle{f32(left + LABEL_W + col * (CELL + CELL_GAP)), f32(y), CELL, CELL}
 			held := b.holding && b.hold_row == row && b.hold_col == col
@@ -142,14 +144,14 @@ loadout_draw_panel :: proc(fl: ^Flow, r: ^Renderer, i: int, b: ^loadout.Loadout_
 				fill = loadout_accent(hue, false)
 			}
 			rl.DrawRectangleRec(window_rect(cell), fill)
-			rl.DrawRectangleLinesEx(window_rect(cell), WINDOW_SCALE, edge)
+			rl.DrawRectangleLinesEx(window_rect(cell), render.WINDOW_SCALE, edge)
 			if w != sim.NO_WEAPON {
 				loadout_draw_symbol(r, &s.defs.weapons[w], cell, held ? 150 : 255)
 			}
 			if !b.ready && b.row == row && b.col == col {
 				out := f32(3)
 				ring := rl.Rectangle{cell.x - out, cell.y - out, cell.width + 2 * out, cell.height + 2 * out}
-				rl.DrawRectangleLinesEx(window_rect(ring), BORDER * WINDOW_SCALE, accent)
+				rl.DrawRectangleLinesEx(window_rect(ring), BORDER * render.WINDOW_SCALE, accent)
 			}
 		}
 		y += ROW_H
@@ -161,14 +163,14 @@ loadout_draw_panel :: proc(fl: ^Flow, r: ^Renderer, i: int, b: ^loadout.Loadout_
 	can := loadout.loadout_can_ready(b)
 	fill := b.ready ? loadout_accent(hue, false) : rl.Color{16, 20, 28, 230}
 	rl.DrawRectangleRec(window_rect(ready), fill)
-	rl.DrawRectangleLinesEx(window_rect(ready), (on ? BORDER : 1) * WINDOW_SCALE, on || b.ready ? accent : rl.Color{70, 80, 92, 255})
-	menu_draw_text(r, "READY", i32(ready.x + ready.width / 2), y + (READY_H - LINE) / 2 + 2, can || b.ready ? white : dim, .Centre)
+	rl.DrawRectangleLinesEx(window_rect(ready), (on ? BORDER : 1) * render.WINDOW_SCALE, on || b.ready ? accent : rl.Color{70, 80, 92, 255})
+	ui.menu_draw_text(r, "READY", i32(ready.x + ready.width / 2), y + (READY_H - LINE) / 2 + 2, can || b.ready ? white : dim, .Centre)
 	y += READY_H + 4
 
 	// What the cursor is on.
 	switch {
 	case b.ready:
-		menu_draw_text(r, "WAITING -- FIRE GROUND TO CHANGE", left, y, dim)
+		ui.menu_draw_text(r, "WAITING -- FIRE GROUND TO CHANGE", left, y, dim)
 	case b.row == .Ready:
 		if !can {
 			fresh := false
@@ -176,12 +178,12 @@ loadout_draw_panel :: proc(fl: ^Flow, r: ^Renderer, i: int, b: ^loadout.Loadout_
 				fresh ||= w != sim.NO_WEAPON
 			}
 			why := b.holding ? "PUT THE WEAPON DOWN FIRST" : fresh ? "PLACE THE NEW WEAPONS FIRST" : "FILL THE LOADOUT FIRST"
-			menu_draw_text(r, why, left, y, dim)
+			ui.menu_draw_text(r, why, left, y, dim)
 		}
 	case:
 		w := b.holding ? b.cells[b.hold_row][b.hold_col] : b.cells[b.row][b.col]
 		if w == sim.NO_WEAPON {
-			menu_draw_text(r, "EMPTY", left, y, dim)
+			ui.menu_draw_text(r, "EMPTY", left, y, dim)
 			break
 		}
 		def := &s.defs.weapons[w]
@@ -189,7 +191,7 @@ loadout_draw_panel :: proc(fl: ^Flow, r: ^Renderer, i: int, b: ^loadout.Loadout_
 		if b.holding {
 			name = fmt.tprintf("MOVING %s", name)
 		}
-		menu_draw_text(r, name, left, y, white)
+		ui.menu_draw_text(r, name, left, y, white)
 		loadout_draw_wrapped(r, strings.to_upper(strings.trim_space(def.description1), context.temp_allocator), left, y + LINE, right - left, 2, dim)
 	}
 }
@@ -203,12 +205,12 @@ loadout_weapon_name :: proc(w: ^sim.Weapon) -> string {
 // The weapon's score bar symbol, centred in its cell at the largest whole
 // multiple of its size, in window pixels, that fits.
 @(private = "file")
-loadout_draw_symbol :: proc(r: ^Renderer, w: ^sim.Weapon, cell: rl.Rectangle, alpha: u8) {
-	tex, src, ok := frame_rect(&r.textures, w.score_bar_preview_face, w.score_bar_preview_frame)
+loadout_draw_symbol :: proc(r: ^render.Renderer, w: ^sim.Weapon, cell: rl.Rectangle, alpha: u8) {
+	tex, src, ok := render.frame_rect(&r.textures, w.score_bar_preview_face, w.score_bar_preview_frame)
 	if !ok {
 		return
 	}
-	room := cell.width * WINDOW_SCALE
+	room := cell.width * render.WINDOW_SCALE
 	k := max(f32(int(min(room / src.width, room / src.height))), 1)
 	ww, hh := src.width * k, src.height * k
 	at := window_rect(cell)
@@ -219,17 +221,17 @@ loadout_draw_symbol :: proc(r: ^Renderer, w: ^sim.Weapon, cell: rl.Rectangle, al
 // Word-wrapped text, at most `lines` lines of `width`; what is left over
 // is dropped.
 @(private = "file")
-loadout_draw_wrapped :: proc(r: ^Renderer, text: string, x, y, width: i32, lines: int, color: rl.Color) {
+loadout_draw_wrapped :: proc(r: ^render.Renderer, text: string, x, y, width: i32, lines: int, color: rl.Color) {
 	rest := text
 	for n in 0 ..< lines {
 		if rest == "" {
 			return
 		}
 		fit := len(rest)
-		if text_width(r, rest) > width {
+		if render.text_width(r, rest) > width {
 			fit = 0
 			for k in 1 ..= len(rest) {
-				if (k == len(rest) || rest[k] == ' ') && text_width(r, rest[:k]) <= width {
+				if (k == len(rest) || rest[k] == ' ') && render.text_width(r, rest[:k]) <= width {
 					fit = k
 				}
 			}
@@ -237,7 +239,7 @@ loadout_draw_wrapped :: proc(r: ^Renderer, text: string, x, y, width: i32, lines
 				fit = len(rest)
 			}
 		}
-		menu_draw_text(r, rest[:fit], x, y + i32(n) * LINE, color)
+		ui.menu_draw_text(r, rest[:fit], x, y + i32(n) * LINE, color)
 		rest = strings.trim_left_space(rest[fit:])
 	}
 }

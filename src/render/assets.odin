@@ -1,4 +1,4 @@
-package game
+package render
 
 // Textures, loaded from the assets tree the extractor writes.
 //

@@ -25,7 +25,9 @@ import rl "vendor:raylib"
 
 import "dr:data"
 import "dr:plugins/easy_mode"
+import "dr:render"
 import "dr:sim"
+import "dr:ui"
 
 LESE :: "lese"
 
@@ -84,15 +86,15 @@ Level_Select :: struct {
 	growing: bool,
 	// Not the original's: the Easy_Mode extra's toggle, under the level
 	// name, and only outside classic mode.
-	easy:    Text_Button,
+	easy:    ui.Text_Button,
 }
 
 @(private = "file") LS_EASY_Y :: 440
 
 @(private = "file")
-level_select_easy_layout :: proc(fl: ^Flow, r: ^Renderer, ls: ^Level_Select) {
+level_select_easy_layout :: proc(fl: ^Flow, r: ^render.Renderer, ls: ^Level_Select) {
 	label := prefs_mod_on(fl.prefs, easy_mode.ID) ? "EASY MODE: ON" : "EASY MODE: OFF"
-	text_button_relabel(r, &ls.easy, label, SCREEN_W / 2, LS_EASY_Y)
+	ui.text_button_relabel(r, &ls.easy, label, render.SCREEN_W / 2, LS_EASY_Y)
 }
 
 // Always opens on the first level: G_LevelSelect_GetStartingLevelIDFromUser's
@@ -102,7 +104,7 @@ level_select_init :: proc(ls: ^Level_Select) {
 	ls^ = Level_Select{}
 }
 
-level_select_update :: proc(fl: ^Flow, r: ^Renderer, ls: ^Level_Select) {
+level_select_update :: proc(fl: ^Flow, r: ^render.Renderer, ls: ^Level_Select) {
 	dt := rl.GetFrameTime()
 	n := len(fl.defs.levels)
 
@@ -126,18 +128,18 @@ level_select_update :: proc(fl: ^Flow, r: ^Renderer, ls: ^Level_Select) {
 		return
 	}
 
-	mouse := menu_mouse_pos()
+	mouse := ui.menu_mouse_pos()
 	if !r.classic {
 		level_select_easy_layout(fl, r, ls)
-		if text_button_update(r, &ls.easy, mouse, dt) {
+		if ui.text_button_update(r, &ls.easy, mouse, dt) {
 			prefs_mod_toggle(fl.prefs, easy_mode.ID)
 		}
 	}
 	for i in 0 ..< 3 {
 		was_hovering := ls.hover[i] > 0
-		clicked := update_hover_click(LS_RECTS[i], &ls.hover[i], mouse, dt)
+		clicked := ui.update_hover_click(LS_RECTS[i], &ls.hover[i], mouse, dt)
 		if ls.hover[i] > 0 && !was_hovering {
-			menu_play_sound(r, ROLLOVER)
+			ui.menu_play_sound(r, ROLLOVER)
 		}
 		if !clicked {
 			continue
@@ -145,17 +147,17 @@ level_select_update :: proc(fl: ^Flow, r: ^Renderer, ls: ^Level_Select) {
 		switch i {
 		case 0:
 			ls.center = (ls.center - 1 + n) % n
-			menu_play_sound(r, SELECTOR)
+			ui.menu_play_sound(r, SELECTOR)
 		case 2:
 			ls.center = (ls.center + 1) % n
-			menu_play_sound(r, SELECTOR)
+			ui.menu_play_sound(r, SELECTOR)
 		case 1:
 			if ls.center < fl.highest_reached {
 				ls.pulse, ls.growing = .Accept, true
-				menu_play_sound(r, CHOOSE)
+				ui.menu_play_sound(r, CHOOSE)
 			} else {
 				ls.pulse, ls.growing = .Fail, true
-				menu_play_sound(r, FAILURE)
+				ui.menu_play_sound(r, FAILURE)
 			}
 		}
 	}
@@ -190,8 +192,8 @@ level_select_step_pulse :: proc(ls: ^Level_Select, dt: f32) -> (finished, accept
 	return false, false
 }
 
-level_select_draw :: proc(r: ^Renderer, fl: ^Flow, ls: ^Level_Select) {
-	menu_draw_background(r, LESE)
+level_select_draw :: proc(r: ^render.Renderer, fl: ^Flow, ls: ^Level_Select) {
+	ui.menu_draw_background(r, LESE)
 
 	n := len(fl.defs.levels)
 	unlocked := ls.center < fl.highest_reached
@@ -202,7 +204,7 @@ level_select_draw :: proc(r: ^Renderer, fl: ^Flow, ls: ^Level_Select) {
 		if media == nil {
 			continue
 		}
-		tex, ok := menu_image(&r.textures, media.preview)
+		tex, ok := render.menu_image(&r.textures, media.preview)
 		if !ok {
 			continue
 		}
@@ -212,8 +214,8 @@ level_select_draw :: proc(r: ^Renderer, fl: ^Flow, ls: ^Level_Select) {
 			level_select_draw_scaled(tex, rect, ls.scale, tint)
 		} else {
 			dst := rl.Rectangle {
-				rect.x * WINDOW_SCALE, rect.y * WINDOW_SCALE,
-				rect.width * WINDOW_SCALE, rect.height * WINDOW_SCALE,
+				rect.x * render.WINDOW_SCALE, rect.y * render.WINDOW_SCALE,
+				rect.width * render.WINDOW_SCALE, rect.height * render.WINDOW_SCALE,
 			}
 			rl.DrawTexturePro(tex, {0, 0, f32(tex.width), f32(tex.height)}, dst, {0, 0}, 0, rl.WHITE)
 		}
@@ -231,9 +233,9 @@ level_select_draw :: proc(r: ^Renderer, fl: ^Flow, ls: ^Level_Select) {
 			// baked tefo text styling, matching the convention menu.odin's
 			// Text_Link already uses for non-plate text.
 			color := unlocked ? rl.Color{99, 197, 214, 255} : rl.Color{255, 0, 0, 255}
-			menu_draw_text(r, fmt.tprintf("%02d", level.number), SCREEN_W / 2, 38, color, .Centre)
+			ui.menu_draw_text(r, fmt.tprintf("%02d", level.number), render.SCREEN_W / 2, 38, color, .Centre)
 			label := unlocked ? media.name : "NO ACCESS"
-			menu_draw_text(r, label, SCREEN_W / 2, 407, color, .Centre)
+			ui.menu_draw_text(r, label, render.SCREEN_W / 2, 407, color, .Centre)
 		}
 		// The hover border stops once an accept pulse has latched (matching
 		// DAT_004e8673 gating it off in the original); a fail pulse doesn't
@@ -248,7 +250,7 @@ level_select_draw :: proc(r: ^Renderer, fl: ^Flow, ls: ^Level_Select) {
 	level_select_draw_icon(r, LS_ICON_POS[2], LS_FRAME_NEXT, ls.hover[2] > 0)
 	if !r.classic {
 		level_select_easy_layout(fl, r, ls)
-		text_button_draw(r, &ls.easy)
+		ui.text_button_draw(r, &ls.easy)
 	}
 }
 
@@ -259,8 +261,8 @@ level_select_draw_scaled :: proc(tex: rl.Texture2D, rect: rl.Rectangle, scale: f
 	w := rect.width * scale
 	h := rect.height * scale
 	dst := rl.Rectangle {
-		(cx - w / 2) * WINDOW_SCALE, (cy - h / 2) * WINDOW_SCALE,
-		w * WINDOW_SCALE, h * WINDOW_SCALE,
+		(cx - w / 2) * render.WINDOW_SCALE, (cy - h / 2) * render.WINDOW_SCALE,
+		w * render.WINDOW_SCALE, h * render.WINDOW_SCALE,
 	}
 	rl.DrawTexturePro(tex, {0, 0, f32(tex.width), f32(tex.height)}, dst, {0, 0}, 0, tint)
 }
@@ -272,10 +274,10 @@ level_select_draw_scaled :: proc(tex: rl.Texture2D, rect: rl.Rectangle, scale: f
 @(private = "file")
 level_select_draw_hover_border :: proc(rect: rl.Rectangle) {
 	dst := rl.Rectangle {
-		rect.x * WINDOW_SCALE, rect.y * WINDOW_SCALE,
-		rect.width * WINDOW_SCALE, rect.height * WINDOW_SCALE,
+		rect.x * render.WINDOW_SCALE, rect.y * render.WINDOW_SCALE,
+		rect.width * render.WINDOW_SCALE, rect.height * render.WINDOW_SCALE,
 	}
-	rl.DrawRectangleLinesEx(dst, 3 * WINDOW_SCALE, rl.Color{0, 255, 255, 160})
+	rl.DrawRectangleLinesEx(dst, 3 * render.WINDOW_SCALE, rl.Color{0, 255, 255, 160})
 }
 
 // Tiles VIGR frame 0 across `rect`, native size (no stretch to fit, matching
@@ -286,17 +288,17 @@ level_select_draw_hover_border :: proc(rect: rl.Rectangle) {
 // difference is not visually distinguishable, so this starts flush instead
 // of reproducing the centring arithmetic exactly.
 @(private = "file")
-level_select_draw_grid :: proc(r: ^Renderer, rect: rl.Rectangle) {
-	tex, src, ok := frame_rect(&r.textures, VIGR, 0)
+level_select_draw_grid :: proc(r: ^render.Renderer, rect: rl.Rectangle) {
+	tex, src, ok := render.frame_rect(&r.textures, VIGR, 0)
 	if !ok {
 		return
 	}
 	dst := rl.Rectangle {
-		rect.x * WINDOW_SCALE, rect.y * WINDOW_SCALE,
-		rect.width * WINDOW_SCALE, rect.height * WINDOW_SCALE,
+		rect.x * render.WINDOW_SCALE, rect.y * render.WINDOW_SCALE,
+		rect.width * render.WINDOW_SCALE, rect.height * render.WINDOW_SCALE,
 	}
-	tw := src.width * WINDOW_SCALE
-	th := src.height * WINDOW_SCALE
+	tw := src.width * render.WINDOW_SCALE
+	th := src.height * render.WINDOW_SCALE
 	rl.BeginScissorMode(i32(dst.x), i32(dst.y), i32(dst.width), i32(dst.height))
 	for y := dst.y; y < dst.y + dst.height; y += th {
 		for x := dst.x; x < dst.x + dst.width; x += tw {
@@ -307,15 +309,15 @@ level_select_draw_grid :: proc(r: ^Renderer, rect: rl.Rectangle) {
 }
 
 @(private = "file")
-level_select_draw_icon :: proc(r: ^Renderer, pos: rl.Vector2, frame: i32, hovered: bool) {
-	plate := hovered ? MEBH : MEBU
-	tex, src, ok := frame_rect(&r.textures, plate, frame)
+level_select_draw_icon :: proc(r: ^render.Renderer, pos: rl.Vector2, frame: i32, hovered: bool) {
+	plate := hovered ? ui.MEBH : ui.MEBU
+	tex, src, ok := render.frame_rect(&r.textures, plate, frame)
 	if !ok {
 		return
 	}
 	dst := rl.Rectangle {
-		(pos.x - src.width / 2) * WINDOW_SCALE, (pos.y - src.height / 2) * WINDOW_SCALE,
-		src.width * WINDOW_SCALE, src.height * WINDOW_SCALE,
+		(pos.x - src.width / 2) * render.WINDOW_SCALE, (pos.y - src.height / 2) * render.WINDOW_SCALE,
+		src.width * render.WINDOW_SCALE, src.height * render.WINDOW_SCALE,
 	}
 	rl.DrawTexturePro(tex, src, dst, {0, 0}, 0, rl.WHITE)
 }

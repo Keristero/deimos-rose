@@ -1,4 +1,4 @@
-package game
+package render
 
 // The end-of-level readouts under "Sector Secured": the ground-accuracy
 // tally (FUN_00421730 draws DAT_004e487a through preset 0x35 "gaco") and

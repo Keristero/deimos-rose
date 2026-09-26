@@ -581,7 +581,7 @@ terrain shifts 1 canvas pixel at 0.5 and 2 at 1, its scroll speed.
 
 Outside classic mode, the menu backgrounds (`back`, and Level Select's
 `lese`) are recoloured to rose, fitting the project's name: each pixel's
-luminance is carried onto a rose hue (`game/assets.odin`'s
+luminance is carried onto a rose hue (`render/assets.odin`'s
 `menu_image_rose`), so the art's detail and lighting survive. Built once
 per image at first use. Classic mode draws the original colours.
 

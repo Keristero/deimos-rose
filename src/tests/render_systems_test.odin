@@ -4,6 +4,7 @@ import "core:testing"
 
 import "dr:game"
 import "dr:plugins/accent"
+import "dr:render"
 import "dr:sim"
 
 // The render systems place themselves against each other by name, as the
@@ -11,7 +12,7 @@ import "dr:sim"
 @(test)
 render_systems_name_only_registered_systems :: proc(t: ^testing.T) {
 	items := make([dynamic]sim.Order_Item, context.temp_allocator)
-	for sys in game.registered_render_systems() {
+	for sys in render.registered_render_systems() {
 		append(&items, sim.Order_Item{sys.name, sys.after, sys.before})
 	}
 	testing.expect_value(t, len(sim.schedule_unknown(items[:], context.temp_allocator)), 0)
@@ -23,10 +24,10 @@ render_systems_name_only_registered_systems :: proc(t: ^testing.T) {
 // the ship's layer before the ship is.
 @(test)
 render_schedule_draws_the_outline_under_the_ships :: proc(t: ^testing.T) {
-	sched: game.Render_Schedule
-	game.render_schedule_build(&sched, ~sim.Mods{})
-	registered := game.registered_render_systems()
-	at :: proc(sched: ^game.Render_Schedule, registered: []game.Render_System, name: string) -> int {
+	sched: render.Render_Schedule
+	render.render_schedule_build(&sched, ~sim.Mods{})
+	registered := render.registered_render_systems()
+	at :: proc(sched: ^render.Render_Schedule, registered: []render.Render_System, name: string) -> int {
 		for idx, i in sched.order[:sched.count] {
 			if registered[idx].name == name {
 				return i
@@ -44,8 +45,8 @@ render_schedule_draws_the_outline_under_the_ships :: proc(t: ^testing.T) {
 // all.
 @(test)
 render_schedule_leaves_the_outline_to_its_plugin :: proc(t: ^testing.T) {
-	registered := game.registered_render_systems()
-	has_outline :: proc(sched: ^game.Render_Schedule, registered: []game.Render_System) -> bool {
+	registered := render.registered_render_systems()
+	has_outline :: proc(sched: ^render.Render_Schedule, registered: []render.Render_System) -> bool {
 		for idx in sched.order[:sched.count] {
 			if registered[idx].name == "outline" {
 				return true
@@ -53,9 +54,9 @@ render_schedule_leaves_the_outline_to_its_plugin :: proc(t: ^testing.T) {
 		}
 		return false
 	}
-	sched: game.Render_Schedule
-	game.render_schedule_build(&sched, {})
+	sched: render.Render_Schedule
+	render.render_schedule_build(&sched, {})
 	testing.expect(t, !has_outline(&sched, registered), "the outline is drawn with no plugins on")
-	game.render_schedule_build(&sched, {int(accent.ID)})
+	render.render_schedule_build(&sched, {int(accent.ID)})
 	testing.expect(t, has_outline(&sched, registered), "the outline is not drawn with Accent Color on")
 }

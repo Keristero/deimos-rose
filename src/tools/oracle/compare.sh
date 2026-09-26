@@ -4,7 +4,7 @@
 #
 # Expects `mise run oracle:shot` to have captured the original already; it
 # renders our side here. Both windows are 640x480 with the 416-wide play
-# field inset at x=32 (game/render.odin's VIEW_X), so that is what gets
+# field inset at x=32 (render/render.odin's VIEW_X), so that is what gets
 # cropped for comparison; our capture is normalised to 640x480 first since it
 # may be taken at a different WINDOW_SCALE.
 set -euo pipefail

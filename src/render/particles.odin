@@ -1,4 +1,4 @@
-package game
+package render
 
 // The bursts an entity leaves when it is hit or destroyed (G_Particle_NewGroup
 // / _Process / _Draw). The one gameplay RNG draw per particle -- which of five

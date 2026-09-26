@@ -1,4 +1,4 @@
-package game
+package render
 
 // The Discharge Beam's shots (sim/systems/weapon_system/beam.odin), drawn: new content, with no
 // original to match. The sim hands over each step's beams in `s.beams`; this

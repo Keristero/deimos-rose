@@ -7,11 +7,14 @@ package game
 // Extras page.
 
 import "core:fmt"
+import "core:slice"
 import "core:strings"
 
 import rl "vendor:raylib"
 
+import "dr:render"
 import "dr:sim"
+import "dr:ui"
 
 @(private = "file") MODS_TITLE_Y :: 34
 @(private = "file") MODS_ROW0_Y :: 70
@@ -24,15 +27,69 @@ import "dr:sim"
 @(private = "file") MODS_BACK_Y :: 436
 
 Mods_Page :: struct {
-	scroll:  Scroll_Rows,
-	toggles: [sim.MAX_PLUGINS + 1]Text_Button,
-	back:    Text_Button,
+	scroll:  ui.Scroll_Rows,
+	toggles: [sim.MAX_PLUGINS]ui.Text_Button, // by row
+	back:    ui.Text_Button,
 }
 
-// Every registered plugin, CORE's empty slot aside.
+// Every registered plugin, in the order the page lists them: each mod
+// under the one it needs most deeply, and mods under the same one by
+// label, so the list reads as a tree of what needs what. Registration
+// order would not do: it is the order packages initialise in, which
+// changes whenever the imports between them do.
+mods_order :: proc() -> []sim.Plugin_ID {
+	@(static) order: Mods_Order
+	order.count = 0
+	mods_children_add(&order, sim.CORE)
+	return order.ids[:order.count]
+}
+
 @(private = "file")
-mods_listed :: proc() -> []sim.Plugin {
-	return sim.registered_plugins()[1:]
+Mods_Order :: struct {
+	ids:   [sim.MAX_PLUGINS]sim.Plugin_ID,
+	count: int,
+}
+
+// The mod `id` needs that needs the most itself (CORE for none): the one
+// it is listed under.
+@(private = "file")
+mods_parent :: proc(id: sim.Plugin_ID) -> sim.Plugin_ID {
+	parent, best := sim.CORE, -1
+	for dep in sim.registered_plugins()[id].deps {
+		if d, ok := sim.plugin_find(dep); ok {
+			if depth := mods_depth(d); depth > best {
+				parent, best = d, depth
+			}
+		}
+	}
+	return parent
+}
+
+@(private = "file")
+mods_depth :: proc(id: sim.Plugin_ID) -> int {
+	parent := mods_parent(id)
+	return parent == sim.CORE ? 0 : mods_depth(parent) + 1
+}
+
+// The mods listed under `parent`, by label, each followed by its own.
+@(private = "file")
+mods_children_add :: proc(o: ^Mods_Order, parent: sim.Plugin_ID) {
+	kids: [sim.MAX_PLUGINS]sim.Plugin_ID
+	n := 0
+	for i in 1 ..< len(sim.registered_plugins()) {
+		if id := sim.Plugin_ID(i); mods_parent(id) == parent {
+			kids[n] = id
+			n += 1
+		}
+	}
+	slice.sort_by(kids[:n], proc(a, b: sim.Plugin_ID) -> bool {
+		return sim.registered_plugins()[a].label < sim.registered_plugins()[b].label
+	})
+	for id in kids[:n] {
+		o.ids[o.count] = id
+		o.count += 1
+		mods_children_add(o, id)
+	}
 }
 
 @(private = "file")
@@ -42,52 +99,53 @@ mods_row_y :: proc(m: ^Mods_Page, row: int) -> (f32, bool) {
 }
 
 @(private = "file")
-mods_page_layout :: proc(r: ^Renderer, m: ^Mods_Page, ps: ^Prefs_State) {
-	for _, row in mods_listed() {
+mods_page_layout :: proc(r: ^render.Renderer, m: ^Mods_Page, ps: ^Prefs_State) {
+	for id, row in mods_order() {
 		if y, shown := mods_row_y(m, row); shown {
-			text_button_relabel(r, &m.toggles[row + 1], row + 1 in ps.saved.mods ? "ON" : "OFF", MODS_VALUE_X, y)
+			ui.text_button_relabel(r, &m.toggles[row], int(id) in ps.saved.mods ? "ON" : "OFF", MODS_VALUE_X, y)
 		}
 	}
-	text_button_relabel(r, &m.back, "BACK", SCREEN_W / 2, MODS_BACK_Y)
+	ui.text_button_relabel(r, &m.back, "BACK", render.SCREEN_W / 2, MODS_BACK_Y)
 }
 
 // Returns true when the page is left (Back or Escape).
-mods_page_update :: proc(r: ^Renderer, m: ^Mods_Page, ps: ^Prefs_State) -> (leave: bool) {
-	scroll_rows_update(&m.scroll, len(mods_listed()), MODS_ROWS_SHOWN)
+mods_page_update :: proc(r: ^render.Renderer, m: ^Mods_Page, ps: ^Prefs_State) -> (leave: bool) {
+	ui.scroll_rows_update(&m.scroll, len(mods_order()), MODS_ROWS_SHOWN)
 	mods_page_layout(r, m, ps)
-	mouse := menu_mouse_pos()
+	mouse := ui.menu_mouse_pos()
 	dt := rl.GetFrameTime()
-	for _, row in mods_listed() {
-		if _, shown := mods_row_y(m, row); shown && text_button_update(r, &m.toggles[row + 1], mouse, dt) {
-			prefs_mod_toggle(ps, sim.Plugin_ID(row + 1))
+	for id, row in mods_order() {
+		if _, shown := mods_row_y(m, row); shown && ui.text_button_update(r, &m.toggles[row], mouse, dt) {
+			prefs_mod_toggle(ps, id)
 		}
 	}
-	return text_button_update(r, &m.back, mouse, dt) || rl.IsKeyPressed(.ESCAPE)
+	return ui.text_button_update(r, &m.back, mouse, dt) || rl.IsKeyPressed(.ESCAPE)
 }
 
-mods_page_draw :: proc(r: ^Renderer, m: ^Mods_Page, ps: ^Prefs_State) {
+mods_page_draw :: proc(r: ^render.Renderer, m: ^Mods_Page, ps: ^Prefs_State) {
 	mods_page_layout(r, m, ps)
-	menu_draw_background(r, "back")
+	ui.menu_draw_background(r, "back")
 	white := rl.Color{255, 255, 255, 255}
 	dim := rl.Color{190, 190, 190, 255}
-	header := rl.Color{HIGH_SCORES_HEADER_RGB[0], HIGH_SCORES_HEADER_RGB[1], HIGH_SCORES_HEADER_RGB[2], 255}
+	header := rl.Color{ui.HIGH_SCORES_HEADER_RGB[0], ui.HIGH_SCORES_HEADER_RGB[1], ui.HIGH_SCORES_HEADER_RGB[2], 255}
 	classic := prefs_classic(ps)
 
-	menu_draw_text(r, "MODS", SCREEN_W / 2, MODS_TITLE_Y, header, .Centre)
-	listed := mods_listed()
-	for p, row in listed {
+	ui.menu_draw_text(r, "MODS", render.SCREEN_W / 2, MODS_TITLE_Y, header, .Centre)
+	listed := mods_order()
+	for id, row in listed {
 		y, shown := mods_row_y(m, row)
 		if !shown {
 			continue
 		}
-		menu_draw_text(r, p.label, MODS_LABEL_X, i32(y) + 5, classic ? dim : white)
-		menu_draw_text(r, mods_detail(p), MODS_LABEL_X, i32(y) + 24, dim)
-		text_button_draw(r, &m.toggles[row + 1])
+		p := sim.registered_plugins()[id]
+		ui.menu_draw_text(r, p.label, MODS_LABEL_X, i32(y) + 5, classic ? dim : white)
+		ui.menu_draw_text(r, mods_detail(p), MODS_LABEL_X, i32(y) + 24, dim)
+		ui.text_button_draw(r, &m.toggles[row])
 	}
-	scroll_rows_draw(&m.scroll, len(listed), MODS_ROWS_SHOWN, MODS_SCROLL_X, MODS_ROW0_Y, MODS_ROWS_SHOWN * MODS_ROW - 20)
+	ui.scroll_rows_draw(&m.scroll, len(listed), MODS_ROWS_SHOWN, MODS_SCROLL_X, MODS_ROW0_Y, MODS_ROWS_SHOWN * MODS_ROW - 20)
 	note := classic ? "CLASSIC MODE IS ON: MODS ARE OFF UNTIL IT IS TURNED OFF" : "WHAT DEIMOS ROSE ADDS -- NONE APPLY IN CLASSIC MODE"
-	menu_draw_text(r, note, SCREEN_W / 2, MODS_NOTE_Y, dim, .Centre)
-	text_button_draw(r, &m.back)
+	ui.menu_draw_text(r, note, render.SCREEN_W / 2, MODS_NOTE_Y, dim, .Centre)
+	ui.text_button_draw(r, &m.back)
 }
 
 // A mod's description, and what it needs, in the menu font's capitals.

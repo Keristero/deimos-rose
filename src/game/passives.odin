@@ -13,6 +13,7 @@ import "core:strings"
 import rl "vendor:raylib"
 
 import "dr:plugins/passives"
+import "dr:render"
 import "dr:sim"
 import "dr:sim/stats"
 
@@ -34,7 +35,7 @@ PASSIVE_NAMES := [passives.Passive]string {
 
 // A passive's icon, loaded on first use and cached with the other derived
 // images (a missing file is cached too, so it is tried once).
-passive_icon :: proc(t: ^Textures, pa: passives.Passive) -> (rl.Texture2D, bool) {
+passive_icon :: proc(t: ^render.Textures, pa: passives.Passive) -> (rl.Texture2D, bool) {
 	key := fmt.tprintf("icons/passives/%s", strings.to_lower(fmt.tprint(pa), context.temp_allocator))
 	if tex, ok := t.images[key]; ok {
 		return tex, tex.id != 0
@@ -119,7 +120,7 @@ stat_text :: proc(levels: ^passives.Passive_Levels, stat: sim.Stat, weapon: sim.
 @(private = "file") SPARK_MAX :: 3        // sparks a step at the raised maximum
 @(private = "file") SPARK_SPEED :: 3
 
-passive_particles_step :: proc(p: ^Particles, s: ^sim.State, r: ^Renderer) {
+passive_particles_step :: proc(p: ^render.Particles, s: ^sim.State, r: ^render.Renderer) {
 	if !sim.mod_on(s, passives.ID) || sim.session_frozen(s) {
 		return
 	}
@@ -130,8 +131,8 @@ passive_particles_step :: proc(p: ^Particles, s: ^sim.State, r: ^Renderer) {
 		if passives.player_regenerating(s, pl) && sim.single(s, sim.Clock).time % REGEN_EVERY == 0 {
 			a := rand.float32() * 2 * math.PI
 			from := pl.loc + sim.Vec{math.cos(a), math.sin(a)} * REGEN_RADIUS
-			shade := colour5(accent_color(int(r.accents[i].hue)))
-			append(&p.live, Particle {
+			shade := colour5(render.accent_color(int(r.accents[i].hue)))
+			append(&p.live, render.Particle {
 				loc    = from - 3,
 				prev   = from - 3,
 				vel    = (pl.loc - from) / REGEN_STEPS,
@@ -145,7 +146,7 @@ passive_particles_step :: proc(p: ^Particles, s: ^sim.State, r: ^Renderer) {
 			for _ in 0 ..< n {
 				a := rand.float32() * 2 * math.PI
 				at := pl.loc + {0, -f32(pl.half.y)}
-				append(&p.live, Particle {
+				append(&p.live, render.Particle {
 					loc    = at - 3,
 					prev   = at - 3,
 					vel    = sim.Vec{math.cos(a), math.sin(a)} * SPARK_SPEED * (0.5 + rand.float32()),

@@ -142,3 +142,17 @@ plugins_netplay_only_online :: proc(t: ^testing.T) {
 	testing.expect_value(t, game.session_from_mods(1, {}, .Single, all).mods, sim.Mods{int(easy_mode.ID)})
 	testing.expect_value(t, game.session_from_mods(1, {}, .Co_Op, {int(easy_mode.ID)}, online = true).mods, all)
 }
+
+// The Mods page lists each mod under the one it needs most deeply, by
+// label, whatever order the packages registered them in.
+@(test)
+mods_page_lists_a_tree_of_needs :: proc(t: ^testing.T) {
+	want := []string{"extra_prefs", "fps_unlock", "accent", "loadout", "new_weapons", "passives", "easy_mode", "netplay"}
+	got := game.mods_order()
+	testing.expect_value(t, len(got), len(want))
+	for id, i in got {
+		if i < len(want) {
+			testing.expect_value(t, sim.registered_plugins()[id].name, want[i])
+		}
+	}
+}

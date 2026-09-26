@@ -23,7 +23,9 @@ package game
 
 import rl "vendor:raylib"
 
+import "dr:render"
 import "dr:sim"
+import "dr:ui"
 
 // G_Res_GetPermSoundID(2), "InterfaceClick" (idli/gaso.json) -- played once,
 // on whatever input ends Credits (click, any keypress, or N specifically).
@@ -203,7 +205,7 @@ credits_init :: proc(c: ^Credits) {
 }
 
 // Called once per render frame from flow_handle_input's .Credits case.
-credits_update :: proc(fl: ^Flow, r: ^Renderer, c: ^Credits) {
+credits_update :: proc(fl: ^Flow, r: ^render.Renderer, c: ^Credits) {
 	dt := rl.GetFrameTime()
 	c.t += dt
 
@@ -248,13 +250,13 @@ credits_update :: proc(fl: ^Flow, r: ^Renderer, c: ^Credits) {
 // additionally asks that path to start a new game instead of just returning
 // to Title. There is no "advance to next page" input at all.
 @(private = "file")
-credits_poll_exit :: proc(r: ^Renderer, c: ^Credits) -> bool {
+credits_poll_exit :: proc(r: ^render.Renderer, c: ^Credits) -> bool {
 	key := rl.GetKeyPressed()
 	clicked := rl.IsMouseButtonPressed(.LEFT)
 	if key == .KEY_NULL && !clicked {
 		return false
 	}
-	menu_play_sound(r, CREDITS_CLICK_SOUND)
+	ui.menu_play_sound(r, CREDITS_CLICK_SOUND)
 	if key == .N {
 		c.new_game = true
 	}
@@ -272,8 +274,8 @@ credits_finish :: proc(fl: ^Flow, c: ^Credits) {
 	}
 }
 
-credits_draw :: proc(r: ^Renderer, c: ^Credits) {
-	menu_draw_background(r, "back")
+credits_draw :: proc(r: ^render.Renderer, c: ^Credits) {
+	ui.menu_draw_background(r, "back")
 
 	page := c.page
 	alpha: f32
@@ -295,7 +297,7 @@ credits_draw :: proc(r: ^Renderer, c: ^Credits) {
 	y := f32(CREDITS_TITLE_Y)
 	p := &CREDITS_PAGES[page]
 	title_color := rl.Color{CREDITS_TITLE_RGB[0], CREDITS_TITLE_RGB[1], CREDITS_TITLE_RGB[2], a}
-	menu_draw_text(r, p.title, CREDITS_X, i32(y), title_color)
+	ui.menu_draw_text(r, p.title, CREDITS_X, i32(y), title_color)
 	// A blank .stli line always follows the title in the original's raw
 	// "cred" resource (see the Credits_Page comment above) -- tagged_parse
 	// drops blank lines, so this one extra gap is applied directly here
@@ -304,7 +306,7 @@ credits_draw :: proc(r: ^Renderer, c: ^Credits) {
 	body_color := rl.Color{CREDITS_BODY_RGB[0], CREDITS_BODY_RGB[1], CREDITS_BODY_RGB[2], a}
 	for line in p.lines {
 		if line != "" {
-			menu_draw_text(r, line, CREDITS_X, i32(y), body_color)
+			ui.menu_draw_text(r, line, CREDITS_X, i32(y), body_color)
 		}
 		y += CREDITS_LINE_GAP
 	}

@@ -5,33 +5,22 @@ import "core:os"
 import "core:slice"
 import "core:strconv"
 import "core:strings"
+
 import rl "vendor:raylib"
 
 import "dr:data"
-import "dr:prefs"
 import accent_view "dr:plugins/accent/view"
 import "dr:plugins/easy_mode"
 import "dr:plugins/fps_unlock"
 import "dr:plugins/loadout"
 import "dr:plugins/new_weapons"
 import "dr:plugins/passives"
+import "dr:prefs"
+import "dr:render"
 import "dr:sim"
-import "dr:sim/systems/weapon_system"
-import "dr:sim/systems/player_system"
 import "dr:sim/lifecycle"
-
-// The original presents a 416x480 play-field inside a 640x480 screen; the
-// terrain runtime configures a 416x480x16 source view. We keep that logical
-// size and let raylib scale it to the window. The remaining 224x480 strip on
-// the right is the score bar panel (U_Display::GetFrontScorebarRect places it
-// immediately after the play field; U_Display::Init hardcodes the screen
-// itself to 640x480, not a perm float).
-PLAY_W :: 416
-PLAY_H :: 480
-SCREEN_W :: 640
-SCREEN_H :: 480
-
-WINDOW_SCALE :: 2
+import "dr:sim/systems/player_system"
+import "dr:sim/systems/weapon_system"
 
 // A stall (window drag, breakpoint, GC pause) must not make the simulation
 // try to catch up all at once; cap how many steps one render frame can run.
@@ -79,7 +68,7 @@ main :: proc() {
 		flags += {.WINDOW_HIDDEN}
 	}
 	rl.SetConfigFlags(flags)
-	rl.InitWindow(SCREEN_W * WINDOW_SCALE, SCREEN_H * WINDOW_SCALE, "Deimos Rising")
+	rl.InitWindow(render.SCREEN_W * render.WINDOW_SCALE, render.SCREEN_H * render.WINDOW_SCALE, "Deimos Rising")
 	defer rl.CloseWindow()
 
 	if !headless {
@@ -97,19 +86,19 @@ main :: proc() {
 	step_hz := defs.perm_floats[0x20]
 	rl.SetTargetFPS(i32(step_hz)) // the interactive loop retargets per the high refresh rate setting
 
-	renderer: Renderer
-	renderer_init(&renderer, root, prefs_classic(&ps), !headless)
-	defer renderer_destroy(&renderer)
+	renderer: render.Renderer
+	render.renderer_init(&renderer, root, prefs_classic(&ps), !headless)
+	defer render.renderer_destroy(&renderer)
 
-	particles: Particles
-	particles_init(&particles)
-	defer particles_destroy(&particles)
+	particles: render.Particles
+	render.particles_init(&particles)
+	defer render.particles_destroy(&particles)
 
-	blurs: Blurs
-	blurs_init(&blurs)
-	defer blurs_destroy(&blurs)
+	blurs: render.Blurs
+	render.blurs_init(&blurs)
+	defer render.blurs_destroy(&blurs)
 
-	notices: Notices
+	notices: render.Notices
 
 	state := new(sim.State)
 	defer free(state)
@@ -178,7 +167,7 @@ main :: proc() {
 	// Every frame is drawn into this fixed 1280x960 canvas, then scaled to
 	// fit the window, letterboxed -- which is what lets fullscreen (and a
 	// resized window) show the whole game rather than its top-left corner.
-	renderer.canvas = rl.LoadRenderTexture(SCREEN_W * WINDOW_SCALE, SCREEN_H * WINDOW_SCALE)
+	renderer.canvas = rl.LoadRenderTexture(render.SCREEN_W * render.WINDOW_SCALE, render.SCREEN_H * render.WINDOW_SCALE)
 
 	// DR_NETPLAY=host or DR_NETPLAY=join:<address> jumps straight into the
 	// netplay lobby already hosting/joining -- see
@@ -211,7 +200,7 @@ main :: proc() {
 	// presentation: nothing ever reads it back into the simulation, so it
 	// cannot change gameplay, films, netplay or a checksum -- at the cost of
 	// drawing up to one step (~33 ms) behind the newest state.
-	interp_prev := new(Interp_Prev)
+	interp_prev := new(render.Interp_Prev)
 	defer free(interp_prev)
 	fps_high: Maybe(bool)
 	for !rl.WindowShouldClose() && !flow.quit {
@@ -251,7 +240,7 @@ main :: proc() {
 		for steps := 0; accumulator >= step_dt && steps < MAX_STEPS_PER_FRAME; steps += 1 {
 			was_playing := flow.mode == .Playing
 			if high {
-				interp_capture(interp_prev, state) // before this step; a step that changes nothing leaves them equal
+				render.interp_capture(interp_prev, state) // before this step; a step that changes nothing leaves them equal
 			}
 			flow_step(&flow, &renderer, &particles, &blurs, &notices)
 			if was_playing {
@@ -267,7 +256,7 @@ main :: proc() {
 
 		rl.BeginTextureMode(renderer.canvas)
 		rl.ClearBackground(rl.Color{0, 0, 0, 255})
-		flow_draw(&flow, &renderer, &particles, &blurs, &notices, WINDOW_SCALE)
+		flow_draw(&flow, &renderer, &particles, &blurs, &notices, render.WINDOW_SCALE)
 		if show_debug && sim.level_def(state) != nil {
 			draw_debug(state, &report)
 		}
@@ -308,18 +297,18 @@ canvas_fit :: proc(canvas: rl.RenderTexture2D) -> rl.Rectangle {
 // against the original. Flow's Title branch (the only menu mode so far)
 // returns before touching particles/blurs/notices, so nil is safe here; add
 // a case as each later stage (Level Select, Credits, High Scores) lands.
-run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, name, path: string, ps: ^Prefs_State) {
+run_menu_shot :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, root, name, path: string, ps: ^Prefs_State) {
 	flow: Flow
 	flow_init(&flow, root, defs, state, r, ps)
 	// Real (empty) presentation buffers, for the cases that draw a game
 	// frame behind the menu.
-	particles: Particles
-	particles_init(&particles)
-	defer particles_destroy(&particles)
-	blurs: Blurs
-	blurs_init(&blurs)
-	defer blurs_destroy(&blurs)
-	notices: Notices
+	particles: render.Particles
+	render.particles_init(&particles)
+	defer render.particles_destroy(&particles)
+	blurs: render.Blurs
+	render.blurs_init(&blurs)
+	defer render.blurs_destroy(&blurs)
+	notices: render.Notices
 	switch name {
 	case "main":
 		flow.mode = .Title
@@ -434,11 +423,11 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		flow_effects_sync(&flow, &particles, &blurs, &notices)
 		for _ in 0 ..< hold {
 			_ = sim.session_step(state, {{.Fire_Air}, {}})
-			particles_step(&particles, state)
+			render.particles_step(&particles, state)
 		}
 		for _ in 0 ..< after {
 			_ = sim.session_step(state, {})
-			particles_step(&particles, state)
+			render.particles_step(&particles, state)
 		}
 		flow.mode = .Playing
 	case "main_netplay":
@@ -469,8 +458,8 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		flow_start_session(&flow, 0x1234_5678, .Single, 0)
 		for i := 0; i < 2000 && (i < 300 || len(particles.live) == 0); i += 1 {
 			_ = sim.session_step(state, {{.Fire_Air, .Fire_Ground}, {}})
-			particles_step(&particles, state)
-			blurs_step(&blurs, state)
+			render.particles_step(&particles, state)
+			render.blurs_step(&blurs, state)
 		}
 		fmt.eprintfln("before quitting: %d particles, %d ghosts", len(particles.live), len(blurs.live))
 		flow.mode = .Title // quitting to the menu
@@ -484,8 +473,8 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		for _ in 0 ..< 90 {
 			_ = sim.session_step(state, {})
 		}
-		prev := new(Interp_Prev, context.temp_allocator)
-		interp_capture(prev, state)
+		prev := new(render.Interp_Prev, context.temp_allocator)
+		render.interp_capture(prev, state)
 		_ = sim.session_step(state, {})
 		flow.mode = .Playing
 		r.interp_prev = prev
@@ -621,10 +610,10 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 	// which is hidden (main) -- a hidden window's back buffer is not
 	// guaranteed to hold anything. r.canvas lets build_frame's terrain
 	// drawing return to it (resume_canvas); renderer_destroy unloads it.
-	r.canvas = rl.LoadRenderTexture(SCREEN_W * WINDOW_SCALE, SCREEN_H * WINDOW_SCALE)
+	r.canvas = rl.LoadRenderTexture(render.SCREEN_W * render.WINDOW_SCALE, render.SCREEN_H * render.WINDOW_SCALE)
 	rl.BeginTextureMode(r.canvas)
 	rl.ClearBackground(rl.Color{0, 0, 0, 255})
-	flow_draw(&flow, r, &particles, &blurs, &notices, WINDOW_SCALE)
+	flow_draw(&flow, r, &particles, &blurs, &notices, render.WINDOW_SCALE)
 	diagnostics_draw(&diag, flow.netplay_active, flow.netplay.ping_ms)
 	if name == "restarted" {
 		fmt.eprintfln("new game drawn with: %d particles, %d ghosts", len(particles.live), len(blurs.live))
@@ -642,7 +631,7 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 }
 
 // Steps the simulation, capturing the frame at each requested step.
-run_shots :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, blurs: ^Blurs, notices: ^Notices, film: ^sim.Film, path, at: string) {
+run_shots :: proc(r: ^render.Renderer, s: ^sim.State, particles: ^render.Particles, blurs: ^render.Blurs, notices: ^render.Notices, film: ^sim.Film, path, at: string) {
 	steps := make([dynamic]int, context.temp_allocator)
 	rest := at == "" ? "120" : at
 	for field in strings.split_iterator(&rest, ",") {
@@ -663,7 +652,7 @@ run_shots :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, blurs: ^Bl
 	for i in 0 ..= last {
 		if r.find != "" {
 			r.find_hits = 0
-			build_frame(r, s, blurs, notices)
+			render.build_frame(r, s, blurs, notices)
 			if r.find_hits > 0 {
 				found += 1
 				if found <= 20 {
@@ -671,16 +660,16 @@ run_shots :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, blurs: ^Bl
 				}
 			}
 			sim.step(s, {}, film)
-			particles_step(particles, s)
-			blurs_step(blurs, s)
-			notices_step(notices, s)
+			render.particles_step(particles, s)
+			render.blurs_step(blurs, s)
+			render.notices_step(notices, s)
 			continue
 		}
 		r.dump = dump && next < len(steps) && steps[next] == i
 		if r.dump {
 			fmt.printfln("step %v draw list:", i)
 		}
-		build_frame(r, s, blurs, notices)
+		render.build_frame(r, s, blurs, notices)
 		// Only a frame that is saved is presented: EndDrawing waits for
 		// vsync, which made a shot a few thousand steps in take minutes.
 		// Twice, so both swap buffers hold it -- the read-back below reads
@@ -689,7 +678,7 @@ run_shots :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, blurs: ^Bl
 			for _ in 0 ..< 2 {
 				rl.BeginDrawing()
 				rl.ClearBackground(rl.Color{0, 0, 0, 255})
-				present(r, s, particles, WINDOW_SCALE)
+				render.present(r, s, particles, render.WINDOW_SCALE)
 				rl.EndDrawing()
 			}
 		}
@@ -705,10 +694,10 @@ run_shots :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, blurs: ^Bl
 			next += 1
 		}
 		sim.step(s, {}, film)
-		particles_step(particles, s)
-		blurs_step(blurs, s)
-		notices_step(notices, s)
-		sounds_step(&r.textures, s)
+		render.particles_step(particles, s)
+		render.blurs_step(blurs, s)
+		render.notices_step(notices, s)
+		render.sounds_step(&r.textures, s)
 	}
 	if r.find != "" {
 		fmt.printfln("%q: %v of %v steps", r.find, found, last + 1)
@@ -730,12 +719,12 @@ draw_debug :: proc(s: ^sim.State, report: ^data.Defs_Report) {
 			continue
 		}
 		b := lifecycle.object_bounds(sim.entity_at(s, i32(i)).obj)
-		rl.DrawRectangleLines((b.left + VIEW_X) * WINDOW_SCALE, b.top * WINDOW_SCALE,
-			(b.right - b.left) * WINDOW_SCALE, (b.bottom - b.top) * WINDOW_SCALE,
+		rl.DrawRectangleLines((b.left + render.VIEW_X) * render.WINDOW_SCALE, b.top * render.WINDOW_SCALE,
+			(b.right - b.left) * render.WINDOW_SCALE, (b.bottom - b.top) * render.WINDOW_SCALE,
 			rl.Color{220, 170, 90, 120})
 	}
 	b := lifecycle.object_bounds(sim.player_at(s, 0).obj)
-	rl.DrawRectangleLines((b.left + VIEW_X) * WINDOW_SCALE, b.top * WINDOW_SCALE,
-		(b.right - b.left) * WINDOW_SCALE, (b.bottom - b.top) * WINDOW_SCALE,
+	rl.DrawRectangleLines((b.left + render.VIEW_X) * render.WINDOW_SCALE, b.top * render.WINDOW_SCALE,
+		(b.right - b.left) * render.WINDOW_SCALE, (b.bottom - b.top) * render.WINDOW_SCALE,
 		rl.Color{120, 200, 255, 160})
 }

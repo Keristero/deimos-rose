@@ -1,4 +1,4 @@
-package game
+package render
 
 // The score bar: the panel to the right of the play field (G_ScoreBar_*).
 // Per player it draws, in G_ScoreBar_Draw's order, the score, the ship
@@ -25,8 +25,8 @@ import rl "vendor:raylib"
 
 import "dr:data"
 import "dr:sim"
-import "dr:sim/systems/weapon_system"
 import "dr:sim/lifecycle"
+import "dr:sim/systems/weapon_system"
 
 // G_ScoreBar_Process's state, one per player (the 0x149-byte blocks at
 // DAT_004f0a20).

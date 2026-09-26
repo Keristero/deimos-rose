@@ -1,9 +1,4 @@
-package game
-
-import "base:runtime"
-
-import "dr:plugins/accent"
-import "dr:sim"
+package render
 
 // Render systems: what draws a frame from the state, in a loop of their own
 // (notes/ecs-refactor.md). They read the simulation and never change it;
@@ -14,6 +9,11 @@ import "dr:sim"
 //
 // Every draw only appends to its own layer's list, and present draws the
 // layers in order, so what the order decides is the order within a layer.
+
+import "base:runtime"
+
+import "dr:plugins/accent"
+import "dr:sim"
 
 MAX_RENDER_SYSTEMS :: 32
 
@@ -43,7 +43,7 @@ render_system_count: int
 // there the `after` and `before` lists must outlive the call: package
 // variables, not slice literals, which live on the caller's stack.
 render_system_register :: proc(sys: Render_System) {
-	assert(render_system_count < MAX_RENDER_SYSTEMS, "game: too many render systems")
+	assert(render_system_count < MAX_RENDER_SYSTEMS, "render: too many render systems")
 	render_systems[render_system_count] = sys
 	render_system_count += 1
 }

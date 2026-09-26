@@ -1,5 +1,12 @@
-package game
+package render
 
+// Presentation: what the player sees and hears of a state. The assets it
+// is drawn from, the renderer and its render systems (render_systems.odin),
+// text, the score bar, the effects the simulation hands over (particles,
+// blurs, beams, notices) and the sounds it asks for. It reads the
+// simulation and never changes it. Below game/ and ui/, so that a plugin's
+// view/ package can draw without importing the game.
+//
 // Compositing a frame the way the original does.
 //
 // Every drawable pushes sprites into one of sixteen layer lists, and the frame

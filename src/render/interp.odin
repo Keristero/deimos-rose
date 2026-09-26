@@ -1,4 +1,4 @@
-package game
+package render
 
 import "dr:sim"
 

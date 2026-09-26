@@ -34,7 +34,9 @@ import "core:strings"
 
 import rl "vendor:raylib"
 
+import "dr:render"
 import "dr:sim"
+import "dr:ui"
 
 @(private = "file") HSE_TICK_HZ :: 60.0
 @(private = "file") HSE_FADE_SECONDS :: 32.0 / HSE_TICK_HZ
@@ -133,7 +135,7 @@ score_entry_typed :: proc(se: ^Score_Entry) -> string {
 }
 
 // Called once per render frame from flow_handle_input's .Score_Entry case.
-score_entry_update :: proc(fl: ^Flow, r: ^Renderer, se: ^Score_Entry) {
+score_entry_update :: proc(fl: ^Flow, r: ^render.Renderer, se: ^Score_Entry) {
 	dt := rl.GetFrameTime()
 	se.t += dt
 
@@ -153,21 +155,21 @@ score_entry_update :: proc(fl: ^Flow, r: ^Renderer, se: ^Score_Entry) {
 			if se.name_len < HSE_NAME_MAX {
 				se.name_buf[se.name_len] = u8(c)
 				se.name_len += 1
-				menu_play_sound(r, HSE_TYPE_SOUND)
+				ui.menu_play_sound(r, HSE_TYPE_SOUND)
 			} else {
-				menu_play_sound(r, HSE_FULL_SOUND)
+				ui.menu_play_sound(r, HSE_FULL_SOUND)
 			}
 		}
 		if rl.IsKeyPressed(.BACKSPACE) && se.name_len > 0 {
 			se.name_len -= 1
-			menu_play_sound(r, HSE_INCL_SOUND)
+			ui.menu_play_sound(r, HSE_INCL_SOUND)
 		}
 		if rl.IsKeyPressed(.ESCAPE) {
 			se.done = true
 			se.state, se.t = .Fading_Out, 0
 		} else if rl.IsKeyPressed(.ENTER) || rl.IsKeyPressed(.KP_ENTER) {
 			score_entry_commit(se)
-			menu_play_sound(r, HSE_INCL_SOUND)
+			ui.menu_play_sound(r, HSE_INCL_SOUND)
 			se.state, se.t = .Held, 0
 		}
 
@@ -241,8 +243,8 @@ score_entry_commit :: proc(se: ^Score_Entry) {
 	high_scores_save(&save)
 }
 
-score_entry_draw :: proc(r: ^Renderer, se: ^Score_Entry) {
-	menu_draw_background(r, "back")
+score_entry_draw :: proc(r: ^render.Renderer, se: ^Score_Entry) {
+	ui.menu_draw_background(r, "back")
 
 	alpha: f32
 	switch se.state {
@@ -254,7 +256,7 @@ score_entry_draw :: proc(r: ^Renderer, se: ^Score_Entry) {
 		alpha = 1 - clamp(se.t / HSE_FADE_SECONDS, 0, 1)
 	}
 	a := u8(alpha * 255)
-	header := rl.Color{HIGH_SCORES_HEADER_RGB[0], HIGH_SCORES_HEADER_RGB[1], HIGH_SCORES_HEADER_RGB[2], a}
+	header := rl.Color{ui.HIGH_SCORES_HEADER_RGB[0], ui.HIGH_SCORES_HEADER_RGB[1], ui.HIGH_SCORES_HEADER_RGB[2], a}
 	// FUN_0043c480 gives the actively-edited row its own preset (0xe/0x11/0x14)
 	// distinct from every other name-entry-mode row (0xf/0x12/0x15), but
 	// neither has a decompiled colour value -- both draw the same plain white
@@ -262,9 +264,9 @@ score_entry_draw :: proc(r: ^Renderer, se: ^Score_Entry) {
 	// marks the active row.
 	row_color := rl.Color{HIGH_SCORES_ROW_RGB[0], HIGH_SCORES_ROW_RGB[1], HIGH_SCORES_ROW_RGB[2], a}
 
-	menu_draw_text(r, "Name", HIGH_SCORES_NAME_X, HIGH_SCORES_HEADER_Y, header)
-	menu_draw_text(r, "Score", HIGH_SCORES_SCORE_X, HIGH_SCORES_HEADER_Y, header)
-	menu_draw_text(r, "Sector", HIGH_SCORES_SECTOR_X, HIGH_SCORES_HEADER_Y, header)
+	ui.menu_draw_text(r, "Name", HIGH_SCORES_NAME_X, HIGH_SCORES_HEADER_Y, header)
+	ui.menu_draw_text(r, "Score", HIGH_SCORES_SCORE_X, HIGH_SCORES_HEADER_Y, header)
+	ui.menu_draw_text(r, "Sector", HIGH_SCORES_SECTOR_X, HIGH_SCORES_HEADER_Y, header)
 	y := f32(HIGH_SCORES_ROW0_Y)
 
 	rank := se.ranks[se.player_i]
@@ -278,9 +280,9 @@ score_entry_draw :: proc(r: ^Renderer, se: ^Score_Entry) {
 				name = strings.concatenate({name, "_"}, context.temp_allocator) // perm game string 7
 			}
 		}
-		menu_draw_text(r, name, HIGH_SCORES_NAME_X, i32(y), color)
-		menu_draw_text(r, fmt.tprintf("%d", e.score), HIGH_SCORES_SCORE_X, i32(y), color)
-		menu_draw_text(r, e.sector, HIGH_SCORES_SECTOR_X, i32(y), color)
+		ui.menu_draw_text(r, name, HIGH_SCORES_NAME_X, i32(y), color)
+		ui.menu_draw_text(r, fmt.tprintf("%d", e.score), HIGH_SCORES_SCORE_X, i32(y), color)
+		ui.menu_draw_text(r, e.sector, HIGH_SCORES_SECTOR_X, i32(y), color)
 		y += HIGH_SCORES_ROW_GAP
 	}
 }
