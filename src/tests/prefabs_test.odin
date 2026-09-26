@@ -7,6 +7,7 @@ import "dr:plugins/fps_unlock"
 import "dr:sim"
 import _ "dr:sim/core"
 import "dr:sim/systems/entity_system"
+import "dr:sim/systems/movement_system"
 
 // Prefabs (sim/prefabs.odin): a unit's states become prefab entities whose
 // components follow the definitions' flags, and a plugin's builder runs only
@@ -48,6 +49,9 @@ prefab_defs :: proc() -> (defs: sim.Defs) {
 	defs.units = make([]sim.Unit, 2)
 	defs.units[0].states = a
 	defs.units[1].states = b
+	defs.units[1].flees_north_on_no_active_players = true
+	defs.units[1].flees_south_on_no_active_players = true
+	defs.units[1].constrain_in_game_area = true
 	return
 }
 
@@ -73,6 +77,7 @@ prefabs_follow_the_state_flags :: proc(t: ^testing.T) {
 	testing.expect_value(t, sim.prefab_state_mask(&pf, 0, 2), sim.mask_of(entity_system.Pauses_Scrolling, entity_system.Motion_Blur))
 	testing.expect_value(t, sim.prefab_state_mask(&pf, 1, 0), sim.mask_of(entity_system.Follows_Owner_Look))
 	testing.expect_value(t, pf.unit_mask[0], sim.Component_Mask{})
+	testing.expect_value(t, pf.unit_mask[1], sim.mask_of(movement_system.Flees_Without_Players, movement_system.Constrained_To_Play_Area))
 
 	p := sim.get(pf.world, sim.prefab_state_id(&pf, 0, 0), entity_system.Emits_Particles)
 	testing.expect(t, p != nil)
@@ -82,6 +87,9 @@ prefabs_follow_the_state_flags :: proc(t: ^testing.T) {
 	testing.expect_value(t, b.min_gap, i32(3))
 	look := sim.get(pf.world, sim.prefab_state_id(&pf, 1, 0), entity_system.Follows_Owner_Look)
 	testing.expect_value(t, look^, entity_system.Follows_Owner_Look{scale = true})
+	// North wins where a unit sets both, as in the original's test order.
+	flee := sim.get(pf.world, sim.prefab_unit_id(1), movement_system.Flees_Without_Players)
+	testing.expect_value(t, flee.flee, sim.res_id("nora"))
 }
 
 @(test)
@@ -96,6 +104,7 @@ prefab_builders_follow_the_session_plugins :: proc(t: ^testing.T) {
 
 	// A rebuild with the plugin on reuses pf and gives every unit the tag.
 	sim.prefabs_build(&pf, &defs, {int(fps_unlock.ID)})
-	testing.expect_value(t, pf.unit_mask[1], sim.mask_of(Test_Prefab_Tag))
+	testing.expect(t, sim.has(pf.world, sim.prefab_unit_id(1), Test_Prefab_Tag))
+	testing.expect(t, sim.has(pf.world, sim.prefab_unit_id(0), Test_Prefab_Tag))
 	testing.expect_value(t, sim.prefab_state_mask(&pf, 1, 0), sim.mask_of(entity_system.Follows_Owner_Look))
 }

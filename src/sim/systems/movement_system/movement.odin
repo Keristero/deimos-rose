@@ -7,8 +7,81 @@ package movement_system
 import "dr:sim"
 import "dr:sim/lifecycle"
 
-movement_ai_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool {
-	del, des := movement_ai(s, e, es.time)
+// G_Entity::DoMovementAI, as the stages it is made of. A fleeing entity
+// steers for its flee target and does nothing else; the rest look for the
+// nearest player, react to there being none, wander, keep to the play area
+// and hunt, in the original's order, each for the entities its query
+// names. An entity that starts to flee on the way skips what is left.
+
+// DoMovementAI's flee path.
+flee_steer_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool {
+	if e.fleeing {
+		move_to_target(s, e)
+		rotate_to_target(s, e, es.time)
+	}
+	return true
+}
+
+sense_players_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool {
+	if e.fleeing {
+		return true
+	}
+	n := &es.nearest
+	n.loc, n.dist, n.player, n.found = closest_active_player(s, e.loc)
+	if !n.found {
+		e.hunt_player = -1
+	}
+	return true
+}
+
+// Entities with Deleted_Without_Players.
+alone_delete_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool {
+	if e.fleeing || es.nearest.found {
+		return true
+	}
+	return lifecycle.entity_carry_on(s, e, true, false, es.time)
+}
+
+// Entities with Destructs_Without_Players.
+alone_destruct_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool {
+	if e.fleeing || es.nearest.found {
+		return true
+	}
+	return lifecycle.entity_carry_on(s, e, false, true, es.time)
+}
+
+// Entities with Flees_Without_Players.
+alone_flee_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool {
+	if e.fleeing || es.nearest.found {
+		return true
+	}
+	lifecycle.entity_flee(s, e, sim.step_component(s, e, es, Flees_Without_Players).flee)
+	return true
+}
+
+// Entities with Cyclic_Motion.
+cyclic_motion_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool {
+	if !e.fleeing {
+		cyclic_motion(s, e)
+	}
+	return true
+}
+
+// Entities with Constrained_To_Play_Area.
+constrain_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool {
+	if !e.fleeing {
+		constrain_in_game_area(s, e)
+	}
+	return true
+}
+
+// Towards the nearest player, or holding off from it once in range, where
+// reaching its range can change the entity's state.
+hunt_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool {
+	if e.fleeing {
+		return true
+	}
+	del, des := hunt(s, e, es.nearest, es.time)
 	return lifecycle.entity_carry_on(s, e, del, des, es.time)
 }
 
@@ -20,16 +93,20 @@ move_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool {
 	return true
 }
 
-follow_owner_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool {
-	if es.st.lock_to_owner_loc {
-		lock_to_owner(s, e)
-	}
-	if es.st.link_to_owner_loc {
-		link_to_owner(s, e)
-	}
-	if es.st.orbit_owner {
-		orbit_owner(s, e)
-	}
+// The ways of following the owner, in the original's order, for the
+// entities with Locked_To_Owner, Linked_To_Owner and Orbits_Owner.
+lock_to_owner_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool {
+	lock_to_owner(s, e)
+	return true
+}
+
+link_to_owner_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool {
+	link_to_owner(s, e)
+	return true
+}
+
+orbit_owner_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool {
+	orbit_owner(s, e)
 	return true
 }
 
@@ -125,46 +202,16 @@ rotate_to_target :: proc(s: ^sim.State, e: sim.Entity, time: i32) -> bool {
 	return false
 }
 
-// G_Entity::DoMovementAI.
-movement_ai :: proc(s: ^sim.State, e: sim.Entity, time: i32) -> (delete, destroy: bool) {
-	if e.fleeing {
-		// DoMovementAI's flee path: steer to the flee target and rotate.
-		move_to_target(s, e)
-		rotate_to_target(s, e, time)
-		return
-	}
+// The end of G_Entity::DoMovementAI, from the nearest player `n`.
+hunt :: proc(s: ^sim.State, e: sim.Entity, n: sim.Sighting, time: i32) -> (delete, destroy: bool) {
 	st := sim.state_of(s, e)
-	u := sim.unit_of(s, e)
-	target, dist, player, found := closest_active_player(s, e.loc)
-	if !found {
-		e.hunt_player = -1
-		if st.delete_on_no_active_players {
-			return true, false
-		}
-		if st.destruct_on_no_active_players {
-			return false, true
-		}
-		if u.flees_north_on_no_active_players {
-			lifecycle.entity_flee(s, e, sim.res_id("nora"))
-			return
-		}
-		if u.flees_south_on_no_active_players {
-			lifecycle.entity_flee(s, e, sim.res_id("sora"))
-			return
-		}
-	}
-	if st.cyclic_motion {
-		cyclic_motion(s, e)
-	}
-	if u.constrain_in_game_area {
-		constrain_in_game_area(s, e)
-	}
-	hunt := false
+	target, dist, player, found := n.loc, n.dist, n.player, n.found
+	hunting := false
 	e.hunt_target = target
 	e.hunt_player = player
 	if found {
 		if st.on_range == 0 || !(dist < st.on_range) {
-			hunt = st.hunts
+			hunting = st.hunts
 		} else {
 			// In range: react.
 			to := st.on_range_change_to
@@ -185,14 +232,14 @@ movement_ai :: proc(s: ^sim.State, e: sim.Entity, time: i32) -> (delete, destroy
 				}
 			}
 			if !st.hold_position_to_target {
-				hunt = st.hunts
+				hunting = st.hunts
 			} else {
 				hold_to_target(s, e, target)
-				hunt = false
+				hunting = false
 			}
 		}
 	}
-	if !e.fleeing && hunt {
+	if !e.fleeing && hunting {
 		move_to_target(s, e)
 	} else {
 		adjust_to_required_velocity(s, e)
@@ -242,13 +289,14 @@ move_to_target :: proc "contextless" (s: ^sim.State, e: sim.Entity) {
 }
 
 // G_Entity::Priv_AdjustToRequiredVelocity.
-adjust_to_required_velocity :: proc "contextless" (s: ^sim.State, e: sim.Entity) {
+adjust_to_required_velocity :: proc(s: ^sim.State, e: sim.Entity) {
 	if e.stationary {
 		e.vel, e.vel_target, e.vel_delta = {}, {}, {}
 		return
 	}
 	st := sim.state_of(s, e)
-	if st.orbit_owner {
+	// An orbit's speed is its angle's: see orbit_owner.
+	if sim.entity_has(s, e, Orbits_Owner) {
 		top := st.max_speed
 		if e.vel.x < top {
 			e.vel.x += st.delta

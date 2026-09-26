@@ -74,18 +74,28 @@ Player_Stage :: struct {
 // One entity's pass through the stages, and what the stages hand each
 // other.
 Entity_Step :: struct {
-	time:   i32,
-	u:      ^Unit,
+	time:    i32,
+	u:       ^Unit,
 	// The entity's state as G_EG_Process's local holds it: refreshed where
 	// the original refreshes it, which is not after every state change
 	// (entity_step_state).
-	st:     ^Unit_State,
-	state:  i32,
+	st:      ^Unit_State,
+	state:   i32,
 	// The entity's components, its unit's and those of `st`: what a stage's
 	// query is matched against.
-	mask:   Component_Mask,
-	pause:  bool, // the state holds the scroll
-	bounds: Rect, // the entity's bounds after spawning
+	mask:    Component_Mask,
+	pause:   bool, // the state holds the scroll
+	// The nearest player in play, as the movement AI found it before the
+	// entity moved: the stages after it act on the same sighting.
+	nearest: Sighting,
+	bounds:  Rect, // the entity's bounds after spawning
+}
+
+Sighting :: struct {
+	loc:    Vec,
+	dist:   f32,
+	player: i32, // -1 for none
+	found:  bool,
 }
 
 // A stage returns false when the entity is done for this step (deleted,
@@ -245,7 +255,8 @@ entity_step_state :: proc(s: ^State, e: Entity, es: ^Entity_Step) {
 }
 
 // T for the entity as the stage sees it: its own, else its state's (the
-// state `es` holds), else its unit's. nil when none of them has one.
+// state `es` holds), else its unit's. nil when none of them has one, and
+// for a tag, which has nothing to point at (entity_has).
 step_component :: proc(s: ^State, e: Entity, es: ^Entity_Step, $T: typeid) -> ^T {
 	if c := get(s.ecs, pool_entity(e.pool_index), T); c != nil {
 		return c
@@ -254,6 +265,14 @@ step_component :: proc(s: ^State, e: Entity, es: ^Entity_Step, $T: typeid) -> ^T
 		return c
 	}
 	return get(s.prefabs.world, prefab_unit_id(e.unit), T)
+}
+
+// Whether the entity as it is now has T, its own or shared: what a tag
+// (a component with no fields, so nothing to get) is asked with.
+entity_has :: proc(s: ^State, e: Entity, $T: typeid) -> bool {
+	return has(s.ecs, pool_entity(e.pool_index), T) ||
+		has(s.prefabs.world, prefab_state_id(s.prefabs, e.unit, e.state), T) ||
+		has(s.prefabs.world, prefab_unit_id(e.unit), T)
 }
 
 // T for the entity as it is now: its own, else its current state's, else
