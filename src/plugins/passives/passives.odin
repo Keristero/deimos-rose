@@ -5,7 +5,7 @@ package passives
 // how each entry was read.
 //
 // A passive has one to three levels, and each level lists modifiers to the
-// core's stats (sim/stats.odin), which this plugin provides. Within one
+// core's stats (sim/stats), which this plugin provides. Within one
 // passive only the level held counts, not the levels below it ((10,x,30) is
 // 30 at level 3, not 40). An `x` (X below) leaves the value as the level
 // below had it; a stat whose levels up to the one held are all x is not
@@ -22,6 +22,9 @@ import "base:runtime"
 import _ "dr:plugins/extra_prefs"
 import _ "dr:sim/core"
 import "dr:sim"
+import "dr:sim/stats"
+import "dr:sim/lifecycle"
+import "dr:sim/systems/collision_system"
 
 Res_ID :: sim.Res_ID
 NONE :: sim.NONE
@@ -299,15 +302,15 @@ risky_reward_stage :: proc(s: ^sim.State, p: sim.Player, ps: ^sim.Player_Step) -
 	if p.state != .Playing {
 		return true
 	}
-	if sim.player_stat(s, p.number, .Risky_Reward).enabled && !sim.single(s, sim.Level_Info).ending &&
-	   ps.time > 0 && ps.time % (RISKY_REWARD_SECONDS * sim.step_hz(s)) == 0 {
+	if stats.player_stat(s, p.number, .Risky_Reward).enabled && !sim.single(s, sim.Level_Info).ending &&
+	   ps.time > 0 && ps.time % (RISKY_REWARD_SECONDS * stats.step_hz(s)) == 0 {
 		w, h := sim.view_width(s.defs), sim.view_height(s.defs)
 		req := sim.spawn_request(RISKY_REWARD_UNIT)
 		req.loc = {
 			f32(sim.roll_int(s, RISKY_REWARD_MARGIN, w - RISKY_REWARD_MARGIN, SITE_RISKY_X)),
 			f32(sim.roll_int(s, RISKY_REWARD_MARGIN, h * 2 / 3, SITE_RISKY_Y)),
 		}
-		sim.eg_request_spawn(s, req)
+		lifecycle.eg_request_spawn(s, req)
 	}
 	return true
 }
@@ -315,7 +318,7 @@ risky_reward_stage :: proc(s: ^sim.State, p: sim.Player, ps: ^sim.Player_Step) -
 // Steps without damage before shields start to refill.
 @(private = "file")
 regen_wait :: #force_inline proc "contextless" (s: ^sim.State, p: sim.Player) -> i32 {
-	return sim.player_stat(s, p.number, .Recharge_Delay).extra * sim.step_hz(s)
+	return stats.player_stat(s, p.number, .Recharge_Delay).extra * stats.step_hz(s)
 }
 
 // Shields climb in the eighths shields_set rounds to: regen_acc gathers
@@ -327,7 +330,7 @@ regen_wait :: #force_inline proc "contextless" (s: ^sim.State, p: sim.Player) ->
 // right after this, so with no wait at all (Recharge_Delay's last level)
 // the climb still starts over.
 shield_regen_stage :: proc(s: ^sim.State, p: sim.Player, ps: ^sim.Player_Step) -> bool {
-	if p.state != .Playing || !sim.player_stat(s, p.number, .Shield_Regenerates).enabled {
+	if p.state != .Playing || !stats.player_stat(s, p.number, .Shield_Regenerates).enabled {
 		return true
 	}
 	st := sim.get(s.ecs, sim.player_entity(p.number), Passive_State)
@@ -341,18 +344,18 @@ shield_regen_stage :: proc(s: ^sim.State, p: sim.Player, ps: ^sim.Player_Step) -
 		st.regen_acc = 0
 		return true
 	}
-	hz := sim.step_hz(s)
-	st.regen_acc += 8 * sim.player_stat(s, p.number, .Shield_Regen_Rate).extra
+	hz := stats.step_hz(s)
+	st.regen_acc += 8 * stats.player_stat(s, p.number, .Shield_Regen_Rate).extra
 	for st.regen_acc >= hz {
 		st.regen_acc -= hz
-		sim.player_shields_add(s, p, 0.125)
+		collision_system.player_shields_add(s, p, 0.125)
 	}
 	return true
 }
 
 // For presentation: whether the ship's shields are refilling this step.
 player_regenerating :: proc "contextless" (s: ^sim.State, p: sim.Player) -> bool {
-	if !sim.mod_on(s, ID) || p.state != .Playing || p.shields >= 100 || !sim.player_stat(s, p.number, .Shield_Regenerates).enabled {
+	if !sim.mod_on(s, ID) || p.state != .Playing || p.shields >= 100 || !stats.player_stat(s, p.number, .Shield_Regenerates).enabled {
 		return false
 	}
 	return p.calm >= regen_wait(s, p)

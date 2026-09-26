@@ -289,7 +289,7 @@ Effects :: struct {
 }
 
 // Not the original's; all zero unless a plugin shaped the entity's weapon
-// (stats.odin).
+// (sim/stats).
 Shaped :: struct {
 	shaped_by:     u8,  // the weapon, as shot_shaper gives it
 	shaped_depth:  u8,  // spawners between it and the weapon
@@ -401,4 +401,70 @@ group_alloc :: proc(s: ^State) -> i32 {
 group_free :: proc "contextless" (s: ^State, i: i32) {
 	single(s, Pool).group_used[i] = false
 	group_at(s, i)^ = {}
+}
+
+// G_EG_SpawnRequest. Every caller copies a static template (identical in
+// G_EG, G_Game and G_Player: id "none", owner player -1, speed 1.0) and fills
+// in what it needs.
+Spawn_Request :: struct {
+	unit:          Res_ID, // +0x00
+	loc:           Vec,    // +0x04
+	map_relative:  bool,   // +0x0c y is a map row; converted to screen space
+	explicit_heading: bool, // +0x0d
+	heading:       i32,    // +0x0e used when explicit_heading
+	owner_player:  i32,    // +0x12
+	place_heading: i32,    // +0x16 the placement's heading
+	stationary:    bool,   // +0x1a
+	terrain_effects: bool, // +0x1b
+	owner:         Entity_Ref, // +0x1c
+	speed_scale:   f32,    // +0x24
+	// Not the original's: the weapon that shaped this spawn (see
+	// shot_shaper) and how many spawners removed from the weapon it is.
+	shaped_by:     u8,
+	shaped_depth:  u8,
+}
+
+spawn_request :: proc "contextless" (unit: Res_ID) -> Spawn_Request {
+	return {unit = unit, owner_player = -1, owner = NO_REF, speed_scale = 1}
+}
+
+// FUN_0041b700: is a reference still the entity it was taken from?
+ref_valid :: proc "contextless" (s: ^State, r: Entity_Ref) -> bool {
+	if r.index == NO_LINK {
+		return false
+	}
+	e := entity_at(s, r.index)
+	return r.number == e.number && !e.deleted
+}
+
+unit_index :: proc "contextless" (d: ^Defs, id: Res_ID) -> i32 {
+	for &u, i in d.units {
+		if u.id == id {
+			return i32(i)
+		}
+	}
+	return -1
+}
+
+unit_of :: #force_inline proc "contextless" (s: ^State, e: Entity) -> ^Unit {
+	return &s.defs.units[e.unit]
+}
+
+state_of :: #force_inline proc "contextless" (s: ^State, e: Entity) -> ^Unit_State {
+	return &s.defs.units[e.unit].states[e.state]
+}
+
+// Where an entity's owner is: the owning entity if it still exists, else the
+// owning player if in play.
+owner_loc :: proc "contextless" (s: ^State, e: Entity) -> (loc: Vec, ok: bool) {
+	if ref_valid(s, e.owner) {
+		return entity_at(s, e.owner.index).loc, true
+	}
+	if e.owner_player != -1 {
+		p := player_at(s, e.owner_player)
+		if p.state == .Playing {
+			return p.loc, true
+		}
+	}
+	return {}, false
 }

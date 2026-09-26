@@ -1,4 +1,4 @@
-package sim
+package collision_system
 
 // What happens to a player that is hit: shields, the warning and hit spawns,
 // death, and picking things up.
@@ -7,6 +7,9 @@ package sim
 // constants (shields by 0x4eca70's value, money by 0xb2cce, lives by
 // 0x1524dcef, score by 0x5532a3e) as light anti-tampering. The integer
 // offsets change nothing, but the shields one does: see shields_set.
+
+import "dr:sim"
+import "dr:sim/lifecycle"
 
 // The shields offset, the single-precision float at 0x4eca70.
 @(private = "file") SHIELDS_OFFSET: f32 : 1324366
@@ -18,14 +21,14 @@ package sim
 // back off exactly. Whole numbers pass through unchanged; a hit's fractional
 // loss does not. Adding and subtracting in f32 rounds the sum once, as the
 // store does.
-shields_set :: proc "contextless" (p: Player, pct: f32) {
+shields_set :: proc "contextless" (p: sim.Player, pct: f32) {
 	p.shields = (pct + SHIELDS_OFFSET) - SHIELDS_OFFSET
 }
 
 // G_Player::Shields_Reset.
-player_shields_reset :: proc "contextless" (s: ^State, p: Player, full: bool) {
+player_shields_reset :: proc "contextless" (s: ^sim.State, p: sim.Player, full: bool) {
 	if p.active && full {
-		shields_set(p, f32(player_def(s, p).default_shield_percentage))
+		shields_set(p, f32(sim.player_def(s, p).default_shield_percentage))
 	} else if !p.active {
 		shields_set(p, 0)
 	}
@@ -35,7 +38,7 @@ player_shields_reset :: proc "contextless" (s: ^State, p: Player, full: bool) {
 }
 
 // G_Player::Shields_IncreasePercentage.
-player_shields_add :: proc "contextless" (s: ^State, p: Player, pct: f32) {
+player_shields_add :: proc "contextless" (s: ^sim.State, p: sim.Player, pct: f32) {
 	if !p.active || pct == 0 {
 		return
 	}
@@ -49,8 +52,8 @@ player_shields_add :: proc "contextless" (s: ^State, p: Player, pct: f32) {
 }
 
 // G_Player::Hit.
-player_hit :: proc(s: ^State, p: Player, damage: f32, time: i32) {
-	d := player_def(s, p)
+player_hit :: proc(s: ^sim.State, p: sim.Player, damage: f32, time: i32) {
+	d := sim.player_def(s, p)
 	if p.state != .Playing || p.hit_time + d.shield_hit_delay > time {
 		return
 	}
@@ -69,38 +72,38 @@ player_hit :: proc(s: ^State, p: Player, damage: f32, time: i32) {
 		player_destroy(s, p, time)
 		return
 	}
-	glow_start(p.obj, color_1555(d.hit_glow_color), d.hit_glow_speed, false)
+	lifecycle.glow_start(p.obj, sim.color_1555(d.hit_glow_color), d.hit_glow_speed, false)
 	if damage <= 0 {
 		return
 	}
-	if d.active_spawn_on_hit != NONE &&
-	   trunc_i32(s.defs.perm_floats[0xa2]) + p.hit_spawn_time <= time {
+	if d.active_spawn_on_hit != sim.NONE &&
+	   sim.trunc_i32(s.defs.perm_floats[0xa2]) + p.hit_spawn_time <= time {
 		p.hit_spawn_time = time
-		req := spawn_request(d.active_spawn_on_hit)
+		req := sim.spawn_request(d.active_spawn_on_hit)
 		req.loc = p.loc
 		req.owner_player = p.number
-		eg_request_spawn(s, req)
+		lifecycle.eg_request_spawn(s, req)
 	}
 	if !p.shield_warned && p.shields <= f32(d.shield_warning_percentage) {
-		if d.active_shield_warning_object != NONE {
-			req := spawn_request(d.active_shield_warning_object)
+		if d.active_shield_warning_object != sim.NONE {
+			req := sim.spawn_request(d.active_shield_warning_object)
 			req.loc = p.loc
 			req.owner_player = p.number
-			eg_request_spawn(s, req)
+			lifecycle.eg_request_spawn(s, req)
 		}
 		p.shield_warned = true
 	}
 }
 
 // G_Player::Destroy: the player dies, spilling its money as coins.
-player_destroy :: proc(s: ^State, p: Player, time: i32) {
+player_destroy :: proc(s: ^sim.State, p: sim.Player, time: i32) {
 	dispose_players_children(s, p.number)
-	d := player_def(s, p)
-	if d.death_spawn != NONE {
-		req := spawn_request(d.death_spawn)
+	d := sim.player_def(s, p)
+	if d.death_spawn != sim.NONE {
+		req := sim.spawn_request(d.death_spawn)
 		req.loc = p.loc
 		req.owner_player = p.number
-		eg_request_spawn(s, req)
+		lifecycle.eg_request_spawn(s, req)
 	}
 	p.hit_time = 0
 	p.hit_spawn_time = 0
@@ -112,10 +115,10 @@ player_destroy :: proc(s: ^State, p: Player, time: i32) {
 		unit := s.defs.perm_objects[2 + i]
 		for money >= value {
 			money -= value
-			if unit != NONE {
-				req := spawn_request(unit)
+			if unit != sim.NONE {
+				req := sim.spawn_request(unit)
 				req.loc = p.loc
-				eg_request_spawn(s, req)
+				lifecycle.eg_request_spawn(s, req)
 			}
 		}
 	}
@@ -131,7 +134,7 @@ player_destroy :: proc(s: ^State, p: Player, time: i32) {
 }
 
 // G_Player::Multiplier_Advance: 1, 2, 3, 4, 5, then 10.
-player_multiplier_advance :: proc(s: ^State, p: Player) {
+player_multiplier_advance :: proc(s: ^sim.State, p: sim.Player) {
 	if p.state != .Playing {
 		return
 	}
@@ -148,7 +151,7 @@ player_multiplier_advance :: proc(s: ^State, p: Player) {
 
 // G_Player::Priv_Multiplier_SpawnForCurrentMultiplier: the icon that shows
 // the current multiplier (perm objects 0x23..0x27).
-player_multiplier_spawn :: proc(s: ^State, p: Player) {
+player_multiplier_spawn :: proc(s: ^sim.State, p: sim.Player) {
 	if p.state != .Playing {
 		return
 	}
@@ -169,78 +172,78 @@ player_multiplier_spawn :: proc(s: ^State, p: Player) {
 		return
 	}
 	unit := s.defs.perm_objects[idx]
-	if unit == NONE {
+	if unit == sim.NONE {
 		return
 	}
 	dispose_entity_number(s, p.multiplier_entity)
-	req := spawn_request(unit)
+	req := sim.spawn_request(unit)
 	req.loc = p.loc
 	req.owner_player = p.number
-	r := eg_request_spawn(s, req)
+	r := lifecycle.eg_request_spawn(s, req)
 	p.multiplier_entity = r.number
 }
 
 // G_EG_DisposeByUniqueEntityNum.
-dispose_entity_number :: proc "contextless" (s: ^State, number: i32) {
-	w := single(s, Pool)
+dispose_entity_number :: proc "contextless" (s: ^sim.State, number: i32) {
+	w := sim.single(s, sim.Pool)
 	g := w.active.head
-	for g != NO_LINK {
-		i := group_at(s, g).entities.head
-		for i != NO_LINK {
-			e := entity_at(s, i)
+	for g != sim.NO_LINK {
+		i := sim.group_at(s, g).entities.head
+		for i != sim.NO_LINK {
+			e := sim.entity_at(s, i)
 			if e.number == number {
 				e.deleted = true
 				e.target_player = -1
 				return
 			}
-			i = link_of(entity_links(s), i).next
+			i = sim.link_of(sim.entity_links(s), i).next
 		}
-		g = link_of(group_links(s), g).next
+		g = sim.link_of(sim.group_links(s), g).next
 	}
 }
 
 // G_EG_DisposePlayersChildren.
-dispose_players_children :: proc "contextless" (s: ^State, player: i32) {
-	w := single(s, Pool)
+dispose_players_children :: proc "contextless" (s: ^sim.State, player: i32) {
+	w := sim.single(s, sim.Pool)
 	g := w.active.head
-	for g != NO_LINK {
-		i := group_at(s, g).entities.head
-		for i != NO_LINK {
-			e := entity_at(s, i)
-			if e.owner_player == player && state_of(s, e).can_be_deleted_on_owner_deletion {
+	for g != sim.NO_LINK {
+		i := sim.group_at(s, g).entities.head
+		for i != sim.NO_LINK {
+			e := sim.entity_at(s, i)
+			if e.owner_player == player && sim.state_of(s, e).can_be_deleted_on_owner_deletion {
 				e.deleted = true
 				e.target_player = -1
 			}
-			i = link_of(entity_links(s), i).next
+			i = sim.link_of(sim.entity_links(s), i).next
 		}
-		g = link_of(group_links(s), g).next
+		g = sim.link_of(sim.group_links(s), g).next
 	}
 }
 
 // FUN_0041c1b0: a player touches a pickup. Returns whether the pickup is
 // consumed (the caller then destroys it).
-player_collect :: proc(s: ^State, p: Player, e: Entity) -> bool {
-	u := unit_of(s, e)
+player_collect :: proc(s: ^sim.State, p: sim.Player, e: sim.Entity) -> bool {
+	u := sim.unit_of(s, e)
 	switch u.pickup_type {
-	case res_id("air "), res_id("grnd"):
+	case sim.res_id("air "), sim.res_id("grnd"):
 		// An invulnerable player leaves a weapon pickup where it is.
 		// Collecting one only destroys it: the weapon itself changes when
 		// the player presses Change_Air, in G_WeaponHandler::Process.
 		if p.invulnerable {
 			return false
 		}
-	case res_id("spec"):
+	case sim.res_id("spec"):
 		// Collected and destroyed, with no other effect (FUN_0041c1b0).
-	case res_id("shie"):
+	case sim.res_id("shie"):
 		player_shields_add(s, p, f32(u.pickup_value))
-	case res_id("exli"):
+	case sim.res_id("exli"):
 		player_add_life(s, p, true)
-	case res_id("coin"):
+	case sim.res_id("coin"):
 		if u.pickup_value != 0 {
 			p.money += u.pickup_value
-			glow_start(p.obj, 0x7fff, 6, false) // a white flash (FUN_0041c1b0)
+			lifecycle.glow_start(p.obj, 0x7fff, 6, false) // a white flash (FUN_0041c1b0)
 		}
-	case res_id("mult"):
+	case sim.res_id("mult"):
 		player_multiplier_advance(s, p)
 	}
 	return true
@@ -249,7 +252,7 @@ player_collect :: proc(s: ^State, p: Player, e: Entity) -> bool {
 // G_Player::PowerupOverload_Process: while an air power-up is overloaded the
 // player flashes and a warning sounds at a shrinking interval; after
 // `powerupOverload_NumWarnings` warnings the player is destroyed.
-player_overload_process :: proc(s: ^State, p: Player, time: i32) {
+player_overload_process :: proc(s: ^sim.State, p: sim.Player, time: i32) {
 	if p.state != .Playing {
 		if p.overloaded {
 			overload_clear(p)
@@ -259,11 +262,11 @@ player_overload_process :: proc(s: ^State, p: Player, time: i32) {
 	if !p.overloaded {
 		return
 	}
-	if single(s, Level_Info).ending {
+	if sim.single(s, sim.Level_Info).ending {
 		overload_clear(p)
 		return
 	}
-	d := player_def(s, p)
+	d := sim.player_def(s, p)
 	if !p.overload_rising {
 		p.tint -= d.powerup_overload_warning_fade_percent
 		if p.tint <= 0 {
@@ -285,7 +288,7 @@ player_overload_process :: proc(s: ^State, p: Player, time: i32) {
 				player_destroy(s, p, time)
 				return
 			}
-			sound_play(s, Sound_Settings {
+			sim.sound_play(s, sim.Sound_Settings {
 				id         = d.powerup_overload_sound,
 				min_volume = d.powerup_overload_sound_min_volume,
 				max_volume = d.powerup_overload_sound_max_volume,
@@ -298,11 +301,11 @@ player_overload_process :: proc(s: ^State, p: Player, time: i32) {
 	p.colorise = false
 	p.tint_target = p.tint
 	p.tint_delta = 0
-	p.tint_color = color_1555(d.powerup_overload_hilite)
+	p.tint_color = sim.color_1555(d.powerup_overload_hilite)
 }
 
 // G_Player::PowerupOverload_Reset.
-overload_clear :: proc "contextless" (p: Player) {
+overload_clear :: proc "contextless" (p: sim.Player) {
 	p.overloaded = false
 	p.overload_rising = false
 	p.overload_time = 0
@@ -314,12 +317,12 @@ overload_clear :: proc "contextless" (p: Player) {
 }
 
 // The overload start in G_Player::Process, when the weapon handler reports it.
-player_overload_begin :: proc "contextless" (s: ^State, p: Player, time: i32) {
-	d := player_def(s, p)
+player_overload_begin :: proc "contextless" (s: ^sim.State, p: sim.Player, time: i32) {
+	d := sim.player_def(s, p)
 	p.overloaded = true
 	p.overload_rising = true
 	p.overload_time = time
 	p.overload_interval = d.powerup_overload_initial_time_between_warnings
 	p.overload_warnings = 0
-	p.tint_color = color_1555(d.powerup_overload_hilite)
+	p.tint_color = sim.color_1555(d.powerup_overload_hilite)
 }

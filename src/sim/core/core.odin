@@ -2,6 +2,16 @@ package core
 
 import "base:runtime"
 import "dr:sim"
+import "dr:sim/systems/weapon_system"
+import "dr:sim/systems/player_system"
+import "dr:sim/systems/notice_system"
+import "dr:sim/systems/movement_system"
+import "dr:sim/lifecycle"
+import "dr:sim/systems/level_system"
+import "dr:sim/systems/entity_system"
+import "dr:sim/systems/debris_system"
+import "dr:sim/systems/collision_system"
+import "dr:sim/systems/background_system"
 
 // The original game: its systems, in the original's order. Importing this
 // package is what puts the original in a build -- the simulation host
@@ -25,49 +35,49 @@ register :: proc "contextless" () {
 
 	// The game step, FUN_00420280, in the original's order.
 	sim.system_register({name = "step_events", run = sim.step_events_system})
-	sim.system_register({name = "first_player", run = sim.first_player_system})
-	sim.system_register({name = "notices", run = sim.notices_system})
-	sim.system_register({name = "debris", run = sim.debris_system})
-	sim.system_register({name = "players", run = sim.players_system})
-	sim.system_register({name = "game_over", run = sim.game_over_system})
-	sim.system_register({name = "background", run = sim.background_system})
-	sim.system_register({name = "level_end", run = sim.level_end_system})
-	sim.system_register({name = "entities", run = sim.entities_system})
-	sim.system_register({name = "sweep", run = sim.sweep_system})
-	sim.system_register({name = "scroll_hold", run = sim.scroll_hold_system})
+	sim.system_register({name = "first_player", run = level_system.first_player_system})
+	sim.system_register({name = "notices", run = notice_system.notices_system})
+	sim.system_register({name = "debris", run = debris_system.debris_scroll_system})
+	sim.system_register({name = "players", run = player_system.players_system})
+	sim.system_register({name = "game_over", run = level_system.game_over_system})
+	sim.system_register({name = "background", run = background_system.background_scroll_system})
+	sim.system_register({name = "level_end", run = level_system.level_end_system})
+	sim.system_register({name = "entities", run = entity_system.entities_system})
+	sim.system_register({name = "sweep", run = lifecycle.sweep_system})
+	sim.system_register({name = "scroll_hold", run = background_system.scroll_hold_system})
 	sim.system_register({name = "clock", run = sim.clock_system})
 	// After the game step, in a played session.
-	sim.system_register({name = "level_transition", kind = .Session, run = sim.level_transition_system, while_frozen = true})
+	sim.system_register({name = "level_transition", kind = .Session, run = level_system.level_transition_system, while_frozen = true})
 
 	// G_Player::Process for one player, in the original's order.
-	sim.player_stage_register({name = "defence_bonus", run = sim.defence_bonus_stage})
-	sim.player_stage_register({name = "player_state", run = sim.player_state_stage})
-	sim.player_stage_register({name = "read_input", run = sim.read_input_stage})
-	sim.player_stage_register({name = "player_look", run = sim.player_look_stage})
-	sim.player_stage_register({name = "fire", run = sim.fire_stage})
-	sim.player_stage_register({name = "calm", run = sim.calm_stage})
-	sim.player_stage_register({name = "player_move", run = sim.player_move_stage})
+	sim.player_stage_register({name = "defence_bonus", run = player_system.defence_bonus_stage})
+	sim.player_stage_register({name = "player_state", run = player_system.player_state_stage})
+	sim.player_stage_register({name = "read_input", run = player_system.read_input_stage})
+	sim.player_stage_register({name = "player_look", run = player_system.player_look_stage})
+	sim.player_stage_register({name = "fire", run = player_system.fire_stage})
+	sim.player_stage_register({name = "calm", run = player_system.calm_stage})
+	sim.player_stage_register({name = "player_move", run = player_system.player_move_stage})
 
 	// G_EG_Process's body for one entity, in the original's order.
-	sim.entity_stage_register({name = "appear", run = sim.appear_stage})
-	sim.entity_stage_register({name = "state_particles", run = sim.state_particles_stage})
-	sim.entity_stage_register({name = "entry_sound", run = sim.entry_sound_stage})
-	sim.entity_stage_register({name = "state_timer", run = sim.state_timer_stage})
-	sim.entity_stage_register({name = "scroll_pause", run = sim.scroll_pause_stage})
-	sim.entity_stage_register({name = "animate", run = sim.animate_stage})
-	sim.entity_stage_register({name = "rules", run = sim.rules_stage})
-	sim.entity_stage_register({name = "appearance", run = sim.appearance_stage})
-	sim.entity_stage_register({name = "owner_look", run = sim.owner_look_stage})
-	sim.entity_stage_register({name = "scroll_destruct", run = sim.scroll_destruct_stage})
-	sim.entity_stage_register({name = "movement_ai", run = sim.movement_ai_stage})
-	sim.entity_stage_register({name = "move", run = sim.move_stage})
-	sim.entity_stage_register({name = "follow_owner", run = sim.follow_owner_stage})
-	sim.entity_stage_register({name = "spawn", run = sim.spawn_stage})
-	sim.entity_stage_register({name = "player_contact", run = sim.player_contact_stage})
-	sim.entity_stage_register({name = "motion_blur", run = sim.motion_blur_stage})
-	sim.entity_stage_register({name = "crosshair_lock", run = sim.crosshair_lock_stage})
-	sim.entity_stage_register({name = "ground_obstacles", run = sim.ground_obstacles_stage})
-	sim.entity_stage_register({name = "shot_collisions", run = sim.shot_collisions_stage})
+	sim.entity_stage_register({name = "appear", run = entity_system.appear_stage})
+	sim.entity_stage_register({name = "state_particles", run = entity_system.state_particles_stage})
+	sim.entity_stage_register({name = "entry_sound", run = entity_system.entry_sound_stage})
+	sim.entity_stage_register({name = "state_timer", run = entity_system.state_timer_stage})
+	sim.entity_stage_register({name = "scroll_pause", run = entity_system.scroll_pause_stage})
+	sim.entity_stage_register({name = "animate", run = entity_system.animate_stage})
+	sim.entity_stage_register({name = "rules", run = entity_system.rules_stage})
+	sim.entity_stage_register({name = "appearance", run = entity_system.appearance_stage})
+	sim.entity_stage_register({name = "owner_look", run = entity_system.owner_look_stage})
+	sim.entity_stage_register({name = "scroll_destruct", run = entity_system.scroll_destruct_stage})
+	sim.entity_stage_register({name = "movement_ai", run = movement_system.movement_ai_stage})
+	sim.entity_stage_register({name = "move", run = movement_system.move_stage})
+	sim.entity_stage_register({name = "follow_owner", run = movement_system.follow_owner_stage})
+	sim.entity_stage_register({name = "spawn", run = entity_system.spawn_stage})
+	sim.entity_stage_register({name = "player_contact", run = collision_system.player_contact_stage})
+	sim.entity_stage_register({name = "motion_blur", run = entity_system.motion_blur_stage})
+	sim.entity_stage_register({name = "crosshair_lock", run = weapon_system.crosshair_lock_stage})
+	sim.entity_stage_register({name = "ground_obstacles", run = collision_system.ground_obstacles_stage})
+	sim.entity_stage_register({name = "shot_collisions", run = collision_system.shot_collisions_stage})
 }
 
 // The session's singletons, and the players' and crosshairs' components,
@@ -92,10 +102,10 @@ players_setup_system :: proc(s: ^sim.State, step: ^sim.Step) {
 	}
 	sim.single(s, sim.Level_Info).number = level.number
 	for i in 0 ..< i32(sim.MAX_PLAYERS) {
-		sim.player_setup(s, sim.player_at(s, i), i, s.session.game_type)
+		player_system.player_setup(s, sim.player_at(s, i), i, s.session.game_type)
 	}
 }
 
 level_setup_system :: proc(s: ^sim.State, step: ^sim.Step) {
-	sim.level_start(s)
+	level_system.level_start(s)
 }

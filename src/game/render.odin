@@ -20,6 +20,7 @@ import "core:strings"
 import rl "vendor:raylib"
 
 import "dr:sim"
+import "dr:sim/lifecycle"
 
 LAYERS :: 16
 
@@ -368,7 +369,7 @@ object_place :: proc(r: ^Renderer, o: ^sim.Game_Object, prev: ^sim.Game_Object =
 place_rect :: proc(x, y: f32, src: rl.Rectangle, scale: f32) -> rl.Rectangle {
 	w := i32(src.width * scale)
 	h := i32(src.height * scale)
-	return {x - f32(sim.halve(w)), y - f32(sim.halve(h)), f32(w), f32(h)}
+	return {x - f32(lifecycle.halve(w)), y - f32(lifecycle.halve(h)), f32(w), f32(h)}
 }
 
 // G_GameObject::Priv_Draw: the sprite, then a tint pass while `tint` is above
@@ -674,8 +675,8 @@ terrain_stamp :: proc(r: ^Renderer, s: ^sim.State) {
 		h := i32(src.height * st.scale)
 		flipped := src
 		flipped.height = -flipped.height // the buffer is bottom-up
-		top := f32(r.terrain.texture.height) - f32(y - sim.halve(h)) - f32(h)
-		dst := rl.Rectangle{f32(x - sim.halve(w)), top, f32(w), f32(h)}
+		top := f32(r.terrain.texture.height) - f32(y - lifecycle.halve(h)) - f32(h)
+		dst := rl.Rectangle{f32(x - lifecycle.halve(w)), top, f32(w), f32(h)}
 		alpha := u8(clamp(st.visibility, 0, 100) * 255 / 100)
 		rl.DrawTexturePro(tex, flipped, dst, {0, 0}, 0, {255, 255, 255, alpha})
 	}

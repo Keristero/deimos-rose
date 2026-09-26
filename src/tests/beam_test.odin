@@ -8,8 +8,10 @@ import vmem "core:mem/virtual"
 import "dr:data"
 import "dr:plugins/loadout"
 import "dr:sim"
+import "dr:sim/systems/weapon_system"
+import "dr:sim/lifecycle"
 
-// The Discharge Beam (sim/beam.odin): an instant line that carries its
+// The Discharge Beam (sim/systems/weapon_system/beam.odin): an instant line that carries its
 // leftover damage through what it kills. The design is notes/new-weapons.md;
 // these pin how it was read, see docs/new-weapons.md. Against the shipped
 // content, so each is skipped without the assets tree.
@@ -59,7 +61,7 @@ beam_target :: proc(t: ^testing.T, s: ^sim.State, loc: sim.Vec, shields: f32) ->
 	req := sim.spawn_request(sim.res_id("mine"))
 	req.loc = loc
 	req.stationary = true
-	r := sim.eg_request_spawn(s, req)
+	r := lifecycle.eg_request_spawn(s, req)
 	if !testing.expect(t, sim.ref_valid(s, r), "the target must spawn") {
 		return {}
 	}
@@ -101,7 +103,7 @@ discharge_beam_loads_as_new_content :: proc(t: ^testing.T) {
 	testing.expect(t, f.defs.units[sim.unit_index(&f.defs, w.beam.shrapnel)].player_projectile, "shrapnel is a player shot")
 	testing.expect(t, !f.defs.units[sim.unit_index(&f.defs, w.spawns[0].unit)].player_projectile, "the beam itself is not a projectile")
 	for level in i32(1) ..= 12 {
-		testing.expect(t, sim.best_air_weapon(&f.defs, level) != f.db)
+		testing.expect(t, weapon_system.best_air_weapon(&f.defs, level) != f.db)
 	}
 }
 
@@ -129,7 +131,7 @@ discharge_beam_carries_leftover_damage :: proc(t: ^testing.T) {
 	}
 	shrapnel := count_unit(s, wd.beam.shrapnel)
 	s.beams.count = 0
-	sim.beam_fire(s, h, wd, at, 2.5, wd.beam.width, false, sim.single(s, sim.Clock).time)
+	weapon_system.beam_fire(s, h, wd, at, 2.5, wd.beam.width, false, sim.single(s, sim.Clock).time)
 	testing.expect(t, near.deleted, "the first target must die")
 	testing.expect(t, mid.deleted, "the leftover must kill the second")
 	testing.expect(t, !far.deleted && abs(far.shields - 4.5) < 1e-4, "the third takes the last 0.5")
@@ -142,7 +144,7 @@ discharge_beam_carries_leftover_damage :: proc(t: ^testing.T) {
 	}
 	// Again on the same step: the hit delay protects the third, and the
 	// beam stops there without dealing anything.
-	sim.beam_fire(s, h, wd, at, 2.5, wd.beam.width, false, sim.single(s, sim.Clock).time)
+	weapon_system.beam_fire(s, h, wd, at, 2.5, wd.beam.width, false, sim.single(s, sim.Clock).time)
 	testing.expect(t, abs(far.shields - 4.5) < 1e-4)
 	testing.expect_value(t, s.beams.events[1].to_y, far.loc.y)
 }
@@ -162,7 +164,7 @@ discharge_beam_leaves_the_screen :: proc(t: ^testing.T) {
 		return
 	}
 	s.beams.count = 0
-	sim.beam_fire(s, sim.player_at(s, 0).weapons, wd, {8, 420}, 2, wd.beam.width, false, sim.single(s, sim.Clock).time)
+	weapon_system.beam_fire(s, sim.player_at(s, 0).weapons, wd, {8, 420}, 2, wd.beam.width, false, sim.single(s, sim.Clock).time)
 	testing.expect(t, one.deleted)
 	testing.expect(t, s.beams.count == 1 && s.beams.events[0].to_y < 0)
 }
@@ -186,12 +188,12 @@ discharge_beam_release_scales_with_charge :: proc(t: ^testing.T) {
 		return
 	}
 	s.beams.count = 0
-	sim.beam_release(s, h, wd, at, top, sim.single(s, sim.Clock).time)
+	weapon_system.beam_release(s, h, wd, at, top, sim.single(s, sim.Clock).time)
 	testing.expect(t, abs(100 - wall.shields - wd.beam.release_damage) < 1e-3, "a full charge deals the release damage")
 	testing.expect(t, s.beams.count == 1 && s.beams.events[0].charged && s.beams.events[0].width == wd.beam.release_width)
 	wall.last_hit = -100
 	before := wall.shields
-	sim.beam_release(s, h, wd, at, top / 2, sim.single(s, sim.Clock).time)
+	weapon_system.beam_release(s, h, wd, at, top / 2, sim.single(s, sim.Clock).time)
 	testing.expect(t, abs(before - wall.shields - wd.beam.release_damage / 2) < 1e-3, "half a charge deals half")
 }
 
@@ -207,7 +209,7 @@ discharge_beam_fires_from_the_button :: proc(t: ^testing.T) {
 	s := f.s
 	p := sim.player_at(s, 0)
 	loadout.slots_of(s, 0).loadout[0] = f.db
-	sim.change_weapon(s, p.weapons, sim.WEP_AIR, f.db)
+	weapon_system.change_weapon(s, p.weapons, sim.WEP_AIR, f.db)
 	pulses, charged := 0, 0
 	for i in 0 ..< 120 {
 		sim.session_step(s, {i < 100 ? {.Fire_Air} : {}, {}})

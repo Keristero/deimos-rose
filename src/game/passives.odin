@@ -14,6 +14,7 @@ import rl "vendor:raylib"
 
 import "dr:plugins/passives"
 import "dr:sim"
+import "dr:sim/stats"
 
 // The icons are assets/icons/passives/<name>.png, 32x32, composited from the
 // game's own sprites by `mise run assets:icons` (tools/icons/passives.json
@@ -139,7 +140,7 @@ passive_particles_step :: proc(p: ^Particles, s: ^sim.State, r: ^Renderer) {
 				fade   = REGEN_FADE,
 			})
 		}
-		if over := sim.player_overcharge(s, pl); over > 0 {
+		if over := stats.player_overcharge(s, pl); over > 0 {
 			n := int(math.ceil(over * SPARK_MAX))
 			for _ in 0 ..< n {
 				a := rand.float32() * 2 * math.PI

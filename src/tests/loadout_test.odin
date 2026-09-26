@@ -9,9 +9,11 @@ import vmem "core:mem/virtual"
 import "dr:data"
 import "dr:plugins/loadout"
 import "dr:sim"
+import "dr:sim/systems/weapon_system"
+import "dr:sim/lifecycle"
 
 // New Weapons' loadout screen and the Chaingun's aimed charge
-// (sim/loadout.odin, sim/aimed.odin). The rules are the design's
+// (plugins/loadout, sim/systems/weapon_system/aimed.odin). The rules are the design's
 // (notes/new-weapons.md); these pin how they were read, see
 // docs/new-weapons.md.
 
@@ -71,11 +73,11 @@ press :: proc(s: ^sim.State, b: sim.Buttons) {
 classic_selection_never_picks_new_weapons :: proc(t: ^testing.T) {
 	defs := loadout_defs()
 	// Only the extra weapon unlocks after wai3: the original's order stops there.
-	testing.expect(t, sim.best_air_weapon(defs, 2) != WAI4)
-	testing.expect(t, sim.level_air_weapon(defs, 2) != WAI4)
+	testing.expect(t, weapon_system.best_air_weapon(defs, 2) != WAI4)
+	testing.expect(t, weapon_system.level_air_weapon(defs, 2) != WAI4)
 	current := defs.weapons[WAIR].id
 	for _ in 0 ..< 4 {
-		next := sim.next_weapon_of_type(defs, sim.WEP_AIR, current, 2)
+		next := weapon_system.next_weapon_of_type(defs, sim.WEP_AIR, current, 2)
 		testing.expect(t, next != WAI4, "Change_Air reached a new weapon outside New Weapons")
 		current = defs.weapons[next].id
 	}
@@ -178,7 +180,7 @@ loadout_screen_places_new_weapons :: proc(t: ^testing.T) {
 	testing.expect_value(t, loadout.slots_of(s, 0).loadout, [loadout.LOADOUT_SLOTS]i32{WAI4, WAI2, WAI3})
 	testing.expect_value(t, loadout.slots_of(s, 0).spare[0], WAIR)
 	// The weapon flown went to the spares, so the first slot's is taken up.
-	testing.expect_value(t, sim.air_weapon_shown(h), WAI4)
+	testing.expect_value(t, weapon_system.air_weapon_shown(h), WAI4)
 	// The screen is shown once a stage.
 	for _ in 0 ..< 200 {
 		sim.session_step(s, {})
@@ -235,7 +237,7 @@ loadout_keeps_the_weapon_flown :: proc(t: ^testing.T) {
 	h := sim.player_at(s, 0).weapons
 	testing.expect_value(t, loadout.slots_of(s, 0).loadout, [loadout.LOADOUT_SLOTS]i32{WAIR, WAI4, WAI3})
 	testing.expect_value(t, loadout.slots_of(s, 0).spare[0], WAI2)
-	testing.expect_value(t, sim.air_weapon_shown(h), WAIR)
+	testing.expect_value(t, weapon_system.air_weapon_shown(h), WAIR)
 }
 
 @(test)
@@ -253,19 +255,19 @@ change_air_cycles_the_loadout :: proc(t: ^testing.T) {
 @(test)
 aimed_shots_lead_the_target :: proc(t: ^testing.T) {
 	// Standing still: straight at it.
-	testing.expect_value(t, sim.aimed_intercept({0, -100}, {}, 10), sim.Vec{0, -100})
+	testing.expect_value(t, weapon_system.aimed_intercept({0, -100}, {}, 10), sim.Vec{0, -100})
 	// Crossing: the aim point is where both arrive at once.
 	offset, vel, speed := sim.Vec{0, -100}, sim.Vec{4, 0}, f32(10)
-	aim := sim.aimed_intercept(offset, vel, speed)
+	aim := weapon_system.aimed_intercept(offset, vel, speed)
 	tt := math.sqrt(aim.x * aim.x + aim.y * aim.y) / speed
 	meet := offset + vel * tt
 	testing.expect(t, abs(meet.x - aim.x) < 1e-3 && abs(meet.y - aim.y) < 1e-3, "the shot and the target must meet")
 	testing.expect(t, aim.x > 0, "a target moving right is led to the right")
 	// Coming straight at the shooter: aimed at the same line, nearer.
-	aim = sim.aimed_intercept({0, -100}, {0, 5}, 10)
+	aim = weapon_system.aimed_intercept({0, -100}, {0, 5}, 10)
 	testing.expect(t, abs(aim.x) < 1e-3 && aim.y > -100 && aim.y < 0)
 	// Too fast to catch: straight at it.
-	testing.expect_value(t, sim.aimed_intercept({0, -100}, {20, 0}, 10), sim.Vec{0, -100})
+	testing.expect_value(t, weapon_system.aimed_intercept({0, -100}, {20, 0}, 10), sim.Vec{0, -100})
 }
 
 // Against the shipped content (src/assets and src/assets/extra): the
@@ -305,7 +307,7 @@ chaingun_loads_as_new_content :: proc(t: ^testing.T) {
 	testing.expect(t, sim.unit_index(&defs, w.powerup_air_release_spawn) >= 0, "the aimed shot's unit must load")
 	testing.expect(t, sim.unit_index(&defs, w.spawns[0].unit) >= 0, "the burst's spawner must load")
 	for level in i32(1) ..= 12 {
-		testing.expect(t, sim.best_air_weapon(&defs, level) != i32(cg))
+		testing.expect(t, weapon_system.best_air_weapon(&defs, level) != i32(cg))
 	}
 
 	s := new(sim.State, context.temp_allocator)
@@ -368,13 +370,13 @@ aimed_volley_turns_towards_an_air_enemy :: proc(t: ^testing.T) {
 	at := sim.Vec{208, 400}
 	req := sim.spawn_request(sim.res_id("mine"))
 	req.loc = at + {80, -80} // up and to the right: a heading of 45
-	mine := sim.eg_request_spawn(s, req)
+	mine := lifecycle.eg_request_spawn(s, req)
 	if !testing.expect(t, sim.ref_valid(s, mine), "the mine must spawn") {
 		return
 	}
 	target := sim.entity_at(s, mine.index)
 	target.appear_delay = 0
-	found, ok := sim.aimed_target(s, at)
+	found, ok := weapon_system.aimed_target(s, at)
 	if !testing.expect(t, ok && found == target, "the mine must be the nearest target") {
 		return
 	}
@@ -386,8 +388,8 @@ aimed_volley_turns_towards_an_air_enemy :: proc(t: ^testing.T) {
 			before[e.number] = true
 		}
 	}
-	sim.aimed_release_spawn(s, sim.player_at(s, 0).weapons.handler, &defs.weapons[cg], at)
-	aim := sim.aimed_intercept(target.loc - at, target.vel, defs.units[shot].initial_speed_max)
+	weapon_system.aimed_release_spawn(s, sim.player_at(s, 0).weapons.handler, &defs.weapons[cg], at)
+	aim := weapon_system.aimed_intercept(target.loc - at, target.vel, defs.units[shot].initial_speed_max)
 	want := sim.invert_angle(sim.angle_from_vector(aim))
 	testing.expect(t, want > 20 && want < 70, "the aim must be up and to the right")
 	shots: [dynamic]sim.Entity
@@ -407,5 +409,5 @@ aimed_volley_turns_towards_an_air_enemy :: proc(t: ^testing.T) {
 	d := sim.vector_from_angle(sim.invert_angle(want))
 	gap := shots[1].loc - shots[0].loc
 	testing.expect(t, abs(gap.x * d.x + gap.y * d.y) < 0.01, "the pair must fly abreast")
-	testing.expect(t, abs(math.sqrt(gap.x * gap.x + gap.y * gap.y) - 2 * sim.AIMED_PAIR_OFFSET) < 0.01)
+	testing.expect(t, abs(math.sqrt(gap.x * gap.x + gap.y * gap.y) - 2 * weapon_system.AIMED_PAIR_OFFSET) < 0.01)
 }

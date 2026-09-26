@@ -48,6 +48,10 @@ import "dr:plugins/passives"
 // The original game's systems, which a session runs.
 import _ "dr:sim/core"
 import "dr:sim"
+import "dr:sim/systems/weapon_system"
+import "dr:sim/stats"
+import "dr:sim/systems/player_system"
+import "dr:sim/lifecycle"
 
 SEED :: 0x5eed_d95
 STEP_HZ :: 30
@@ -537,7 +541,7 @@ policy_fire :: proc(s: ^sim.State, h: ^sim.Weapon_Handler, pol: Policy, k: int) 
 	case .Charge:
 		pu := &h.air_powerup
 		full := pu.state == 1 && pu.percent >= 100 || pu.state == 2
-		if sim.air_auto_charge(s, h) {
+		if stats.air_auto_charge(s, h) {
 			// It charges while fire is let go; a press releases it.
 			return full
 		}
@@ -564,8 +568,8 @@ dps_run :: proc(d: ^sim.Defs, w: Weapon_Case, sc: Scenario, levels: passives.Pas
 	}
 	passives.levels_of(s, 0)^ = levels
 	h := p.weapons
-	sim.change_weapon(s, h, w.ground ? sim.WEP_GROUND : sim.WEP_AIR, w.index)
-	sim.player_sprite_from_weapon(s, p)
+	weapon_system.change_weapon(s, h, w.ground ? sim.WEP_GROUND : sim.WEP_AIR, w.index)
+	player_system.player_sprite_from_weapon(s, p)
 	for _ in 0 ..< SETTLE_STEPS {
 		sim.session_step(s, {})
 		// Every run starts uncharged. Under Auto Charge a charge builds while
@@ -585,7 +589,7 @@ dps_run :: proc(d: ^sim.Defs, w: Weapon_Case, sc: Scenario, levels: passives.Pas
 		// would stand where nothing lands.
 		fwd, back := ground_aim(s, p)
 		centre = sc == .Behind ? back : fwd
-		if at := sim.ground_fires_backwards(s, h) ? back : fwd; at != h.crosshair.loc {
+		if at := stats.ground_fires_backwards(s, h) ? back : fwd; at != h.crosshair.loc {
 			return
 		}
 	}
@@ -668,11 +672,11 @@ dps_run :: proc(d: ^sim.Defs, w: Weapon_Case, sc: Scenario, levels: passives.Pas
 }
 
 // Where the ground crosshair stands, ahead and turned round, at the ship's
-// current reach: the sums in player.odin's crosshair update. Turned round
+// current reach: the sums in player_system's crosshair update. Turned round
 // it is half the reach behind the ship, kept on screen at the bottom.
 ground_aim :: proc(s: ^sim.State, p: sim.Player) -> (fwd, back: sim.Vec) {
 	gw := &s.defs.weapons[p.weapons.ground.weapon]
-	half := f32(sim.halve(p.weapons.crosshair.dims.y))
+	half := f32(lifecycle.halve(p.weapons.crosshair.dims.y))
 	x := f32(gw.crosshair_x_offset) + p.loc.x
 	fwd = {x, max(f32(p.crosshair_reach + gw.crosshair_y_offset) + p.loc.y, half)}
 	back = {x, min(p.loc.y - f32(p.crosshair_reach + gw.crosshair_y_offset) / 2, f32(sim.view_height(s.defs)) - half)}
@@ -684,7 +688,7 @@ target_spawn :: proc(s: ^sim.State, unit: string, at: sim.Vec) -> sim.Entity_Ref
 	req := sim.spawn_request(sim.res_id(unit))
 	req.loc = at
 	req.stationary = true
-	r := sim.eg_request_spawn(s, req)
+	r := lifecycle.eg_request_spawn(s, req)
 	if sim.ref_valid(s, r) {
 		e := sim.entity_at(s, r.index)
 		e.appear_delay = 0

@@ -92,7 +92,7 @@ carries on to another target. It is replaced 12 steps later.
   its shrapnel) counts.
 
 Both ground positions come from the crosshair's own sums
-(`ground_aim` in `tools/dps`, copied from `player.odin`). A scenario
+(`ground_aim` in `tools/dps`, copied from `sim/systems/player_system/player.odin`). A scenario
 keeps its side whichever way the bombs face. Every run checks that the
 crosshair in use stands where `ground_aim` puts it, and the run fails if
 it does not. So the targets cannot drift from where the bombs land

@@ -5,6 +5,7 @@ import "core:testing"
 import net "dr:net"
 import netplay_plugin "dr:plugins/netplay"
 import "dr:sim"
+import "dr:sim/systems/level_system"
 
 // Phase 6 stage 3's real guarantee: two independent Rollback_Sessions, each
 // driving one local player and predicting the other, must end up bit-
@@ -369,7 +370,7 @@ rollback_session_converges_across_level_changes_and_pauses :: proc(t: ^testing.T
 		}
 		for p in 0 ..< 2 {
 			net.rollback_session_advance(&rs[p], inputs[p][i])
-			_ = sim.level_transition(states[p]) // what game/flow.odin used to do here
+			_ = level_system.level_transition(states[p]) // what game/flow.odin used to do here
 			if i % 5 == 4 {
 				continue // lose this tick's packet
 			}

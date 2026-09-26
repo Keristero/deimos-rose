@@ -84,7 +84,7 @@ weapon number five and unlocks at stage 7. Its ship is dark grey:
 - **Charge attack.** Holding fire charges as the original's weapons do,
   with the ordinary power-up state machine. A weapon marked
   `x_AimedRelease_BOOL` changes one step, `aimed_release_spawn` in
-  `sim/aimed.odin`. Every release volley:
+  `sim/systems/weapon_system/aimed.odin`. Every release volley:
   - finds the nearest enemy a player shot could hit;
   - leads it by its current velocity;
   - fires two parallel `cgpb` rounds at that point, 3 px either side of
@@ -107,7 +107,7 @@ air weapon number six and unlocks at stage 10. Its ship is red:
 (see Content).
 
 The original has no instant shot, so the beam is a new mechanic, in
-`sim/beam.odin`. A weapon with `x_Beam_BOOL` fires no projectile of its
+`sim/systems/weapon_system/beam.odin`. A weapon with `x_Beam_BOOL` fires no projectile of its
 own. Its spawn list holds only the muzzle flash, `dbmf`, which also plays
 the sound.
 
@@ -271,7 +271,7 @@ Balance), but its feel is untested by hand:
   dwindling;
 - the sound: the Laser Gun Bullet's (`lgbu`), pitched down, a stand-in
   for a proper zap;
-- in the code: the kill burst's size and colour (`sim/beam.odin`), and
+- in the code: the kill burst's size and colour (`sim/systems/weapon_system/beam.odin`), and
   the beam's lifetimes, widths and colours (`game/beams.odin`).
 
 ## Content

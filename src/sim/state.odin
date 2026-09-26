@@ -34,8 +34,8 @@ Session :: struct {
 
 // The complete simulation state. Everything that affects future frames lives
 // in the entity component system `ecs` points at (D39): the session's
-// singletons (components.odin), the players, the entity pool and its groups
-// (world.odin). The rest
+// singletons (components_session.odin), the players (components_player.odin),
+// the entity pool and its groups (components_entity.odin). The rest
 // here is not state:
 // - `session` is fixed at start;
 // - `defs` points at read-only data;
@@ -47,12 +47,12 @@ State :: struct {
 	session:      Session,
 	defs:         ^Defs,
 	ecs:          ^Ecs,
-	schedule:     Schedule, // the systems this session runs, in order (systems.odin)
+	schedule:     Schedule, // the systems this session runs, in order (systems.odin, sim/core)
 	sounds:       Sound_Queue,    // this step's sound events, for presentation
 	particles:    Particle_Queue, // this step's particle bursts, for presentation
 	stamps:       Stamp_Queue,    // this step's marks on the terrain
 	blurs:        Blur_Queue,     // this step's new motion-blur ghosts
-	beams:        Beam_Queue,     // this step's laser shots, for presentation (beam.odin)
+	beams:        Beam_Queue,     // this step's laser shots, for presentation (weapon_system/beam.odin)
 	notices:      Notice_Queue,   // this step's new notices, for presentation
 	// Optional record of every RandomInt/RandomFloat call, for diffing
 	// against the original's gdb trace (see oracle/). nil in normal play
@@ -161,94 +161,11 @@ restore_plain :: proc(s: ^State, plain: ^State) {
 	s.defs, s.ecs, s.draws, s.events = defs, world, draws, events
 }
 
-// FUN_0041fc80: the start of a level.
-level_start :: proc(s: ^State) {
-	single(s, Clock).time = 0
-	acc := single(s, Accuracy)
-	acc.targets = 0
-	acc.destroyed = 0
-	// FUN_004208d0: the tally resets, but not the count of levels finished
-	// at 100%, nor `all_done`/`complete`, which belong to the session.
-	l := single(s, Level_End)
-	l.started, l.started_time = false, 0
-	l.state, l.state_time, l.count_time = 0, 0, 0
-	l.fade = 0x20
-	l.percent, l.bonus, l.bonus_step = 0, 0, 0
-	l.perfect, l.perfect_count = false, 0
-	// A level finished at 100% accuracy earns the bonus pickup on the next
-	// one, once (G_Game_GroundAccuracy_CheckForRewardThisLevel).
-	acc.reward_this_level = acc.perfect_level
-	acc.perfect_level = false
-	single(s, Level_Info).played += 1
-	for p in players_of(s) {
-		player_level_reset(s, p, 0)
-	}
-	single(s, Debris).count = 0 // G_Debris_ResetAtLevelStart
-	bgnd_reset(s, level_def(s))
-	eg_reset(s, level_def(s))
-	bgnd_initial_spawns(s)
-
-	// The level's title notice unit, centred in the play area.
-	info := single(s, Level_Info)
-	info.title = NO_REF
-	notice := s.defs.perm_objects[level_number_of(s) + 9]
-	if notice != NONE {
-		req := spawn_request(notice)
-		req.loc = {
-			s.defs.perm_floats[PF_VISIBLE_GAME_WIDTH] / 2,
-			s.defs.perm_floats[PF_VISIBLE_GAME_HEIGHT] / 2,
-		}
-		info.title = eg_request_spawn(s, req)
-	}
-}
-
-// Moves to the next level in list order once level_end.complete is true and
-// this was not the last one (level_end.all_done), keeping the session's
-// score/money the same way the original does: G_LevelSelect_GetStartingLevelID
-// -FromUser only ever picks the *first* level of a new session
-// (G_LevelSelect_IsRunning has one caller, the title flow) -- levels within a
-// session always play in list order, so there is nothing to choose here.
-// `defs.levels` is ordered by number and level_number is 1-based, so the next
-// entry is simply the array index at the current number.
-level_advance :: proc(s: ^State) -> bool {
-	info := single(s, Level_Info)
-	next := int(info.number)
-	if next >= len(s.defs.levels) {
-		return false
-	}
-	info.number = s.defs.levels[next].number
-	// level_start leaves `complete` alone (FUN_004208d0 does not touch it),
-	// so it has to be consumed here: left set, flow_step saw the next level
-	// as already complete on its very first step and chained through every
-	// remaining level in as many steps. `level_ending` likewise has no reset
-	// anywhere in the port, and left set it keeps players invulnerable and
-	// blocks can_be_spawned_only_when_players_active units for the rest of
-	// the session. Provisional: where the original clears DAT_004e4825 and
-	// DAT_004e4855 between levels has not been traced -- the effect (both
-	// false at the start of every level) is what a playable session needs.
-	single(s, Level_End).complete = false
-	info.ending = false
-	level_start(s)
-	return true
-}
-
 Level_Transition :: enum u8 {
 	None,         // still playing this level
 	Game_Over,    // the last player left play
 	Advanced,     // this level was counted; the next one has started
 	All_Complete, // the last level of the list was counted
-}
-
-// What the session does after a step: carry on, game over, the next level or
-// the end of the list. game_over wins over complete, see flow_step.
-level_transition :: proc(s: ^State) -> Level_Transition {
-	if single(s, Game_Status).game_over {
-		return .Game_Over
-	}
-	if !single(s, Level_End).complete {
-		return .None
-	}
-	return level_advance(s) ? .Advanced : .All_Complete
 }
 
 // One step of a played session -- live, local or netplay -- as opposed to
@@ -278,10 +195,6 @@ session_step :: proc(s: ^State, input: Frame_Input, film: ^Film = nil) -> Level_
 	return st.transition
 }
 
-level_transition_system :: proc(s: ^State, step: ^Step) {
-	step.transition = level_transition(s)
-}
-
 // This step's presentation events start empty; step, and a plugin's system
 // that takes the step, begin here.
 clear_step_events :: proc "contextless" (s: ^State) {
@@ -303,93 +216,6 @@ step :: proc(s: ^State, input: Frame_Input, film: ^Film = nil) {
 
 step_events_system :: proc(s: ^State, step: ^Step) {
 	clear_step_events(s)
-}
-
-first_player_system :: proc(s: ^State, step: ^Step) {
-	if !single(s, Game_Status).player1_seen_playing && player_at(s, 0).state == .Playing {
-		single(s, Game_Status).player1_seen_playing = true
-	}
-}
-
-// G_Notice_Process. Like G_Particle_Process and G_MotionBlur_Process beside
-// it, it does not draw.
-notices_system :: proc(s: ^State, step: ^Step) {
-	notice_process(s)
-}
-
-// G_Debris_Process moves the ground wreckage with the scroll.
-debris_system :: proc(s: ^State, step: ^Step) {
-	debris_process(s)
-}
-
-// G_ScoreBar_Process, which follows, is presentation.
-players_system :: proc(s: ^State, step: ^Step) {
-	for i in 0 ..< MAX_PLAYERS {
-		player_process(s, player_at(s, i), single(s, Clock).time, step.input[i], step.film)
-	}
-}
-
-game_over_system :: proc(s: ^State, step: ^Step) {
-	for p in players_of(s) {
-		if p.active {
-			return
-		}
-	}
-	single(s, Game_Status).game_over = true
-	// FUN_00420280 LAB_0042037a: the first step no player is left in
-	// game spawns the Notice_GameOver banner (perm object 0x18) once, at
-	// screen centre -- the same position formula level_end_begin uses
-	// for Notice_LevelEnd/AllLevelsCompleted. Confirmed 0x18 is
-	// Notice_GameOver, not guessed: assets/data/idli/gaob.json lists
-	// perm objects in order, and index 0x16 Notice_LevelEnd / 0x17
-	// Notice_AllLevelsCompleted / 0x18 Notice_GameOver / 0x19
-	// RandomBonus_1 lines up exactly with level_end.odin's own 0x16/0x17
-	// and destroy.odin's 0x19..0x22 RandomBonus comment. This spawn
-	// draws from the RNG like any other, so a real session that runs out
-	// of lives needs it for the replay to stay in sync -- no shipped
-	// demo film reaches game over, so oracle:diff never exercised this
-	// gap before.
-	if !single(s, Game_Status).game_over_notice {
-		notice := s.defs.perm_objects[0x18]
-		if notice != NONE {
-			req := spawn_request(notice)
-			req.loc = {
-				s.defs.perm_floats[PF_VISIBLE_GAME_WIDTH] / 2,
-				s.defs.perm_floats[PF_VISIBLE_GAME_HEIGHT] / 2,
-			}
-			eg_request_spawn(s, req)
-		}
-		single(s, Game_Status).game_over_notice = true
-	}
-}
-
-background_system :: proc(s: ^State, step: ^Step) {
-	step.level_done = bgnd_process(s)
-}
-
-// The G_Bgnd_Process() == 1 branch.
-level_end_system :: proc(s: ^State, step: ^Step) {
-	if step.level_done {
-		level_end_step(s, single(s, Clock).time)
-	}
-}
-
-entities_system :: proc(s: ^State, step: ^Step) {
-	step.pause_scrolling = eg_process(s, single(s, Clock).time)
-}
-
-// The end of G_EG_Process.
-sweep_system :: proc(s: ^State, step: ^Step) {
-	sweep_deleted(s)
-}
-
-// An entity whose state pauses vertical scrolling holds the background.
-scroll_hold_system :: proc(s: ^State, step: ^Step) {
-	if step.pause_scrolling {
-		bgnd_stop(s)
-	} else {
-		bgnd_resume(s)
-	}
 }
 
 clock_system :: proc(s: ^State, step: ^Step) {

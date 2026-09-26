@@ -1,4 +1,4 @@
-package sim
+package weapon_system
 
 // The Chaingun's charge (a weapon with `aimed_release`, docs/new-weapons.md):
 // new content, not the original's. Where an original weapon's release
@@ -8,12 +8,15 @@ package sim
 
 import "core:math"
 
+import "dr:sim"
+import "dr:sim/lifecycle"
+
 // How far either side of the line of fire the two shots of a volley fly.
 // Provisional: picked by eye against the rice sprite's width.
 AIMED_PAIR_OFFSET :: 3
 
-aimed_release_spawn :: proc(s: ^State, h: ^Weapon_Handler, wd: ^Weapon, at: Vec) {
-	u := unit_find(s.defs, wd.powerup_air_release_spawn)
+aimed_release_spawn :: proc(s: ^sim.State, h: ^sim.Weapon_Handler, wd: ^sim.Weapon, at: sim.Vec) {
+	u := sim.unit_find(s.defs, wd.powerup_air_release_spawn)
 	if u == nil {
 		return
 	}
@@ -21,33 +24,33 @@ aimed_release_spawn :: proc(s: ^State, h: ^Weapon_Handler, wd: ^Weapon, at: Vec)
 	if t, ok := aimed_target(s, at); ok {
 		aim := aimed_intercept(t.loc - at, t.vel, (u.initial_speed_min + u.initial_speed_max) / 2)
 		if aim != {} {
-			heading = invert_angle(angle_from_vector(aim))
+			heading = sim.invert_angle(sim.angle_from_vector(aim))
 		}
 	}
-	d := vector_from_angle(invert_angle(heading))
-	across := Vec{-d.y, d.x} * AIMED_PAIR_OFFSET
+	d := sim.vector_from_angle(sim.invert_angle(heading))
+	across := sim.Vec{-d.y, d.x} * AIMED_PAIR_OFFSET
 	for side in ([2]f32{-1, 1}) {
-		req := spawn_request(wd.powerup_air_release_spawn)
+		req := sim.spawn_request(wd.powerup_air_release_spawn)
 		req.owner_player = h.player
 		req.loc = at + across * side
 		req.explicit_heading = true
 		req.heading = heading
-		eg_request_spawn(s, req)
+		lifecycle.eg_request_spawn(s, req)
 	}
 }
 
 // The nearest entity to `at` that a player's air shot can hit, on screen.
-aimed_target :: proc "contextless" (s: ^State, at: Vec) -> (target: Entity, ok: bool) {
-	w := single(s, Pool)
-	width := s.defs.perm_floats[PF_VISIBLE_GAME_WIDTH]
-	height := s.defs.perm_floats[PF_VISIBLE_GAME_HEIGHT]
+aimed_target :: proc "contextless" (s: ^sim.State, at: sim.Vec) -> (target: sim.Entity, ok: bool) {
+	w := sim.single(s, sim.Pool)
+	width := s.defs.perm_floats[sim.PF_VISIBLE_GAME_WIDTH]
+	height := s.defs.perm_floats[sim.PF_VISIBLE_GAME_HEIGHT]
 	best: f32
 	g := w.active.head
-	for g != NO_LINK {
-		i := group_at(s, g).entities.head
-		for i != NO_LINK {
-			e := entity_at(s, i)
-			i = link_of(entity_links(s), i).next
+	for g != sim.NO_LINK {
+		i := sim.group_at(s, g).entities.head
+		for i != sim.NO_LINK {
+			e := sim.entity_at(s, i)
+			i = sim.link_of(sim.entity_links(s), i).next
 			if !air_shot_can_hit(s, e) {
 				continue
 			}
@@ -59,20 +62,20 @@ aimed_target :: proc "contextless" (s: ^State, at: Vec) -> (target: Entity, ok: 
 				target, best, ok = e, dist, true
 			}
 		}
-		g = link_of(group_links(s), g).next
+		g = sim.link_of(sim.group_links(s), g).next
 	}
 	return
 }
 
 // Whether a player's air shot can hit `e`: the candidates entity_collisions
 // would test a player projectile against, bar the overlap itself.
-air_shot_can_hit :: proc "contextless" (s: ^State, e: Entity) -> bool {
+air_shot_can_hit :: proc "contextless" (s: ^sim.State, e: sim.Entity) -> bool {
 	if e.deleted || !e.hittable || e.state < 0 || e.appear_delay >= 1 {
 		return false
 	}
-	u := unit_of(s, e)
+	u := sim.unit_of(s, e)
 	if u.is_ground_based || u.harmless_to_players || u.player_projectile ||
-	   !u.can_be_hit_by_player_projectile || !state_of(s, e).collides {
+	   !u.can_be_hit_by_player_projectile || !sim.state_of(s, e).collides {
 		return false
 	}
 	return true
@@ -87,7 +90,7 @@ air_shot_can_hit :: proc "contextless" (s: ^State, e: Entity) -> bool {
 // Straight at the target when no such t exists (it outruns the shot).
 // Provisional: leads by the target's velocity alone, so a target that
 // turns or accelerates is missed by as much as it changes.
-aimed_intercept :: proc "contextless" (offset, vel: Vec, speed: f32) -> Vec {
+aimed_intercept :: proc "contextless" (offset, vel: sim.Vec, speed: f32) -> sim.Vec {
 	a := vel.x * vel.x + vel.y * vel.y - speed * speed
 	b := 2 * (offset.x * vel.x + offset.y * vel.y)
 	c := offset.x * offset.x + offset.y * offset.y

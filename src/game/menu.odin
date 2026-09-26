@@ -208,11 +208,11 @@ menu_draw_text :: proc(r: ^Renderer, s: string, x, y: i32, color := rl.Color{255
 	}
 }
 
-// Plays a UI sound directly, bypassing sim's event queue (sound.odin's
+// Plays a UI sound directly, bypassing sim's event queue (sim/queue_sound.odin's
 // sounds_step) -- a menu screen has no sim.State backing it to route sound
 // events through. Resets volume/pitch to the plain defaults each time, since
 // a voice alias may have been left at whatever a gameplay sound event last
-// set it to (sound.odin varies both per sim.Sound_Event).
+// set it to (sim.sound_play varies both per sim.Sound_Event).
 menu_play_sound :: proc(r: ^Renderer, id: sim.Res_ID) {
 	clip, ok := &r.textures.sounds[id]
 	if !ok {

@@ -1,6 +1,6 @@
 package game
 
-// The Discharge Beam's shots (sim/beam.odin), drawn: new content, with no
+// The Discharge Beam's shots (sim/systems/weapon_system/beam.odin), drawn: new content, with no
 // original to match. The sim hands over each step's beams in `s.beams`; this
 // keeps them for the few steps they fade over, in the Particles list since
 // they live and die with the other in-play effects. Each is a line straight

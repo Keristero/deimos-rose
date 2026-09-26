@@ -4,6 +4,9 @@ import "core:testing"
 // The original game's systems, which a session runs.
 import _ "dr:sim/core"
 import "dr:sim"
+import "dr:sim/systems/notice_system"
+import "dr:sim/systems/level_system"
+import "dr:sim/systems/collision_system"
 
 // A minimal, synthetic definition set: one empty level and the two player
 // definitions. Enough to drive sessions without the original game data.
@@ -189,7 +192,7 @@ level_end_tally_scores_the_ground_accuracy :: proc(t: ^testing.T) {
 	defer free(s)
 	sim.init(s, sim.Session{seed = 3, level_id = sim.level_id("le01"), game_type = .Single}, defs)
 	sim.single(s, sim.Accuracy).targets, sim.single(s, sim.Accuracy).destroyed = 50, 47 // 94%
-	sim.level_end_step(s, sim.single(s, sim.Clock).time)
+	level_system.level_end_step(s, sim.single(s, sim.Clock).time)
 	testing.expect(t, sim.single(s, sim.Level_Info).ending, "the level must be marked as ending")
 	testing.expect_value(t, sim.single(s, sim.Level_End).percent, i32(94))
 	// 94% is under 95 but not under 90, so the third tier.
@@ -216,7 +219,7 @@ level_advance_starts_the_next_level_unfinished :: proc(t: ^testing.T) {
 	sim.init(s, sim.Session{seed = 3, level_id = sim.level_id("le01"), game_type = .Single}, defs)
 	sim.single(s, sim.Level_Info).ending = true
 	sim.single(s, sim.Level_End).complete = true
-	testing.expect(t, sim.level_advance(s), "level 1 of 3 has a next level")
+	testing.expect(t, level_system.level_advance(s), "level 1 of 3 has a next level")
 	testing.expect_value(t, sim.single(s, sim.Level_Info).number, i32(2))
 	testing.expect(t, !sim.single(s, sim.Level_End).complete, "the new level must not start already complete")
 	testing.expect(t, !sim.single(s, sim.Level_Info).ending, "the new level must not start already ending")
@@ -240,15 +243,15 @@ money_counter_converts_money_at_the_level_multiplier :: proc(t: ^testing.T) {
 	sim.init(s, sim.Session{seed = 3, level_id = sim.level_id("le01"), game_type = .Single}, defs)
 	p := sim.player_at(s, 0)
 	p.money = 10
-	testing.expect(t, sim.money_counter_start(s, p, sim.single(s, sim.Clock).time, false))
-	testing.expect(t, sim.money_counter_active(p))
+	testing.expect(t, level_system.money_counter_start(s, p, sim.single(s, sim.Clock).time, false))
+	testing.expect(t, level_system.money_counter_active(p))
 	testing.expect_value(t, p.counter.value, i32(50))
 	testing.expect_value(t, p.counter.step, i32(1)) // 2% of 50, floored at 1
 	testing.expect_value(t, p.counter.money, i32(10))
 }
 
 // No shipped unit sets entryNotice_STR or destructNotice_STR (see
-// sim/notice.odin), so this path never runs against the original's data;
+// sim/systems/notice_system), so this path never runs against the original's data;
 // exercised directly here instead.
 @(test)
 notice_plays_its_sound_once_the_delay_elapses :: proc(t: ^testing.T) {
@@ -265,23 +268,23 @@ notice_plays_its_sound_once_the_delay_elapses :: proc(t: ^testing.T) {
 		entry_notice_sound_max_volume = 50,
 		entry_notice_delay            = 3,
 	}
-	sim.notice_request(s, &u, sim.single(s, sim.Clock).time)
+	notice_system.notice_request(s, &u, sim.single(s, sim.Clock).time)
 	testing.expect_value(t, s.notices.count, 1)
 	testing.expect_value(t, s.notices.events[0].text, "Test Notice")
 
 	for _ in 0 ..< 3 {
 		s.sounds.count = 0
-		sim.notice_process(s)
+		notice_system.notice_process(s)
 		testing.expect_value(t, s.sounds.count, 0)
 	}
 	s.sounds.count = 0
-	sim.notice_process(s)
+	notice_system.notice_process(s)
 	testing.expect_value(t, s.sounds.count, 1)
 	testing.expect_value(t, s.sounds.events[0].id, u.entry_notice_sound)
 
 	// The slot stays busy, so a second request while this one shows is dropped.
 	u2 := sim.Unit{entry_notice = "Other", entry_notice_sound = sim.NONE}
-	sim.notice_request(s, &u2, sim.single(s, sim.Clock).time)
+	notice_system.notice_request(s, &u2, sim.single(s, sim.Clock).time)
 	testing.expect_value(t, s.notices.count, 1)
 }
 
@@ -293,10 +296,10 @@ destruct_notice_never_draws_a_sound :: proc(t: ^testing.T) {
 	defer free(s)
 	sim.init(s, sim.Session{seed = 3, level_id = sim.level_id("le01"), game_type = .Single}, defs)
 
-	sim.notice_request_destruct(s, "Destroyed")
+	notice_system.notice_request_destruct(s, "Destroyed")
 	testing.expect_value(t, s.notices.count, 1)
 	for _ in 0 ..< sim.NOTICE_HOLD_FRAMES + 2 {
-		sim.notice_process(s)
+		notice_system.notice_process(s)
 	}
 	testing.expect_value(t, s.sounds.count, 0)
 	testing.expect(t, !sim.single(s, sim.Notice_State).pending, "the slot releases once the hold ends")
@@ -326,7 +329,7 @@ multiplier_carries_into_the_next_level :: proc(t: ^testing.T) {
 
 	sim.single(s, sim.Level_Info).ending = true
 	sim.single(s, sim.Level_End).complete = true
-	testing.expect(t, sim.level_advance(s))
+	testing.expect(t, level_system.level_advance(s))
 	testing.expect_value(t, sim.single(s, sim.Level_Info).number, i32(2))
 	testing.expect_value(t, p.multiplier, i32(3))
 
@@ -360,7 +363,7 @@ shields_round_to_eighths_as_the_originals_offset_store_does :: proc(t: ^testing.
 		{-3.3, -3.25},
 	}
 	for c in cases {
-		sim.shields_set(p, c[0])
+		collision_system.shields_set(p, c[0])
 		testing.expectf(t, p.shields == c[1], "shields_set(%v) = %v, want %v", c[0], p.shields, c[1])
 	}
 }

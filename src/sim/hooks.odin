@@ -8,7 +8,7 @@ package sim
 
 MAX_HOOKS :: 16
 
-// A plugin's modifiers to the stats the core's mechanics read (stats.odin).
+// A plugin's modifiers to the stats the core's mechanics read (sim/stats).
 Stat_Provider :: struct {
 	plugin: Plugin_ID,
 	// What it adds to `stat` for `player`. `weapon` is the weapon the stat
@@ -146,4 +146,34 @@ weapon_allowed :: proc "contextless" (s: ^State, w: ^Weapon) -> bool {
 		}
 	}
 	return false
+}
+
+Stat :: enum u8 {
+	Maneuverability,          // the ship's acceleration, active_velocity_delta
+	Risky_Reward,             // a 2000-point pickup somewhere on screen every RISKY_REWARD_SECONDS
+	Auto_Charge_Air_To_Air,   // the air power-up charges on its own; a tap releases it, holding autofires
+	Prevent_Overheat,         // a charged power-up never overloads
+	Charge_Rate,              // how fast the power level climbs while charging
+	Overheat_Delay,           // how long a charge is held before it overloads
+	Maximum_Charge,           // the highest power level a charge reaches
+	Shield_Regenerates,       // shields refill on their own
+	Recharge_Delay,           // seconds without damage before they start to
+	Shield_Regen_Rate,        // percentage points per second they refill by
+	Fires_Backwards,          // the ground weapon drops behind the ship, at half the reach
+	Volley_Delay,             // the gap between the volleys of one shot
+	Extra_Projectiles,        // more lanes in each volley, continuing the spread
+	Extra_Volley,             // more volleys per shot
+	Accelerating_Projectiles, // shots start slow and speed up
+	Initial_Projectile_Speed, // the speed shots leave the ship at
+	Projectile_Lifetime,      // how long a shot flies, and so its range
+	Side_Firing_Volley,       // each volley also fires to both sides
+	Firing_Delay,             // the gap between shots
+	Projectile_Damage,        // the damage each shot, and what it spawns, deals
+}
+
+
+Stat_Total :: struct {
+	percent: i32, // increases minus decreases
+	extra:   i32,
+	enabled: bool,
 }

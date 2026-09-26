@@ -94,7 +94,7 @@ Weapon :: struct {
 	// docs/new-weapons.md), which exist only in a New Weapons session.
 	extra:         bool,
 	aimed_release: bool, // the charge fires aimed volleys at the nearest enemy
-	beam:          Beam_Def, // an instant laser instead of projectiles (beam.odin)
+	beam:          Beam_Def, // an instant laser instead of projectiles (weapon_system/beam.odin)
 }
 
 // Weapon types (Wep_Def.type), compared as ids by the original.
@@ -200,4 +200,14 @@ state_find :: proc "contextless" (u: ^Unit, name: string) -> (index: int, ok: bo
 		}
 	}
 	return index, index >= 0
+}
+
+Beam_Def :: struct {
+	on:             bool,
+	damage:         f32, // a pulse's
+	width:          f32, // px across the line that a target's circle must touch
+	release_damage: f32, // a charge's at the weapon's own max power level
+	release_width:  f32,
+	shrapnel:       Res_ID, // the unit a kill throws out
+	shrapnel_count: i32,
 }

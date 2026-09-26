@@ -13,6 +13,8 @@ import "dr:data"
 import "dr:plugins/easy_mode"
 import "dr:plugins/passives"
 import "dr:sim"
+import "dr:sim/stats"
+import "dr:sim/systems/player_system"
 
 // Easy mode's passives and reward screen (sim/passives.odin,
 // sim/reward.odin). The rules are the design's (notes/passive-upgrades-and-
@@ -68,20 +70,20 @@ weapon_passives_count_only_for_their_weapon :: proc(t: ^testing.T) {
 
 @(test)
 scale_rounds_halves_up_and_leaves_zero_exact :: proc(t: ^testing.T) {
-	testing.expect_value(t, sim.scale_i32(7, 0), 7)
-	testing.expect_value(t, sim.scale_i32(10, 10), 11)
-	testing.expect_value(t, sim.scale_i32(5, -50), 3)  // 2.5 rounds up
-	testing.expect_value(t, sim.scale_i32(3, -50), 2)  // 1.5 rounds up
-	testing.expect_value(t, sim.scale_i32(9, -200), 0) // never below zero
-	testing.expect_value(t, sim.scale_i32(-5, 50), -8) // -7.5, away from zero
-	testing.expect_value(t, sim.scale_f32(2, 50), 3)
+	testing.expect_value(t, stats.scale_i32(7, 0), 7)
+	testing.expect_value(t, stats.scale_i32(10, 10), 11)
+	testing.expect_value(t, stats.scale_i32(5, -50), 3)  // 2.5 rounds up
+	testing.expect_value(t, stats.scale_i32(3, -50), 2)  // 1.5 rounds up
+	testing.expect_value(t, stats.scale_i32(9, -200), 0) // never below zero
+	testing.expect_value(t, stats.scale_i32(-5, 50), -8) // -7.5, away from zero
+	testing.expect_value(t, stats.scale_f32(2, 50), 3)
 }
 
 @(test)
 extra_lanes_continue_the_spread :: proc(t: ^testing.T) {
-	check :: proc(t: ^testing.T, name: string, base: []sim.Lane, extra: i32, want: []f32) {
-		out: [sim.MAX_LANES]sim.Lane
-		n := sim.lanes_extend(base, extra, out[:])
+	check :: proc(t: ^testing.T, name: string, base: []stats.Lane, extra: i32, want: []f32) {
+		out: [stats.MAX_LANES]stats.Lane
+		n := stats.lanes_extend(base, extra, out[:])
 		if !testing.expectf(t, n == len(want), "%s: %d lanes, want %d", name, n, len(want)) {
 			return
 		}
@@ -90,20 +92,20 @@ extra_lanes_continue_the_spread :: proc(t: ^testing.T) {
 		}
 	}
 	// The Ion Cannon's two lanes, +2: one more each side at the same spacing.
-	ion := []sim.Lane{{x = -5, src = 0}, {x = 4, src = 1}}
+	ion := []stats.Lane{{x = -5, src = 0}, {x = 4, src = 1}}
 	check(t, "ion +2", ion, 2, {-14, -5, 4, 13})
 	// The Photon Beam's three, +3 (odd): shifted half a step, still symmetric.
-	photon := []sim.Lane{{x = -6, src = 0}, {x = 0, src = 1}, {x = 6, src = 2}}
+	photon := []stats.Lane{{x = -6, src = 0}, {x = 0, src = 1}, {x = 6, src = 2}}
 	check(t, "photon +3", photon, 3, {-15, -9, -3, 3, 9, 15})
 	// A lone lane spreads by LANE_SPACING.
-	check(t, "single +1", []sim.Lane{{x = 0}}, 1, {-6, 6})
+	check(t, "single +1", []stats.Lane{{x = 0}}, 1, {-6, 6})
 	check(t, "none", ion, 0, {-5, 4})
 
 	// Headings carry on the same way, and each lane takes its nearest
 	// original's unit.
-	fan := []sim.Lane{{angle = -10, src = 0}, {angle = 10, src = 1}}
-	out: [sim.MAX_LANES]sim.Lane
-	n := sim.lanes_extend(fan, 2, out[:])
+	fan := []stats.Lane{{angle = -10, src = 0}, {angle = 10, src = 1}}
+	out: [stats.MAX_LANES]stats.Lane
+	n := stats.lanes_extend(fan, 2, out[:])
 	testing.expect_value(t, n, 4)
 	testing.expect_value(t, out[0].angle, -30)
 	testing.expect_value(t, out[3].angle, 30)
@@ -269,7 +271,7 @@ reward_options_are_one_more_than_the_players :: proc(t: ^testing.T) {
 regen_step :: proc(s: ^sim.State, p: sim.Player, time: i32) {
 	ps := sim.Player_Step{time = time}
 	passives.shield_regen_stage(s, p, &ps)
-	sim.calm_stage(s, p, &ps)
+	player_system.calm_stage(s, p, &ps)
 }
 
 @(test)
@@ -425,7 +427,7 @@ weapon_passives_shape_the_real_weapons :: proc(t: ^testing.T) {
 		}
 		return -1
 	}
-	projectiles :: proc(s: ^sim.State, spawns: []sim.Weapon_Spawn) -> (n: int) {
+	projectiles :: proc(s: ^sim.State, spawns: []stats.Weapon_Spawn) -> (n: int) {
 		for sp in spawns {
 			ui := sim.unit_index(s.defs, sp.unit)
 			if ui >= 0 && s.defs.units[ui].player_projectile {
@@ -434,14 +436,14 @@ weapon_passives_shape_the_real_weapons :: proc(t: ^testing.T) {
 		}
 		return
 	}
-	out, before: [64]sim.Weapon_Spawn
+	out, before: [64]stats.Weapon_Spawn
 	p := sim.player_at(s, 0)
 
 	ion := index(&defs, passives.WEAPON_ION_CANNON)
 	if !testing.expect(t, ion >= 0, "no Ion Cannon in the data") {
 		return
 	}
-	nb := sim.weapon_spawns(s, ion, 0, false, before[:])
+	nb := stats.weapon_spawns(s, ion, 0, false, before[:])
 	// With no passive held, the spawn list is the weapon's own, as it was.
 	wd := &defs.weapons[ion]
 	k := 0
@@ -455,15 +457,15 @@ weapon_passives_shape_the_real_weapons :: proc(t: ^testing.T) {
 	}
 	testing.expect_value(t, nb, k)
 	passives.levels_of(s, p.number)^[.Weapon_1] = 1
-	n := sim.weapon_spawns(s, ion, 0, false, out[:])
+	n := stats.weapon_spawns(s, ion, 0, false, out[:])
 	testing.expect_value(t, projectiles(s, out[:n]), projectiles(s, before[:nb]) + 1)
 	passives.levels_of(s, p.number)^[.Weapon_1] = 3 // x at levels 2-3: still the one extra
-	n = sim.weapon_spawns(s, ion, 0, false, out[:])
+	n = stats.weapon_spawns(s, ion, 0, false, out[:])
 	testing.expect_value(t, projectiles(s, out[:n]), projectiles(s, before[:nb]) + 1)
 
 	// The Bacta Gun's passive leaves the Ion Cannon alone.
 	passives.levels_of(s, p.number)^ = #partial {.Weapon_2 = 3}
-	n = sim.weapon_spawns(s, ion, 0, false, out[:])
+	n = stats.weapon_spawns(s, ion, 0, false, out[:])
 	testing.expect_value(t, n, nb)
 
 	// The plasma bomb, backwards: every spawn mirrored behind the ship.
@@ -472,8 +474,8 @@ weapon_passives_shape_the_real_weapons :: proc(t: ^testing.T) {
 		return
 	}
 	passives.levels_of(s, p.number)^ = #partial {.Ground_Variant_1 = 1}
-	fwd := sim.weapon_spawns(s, bomb, 0, false, before[:])
-	back := sim.weapon_spawns(s, bomb, 0, true, out[:])
+	fwd := stats.weapon_spawns(s, bomb, 0, false, before[:])
+	back := stats.weapon_spawns(s, bomb, 0, true, out[:])
 	testing.expect_value(t, back, fwd)
 	for i in 0 ..< back {
 		testing.expect_value(t, out[i].y, -before[i].y)
@@ -482,7 +484,7 @@ weapon_passives_shape_the_real_weapons :: proc(t: ^testing.T) {
 	}
 	// Level 3 drops one more bomb.
 	passives.levels_of(s, p.number)^ = #partial {.Ground_Variant_1 = 3}
-	n = sim.weapon_spawns(s, bomb, 0, true, out[:])
+	n = stats.weapon_spawns(s, bomb, 0, true, out[:])
 	testing.expect_value(t, projectiles(s, out[:n]), projectiles(s, before[:fwd]) + 1)
 
 	// Every weapon passive is offered only where its weapon flies.

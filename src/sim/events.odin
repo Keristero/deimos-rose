@@ -34,7 +34,6 @@ event_log_entries :: proc "contextless" (l: ^Event_Log) -> []Event {
 	return l.events[:l.count]
 }
 
-@(private)
 record_event :: proc "contextless" (s: ^State, e: Event) {
 	l := s.events
 	if l == nil {

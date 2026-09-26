@@ -7,6 +7,7 @@ import vmem "core:mem/virtual"
 
 import "dr:data"
 import "dr:sim"
+import "dr:sim/systems/level_system"
 
 // Whole-session regression tests for the level skip: finishing one level
 // used to chain through every remaining level in as many steps, straight to
@@ -41,7 +42,7 @@ play_session :: proc(defs: ^sim.Defs, start: sim.Level_ID, max_steps: int, alloc
 		}
 		sim.step(s, {})
 		steps += 1
-		switch sim.level_transition(s) {
+		switch level_system.level_transition(s) {
 		case .None:
 		case .Advanced:
 			append(&r.level_steps, steps)
@@ -49,7 +50,7 @@ play_session :: proc(defs: ^sim.Defs, start: sim.Level_ID, max_steps: int, alloc
 			steps = 0
 		case .Game_Over, .All_Complete:
 			append(&r.level_steps, steps)
-			r.outcome = sim.level_transition(s)
+			r.outcome = level_system.level_transition(s)
 			return r
 		}
 	}

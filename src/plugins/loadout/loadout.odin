@@ -5,6 +5,8 @@ import "base:runtime"
 import _ "dr:plugins/extra_prefs"
 import _ "dr:sim/core"
 import "dr:sim"
+import "dr:sim/systems/weapon_system"
+import "dr:sim/systems/player_system"
 
 // New Weapons' loadout: new content, not the original's (the design is
 // notes/new-weapons.md, what was built docs/new-weapons.md). A player holds
@@ -385,10 +387,10 @@ loadout_apply :: proc(s: ^sim.State, p: sim.Player, b: ^Loadout_Board) {
 		return false
 	}
 	wh := p.weapons
-	if !in_loadout(h, sim.air_weapon_shown(wh)) && first != NO_WEAPON {
-		sim.change_weapon(s, wh, sim.WEP_AIR, in_loadout(h, wh.air.weapon) ? wh.air.weapon : first)
+	if !in_loadout(h, weapon_system.air_weapon_shown(wh)) && first != NO_WEAPON {
+		weapon_system.change_weapon(s, wh, sim.WEP_AIR, in_loadout(h, wh.air.weapon) ? wh.air.weapon : first)
 	}
-	sim.player_sprite_from_weapon(s, p)
+	player_system.player_sprite_from_weapon(s, p)
 }
 
 // While the screen is open it takes the step.

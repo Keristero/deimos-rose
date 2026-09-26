@@ -7,11 +7,11 @@ package sim
 // scale, tint and glow are frozen at the instant it was made.
 //
 // The trigger -- a random gap between blurs -- draws from the gameplay RNG,
-// so that part stays in eg_process.odin next to the other RNG draws. This is
-// just what that trigger hands off: a one-shot "a ghost was made here" event,
-// on the same footing as Particle_Event and Stamp. Ageing and drawing the
-// ghost afterwards is presentation's job, same as the terrain buffer owning
-// what stamp_object hands it.
+// so that part stays in entity_system's motion_blur stage, beside the other
+// RNG draws. This is just what that trigger hands off: a one-shot "a ghost
+// was made here" event, on the same footing as Particle_Event and Stamp.
+// Ageing and drawing the ghost afterwards is presentation's job, same as the
+// terrain buffer owning what stamp_object hands it.
 Blur_Event :: struct {
 	obj: Game_Object, // frozen snapshot; visibility_delta is the fade rate
 }

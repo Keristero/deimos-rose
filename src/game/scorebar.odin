@@ -25,6 +25,8 @@ import rl "vendor:raylib"
 
 import "dr:data"
 import "dr:sim"
+import "dr:sim/systems/weapon_system"
+import "dr:sim/lifecycle"
 
 // G_ScoreBar_Process's state, one per player (the 0x149-byte blocks at
 // DAT_004f0a20).
@@ -187,8 +189,8 @@ scorebar_sprite :: proc(r: ^Renderer, id: sim.Res_ID, frame: i32, at: sim.Vec, s
 	}
 	w := i32(src.width * size)
 	h := i32(src.height * size)
-	x := VIEW_X + at.x - f32(sim.halve(w))
-	y := at.y - f32(sim.halve(h))
+	x := VIEW_X + at.x - f32(lifecycle.halve(w))
+	y := at.y - f32(lifecycle.halve(h))
 	dst := rl.Rectangle{x * scale, y * scale, f32(w) * scale, f32(h) * scale}
 	tint := rl.Color{255, 255, 255, blend_alpha(blend)}
 	draw_item(r, {texture = tex, src = src, tint = tint}, dst)
@@ -235,7 +237,7 @@ Weapon_Face :: struct {
 // ("none") when it repeats one already shown.
 air_weapon_faces :: proc(s: ^sim.State, h: sim.Weapons) -> (out: [3]Weapon_Face) {
 	out = {{sprite = sim.NONE}, {sprite = sim.NONE}, {sprite = sim.NONE}}
-	cur := sim.air_weapon_shown(h)
+	cur := weapon_system.air_weapon_shown(h)
 	if cur == sim.NO_WEAPON {
 		return
 	}
@@ -245,13 +247,13 @@ air_weapon_faces :: proc(s: ^sim.State, h: sim.Weapons) -> (out: [3]Weapon_Face)
 	}
 	out[0] = face(s, cur)
 	// Under a weapon chooser, its next choices (sim.air_weapon_next).
-	next := sim.air_weapon_next(s, h, cur)
+	next := weapon_system.air_weapon_next(s, h, cur)
 	out[1] = next == sim.NO_WEAPON ? out[0] : face(s, next)
 	if out[1] == out[0] {
 		out[1] = {sprite = sim.NONE}
 		return
 	}
-	after := sim.air_weapon_next(s, h, next)
+	after := weapon_system.air_weapon_next(s, h, next)
 	out[2] = after == sim.NO_WEAPON ? out[0] : face(s, after)
 	if out[2] == out[0] || out[2] == out[1] {
 		out[2] = {sprite = sim.NONE}

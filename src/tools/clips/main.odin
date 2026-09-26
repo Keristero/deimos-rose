@@ -33,6 +33,8 @@ import "dr:prefs"
 // The original game's systems, which a session runs.
 import _ "dr:sim/core"
 import "dr:sim"
+import "dr:sim/systems/weapon_system"
+import "dr:sim/systems/player_system"
 
 WARM :: 150
 TAPS :: 60
@@ -111,11 +113,11 @@ clip :: proc(r: ^game.Renderer, defs: ^sim.Defs, state: ^sim.State, root, id, ou
 	fl.mode = .Playing
 	p := sim.player_at(state, 0)
 	if ground {
-		sim.change_weapon(state, p.weapons, sim.WEP_GROUND, i32(wi))
+		weapon_system.change_weapon(state, p.weapons, sim.WEP_GROUND, i32(wi))
 	} else {
 		loadout.slots_of(state, 0).loadout[0] = i32(wi)
-		sim.change_weapon(state, p.weapons, sim.WEP_AIR, i32(wi))
-		sim.player_sprite_from_weapon(state, p)
+		weapon_system.change_weapon(state, p.weapons, sim.WEP_AIR, i32(wi))
+		player_system.player_sprite_from_weapon(state, p)
 	}
 
 	name := strings.trim_prefix(strings.trim_prefix(wd.name, "Air - "), "Ground - ")

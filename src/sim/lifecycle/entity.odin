@@ -1,26 +1,20 @@
-package sim
+package lifecycle
 
-// G_Entity: one spawned unit.
+// G_Entity: one spawned unit -- its look, its state changes and its fleeing.
 //
 // Each proc names the original function it reproduces. Random calls pass the
 // original call site (the RandomInt/RandomFloat return address) so the oracle
 // diff can name the first divergence precisely.
 
-unit_of :: #force_inline proc "contextless" (s: ^State, e: Entity) -> ^Unit {
-	return &s.defs.units[e.unit]
-}
-
-state_of :: #force_inline proc "contextless" (s: ^State, e: Entity) -> ^Unit_State {
-	return &s.defs.units[e.unit].states[e.state]
-}
+import "dr:sim"
 
 // U_Sprite_GetDimensions / ..ForSpriteFrameData: frame size, scaled with C
 // truncation unless the scale is exactly 1.
-sprite_dims :: proc "contextless" (s: ^State, sprite: Res_ID, frame: i32, scale: f32) -> [2]i32 {
-	if sprite == NONE {
+sprite_dims :: proc "contextless" (s: ^sim.State, sprite: sim.Res_ID, frame: i32, scale: f32) -> [2]i32 {
+	if sprite == sim.NONE {
 		return {}
 	}
-	spr := sprite_find(s.defs, sprite)
+	spr := sim.sprite_find(s.defs, sprite)
 	if spr == nil || frame < 0 || int(frame) >= len(spr.frames) {
 		// The original asserts (after trying to load the group). Never
 		// happens with shipped data: every state's frame range fits.
@@ -30,15 +24,15 @@ sprite_dims :: proc "contextless" (s: ^State, sprite: Res_ID, frame: i32, scale:
 	if scale == 1 {
 		return {f.width, f.height}
 	}
-	return {trunc_i32(f32(f.width) * scale), trunc_i32(f32(f.height) * scale)}
+	return {sim.trunc_i32(f32(f.width) * scale), sim.trunc_i32(f32(f.height) * scale)}
 }
 
 // G_GameObject::CalculateDimensions.
-calculate_dimensions :: proc "contextless" (s: ^State, o: ^Game_Object) {
+calculate_dimensions :: proc "contextless" (s: ^sim.State, o: ^sim.Game_Object) {
 	if !o.dims_dirty {
 		return
 	}
-	if o.sprite == NONE {
+	if o.sprite == sim.NONE {
 		o.half = {}
 	} else {
 		o.dims = sprite_dims(s, o.sprite, o.frame, o.scale)
@@ -49,17 +43,17 @@ calculate_dimensions :: proc "contextless" (s: ^State, o: ^Game_Object) {
 }
 
 // G_GameObject::GetBounds, as U_Rect (top, left, bottom, right).
-object_bounds :: proc "contextless" (o: ^Game_Object) -> Rect {
+object_bounds :: proc "contextless" (o: ^sim.Game_Object) -> sim.Rect {
 	return {
-		top    = trunc_i32(o.loc.y - f32(o.half.y)),
-		left   = trunc_i32(o.loc.x - f32(o.half.x)),
-		bottom = trunc_i32(f32(o.half.y) + o.loc.y),
-		right  = trunc_i32(f32(o.half.x) + o.loc.x),
+		top    = sim.trunc_i32(o.loc.y - f32(o.half.y)),
+		left   = sim.trunc_i32(o.loc.x - f32(o.half.x)),
+		bottom = sim.trunc_i32(f32(o.half.y) + o.loc.y),
+		right  = sim.trunc_i32(f32(o.half.x) + o.loc.x),
 	}
 }
 
 // G_GameObject::DoScaling.
-do_scaling :: proc "contextless" (o: ^Game_Object) {
+do_scaling :: proc "contextless" (o: ^sim.Game_Object) {
 	if o.scale > o.scale_target {
 		o.dims_dirty = true
 		o.scale -= o.scale_delta
@@ -76,7 +70,7 @@ do_scaling :: proc "contextless" (o: ^Game_Object) {
 }
 
 // G_GameObject::AdjustVisibilityAndTinting.
-adjust_visibility_and_tinting :: proc "contextless" (o: ^Game_Object) {
+adjust_visibility_and_tinting :: proc "contextless" (o: ^sim.Game_Object) {
 	step :: proc "contextless" (v: ^f32, target, delta: f32) {
 		if v^ > target {
 			v^ -= delta
@@ -99,32 +93,32 @@ adjust_visibility_and_tinting :: proc "contextless" (o: ^Game_Object) {
 
 // G_Entity::Reset: a pool slot made ready for a new entity. Its Link is the
 // list's to set.
-entity_reset :: proc "contextless" (e: Entity, pool_index: i32) {
-	e.actor^ = Actor {
-		unit           = NO_LINK,
+entity_reset :: proc "contextless" (e: sim.Entity, pool_index: i32) {
+	e.actor^ = sim.Actor {
+		unit           = sim.NO_LINK,
 		number         = -1,
 		group          = -1,
 		state          = -1,
 		owner_player   = -1,
 		target_player  = -1,
-		powerup_weapon = NONE,
+		powerup_weapon = sim.NONE,
 		pool_index     = pool_index,
 	}
 	e.anim^ = {}
-	e.motion^ = Motion{hunt_player = -1}
-	e.owned^ = Owned{owner = NO_REF}
+	e.motion^ = sim.Motion{hunt_player = -1}
+	e.owned^ = sim.Owned{owner = sim.NO_REF}
 	e.spawner^ = {}
 	e.effects^ = {}
 	e.shaped^ = {}
-	object_defaults(e.obj)
+	sim.object_defaults(e.obj)
 }
 
 // G_Entity::GetFrameForAngle.
-frame_for_angle :: proc "contextless" (s: ^State, e: Entity, angle: i32) -> i32 {
-	st := state_of(s, e)
+frame_for_angle :: proc "contextless" (s: ^sim.State, e: sim.Entity, angle: i32) -> i32 {
+	st := sim.state_of(s, e)
 	dirs := max(st.num_directions, 1)
 	f := f32(angle) / f32(360 / dirs)
-	i := trunc_i32(f)
+	i := sim.trunc_i32(f)
 	if f - f32(i) >= 0.5 {
 		i += 1
 	}
@@ -137,43 +131,43 @@ frame_for_angle :: proc "contextless" (s: ^State, e: Entity, angle: i32) -> i32 
 }
 
 // G_Entity::Priv_CheckSpawningAbilityAtStateChange.
-reset_spawn_info :: proc "contextless" (s: ^State, e: Entity, time: i32) {
-	st := state_of(s, e)
+reset_spawn_info :: proc "contextless" (s: ^sim.State, e: sim.Entity, time: i32) {
+	st := sim.state_of(s, e)
 	n := len(st.spawn_sets)
 	e.spawning = n > 0
 	for &set, i in st.spawn_sets {
 		info := &e.spawn_info[i]
-		if set.spawn == NONE {
+		if set.spawn == sim.NONE {
 			info.last = time
 			info.delay = 0
 			info.active = false
 			e.spawn_pause = 0
 			continue
 		}
-		info.delay = roll_int(s, set.rate_min, set.rate_max, 0x416e24)
+		info.delay = sim.roll_int(s, set.rate_min, set.rate_max, 0x416e24)
 		info.last = time
-		info.volley = roll_int(s, set.num_in_volley_min, set.num_in_volley_max, 0x416e3e)
+		info.volley = sim.roll_int(s, set.num_in_volley_min, set.num_in_volley_max, 0x416e3e)
 		info.active = info.delay >= 0 && info.volley > 0
 		info.left = info.volley
-		info.gap = roll_int(s, set.delay_between_entities_min, set.delay_between_entities_max, 0x416e71)
+		info.gap = sim.roll_int(s, set.delay_between_entities_min, set.delay_between_entities_max, 0x416e71)
 		e.spawn_pause = set.time_to_pause_rotation_after_spawning
 	}
 }
 
 // G_Entity::ChangeState. Returns whether the entity is to be deleted or
 // destroyed (the original's two out-parameters).
-change_state :: proc(s: ^State, e: Entity, init: bool, name: string, time: i32) -> (delete, destroy: bool) {
+change_state :: proc(s: ^sim.State, e: sim.Entity, init: bool, name: string, time: i32) -> (delete, destroy: bool) {
 	if name == "Delete" {
 		return true, false
 	}
 	if name == "Destroy" {
 		return false, true
 	}
-	u := unit_of(s, e)
+	u := sim.unit_of(s, e)
 	// Logged before the lookup, where the original's trace hook sits: a name
 	// that matches no state is still an attempt (and does nothing).
-	record_event(s, Event{kind = .State, unit = u.id, number = e.number, state = name, loc = e.loc})
-	next, found := state_find(u, name)
+	sim.record_event(s, sim.Event{kind = .State, unit = u.id, number = e.number, state = name, loc = e.loc})
+	next, found := sim.state_find(u, name)
 	if !found {
 		return
 	}
@@ -186,9 +180,9 @@ change_state :: proc(s: ^State, e: Entity, init: bool, name: string, time: i32) 
 	// touch them.
 	keep_angle := false
 	keep_angle_value: i32
-	prev_flee := Res_ID{}
+	prev_flee := sim.Res_ID{}
 	if e.state >= 0 {
-		prev := state_of(s, e)
+		prev := sim.state_of(s, e)
 		if prev.orbit_owner {
 			keep_angle = true
 			keep_angle_value = e.orbit_angle
@@ -205,26 +199,26 @@ change_state :: proc(s: ^State, e: Entity, init: bool, name: string, time: i32) 
 	e.sound_count = 0
 	e.particle_count = 0
 	e.anim_done = false
-	st := state_of(s, e)
-	e.timer = roll_int(s, st.on_timer_min, st.on_timer_max, 0x41374b)
+	st := sim.state_of(s, e)
+	e.timer = sim.roll_int(s, st.on_timer_min, st.on_timer_max, 0x41374b)
 
 	// Pickups show the weapon they carry instead of the state's sprite.
-	powerup := Res_ID{}
+	powerup := sim.Res_ID{}
 	switch u.pickup_type {
-	case res_id("air "):
-		powerup = res_id("PEAA")
-	case res_id("spec"):
-		powerup = res_id("SPEC")
-	case res_id("grnd"):
-		powerup = res_id("PEAG")
+	case sim.res_id("air "):
+		powerup = sim.res_id("PEAA")
+	case sim.res_id("spec"):
+		powerup = sim.res_id("SPEC")
+	case sim.res_id("grnd"):
+		powerup = sim.res_id("PEAG")
 	}
-	if powerup != (Res_ID{}) {
-		unported(s, 0x41377e) // weapon pickup appearance
+	if powerup != (sim.Res_ID{}) {
+		sim.unported(s, 0x41377e) // weapon pickup appearance
 	} else {
 		e.sprite = st.sprite_face
 		if init || e.sprite != old_sprite {
 			if !u.initial_heading_set_in_editor {
-				e.frame = roll_int(s, st.sprite_frame_min, st.sprite_frame_max, 0x41382d)
+				e.frame = sim.roll_int(s, st.sprite_frame_min, st.sprite_frame_max, 0x41382d)
 			} else {
 				e.frame = frame_for_angle(s, e, e.heading)
 			}
@@ -240,11 +234,11 @@ change_state :: proc(s: ^State, e: Entity, init: bool, name: string, time: i32) 
 		e.tint = f32(st.tint_percent)
 		e.tint_target = f32(st.tint_percent)
 		e.tint_delta = f32(st.tint_delta_percent)
-		e.tint_color = color_1555(st.tint_color)
+		e.tint_color = sim.color_1555(st.tint_color)
 		scale := u.initial_scale_percent
 		if tol := u.initial_scale_percent_tolerance; tol != 0 {
 			half := halve(tol)
-			scale += roll_int(s, -half, half, 0x4138f4)
+			scale += sim.roll_int(s, -half, half, 0x4138f4)
 			if scale < 0 {
 				scale = 0
 			}
@@ -264,12 +258,12 @@ change_state :: proc(s: ^State, e: Entity, init: bool, name: string, time: i32) 
 
 	if init {
 		if !st.lock_to_owner_loc {
-			approach(e, invert_angle(e.heading), st.max_speed, st.delta)
+			approach(e, sim.invert_angle(e.heading), st.max_speed, st.delta)
 		} else {
 			e.vel, e.vel_delta, e.vel_target = {}, {}, {}
 		}
 	} else if !st.lock_to_owner_loc {
-		angle := keep_angle ? keep_angle_value : angle_from_vector(e.vel)
+		angle := keep_angle ? keep_angle_value : sim.angle_from_vector(e.vel)
 		approach(e, angle, st.max_speed, st.delta)
 		if e.group != -1 {
 			cache_owner_offsets(s, e)
@@ -278,8 +272,8 @@ change_state :: proc(s: ^State, e: Entity, init: bool, name: string, time: i32) 
 		e.vel, e.vel_delta, e.vel_target = {}, {}, {}
 	}
 
-	if st.flee == NONE {
-		if e.fleeing && prev_flee != NONE {
+	if st.flee == sim.NONE {
+		if e.fleeing && prev_flee != sim.NONE {
 			e.fleeing = false
 		}
 	} else {
@@ -307,7 +301,7 @@ change_state :: proc(s: ^State, e: Entity, init: bool, name: string, time: i32) 
 
 	// Uses the state entered above (st), not any state entered by the
 	// counter recursion -- as the original does.
-	e.animating = e.sprite != NONE && st.frame_delta > 0
+	e.animating = e.sprite != sim.NONE && st.frame_delta > 0
 	return
 }
 
@@ -320,36 +314,36 @@ halve :: #force_inline proc "contextless" (n: i32) -> i32 {
 // The velocity approach shared by both branches of ChangeState: head for
 // `max_speed` along `angle`, changing speed by at most `delta` per step.
 @(private = "file")
-approach :: proc "contextless" (e: Entity, angle: i32, max_speed, delta: f32) {
-	speed := speed_from_vector(e.vel)
+approach :: proc "contextless" (e: sim.Entity, angle: i32, max_speed, delta: f32) {
+	speed := sim.speed_from_vector(e.vel)
 	d := speed < max_speed ? max_speed - speed : speed - max_speed
 	step := delta
 	if d < delta {
 		step = d
 	}
 	target := max_speed <= speed ? speed - step : speed + step
-	v := vector_from_angle_and_speed(angle, target)
+	v := sim.vector_from_angle_and_speed(angle, target)
 	e.vel_delta = v - e.vel
-	e.vel_target = vector_from_angle_and_speed(angle, max_speed)
+	e.vel_target = sim.vector_from_angle_and_speed(angle, max_speed)
 }
 
 // G_EG_CacheOwnerLocOffsetsAndAngles: for states that follow their owner,
 // remember where the owner is and how far away (lock / link: the offset;
 // orbit: the offset, radius and angle).
-cache_owner_offsets :: proc(s: ^State, e: Entity) {
+cache_owner_offsets :: proc(s: ^sim.State, e: sim.Entity) {
 	e.owner_offset = {}
 	e.owner_loc = {}
-	st := state_of(s, e)
+	st := sim.state_of(s, e)
 	if !(st.orbit_owner || st.lock_to_owner_loc || st.link_to_owner_loc) {
 		return
 	}
-	owner: Vec
+	owner: sim.Vec
 	found := false
-	if ref_valid(s, e.owner) {
-		owner = entity_at(s, e.owner.index).loc
+	if sim.ref_valid(s, e.owner) {
+		owner = sim.entity_at(s, e.owner.index).loc
 		found = true
 	} else if e.owner_player != -1 {
-		p := player_at(s, e.owner_player)
+		p := sim.player_at(s, e.owner_player)
 		if p.state == .Playing {
 			owner, found = p.loc, true
 		}
@@ -363,8 +357,8 @@ cache_owner_offsets :: proc(s: ^State, e: Entity) {
 	// the sign; both are the same value.
 	if st.orbit_owner {
 		e.owner_offset = {owner.x < me.x ? me.x - owner.x : -(owner.x - me.x), owner.y < me.y ? me.y - owner.y : -(owner.y - me.y)}
-		e.orbit_radius = f32(trunc_i32(distance_to(owner, me)))
-		e.orbit_angle = invert_angle(intercept_angle(trunc_i32(owner.x), trunc_i32(owner.y), trunc_i32(me.x), trunc_i32(me.y)))
+		e.orbit_radius = f32(sim.trunc_i32(sim.distance_to(owner, me)))
+		e.orbit_angle = sim.invert_angle(sim.intercept_angle(sim.trunc_i32(owner.x), sim.trunc_i32(owner.y), sim.trunc_i32(me.x), sim.trunc_i32(me.y)))
 	}
 	if st.lock_to_owner_loc {
 		e.owner_offset = {owner.x < me.x ? me.x - owner.x : -(owner.x - me.x), owner.y < me.y ? me.y - owner.y : -(owner.y - me.y)}
@@ -372,16 +366,16 @@ cache_owner_offsets :: proc(s: ^State, e: Entity) {
 }
 
 // G_Entity::Animate.
-entity_animate :: proc(s: ^State, e: Entity, time: i32) {
+entity_animate :: proc(s: ^sim.State, e: sim.Entity, time: i32) {
 	if !e.animating {
 		return
 	}
-	st := state_of(s, e)
+	st := sim.state_of(s, e)
 	delta := st.frame_delta
 	if !(delta > 0 && !st.do_rotate_to_target && e.anim_time + st.frame_delay < time) {
 		return
 	}
-	dir := trunc_i32(f32(st.num_directions) * (f32(e.heading) / 360))
+	dir := sim.trunc_i32(f32(st.num_directions) * (f32(e.heading) / 360))
 	first := dir * st.frames_per_direction
 	past := first + st.frames_per_direction
 	last := past - 1
@@ -414,7 +408,7 @@ entity_animate :: proc(s: ^State, e: Entity, time: i32) {
 			}
 		}
 	} else {
-		e.frame = roll_int(s, first, last, 0x4149db)
+		e.frame = sim.roll_int(s, first, last, 0x4149db)
 	}
 	e.anim_time = time
 	e.dims_dirty = true
@@ -433,32 +427,32 @@ entity_animate :: proc(s: ^State, e: Entity, time: i32) {
 // coordinate for nora and sora -- so the RNG stream is the same either way,
 // but the site identifies the branch: de04 step 2065 shows a "sora" flee
 // drawing at 0x416630, so 0x4165f0 is nora.
-entity_flee :: proc(s: ^State, e: Entity, flee: Res_ID) {
+entity_flee :: proc(s: ^sim.State, e: sim.Entity, flee: sim.Res_ID) {
 	e.fleeing = true
 	d := s.defs
-	w := d.perm_floats[PF_VISIBLE_GAME_WIDTH]
-	h := d.perm_floats[PF_VISIBLE_GAME_HEIGHT]
+	w := d.perm_floats[sim.PF_VISIBLE_GAME_WIDTH]
+	h := d.perm_floats[sim.PF_VISIBLE_GAME_HEIGHT]
 	north := d.perm_floats[0xe] // Game_EntityFleeNorthLocation
 	south := d.perm_floats[0xf]
 	switch flee {
-	case res_id("cega"): // centre
+	case sim.res_id("cega"): // centre
 		e.hunt_target = {w / 2, h / 2}
-	case res_id("nora"): // north, random x
-		e.hunt_target = {roll_float(s, 0, w, 0x4165f0), north}
-	case res_id("sora"): // south, random x
-		e.hunt_target = {roll_float(s, 0, w, 0x416630), south}
-	case res_id("noce"): // north, centred
+	case sim.res_id("nora"): // north, random x
+		e.hunt_target = {sim.roll_float(s, 0, w, 0x4165f0), north}
+	case sim.res_id("sora"): // south, random x
+		e.hunt_target = {sim.roll_float(s, 0, w, 0x416630), south}
+	case sim.res_id("noce"): // north, centred
 		e.hunt_target = {w / 2, north}
-	case res_id("soce"): // south, centred
+	case sim.res_id("soce"): // south, centred
 		e.hunt_target = {w / 2, south}
-	case NONE:
+	case sim.NONE:
 	case:
-		unported(s, 0x416520) // east/west/random/opposite flees
+		sim.unported(s, 0x416520) // east/west/random/opposite flees
 	}
 }
 
 // G_GameObject::Glow_Start. `restart` re-triggers a glow already running.
-glow_start :: proc "contextless" (o: ^Game_Object, color: u16, speed: i32, restart: bool) {
+glow_start :: proc "contextless" (o: ^sim.Game_Object, color: u16, speed: i32, restart: bool) {
 	if o.glowing && !restart {
 		return
 	}
@@ -470,7 +464,7 @@ glow_start :: proc "contextless" (o: ^Game_Object, color: u16, speed: i32, resta
 }
 
 // G_GameObject::Glow_Stop.
-glow_stop :: proc "contextless" (o: ^Game_Object) {
+glow_stop :: proc "contextless" (o: ^sim.Game_Object) {
 	o.glowing = false
 	o.glow_falling = false
 	o.glow_amount = 0
@@ -478,7 +472,7 @@ glow_stop :: proc "contextless" (o: ^Game_Object) {
 
 // G_GameObject::Glow_Process: the blend falls from 32 to 4 and back, and the
 // glow ends when it reaches 32 again.
-glow_process :: proc "contextless" (o: ^Game_Object) {
+glow_process :: proc "contextless" (o: ^sim.Game_Object) {
 	if !o.glowing {
 		return
 	}

@@ -1,4 +1,4 @@
-package sim
+package level_system
 
 // The end of a level: the ground-accuracy tally (FUN_00420930 sets it up,
 // FUN_00420d90 runs it) and then each player's money counter. Both are mostly
@@ -11,36 +11,22 @@ package sim
 // the perfect-game bonus, reached only when every level of the list has been
 // finished at 100% accuracy.
 
-Level_End :: struct {
-	started:       bool, // DAT_004e4847
-	started_time:  i32,  // DAT_004e4848
-	all_done:      bool, // DAT_004e4829: this was the last level of the list
-	state:         i32,  // DAT_004e4862: 0 idle, 1..10
-	state_time:    i32,  // DAT_004e4866
-	count_time:    i32,  // DAT_004e486e
-	percent:       i32,  // DAT_004e497a: ground targets destroyed
-	bonus:         i32,  // DAT_004e4872: what is left to award
-	bonus_step:    i32,  // DAT_004e4876
-	bonus_total:   i32,  // the bonus as first worked out: 0 reads "None!", not a count
-	fade:          i32,  // DAT_004e486a
-	perfect_levels: i32, // DAT_004e485e: levels finished at 100%
-	perfect:       bool, // DAT_004e497e: the perfect-game bonus is running
-	perfect_count: i32,  // DAT_004e4980
-	complete:      bool, // DAT_004e4825: the level is over and counted
-}
+import "dr:sim"
+import "dr:sim/lifecycle"
+import "dr:sim/systems/collision_system"
 
 @(private = "file")
-pf :: proc "contextless" (s: ^State, i: int) -> i32 {
-	return trunc_i32(s.defs.perm_floats[i])
+pf :: proc "contextless" (s: ^sim.State, i: int) -> i32 {
+	return sim.trunc_i32(s.defs.perm_floats[i])
 }
 
 // The G_Bgnd_Process() == 1 branch of FUN_00420280, run once the background
 // reports the level has scrolled to its end.
-level_end_step :: proc(s: ^State, time: i32) {
-	l := single(s, Level_End)
-	single(s, Level_Info).ending = true
+level_end_step :: proc(s: ^sim.State, time: i32) {
+	l := sim.single(s, sim.Level_End)
+	sim.single(s, sim.Level_Info).ending = true
 	if !l.started {
-		if single(s, Game_Status).game_over {
+		if sim.single(s, sim.Game_Status).game_over {
 			l.started = true
 			return
 		}
@@ -54,13 +40,13 @@ level_end_step :: proc(s: ^State, time: i32) {
 	// second one offset below the first, and run them until both finish.
 	all_done := true
 	offset := false
-	for p in players_of(s) {
+	for p in sim.players_of(s) {
 		if p.active && !money_counter_active(p) {
 			offset = money_counter_start(s, p, time, offset)
 			all_done = false
 		}
 	}
-	for p in players_of(s) {
+	for p in sim.players_of(s) {
 		if p.active && !money_counter_process(s, p, time) {
 			all_done = false
 		}
@@ -71,24 +57,24 @@ level_end_step :: proc(s: ^State, time: i32) {
 }
 
 @(private = "file")
-level_end_begin :: proc(s: ^State, time: i32) {
-	l := single(s, Level_End)
+level_end_begin :: proc(s: ^sim.State, time: i32) {
+	l := sim.single(s, sim.Level_End)
 	n := i32(len(s.defs.levels))
-	if single(s, Level_Info).number == n && single(s, Level_Info).played == n {
+	if sim.single(s, sim.Level_Info).number == n && sim.single(s, sim.Level_Info).played == n {
 		l.all_done = true
 	}
 	notice := s.defs.perm_objects[l.all_done ? 0x17 : 0x16]
-	if notice != NONE {
-		req := spawn_request(notice)
+	if notice != sim.NONE {
+		req := sim.spawn_request(notice)
 		req.loc = {
-			s.defs.perm_floats[PF_VISIBLE_GAME_WIDTH] / 2,
-			s.defs.perm_floats[PF_VISIBLE_GAME_HEIGHT] / 2,
+			s.defs.perm_floats[sim.PF_VISIBLE_GAME_WIDTH] / 2,
+			s.defs.perm_floats[sim.PF_VISIBLE_GAME_HEIGHT] / 2,
 		}
-		eg_request_spawn(s, req)
+		lifecycle.eg_request_spawn(s, req)
 	}
 	l.started = true
 	l.started_time = time
-	for p in players_of(s) {
+	for p in sim.players_of(s) {
 		if p.active {
 			p.invulnerable = true
 		}
@@ -99,10 +85,10 @@ level_end_begin :: proc(s: ^State, time: i32) {
 	l.state_time = time
 	l.count_time = time
 	percent: f32 = 0
-	if single(s, Accuracy).targets >= 1 {
-		percent = f32(single(s, Accuracy).destroyed) / f32(single(s, Accuracy).targets) * 100
+	if sim.single(s, sim.Accuracy).targets >= 1 {
+		percent = f32(sim.single(s, sim.Accuracy).destroyed) / f32(sim.single(s, sim.Accuracy).targets) * 100
 	}
-	l.percent = trunc_i32(percent)
+	l.percent = sim.trunc_i32(percent)
 	// The thresholds step down from 100 by whole multiples of perm float
 	// 0xbc, worked out as integers and compared as floats.
 	gap := pf(s, 0xbc)
@@ -110,7 +96,7 @@ level_end_begin :: proc(s: ^State, time: i32) {
 	switch {
 	case percent >= 100:
 		// Remembered for the next level's accuracy reward.
-		single(s, Accuracy).perfect_level = true
+		sim.single(s, sim.Accuracy).perfect_level = true
 		tier = 0xbd
 	case percent >= f32(100 - gap):
 		tier = 0xbe
@@ -123,7 +109,7 @@ level_end_begin :: proc(s: ^State, time: i32) {
 	case:
 		tier = 0xc2
 	}
-	l.bonus = pf(s, tier) * single(s, Level_Info).number
+	l.bonus = pf(s, tier) * sim.single(s, sim.Level_Info).number
 	l.bonus_total = l.bonus
 	l.bonus_step = count_step(s, l.bonus)
 }
@@ -131,7 +117,7 @@ level_end_begin :: proc(s: ^State, time: i32) {
 // The countdown step shared by the tally and the money counters: 2% of the
 // total (perm float 0xc8), but never less than perm float 0xc7.
 @(private = "file")
-count_step :: proc "contextless" (s: ^State, total: i32) -> i32 {
+count_step :: proc "contextless" (s: ^sim.State, total: i32) -> i32 {
 	if total < 1 {
 		return 0
 	}
@@ -139,14 +125,14 @@ count_step :: proc "contextless" (s: ^State, total: i32) -> i32 {
 	if min := pf(s, 0xc7); step < f32(min) {
 		step = f32(min)
 	}
-	return trunc_i32(step)
+	return sim.trunc_i32(step)
 }
 
 // FUN_00420d90. Returns true once the tally has run its course, which is when
 // the money counters start.
 @(private = "file")
-level_end_process :: proc(s: ^State, time: i32) -> bool {
-	l := single(s, Level_End)
+level_end_process :: proc(s: ^sim.State, time: i32) -> bool {
+	l := sim.single(s, sim.Level_End)
 	switch l.state {
 	case 0:
 		return true
@@ -196,8 +182,8 @@ level_end_process :: proc(s: ^State, time: i32) -> bool {
 			if l.bonus < 0 {
 				l.bonus = 0
 			}
-			for p in players_of(s) {
-				player_score(s, p, l.bonus_step, false)
+			for p in sim.players_of(s) {
+				collision_system.player_score(s, p, l.bonus_step, false)
 			}
 			level_end_sound(s, 0x14, 0x32)
 		}
@@ -237,8 +223,8 @@ level_end_process :: proc(s: ^State, time: i32) -> bool {
 			return false
 		}
 		l.perfect_count += 1
-		for p in players_of(s) {
-			player_score(s, p, pf(s, 0xcd), true)
+		for p in sim.players_of(s) {
+			collision_system.player_score(s, p, pf(s, 0xcd), true)
 		}
 		if pf(s, 0xd0) <= l.perfect_count {
 			l.perfect = false
@@ -251,9 +237,9 @@ level_end_process :: proc(s: ^State, time: i32) -> bool {
 }
 
 @(private = "file")
-level_end_sound :: proc "contextless" (s: ^State, perm: int, priority: i32) {
+level_end_sound :: proc "contextless" (s: ^sim.State, perm: int, priority: i32) {
 	id := s.defs.perm_sounds[perm]
-	if id == NONE || s.sounds.count >= MAX_SOUND_EVENTS {
+	if id == sim.NONE || s.sounds.count >= sim.MAX_SOUND_EVENTS {
 		return
 	}
 	s.sounds.events[s.sounds.count] = {id = id, volume = 100, priority = priority, pitch = 1}
@@ -263,7 +249,7 @@ level_end_sound :: proc "contextless" (s: ^State, perm: int, priority: i32) {
 // G_Player::MoneyCounter_Start: the money the player is carrying converts to
 // score at a per-level multiplier. Returns whether a counter was started, so
 // the caller offsets the second player's readout below the first.
-money_counter_start :: proc(s: ^State, p: Player, time: i32, offset: bool) -> bool {
+money_counter_start :: proc(s: ^sim.State, p: sim.Player, time: i32, offset: bool) -> bool {
 	if !p.active {
 		return false
 	}
@@ -273,32 +259,32 @@ money_counter_start :: proc(s: ^State, p: Player, time: i32, offset: bool) -> bo
 	m.count_time = time
 	m.multiplier = pf(s, 0xab)
 	if pf(s, 0xaa) != 0 {
-		m.multiplier *= single(s, Level_Info).number
+		m.multiplier *= sim.single(s, sim.Level_Info).number
 	}
 	m.money = p.money
 	m.value = m.money * m.multiplier
 	m.step = count_step(s, m.value)
-	d := player_def(s, p)
-	if d.active_money_counter_spawn != NONE {
-		req := spawn_request(d.active_money_counter_spawn)
+	d := sim.player_def(s, p)
+	if d.active_money_counter_spawn != sim.NONE {
+		req := sim.spawn_request(d.active_money_counter_spawn)
 		req.loc = {s.defs.perm_floats[0xb3], s.defs.perm_floats[0xb4]}
 		if offset {
 			m.offset = pf(s, 0xb5)
 			req.loc.y += f32(m.offset)
 		}
 		req.owner_player = p.number
-		eg_request_spawn(s, req)
+		lifecycle.eg_request_spawn(s, req)
 	}
 	return true
 }
 
-money_counter_active :: proc "contextless" (p: Player) -> bool {
+money_counter_active :: proc "contextless" (p: sim.Player) -> bool {
 	return p.counter.state != 0
 }
 
 // G_Player::MoneyCounter_Process. Returns true once this player's counter has
 // finished.
-money_counter_process :: proc(s: ^State, p: Player, time: i32) -> bool {
+money_counter_process :: proc(s: ^sim.State, p: sim.Player, time: i32) -> bool {
 	m := &p.counter
 	switch m.state {
 	case 0:
@@ -340,7 +326,7 @@ money_counter_process :: proc(s: ^State, p: Player, time: i32) -> bool {
 			if p.active {
 				p.money -= 1
 			}
-			player_score(s, p, m.step, false)
+			collision_system.player_score(s, p, m.step, false)
 			m.value -= m.step
 			level_end_sound(s, 0x14, 0x32)
 		}
@@ -354,16 +340,4 @@ money_counter_process :: proc(s: ^State, p: Player, time: i32) -> bool {
 		}
 	}
 	return false
-}
-
-Money_Counter :: struct {
-	state:      i32, // +0xd2
-	state_time: i32, // +0xd6
-	count_time: i32, // +0xe2
-	multiplier: i32, // +0xde
-	money:      i32, // +0x1e6
-	value:      i32, // +0x1ea
-	step:       i32, // +0x1ee
-	offset:     i32, // +0x1f2
-	fade:       i32, // +0xda
 }

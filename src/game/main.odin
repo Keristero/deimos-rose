@@ -16,6 +16,9 @@ import "dr:plugins/loadout"
 import "dr:plugins/new_weapons"
 import "dr:plugins/passives"
 import "dr:sim"
+import "dr:sim/systems/weapon_system"
+import "dr:sim/systems/player_system"
+import "dr:sim/lifecycle"
 
 // The original presents a 416x480 play-field inside a 640x480 screen; the
 // terrain runtime configures a 416x480x16 source view. We keep that logical
@@ -409,8 +412,8 @@ run_menu_shot :: proc(r: ^Renderer, defs: ^sim.Defs, state: ^sim.State, root, na
 		for &w, i in defs.weapons {
 			if w.id == sim.res_id(beam ? "aidb" : "aicg") {
 				loadout.slots_of(state, 0).loadout[0] = i32(i)
-				sim.change_weapon(state, p.weapons, sim.WEP_AIR, i32(i))
-				sim.player_sprite_from_weapon(state, p)
+				weapon_system.change_weapon(state, p.weapons, sim.WEP_AIR, i32(i))
+				player_system.player_sprite_from_weapon(state, p)
 			}
 		}
 		// An idle ship is shot down about 220 steps in.
@@ -726,12 +729,12 @@ draw_debug :: proc(s: ^sim.State, report: ^data.Defs_Report) {
 		if !used {
 			continue
 		}
-		b := sim.object_bounds(sim.entity_at(s, i32(i)).obj)
+		b := lifecycle.object_bounds(sim.entity_at(s, i32(i)).obj)
 		rl.DrawRectangleLines((b.left + VIEW_X) * WINDOW_SCALE, b.top * WINDOW_SCALE,
 			(b.right - b.left) * WINDOW_SCALE, (b.bottom - b.top) * WINDOW_SCALE,
 			rl.Color{220, 170, 90, 120})
 	}
-	b := sim.object_bounds(sim.player_at(s, 0).obj)
+	b := lifecycle.object_bounds(sim.player_at(s, 0).obj)
 	rl.DrawRectangleLines((b.left + VIEW_X) * WINDOW_SCALE, b.top * WINDOW_SCALE,
 		(b.right - b.left) * WINDOW_SCALE, (b.bottom - b.top) * WINDOW_SCALE,
 		rl.Color{120, 200, 255, 160})
