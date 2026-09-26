@@ -272,19 +272,20 @@ move_to_target :: proc "contextless" (s: ^sim.State, e: sim.Entity) {
 	if e.fleeing {
 		top, delta = st.flee_speed, st.flee_delta
 	}
-	e.vel_delta.x = e.loc.x < e.hunt_target.x ? delta : -delta
-	e.vel_delta.y = e.loc.y < e.hunt_target.y ? delta : -delta
-	e.vel.x += e.vel_delta.x
-	if e.vel.x > top {
-		e.vel.x = top
-	} else if e.vel.x < -top {
-		e.vel.x = -top
-	}
-	e.vel.y += e.vel_delta.y
-	if e.vel.y > top {
-		e.vel.y = top
-	} else if e.vel.y < -top {
-		e.vel.y = -top
+	accelerate_toward(e, e.hunt_target, top, delta)
+}
+
+// Moving to and holding to a target both accelerate by `delta` on each axis
+// toward it, each axis's speed capped at `top`.
+accelerate_toward :: proc "contextless" (e: sim.Entity, target: sim.Vec, top, delta: f32) {
+	for i in 0 ..< 2 {
+		e.vel_delta[i] = e.loc[i] < target[i] ? delta : -delta
+		e.vel[i] += e.vel_delta[i]
+		if e.vel[i] > top {
+			e.vel[i] = top
+		} else if e.vel[i] < -top {
+			e.vel[i] = -top
+		}
 	}
 }
 
@@ -311,26 +312,19 @@ adjust_to_required_velocity :: proc(s: ^sim.State, e: sim.Entity) {
 		}
 		return
 	}
-	if e.vel.x < e.vel_target.x {
-		e.vel.x += e.vel_delta.x
-		if e.vel_target.x < e.vel.x {
-			e.vel.x = e.vel_target.x
-		}
-	} else if e.vel.x > e.vel_target.x {
-		e.vel.x += e.vel_delta.x
-		if e.vel.x < e.vel_target.x {
-			e.vel.x = e.vel_target.x
-		}
-	}
-	if e.vel.y < e.vel_target.y {
-		e.vel.y += e.vel_delta.y
-		if e.vel_target.y < e.vel.y {
-			e.vel.y = e.vel_target.y
-		}
-	} else if e.vel_target.y < e.vel.y {
-		e.vel.y += e.vel_delta.y
-		if e.vel.y < e.vel_target.y {
-			e.vel.y = e.vel_target.y
+	// Each axis steps by its delta toward the target velocity, stopping on
+	// it rather than passing it.
+	for i in 0 ..< 2 {
+		if e.vel[i] < e.vel_target[i] {
+			e.vel[i] += e.vel_delta[i]
+			if e.vel_target[i] < e.vel[i] {
+				e.vel[i] = e.vel_target[i]
+			}
+		} else if e.vel[i] > e.vel_target[i] {
+			e.vel[i] += e.vel_delta[i]
+			if e.vel[i] < e.vel_target[i] {
+				e.vel[i] = e.vel_target[i]
+			}
 		}
 	}
 }
@@ -360,7 +354,7 @@ move_and_check_position :: proc "contextless" (s: ^sim.State, o: ^sim.Game_Objec
 lock_to_owner :: proc "contextless" (s: ^sim.State, e: sim.Entity) {
 	o, ok := sim.owner_loc(s, e)
 	if ok && (o.x != e.loc.x || o.y != e.loc.y) {
-		e.loc = {o.x + e.owner_offset.x, o.y + e.owner_offset.y}
+		e.loc = o + e.owner_offset
 	}
 }
 
@@ -370,8 +364,7 @@ link_to_owner :: proc "contextless" (s: ^sim.State, e: sim.Entity) {
 	if !ok {
 		return
 	}
-	d := sim.Vec{e.owner_loc.x - o.x, e.owner_loc.y - o.y}
-	e.loc = {e.loc.x - d.x, e.loc.y - d.y}
+	e.loc -= e.owner_loc - o
 	e.owner_loc = o
 }
 
@@ -385,7 +378,7 @@ orbit_owner :: proc "contextless" (s: ^sim.State, e: sim.Entity) {
 	next: sim.Vec
 	step := sim.trunc_i32(e.vel.x)
 	if e.orbit_radius == 0 || step == 0 {
-		next = {o.x + e.owner_offset.x, o.y + e.owner_offset.y}
+		next = o + e.owner_offset
 	} else {
 		e.orbit_angle += step
 		if e.orbit_angle >= 360 {
@@ -394,10 +387,10 @@ orbit_owner :: proc "contextless" (s: ^sim.State, e: sim.Entity) {
 			e.orbit_angle += 360
 		}
 		p := sim.vector_from_angle_and_speed(e.orbit_angle, e.orbit_radius)
-		next = {o.x + p.x, o.y + p.y}
+		next = o + p
 	}
 	e.loc = next
-	e.owner_offset = {e.loc.x - o.x, e.loc.y - o.y}
+	e.owner_offset = e.loc - o
 }
 
 // G_Entity::Priv_DoCyclicMotion: wander, re-drawing a speed limit each step
@@ -408,24 +401,15 @@ cyclic_motion :: proc "contextless" (s: ^sim.State, e: sim.Entity) {
 	whole := sim.roll_int(s, lifecycle.halve(top), top, 0x416032)
 	frac := sim.roll_int(s, 1, 100, 0x41604f)
 	limit := f32(whole) + f32(frac) / 100
-	flip :: proc "contextless" (v: ^f32) {
-		v^ = transmute(f32)(transmute(u32)v^ ~ 0x8000_0000)
-	}
-	if limit < e.vel.x {
-		e.vel.x = limit
-		flip(&e.vel_delta.x)
-	}
-	if e.vel.x < -limit {
-		e.vel.x = -limit
-		flip(&e.vel_delta.x)
-	}
-	if limit < e.vel.y {
-		e.vel.y = limit
-		flip(&e.vel_delta.y)
-	}
-	if e.vel.y < -limit {
-		e.vel.y = -limit
-		flip(&e.vel_delta.y)
+	for i in 0 ..< 2 {
+		if limit < e.vel[i] {
+			e.vel[i] = limit
+			flip(&e.vel_delta[i])
+		}
+		if e.vel[i] < -limit {
+			e.vel[i] = -limit
+			flip(&e.vel_delta[i])
+		}
 	}
 	e.vel += e.vel_delta
 	e.vel_target = e.vel
@@ -436,56 +420,39 @@ cyclic_motion :: proc "contextless" (s: ^sim.State, e: sim.Entity) {
 // right edges use the full width; the top and bottom use half the height.
 constrain_in_game_area :: proc "contextless" (s: ^sim.State, e: sim.Entity) {
 	w, h := sim.view_width(s.defs), sim.view_height(s.defs)
-	flip :: proc "contextless" (v: ^f32) {
-		v^ = transmute(f32)(transmute(u32)v^ ~ 0x8000_0000)
-	}
-	bounce_x :: proc "contextless" (e: sim.Entity) {
-		flip(&e.vel.x)
-		flip(&e.vel_delta.x)
-		flip(&e.vel_target.x)
+	bounce :: proc "contextless" (e: sim.Entity, axis: int) {
+		flip(&e.vel[axis])
+		flip(&e.vel_delta[axis])
+		flip(&e.vel_target[axis])
 	}
 	if e.loc.x < -32 {
-		flip(&e.vel.x)
 		e.loc.x = -32
-		flip(&e.vel_delta.x)
-		flip(&e.vel_target.x)
+		bounce(e, 0)
 	}
 	if f32(w + 32) < f32(e.dims.x) + e.loc.x {
 		e.loc.x = f32(w - e.dims.x + 32)
-		bounce_x(e)
+		bounce(e, 0)
 	}
 	if e.loc.y - f32(e.half.y) < 0 {
-		flip(&e.vel.y)
 		e.loc.y = f32(e.half.y)
-		flip(&e.vel_delta.y)
-		flip(&e.vel_target.y)
+		bounce(e, 1)
 	}
 	if f32(h) < f32(e.half.y) + e.loc.y {
-		flip(&e.vel.y)
 		e.loc.y = f32(h - e.half.y)
-		flip(&e.vel_delta.y)
-		flip(&e.vel_target.y)
+		bounce(e, 1)
 	}
+}
+
+// The original's negation: an xor of the sign bit, done the same way here
+// so zero and NaN come out bit for bit as they do there.
+flip :: proc "contextless" (v: ^f32) {
+	v^ = transmute(f32)(transmute(u32)v^ ~ 0x8000_0000)
 }
 
 // G_Entity::Priv_HoldToTarget: close on the target at the state's hold speed.
 hold_to_target :: proc "contextless" (s: ^sim.State, e: sim.Entity, target: sim.Vec) {
 	st := sim.state_of(s, e)
-	top, delta := st.hold_max_speed, st.hold_delta
-	e.vel_delta.x = e.loc.x < target.x ? delta : -delta
-	e.vel_delta.y = e.loc.y < target.y ? delta : -delta
-	e.vel.x += e.vel_delta.x
-	if e.vel.x > top {
-		e.vel.x = top
-	} else if e.vel.x < -top {
-		e.vel.x = -top
-	}
-	e.vel.y += e.vel_delta.y
-	if e.vel.y > top {
-		e.vel.y = top
-	} else if e.vel.y < -top {
-		e.vel.y = -top
-	}
+	accelerate_toward(e, target, st.hold_max_speed, st.hold_delta)
 }
 
 // G_Entity::Priv_ReverseFromTarget: head away from the target at full speed.
