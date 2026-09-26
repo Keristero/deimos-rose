@@ -23,19 +23,19 @@ Blur_Queue :: struct {
 	count:  int,
 }
 
-// G_MotionBlur_New. `st` is the moving object's own state, whose
-// MotionBlur_* fields set the ghost's starting fade.
-blur_spawn :: proc "contextless" (s: ^State, o: ^Game_Object, st: ^Unit_State) {
+// G_MotionBlur_New. The moving object's state's MotionBlur_* fields set the
+// ghost's starting fade, and whether it keeps its glow.
+blur_spawn :: proc "contextless" (s: ^State, o: ^Game_Object, initial_visibility, visibility_delta: f32, allow_glow: bool) {
 	q := &s.blurs
 	if q.count >= MAX_BLUR_EVENTS {
 		return
 	}
 	ghost := o^
 	ghost.casts_shadow = false
-	ghost.visibility = st.motion_blur_initial_visibility_percent
+	ghost.visibility = initial_visibility
 	ghost.visibility_target = 0
-	ghost.visibility_delta = st.motion_blur_visibility_delta_percent
-	if !st.motion_blur_allow_glow_drawing {
+	ghost.visibility_delta = visibility_delta
+	if !allow_glow {
 		ghost.glowing = false
 	}
 	q.events[q.count] = {obj = ghost}

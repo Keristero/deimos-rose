@@ -58,23 +58,27 @@ register :: proc "contextless" () {
 	sim.player_stage_register({name = "calm", run = player_system.calm_stage})
 	sim.player_stage_register({name = "player_move", run = player_system.player_move_stage})
 
-	// G_EG_Process's body for one entity, in the original's order.
+	// The components prefabs give entities, which the stages below ask for.
+	sim.prefab_builder_register({name = "entity_state", build = entity_system.state_prefab})
+
+	// G_EG_Process's body for one entity, in the original's order. A stage
+	// with a `with` set runs only on the entities that have it.
 	sim.entity_stage_register({name = "appear", run = entity_system.appear_stage})
-	sim.entity_stage_register({name = "state_particles", run = entity_system.state_particles_stage})
-	sim.entity_stage_register({name = "entry_sound", run = entity_system.entry_sound_stage})
+	sim.entity_stage_register({name = "state_particles", with = sim.mask_of(entity_system.Emits_Particles), run = entity_system.state_particles_stage})
+	sim.entity_stage_register({name = "entry_sound", with = sim.mask_of(entity_system.Entry_Sound), run = entity_system.entry_sound_stage})
 	sim.entity_stage_register({name = "state_timer", run = entity_system.state_timer_stage})
-	sim.entity_stage_register({name = "scroll_pause", run = entity_system.scroll_pause_stage})
+	sim.entity_stage_register({name = "scroll_pause", with = sim.mask_of(entity_system.Pauses_Scrolling), run = entity_system.scroll_pause_stage})
 	sim.entity_stage_register({name = "animate", run = entity_system.animate_stage})
-	sim.entity_stage_register({name = "rules", run = entity_system.rules_stage})
+	sim.entity_stage_register({name = "rules", with = sim.mask_of(entity_system.Follows_Rules), run = entity_system.rules_stage})
 	sim.entity_stage_register({name = "appearance", run = entity_system.appearance_stage})
-	sim.entity_stage_register({name = "owner_look", run = entity_system.owner_look_stage})
-	sim.entity_stage_register({name = "scroll_destruct", run = entity_system.scroll_destruct_stage})
+	sim.entity_stage_register({name = "owner_look", with = sim.mask_of(entity_system.Follows_Owner_Look), run = entity_system.owner_look_stage})
+	sim.entity_stage_register({name = "scroll_destruct", with = sim.mask_of(entity_system.Destructs_While_Scrolling), run = entity_system.scroll_destruct_stage})
 	sim.entity_stage_register({name = "movement_ai", run = movement_system.movement_ai_stage})
 	sim.entity_stage_register({name = "move", run = movement_system.move_stage})
 	sim.entity_stage_register({name = "follow_owner", run = movement_system.follow_owner_stage})
 	sim.entity_stage_register({name = "spawn", run = entity_system.spawn_stage})
 	sim.entity_stage_register({name = "player_contact", run = collision_system.player_contact_stage})
-	sim.entity_stage_register({name = "motion_blur", run = entity_system.motion_blur_stage})
+	sim.entity_stage_register({name = "motion_blur", with = sim.mask_of(entity_system.Motion_Blur), run = entity_system.motion_blur_stage})
 	sim.entity_stage_register({name = "crosshair_lock", run = weapon_system.crosshair_lock_stage})
 	sim.entity_stage_register({name = "ground_obstacles", run = collision_system.ground_obstacles_stage})
 	sim.entity_stage_register({name = "shot_collisions", run = collision_system.shot_collisions_stage})

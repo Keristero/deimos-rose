@@ -47,20 +47,18 @@ appear_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool
 	return true
 }
 
+// Entities with Emits_Particles.
 state_particles_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool {
-	st := es.st
-	if st.particles == sim.NONE {
-		return true
-	}
+	p := sim.step_component(s, e, es, Emits_Particles)
 	due := false
-	if !st.particles_repeat {
+	if !p.repeat {
 		due = e.particle_count == 0
 	} else {
-		due = e.particle_time == 0 || e.particle_time + st.particles_repeat_delay <= es.time
+		due = e.particle_time == 0 || e.particle_time + p.repeat_delay <= es.time
 	}
 	if due {
-		if st.particles_max_num_bursts == 0 || e.particle_count < st.particles_max_num_bursts {
-			sim.particle_burst(s, e.loc, st.particles_color, st.particles, es.u.is_ground_based)
+		if p.max_bursts == 0 || e.particle_count < p.max_bursts {
+			sim.particle_burst(s, e.loc, p.color, p.particles, es.u.is_ground_based)
 		}
 		e.particle_count += 1
 		e.particle_time = es.time
@@ -68,19 +66,18 @@ state_particles_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step
 	return true
 }
 
+// Entities with Entry_Sound.
 entry_sound_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool {
-	st := es.st
+	snd := sim.step_component(s, e, es, Entry_Sound)
 	play := false
-	if st.entry_sound != sim.NONE {
-		if !st.sound_loop {
-			if e.entry_counts[e.state] == 1 {
-				play = e.sound_count == 0
-			} else if st.sound_repeat_on_state_change {
-				play = e.sound_count == 0
-			}
-		} else if e.sound_time == 0 || e.sound_time + st.sound_loop_delay <= es.time {
-			play = true
+	if !snd.loop {
+		if e.entry_counts[e.state] == 1 {
+			play = e.sound_count == 0
+		} else if snd.repeat_on_state_change {
+			play = e.sound_count == 0
 		}
+	} else if e.sound_time == 0 || e.sound_time + snd.loop_delay <= es.time {
+		play = true
 	}
 	if play {
 		// G_EG_Process 0x4185f6: when soundAllowOnlyOneInstance is set, a
@@ -94,8 +91,8 @@ entry_sound_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) ->
 		// skipping -- is the conservative match for that: it can only add
 		// an RNG draw a mod using the flag would expect anyway, never drop
 		// one the original would have made.
-		if st.sound_max_num_to_play == 0 || e.sound_count < st.sound_max_num_to_play {
-			sim.sound_play(s, sim.state_sound(st), true)
+		if snd.max_plays == 0 || e.sound_count < snd.max_plays {
+			sim.sound_play(s, snd.sound, true)
 		}
 		e.sound_count += 1
 		e.sound_time = es.time
@@ -126,10 +123,9 @@ state_timer_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) ->
 	return true
 }
 
+// Entities with Pauses_Scrolling.
 scroll_pause_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool {
-	if es.st.pause_vertical_scrolling {
-		es.pause = true
-	}
+	es.pause = true
 	return true
 }
 
@@ -138,10 +134,8 @@ animate_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> boo
 	return true
 }
 
+// Entities with Follows_Rules.
 rules_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool {
-	if len(es.st.rules) == 0 {
-		return true
-	}
 	del, des := process_rules(s, e, es.time)
 	if !lifecycle.entity_carry_on(s, e, del, des, es.time) {
 		return false
@@ -174,30 +168,31 @@ appearance_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> 
 
 // FUN_0041b5d0: follow the owner's look -- its visibility, scale, and
 // (visuallyReflectOwnerHits) its hit glow, so a turret's dome flashes with
-// its base.
+// its base. Entities with Follows_Owner_Look.
 owner_look_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool {
-	st := es.st
-	if !(st.use_owners_visibility || st.use_owners_scale || st.visually_reflect_owner_hits) || !sim.ref_valid(s, e.owner) {
+	look := sim.step_component(s, e, es, Follows_Owner_Look)
+	if !sim.ref_valid(s, e.owner) {
 		return true
 	}
 	o := sim.entity_at(s, e.owner.index)
-	if st.use_owners_visibility {
+	if look.visibility {
 		e.visibility = o.visibility
 	}
-	if st.use_owners_scale {
+	if look.scale {
 		e.dims_dirty = o.dims_dirty
 		e.scale, e.scale_target, e.scale_delta = o.scale, o.scale_target, o.scale_delta
 		lifecycle.calculate_dimensions(s, e.obj)
 	}
-	if st.visually_reflect_owner_hits {
+	if look.hits {
 		e.glowing, e.glow_falling = o.glowing, o.glow_falling
 		e.glow_amount, e.glow_speed, e.glow_color = o.glow_amount, o.glow_speed, o.glow_color
 	}
 	return true
 }
 
+// Entities with Destructs_While_Scrolling.
 scroll_destruct_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool {
-	if es.st.destruct_if_vertical_scrolling_not_paused && sim.single(s, sim.Bgnd).speed != 0 {
+	if sim.single(s, sim.Bgnd).speed != 0 {
 		lifecycle.entity_destroy(s, e, -1, es.time)
 		return false
 	}
@@ -218,13 +213,14 @@ spawn_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool 
 	return true
 }
 
+// Entities with Motion_Blur.
 motion_blur_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool {
-	st := es.st
-	if st.motion_blur_required && e.sprite != sim.NONE {
-		gap := sim.roll_int(s, st.motion_blur_min_time_between_blurs, st.motion_blur_max_time_between_blurs, 0x418d92)
+	b := sim.step_component(s, e, es, Motion_Blur)
+	if e.sprite != sim.NONE {
+		gap := sim.roll_int(s, b.min_gap, b.max_gap, 0x418d92)
 		if e.blur_time + gap < es.time {
 			e.blur_time = es.time
-			sim.blur_spawn(s, e.obj, st)
+			sim.blur_spawn(s, e.obj, b.initial_visibility, b.visibility_delta, b.allow_glow)
 		}
 	}
 	return true

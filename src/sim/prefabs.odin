@@ -70,6 +70,14 @@ prefab_builder_register :: proc(b: Prefab_Builder) {
 	builder_count += 1
 }
 
+// Adds T, a component only prefabs hold, to the catalog: from `@(init)`
+// procedures only, like component_register. No entity of the pool holds one
+// itself, so no rows are reserved for it: the prefab world grows only while
+// it is built, and nothing points into it until it is done.
+prefab_component_register :: proc($T: typeid) {
+	component_register(T, 0)
+}
+
 // Gives the prefab component T, holding `value`.
 prefab_add :: proc(p: Prefab, value: $T) {
 	add(p.world, p.id, value)

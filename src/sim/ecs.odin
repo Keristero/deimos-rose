@@ -402,7 +402,10 @@ add :: proc(e: ^Ecs, id: ecs.EntityID, value: $T) -> ^T {
 		ecs_set_components(e, id, components_of(e, id) + {component_id(T)})
 	}
 	p := get(e, id, T)
-	p^ = value
+	// A tag (a component with no fields) has no storage to write.
+	when size_of(T) > 0 {
+		p^ = value
+	}
 	return p
 }
 
