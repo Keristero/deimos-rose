@@ -90,7 +90,6 @@ register_core_components :: proc "contextless" () {
 }
 
 // Gives the session entity its singletons, zeroed.
-@(private)
 add_singletons :: proc(s: ^State) {
 	ecs_set_components(s.ecs, SESSION_ENTITY, {
 		component_id(Clock),

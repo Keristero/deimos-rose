@@ -3,6 +3,7 @@ package loadout
 import "base:runtime"
 // Imported for its registration: a dependency is always in the build.
 import _ "dr:plugins/extra_prefs"
+import _ "dr:sim/core"
 import "dr:sim"
 
 // New Weapons' loadout: new content, not the original's (the design is
@@ -437,6 +438,13 @@ OPEN_AFTER := []string{"reward_open"}
 @(private = "file", rodata)
 OPEN_BEFORE := []string{"level_transition"}
 
+// Its components go on the session's entities once they exist, and before
+// the players are set up with them.
+@(private = "file", rodata)
+SETUP_AFTER := []string{"session_setup"}
+@(private = "file", rodata)
+SETUP_BEFORE := []string{"players_setup"}
+
 @(init)
 register :: proc "contextless" () {
 	context = runtime.default_context()
@@ -449,7 +457,7 @@ register :: proc "contextless" () {
 	})
 	sim.component_register(Loadout, 1)
 	sim.component_register(Loadout_Slots, MAX_PLAYERS)
-	sim.system_register({name = "loadout_setup", plugin = ID, kind = .Setup, run = setup_system})
+	sim.system_register({name = "loadout_setup", after = SETUP_AFTER, before = SETUP_BEFORE, plugin = ID, kind = .Setup, run = setup_system})
 	sim.system_register({
 		name   = "loadout_screen",
 		after  = SCREEN_AFTER,

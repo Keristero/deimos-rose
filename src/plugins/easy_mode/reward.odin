@@ -2,6 +2,7 @@ package easy_mode
 
 import "base:runtime"
 import "dr:plugins/passives"
+import _ "dr:sim/core"
 import "dr:sim"
 
 // Easy mode's reward screen: new content, not the original's. After each
@@ -251,6 +252,13 @@ SCREEN_BEFORE := []string{"step_events"}
 @(private = "file", rodata)
 OPEN_BEFORE := []string{"level_transition"}
 
+// Its components go on the session's entities once they exist, and before
+// the players are set up with them.
+@(private = "file", rodata)
+SETUP_AFTER := []string{"session_setup"}
+@(private = "file", rodata)
+SETUP_BEFORE := []string{"players_setup"}
+
 @(init)
 register :: proc "contextless" () {
 	context = runtime.default_context()
@@ -262,7 +270,7 @@ register :: proc "contextless" () {
 		session     = true,
 	})
 	sim.component_register(Reward, 1)
-	sim.system_register({name = "reward_setup", plugin = ID, kind = .Setup, run = setup_system})
+	sim.system_register({name = "reward_setup", after = SETUP_AFTER, before = SETUP_BEFORE, plugin = ID, kind = .Setup, run = setup_system})
 	sim.system_register({
 		name   = "reward_screen",
 		after  = SCREEN_AFTER,

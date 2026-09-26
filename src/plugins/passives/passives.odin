@@ -20,6 +20,7 @@ import "base:runtime"
 
 // Imported for its registration: a dependency is always in the build.
 import _ "dr:plugins/extra_prefs"
+import _ "dr:sim/core"
 import "dr:sim"
 
 Res_ID :: sim.Res_ID
@@ -372,6 +373,13 @@ DEPS := []string{"extra_prefs"}
 @(private = "file", rodata)
 BEFORE_CALM := []string{"calm"}
 
+// Its components go on the session's entities once they exist, and before
+// the players are set up with them.
+@(private = "file", rodata)
+SETUP_AFTER := []string{"session_setup"}
+@(private = "file", rodata)
+SETUP_BEFORE := []string{"players_setup"}
+
 @(init)
 register :: proc "contextless" () {
 	context = runtime.default_context()
@@ -383,7 +391,7 @@ register :: proc "contextless" () {
 		session     = true,
 	})
 	sim.component_register(Passive_State, sim.MAX_PLAYERS)
-	sim.system_register({name = "passives_setup", plugin = ID, kind = .Setup, run = setup_system})
+	sim.system_register({name = "passives_setup", after = SETUP_AFTER, before = SETUP_BEFORE, plugin = ID, kind = .Setup, run = setup_system})
 	// Where G_Player::Process would have them: after the weapons fire, and
 	// ahead of the core's count of the ship's calm, which they read.
 	sim.player_stage_register({name = "shield_regen", before = BEFORE_CALM, plugin = ID, run = shield_regen_stage})

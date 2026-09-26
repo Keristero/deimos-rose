@@ -30,6 +30,8 @@ import "dr:game"
 import "dr:plugins/loadout"
 import "dr:plugins/new_weapons"
 import "dr:prefs"
+// The original game's systems, which a session runs.
+import _ "dr:sim/core"
 import "dr:sim"
 
 WARM :: 150

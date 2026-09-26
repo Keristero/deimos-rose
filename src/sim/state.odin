@@ -91,8 +91,9 @@ unported :: proc "contextless" (s: ^State, site: Site) {
 	}
 }
 
-// G_Game_Play's set-up for one session: srand(seed), both players, the
-// first level.
+// Starts a session: an empty world, the systems of the core and of the
+// session's plugins in order, and their Setup systems run (the original's
+// set-up is dr:sim/core's).
 //
 // The state's world is made on first use and kept, emptied, for the next
 // session; destroy frees it.
@@ -110,24 +111,9 @@ init :: proc(s: ^State, session: Session, defs: ^Defs, log: ^Draw_Log = nil, eve
 	s.events = events
 	s.draws = log
 	schedule_build(&s.schedule, session.mods)
-	add_singletons(s)
-	for i in 0 ..< i32(MAX_PLAYERS) {
-		ecs_set_components(s.ecs, player_entity(i), player_components())
-		ecs_set_components(s.ecs, crosshair_entity(i), crosshair_components())
-	}
+	assert(s.schedule.system_count > 0, "sim: no systems registered -- import dr:sim/core")
 	setup := Step{}
 	run_systems(s, &setup, {.Setup})
-	single(s, Rng).next = session.seed
-	level := level_by_id(defs, session.level_id)
-	if level == nil {
-		unported(s, 1) // unknown level id
-		return
-	}
-	single(s, Level_Info).number = level.number
-	for i in 0 ..< i32(MAX_PLAYERS) {
-		player_setup(s, player_at(s, i), i, session.game_type)
-	}
-	level_start(s)
 }
 
 destroy :: proc(s: ^State) {

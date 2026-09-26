@@ -116,6 +116,7 @@ depends = ["setup"]
 run = [
   "odin check game $DR_COLL -vet -strict-style",
   "odin check sim  $DR_COLL -vet -strict-style -no-entry-point",
+  "for p in sim/*/ sim/systems/*/; do [ -d $p ] && [ \"$(basename $p)\" != systems ] || continue; odin check $p $DR_COLL -vet -strict-style -no-entry-point || exit 1; done",
   "odin check data $DR_COLL -vet -strict-style -no-entry-point",
   "odin check net  $DR_COLL -vet -strict-style -no-entry-point",
   "odin check prefs $DR_COLL -vet -strict-style -no-entry-point",

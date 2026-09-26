@@ -45,6 +45,8 @@ import "core:time"
 
 import "dr:data"
 import "dr:plugins/passives"
+// The original game's systems, which a session runs.
+import _ "dr:sim/core"
 import "dr:sim"
 
 SEED :: 0x5eed_d95

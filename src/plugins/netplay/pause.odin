@@ -4,6 +4,7 @@ package netplay_plugin
 // must be unique.
 
 import "base:runtime"
+import _ "dr:sim/core"
 import "dr:sim"
 
 // Netplay's pause: new content, not the original's G_Interface_PauseGame,
@@ -72,6 +73,13 @@ ID: sim.Plugin_ID
 @(private = "file", rodata)
 BEFORE := []string{"step_events"}
 
+// Its components go on the session's entities once they exist, and before
+// the players are set up with them.
+@(private = "file", rodata)
+SETUP_AFTER := []string{"session_setup"}
+@(private = "file", rodata)
+SETUP_BEFORE := []string{"players_setup"}
+
 @(init)
 register :: proc "contextless" () {
 	context = runtime.default_context()
@@ -83,7 +91,7 @@ register :: proc "contextless" () {
 		default_on  = true,
 	})
 	sim.component_register(Pause, 1)
-	sim.system_register({name = "netplay_setup", plugin = ID, kind = .Setup, run = setup_system})
+	sim.system_register({name = "netplay_setup", after = SETUP_AFTER, before = SETUP_BEFORE, plugin = ID, kind = .Setup, run = setup_system})
 	sim.system_register({name = "netplay_pause", before = BEFORE, plugin = ID, kind = .Session, run = pause_system})
 	sim.hold_register({plugin = ID, held = held})
 }

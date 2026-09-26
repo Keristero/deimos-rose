@@ -16,6 +16,8 @@ import "core:strings"
 
 import "dr:data"
 import "dr:oracle"
+// The original game's systems, which a session runs.
+import _ "dr:sim/core"
 import "dr:sim"
 
 Symbol :: struct {

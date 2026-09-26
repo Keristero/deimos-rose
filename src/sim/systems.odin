@@ -1,14 +1,12 @@
 package sim
 
-import "base:runtime"
-
 // Systems: the only code that changes the state (notes/ecs-refactor.md).
 //
 // A step is the registered systems run in order. Each has one job and a
 // name; it is placed by naming the systems it runs after or before
-// (schedule.odin), and otherwise runs in registration order, so the core's
-// order is the original's. The core registers its systems in
-// register_core_systems; a plugin registers its own from its own @(init).
+// (schedule.odin), and otherwise runs in registration order. The original
+// game registers its systems, in the original's order, from dr:sim/core; a
+// plugin registers its own from its own @(init).
 //
 // A step's players and entities are processed one at a time, as
 // G_Player::Process and G_EG_Process do: every stage for one, then every
@@ -40,8 +38,9 @@ System_Kind :: enum u8 {
 	Step,
 	// Around the game step, in a played session only (`session_step`).
 	Session,
-	// Once, as a session starts, before the players are set up: where a
-	// plugin gives the session's entities its components.
+	// Once, as a session starts: the original's set-up (dr:sim/core), and
+	// where a plugin gives the session's entities its components, between
+	// the core's session_setup and players_setup.
 	Setup,
 }
 
@@ -213,54 +212,4 @@ run_entity_stages :: proc(s: ^State, e: Entity, es: ^Entity_Step) {
 			return
 		}
 	}
-}
-
-@(init)
-register_core_systems :: proc "contextless" () {
-	context = runtime.default_context()
-	// The game step, FUN_00420280, in the original's order.
-	system_register({name = "step_events", run = step_events_system})
-	system_register({name = "first_player", run = first_player_system})
-	system_register({name = "notices", run = notices_system})
-	system_register({name = "debris", run = debris_system})
-	system_register({name = "players", run = players_system})
-	system_register({name = "game_over", run = game_over_system})
-	system_register({name = "background", run = background_system})
-	system_register({name = "level_end", run = level_end_system})
-	system_register({name = "entities", run = entities_system})
-	system_register({name = "sweep", run = sweep_system})
-	system_register({name = "scroll_hold", run = scroll_hold_system})
-	system_register({name = "clock", run = clock_system})
-	// After the game step, in a played session.
-	system_register({name = "level_transition", kind = .Session, run = level_transition_system, while_frozen = true})
-
-	// G_Player::Process for one player, in the original's order.
-	player_stage_register({name = "defence_bonus", run = defence_bonus_stage})
-	player_stage_register({name = "player_state", run = player_state_stage})
-	player_stage_register({name = "read_input", run = read_input_stage})
-	player_stage_register({name = "player_look", run = player_look_stage})
-	player_stage_register({name = "fire", run = fire_stage})
-	player_stage_register({name = "calm", run = calm_stage})
-	player_stage_register({name = "player_move", run = player_move_stage})
-
-	// G_EG_Process's body for one entity, in the original's order.
-	entity_stage_register({name = "appear", run = appear_stage})
-	entity_stage_register({name = "state_particles", run = state_particles_stage})
-	entity_stage_register({name = "entry_sound", run = entry_sound_stage})
-	entity_stage_register({name = "state_timer", run = state_timer_stage})
-	entity_stage_register({name = "scroll_pause", run = scroll_pause_stage})
-	entity_stage_register({name = "animate", run = animate_stage})
-	entity_stage_register({name = "rules", run = rules_stage})
-	entity_stage_register({name = "appearance", run = appearance_stage})
-	entity_stage_register({name = "owner_look", run = owner_look_stage})
-	entity_stage_register({name = "scroll_destruct", run = scroll_destruct_stage})
-	entity_stage_register({name = "movement_ai", run = movement_ai_stage})
-	entity_stage_register({name = "move", run = move_stage})
-	entity_stage_register({name = "follow_owner", run = follow_owner_stage})
-	entity_stage_register({name = "spawn", run = spawn_stage})
-	entity_stage_register({name = "player_contact", run = player_contact_stage})
-	entity_stage_register({name = "motion_blur", run = motion_blur_stage})
-	entity_stage_register({name = "crosshair_lock", run = crosshair_lock_stage})
-	entity_stage_register({name = "ground_obstacles", run = ground_obstacles_stage})
-	entity_stage_register({name = "shot_collisions", run = shot_collisions_stage})
 }

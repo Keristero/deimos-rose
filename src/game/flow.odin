@@ -21,6 +21,8 @@ import netplay_plugin "dr:plugins/netplay"
 import "dr:plugins/new_weapons"
 import "dr:plugins/accent"
 import accent_view "dr:plugins/accent/view"
+// The original game's systems, which a session runs.
+import _ "dr:sim/core"
 import "dr:sim"
 
 Flow_Mode :: enum {

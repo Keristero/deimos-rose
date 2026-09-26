@@ -10,6 +10,9 @@ set -euo pipefail
 SRC="${DR_SRC:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 [ -d "$SRC/sim" ] || { echo "purity: no sim/ directory yet"; exit 0; }
 DIRS=("$SRC/sim")
+# The original's systems, each package of them under sim/.
+while IFS= read -r d; do DIRS+=("$d"); done < <(
+    find "$SRC/sim" -mindepth 2 -name '*.odin' -printf '%h\n' | sort -u)
 [ -d "$SRC/third_party/odecs" ] && DIRS+=("$SRC/third_party/odecs")
 if [ -d "$SRC/plugins" ]; then
     while IFS= read -r d; do DIRS+=("$d"); done < <(

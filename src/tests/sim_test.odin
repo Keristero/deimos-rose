@@ -1,6 +1,8 @@
 package tests
 
 import "core:testing"
+// The original game's systems, which a session runs.
+import _ "dr:sim/core"
 import "dr:sim"
 
 // A minimal, synthetic definition set: one empty level and the two player
