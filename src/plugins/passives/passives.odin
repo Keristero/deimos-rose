@@ -397,7 +397,9 @@ register :: proc "contextless" () {
 	sim.system_register({name = "passives_setup", after = SETUP_AFTER, before = SETUP_BEFORE, plugin = ID, kind = .Setup, run = setup_system})
 	// Where G_Player::Process would have them: after the weapons fire, and
 	// ahead of the core's count of the ship's calm, which they read.
-	sim.player_stage_register({name = "shield_regen", before = BEFORE_CALM, plugin = ID, run = shield_regen_stage})
-	sim.player_stage_register({name = "risky_reward", before = BEFORE_CALM, plugin = ID, run = risky_reward_stage})
+	// Both for the players holding passives.
+	holds := sim.mask_of(Passive_State)
+	sim.player_stage_register({name = "shield_regen", before = BEFORE_CALM, plugin = ID, with = holds, run = shield_regen_stage})
+	sim.player_stage_register({name = "risky_reward", before = BEFORE_CALM, plugin = ID, with = holds, run = risky_reward_stage})
 	sim.stat_provider_register({plugin = ID, total = provide, shapes = shapes})
 }

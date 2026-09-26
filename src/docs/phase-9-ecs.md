@@ -86,7 +86,8 @@ are three registries:
   - Setup: once as a session starts, where a plugin gives the session's
     entities its components;
 - **player stages**: G_Player::Process in 7 parts, run for one player at
-  a time;
+  a time, each for the players whose components match its `with` and
+  `without` (the passives' stages ask for Passive_State);
 - **entity stages**: G_EG_Process's body in 28 parts, run for one entity
   at a time, in group order. Each stage names the components an entity
   must have for it to run (see [Prefabs and queries](#prefabs-and-queries-d45)).
@@ -381,9 +382,8 @@ them from its flags (`mods_from_flags`).
   draw nor read what another entity's stages write could run system by
   system, but none has been proved so yet.
 - **Some flags are still read directly.** The spawn sets are walked from
-  the definitions, lifecycle procedures such as change_state read their
-  state's flags, and the players' stages are not gated by components.
-  Each can move to components the same way.
+  the definitions, and lifecycle procedures such as change_state read
+  their state's flags. Each can move to components the same way.
 - **Behavioural coverage is not measured.** The golden runs cover four
   demos and three sessions with the additions on. There is no coverage
   tool to say which paths they miss.

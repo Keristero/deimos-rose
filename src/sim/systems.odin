@@ -62,13 +62,17 @@ Player_Step :: struct {
 	film:  ^Film,
 }
 
-// A stage returns false when the player is done for this step.
+// A stage returns false when the player is done for this step. It runs for
+// a player only when the player's entity has every component in `with` and
+// none in `without`.
 Player_Stage :: struct {
-	name:   string,
-	after:  []string,
-	before: []string,
-	plugin: Plugin_ID,
-	run:    proc(s: ^State, p: Player, ps: ^Player_Step) -> bool,
+	name:    string,
+	after:   []string,
+	before:  []string,
+	plugin:  Plugin_ID,
+	with:    Component_Mask,
+	without: Component_Mask,
+	run:     proc(s: ^State, p: Player, ps: ^Player_Step) -> bool,
 }
 
 // One entity's pass through the stages, and what the stages hand each
@@ -227,8 +231,15 @@ run_systems :: proc(s: ^State, step: ^Step, kinds: bit_set[System_Kind]) {
 // Runs the session's player stages on one player, in order, until one says
 // the player is done.
 run_player_stages :: proc(s: ^State, p: Player, ps: ^Player_Step) {
+	// A player's components change only when a session is set up, never
+	// during its step.
+	mask := components_of(s.ecs, player_entity(p.number))
 	for idx in s.schedule.player_stages[:s.schedule.player_stage_count] {
-		if !player_stages[idx].run(s, p, ps) {
+		stage := &player_stages[idx]
+		if !matches({stage.with, stage.without}, mask) {
+			continue
+		}
+		if !stage.run(s, p, ps) {
 			return
 		}
 	}
