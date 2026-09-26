@@ -35,29 +35,23 @@ Plugin :: struct {
 	default_on:  bool,
 }
 
+// Slot 0, CORE's, is empty.
 @(private = "file")
-plugins: [MAX_PLUGINS + 1]Plugin
-
-@(private = "file")
-plugin_count := 1 // CORE's slot
+plugins := Registry(Plugin, MAX_PLUGINS + 1){count = 1}
 
 // Called from `@(init)` procedures only, like system_register; `deps` must
 // outlive the call. Returns the plugin's ID, for its systems and hooks.
 plugin_register :: proc(p: Plugin) -> Plugin_ID {
-	assert(plugin_count <= MAX_PLUGINS, "sim: too many plugins")
-	id := Plugin_ID(plugin_count)
-	plugins[id] = p
-	plugin_count += 1
-	return id
+	return Plugin_ID(registry_add(&plugins, p))
 }
 
 // Every registered plugin, indexed by ID; [CORE] is empty.
 registered_plugins :: proc "contextless" () -> []Plugin {
-	return plugins[:plugin_count]
+	return registry_items(&plugins)
 }
 
 plugin_find :: proc "contextless" (name: string) -> (Plugin_ID, bool) {
-	for p, i in plugins[1:plugin_count] {
+	for p, i in registry_items(&plugins)[1:] {
 		if p.name == name {
 			return Plugin_ID(i + 1), true
 		}
@@ -72,11 +66,11 @@ mods_resolve :: proc "contextless" (want: Mods) -> Mods {
 	mods := want - {int(CORE)}
 	for {
 		dropped := false
-		for id in 1 ..< plugin_count {
+		for id in 1 ..< plugins.count {
 			if id not_in mods {
 				continue
 			}
-			for dep in plugins[id].deps {
+			for dep in plugins.items[id].deps {
 				d, ok := plugin_find(dep)
 				if !ok || int(d) not_in mods {
 					mods -= {id}
@@ -96,11 +90,11 @@ mods_with_deps :: proc "contextless" (want: Mods) -> Mods {
 	mods := want - {int(CORE)}
 	for {
 		added := false
-		for id in 1 ..< plugin_count {
+		for id in 1 ..< plugins.count {
 			if id not_in mods {
 				continue
 			}
-			for dep in plugins[id].deps {
+			for dep in plugins.items[id].deps {
 				if d, ok := plugin_find(dep); ok && int(d) not_in mods {
 					mods += {int(d)}
 					added = true
@@ -115,8 +109,8 @@ mods_with_deps :: proc "contextless" (want: Mods) -> Mods {
 
 // The session plugins in `mods`: what a Session carries.
 mods_session :: proc "contextless" (mods: Mods) -> (out: Mods) {
-	for id in 1 ..< plugin_count {
-		if id in mods && plugins[id].session {
+	for id in 1 ..< plugins.count {
+		if id in mods && plugins.items[id].session {
 			out += {id}
 		}
 	}

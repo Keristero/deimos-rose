@@ -22,19 +22,15 @@ Overlay :: struct {
 }
 
 @(private = "file")
-overlays: [MAX_OVERLAYS]Overlay
-@(private = "file")
-overlay_count: int
+overlays: sim.Registry(Overlay, MAX_OVERLAYS)
 
 // Called from `@(init)` procedures only.
 overlay_register :: proc(o: Overlay) {
-	assert(overlay_count < MAX_OVERLAYS, "ui: too many overlays")
-	overlays[overlay_count] = o
-	overlay_count += 1
+	sim.registry_add(&overlays, o)
 }
 
 overlays_draw :: proc(r: ^render.Renderer, s: ^sim.State, names: ^Player_Names) {
-	for &o in overlays[:overlay_count] {
+	for &o in sim.registry_items(&overlays) {
 		if sim.mod_on(s, o.plugin) {
 			o.draw(r, s, names)
 		}

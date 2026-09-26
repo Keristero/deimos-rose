@@ -34,21 +34,17 @@ Render_System :: struct {
 }
 
 @(private = "file")
-render_systems: [MAX_RENDER_SYSTEMS]Render_System
-@(private = "file")
-render_system_count: int
+render_systems: sim.Registry(Render_System, MAX_RENDER_SYSTEMS)
 
 // Called from `@(init)` procedures only, like sim.system_register, and as
 // there the `after` and `before` lists must outlive the call: package
 // variables, not slice literals, which live on the caller's stack.
 render_system_register :: proc(sys: Render_System) {
-	assert(render_system_count < MAX_RENDER_SYSTEMS, "render: too many render systems")
-	render_systems[render_system_count] = sys
-	render_system_count += 1
+	sim.registry_add(&render_systems, sys)
 }
 
 registered_render_systems :: proc "contextless" () -> []Render_System {
-	return render_systems[:render_system_count]
+	return sim.registry_items(&render_systems)
 }
 
 // The render systems a renderer runs, in order, by registry index: the
@@ -61,7 +57,7 @@ Render_Schedule :: struct {
 }
 
 render_schedule_build :: proc(sched: ^Render_Schedule, mods: sim.Mods) {
-	sched.count = sim.order_registered(render_systems[:render_system_count], mods, sched.order[:])
+	sched.count = sim.order_registered(sim.registry_items(&render_systems), mods, sched.order[:])
 	sched.built = true
 	sched.mods = mods
 }
@@ -72,7 +68,7 @@ run_render_systems :: proc(r: ^Renderer, s: ^sim.State, f: ^Frame) {
 		render_schedule_build(&r.render_schedule, r.mods)
 	}
 	for idx in r.render_schedule.order[:r.render_schedule.count] {
-		render_systems[idx].run(r, s, f)
+		render_systems.items[idx].run(r, s, f)
 	}
 }
 
@@ -216,19 +212,15 @@ Effect_System :: struct {
 }
 
 @(private = "file")
-effect_systems: [MAX_EFFECT_SYSTEMS]Effect_System
-@(private = "file")
-effect_system_count: int
+effect_systems: sim.Registry(Effect_System, MAX_EFFECT_SYSTEMS)
 
 // Called from `@(init)` procedures only.
 effect_system_register :: proc(sys: Effect_System) {
-	assert(effect_system_count < MAX_EFFECT_SYSTEMS, "render: too many effect systems")
-	effect_systems[effect_system_count] = sys
-	effect_system_count += 1
+	sim.registry_add(&effect_systems, sys)
 }
 
 effect_systems_step :: proc(r: ^Renderer, s: ^sim.State, p: ^Particles) {
-	for &sys in effect_systems[:effect_system_count] {
+	for &sys in sim.registry_items(&effect_systems) {
 		if sim.mod_on(s, sys.plugin) {
 			sys.step(r, s, p)
 		}

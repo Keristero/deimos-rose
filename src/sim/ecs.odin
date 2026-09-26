@@ -50,9 +50,7 @@ Component_Type :: struct {
 }
 
 @(private = "file")
-catalog: [MAX_COMPONENTS]Component_Type
-@(private = "file")
-catalog_count: int
+catalog: Registry(Component_Type, MAX_COMPONENTS)
 @(private = "file")
 run_pool: [8192]Byte_Run
 @(private = "file")
@@ -80,7 +78,6 @@ component_register :: proc($T: typeid) {
 	if slot^ >= 0 {
 		return
 	}
-	assert(catalog_count < MAX_COMPONENTS, "ecs: too many component types")
 	ti := type_info_of(T)
 	first := run_used
 	if !layout_runs(ti, 0) {
@@ -90,7 +87,7 @@ component_register :: proc($T: typeid) {
 	if n, ok := ti.variant.(runtime.Type_Info_Named); ok {
 		name = n.name
 	}
-	catalog[catalog_count] = Component_Type {
+	slot^ = i32(registry_add(&catalog, Component_Type {
 		type = T,
 		name = name,
 		size = size_of(T),
@@ -104,13 +101,11 @@ component_register :: proc($T: typeid) {
 		table = proc(w: ^ecs.World, arch: ^ecs.Archetype) -> []byte {
 			return slice.to_bytes(ecs.get_table(w, arch, T))
 		},
-	}
-	slot^ = i32(catalog_count)
-	catalog_count += 1
+	}))
 }
 
 component_types :: proc "contextless" () -> []Component_Type {
-	return catalog[:catalog_count]
+	return registry_items(&catalog)
 }
 
 component_id :: #force_inline proc "contextless" ($T: typeid) -> int {
@@ -121,7 +116,7 @@ component_id :: #force_inline proc "contextless" ($T: typeid) -> int {
 // builds can only exchange snapshots if theirs match.
 catalog_hash :: proc "contextless" () -> u64 {
 	h := hasher()
-	for c in catalog[:catalog_count] {
+	for c in registry_items(&catalog) {
 		hash_bytes(&h, raw_data(c.name), len(c.name))
 		hash_u64(&h, u64(c.size))
 		for r in c.runs {
@@ -246,9 +241,7 @@ Kind_Component :: struct {
 }
 
 @(private = "file")
-kind_components: [MAX_COMPONENTS]Kind_Component
-@(private = "file")
-kind_component_count: int
+kind_components: Registry(Kind_Component, MAX_COMPONENTS)
 // u128s, for the alignment of any component.
 @(private = "file")
 start_values: [1024]u128
@@ -261,17 +254,15 @@ start_used: int
 kind_component :: proc(kind: Kind, value: $T, plugin := CORE) {
 	component_register(T)
 	id := component_id(T)
-	for kc in kind_components[:kind_component_count] {
+	for kc in registry_items(&kind_components) {
 		assert(kc.kind != kind || kc.component != id, "ecs: a kind is given the same component twice")
 	}
-	assert(kind_component_count < len(kind_components), "ecs: too many kind components")
 	start_used = (start_used + align_of(T) - 1) &~ (align_of(T) - 1)
 	assert(start_used + size_of(T) <= size_of(start_values), "ecs: too many start values")
 	p := &([^]byte)(&start_values)[start_used]
 	start_used += size_of(T)
 	(^T)(p)^ = value
-	kind_components[kind_component_count] = {kind, id, plugin, p}
-	kind_component_count += 1
+	registry_add(&kind_components, Kind_Component{kind, id, plugin, p})
 }
 
 @(private = "file")
@@ -320,15 +311,15 @@ ecs_create :: proc(mods: Mods, allocator := context.allocator) -> ^Ecs {
 	e.mods = mods
 	e.world = ecs.create_world(allocator, allocator)
 	w := e.world
-	for c in catalog[:catalog_count] {
+	for c in registry_items(&catalog) {
 		c.register(w)
 	}
 	parts := make([dynamic]any, context.temp_allocator)
 	for kind in Kind {
 		clear(&parts)
-		for kc in kind_components[:kind_component_count] {
+		for kc in registry_items(&kind_components) {
 			if kc.kind == kind && kind_component_on(kc, mods) {
-				append(&parts, any{kc.value, catalog[kc.component].type})
+				append(&parts, any{kc.value, catalog.items[kc.component].type})
 			}
 		}
 		e.ids[kind] = make([]ecs.EntityID, kind_count(kind), allocator)
@@ -377,14 +368,14 @@ find_views :: proc(e: ^Ecs) {
 	}
 	e.pool_links = kind_table(e, .Pool, Link)
 	e.group_links = kind_table(e, .Group, Link)
-	for c, i in catalog[:catalog_count] {
+	for c, i in registry_items(&catalog) {
 		e.singletons[i] = c.get(w, e.ids[.Session][0])
 		for id, p in e.ids[.Player] {
 			e.player_part[p][i] = c.get(w, id)
 		}
 	}
 	h := hasher()
-	for c, i in catalog[:catalog_count] {
+	for c, i in registry_items(&catalog) {
 		if c.size == 0 {
 			continue // a tag has no table
 		}
@@ -428,12 +419,12 @@ ecs_destroy :: proc(e: ^Ecs) {
 ecs_reset :: proc(e: ^Ecs) {
 	for kind in Kind {
 		arch := ecs.get_entity_archetype(e.world, e.ids[kind][0])
-		for kc in kind_components[:kind_component_count] {
+		for kc in registry_items(&kind_components) {
 			if kc.kind != kind || !kind_component_on(kc, e.mods) {
 				continue
 			}
-			c := &catalog[kc.component]
-			rows := catalog[kc.component].table(e.world, arch)
+			c := &catalog.items[kc.component]
+			rows := catalog.items[kc.component].table(e.world, arch)
 			for at := 0; at < len(rows); at += c.size {
 				runtime.mem_copy_non_overlapping(&rows[at], kc.value, c.size)
 			}
@@ -492,7 +483,7 @@ ecs_pack :: proc(e: ^Ecs, out: []byte) {
 	runtime.mem_copy_non_overlapping(raw_data(out), &header, HEADER)
 	at := HEADER
 	for t in e.tables {
-		c := &catalog[t.component]
+		c := &catalog.items[t.component]
 		rows := c.table(e.world, t.arch)
 		if len(c.runs) == 1 && int(c.runs[0].size) == c.size {
 			copy(out[at:], rows) // no padding: the table as it is
@@ -548,7 +539,7 @@ ecs_read :: proc(e: ^Ecs, data: []byte) -> (rest: []byte, ok: bool) {
 	}
 	at := HEADER
 	for t in e.tables {
-		c := &catalog[t.component]
+		c := &catalog.items[t.component]
 		rows := c.table(e.world, t.arch)
 		if len(c.runs) == 1 && int(c.runs[0].size) == c.size {
 			copy(rows, data[at:at + len(rows)])

@@ -72,9 +72,7 @@ Prefab_Builder :: struct {
 }
 
 @(private = "file")
-builders: [MAX_PREFAB_BUILDERS]Prefab_Builder
-@(private = "file")
-builder_count: int
+builders: Registry(Prefab_Builder, MAX_PREFAB_BUILDERS)
 
 @(private = "file")
 Query_Terms :: struct {
@@ -82,9 +80,7 @@ Query_Terms :: struct {
 }
 
 @(private = "file")
-queries: [MAX_PREFAB_QUERIES]Query_Terms
-@(private = "file")
-query_count: int
+queries: Registry(Query_Terms, MAX_PREFAB_QUERIES)
 @(private = "file")
 term_pool: [512]typeid
 @(private = "file")
@@ -98,15 +94,12 @@ register_prefab_marker :: proc "contextless" () {
 
 // Called from `@(init)` procedures only, like system_register.
 prefab_builder_register :: proc(b: Prefab_Builder) {
-	assert(builder_count < MAX_PREFAB_BUILDERS, "sim: too many prefab builders")
-	builders[builder_count] = b
-	builder_count += 1
+	registry_add(&builders, b)
 }
 
 // The prefabs that have every component in `with` and none in `without`.
 // Called from `@(init)` procedures only; the lists are copied.
 prefab_query_register :: proc(with: []typeid, without: []typeid = nil) -> Prefab_Query {
-	assert(query_count < MAX_PREFAB_QUERIES, "sim: too many prefab queries")
 	keep :: proc(types: []typeid) -> []typeid {
 		assert(term_used + len(types) <= len(term_pool), "sim: too many prefab query terms")
 		kept := term_pool[term_used:][:len(types)]
@@ -114,9 +107,7 @@ prefab_query_register :: proc(with: []typeid, without: []typeid = nil) -> Prefab
 		term_used += len(types)
 		return kept
 	}
-	queries[query_count] = {keep(with), keep(without)}
-	query_count += 1
-	return Prefab_Query(query_count - 1)
+	return Prefab_Query(registry_add(&queries, Query_Terms{keep(with), keep(without)}))
 }
 
 // Gives the prefab component T, holding `value`. T must be in the catalog
@@ -152,7 +143,7 @@ prefabs_build :: proc(pf: ^Prefabs, defs: ^Defs, mods: Mods, allocator := contex
 			at := int(pf.first_state[i]) + k
 			pf.ids[at] = ecs.add_entity(w, Is_Prefab{})
 			index[pf.ids[at]] = at
-			for b in builders[:builder_count] {
+			for b in registry_items(&builders) {
 				if b.plugin == CORE || int(b.plugin) in mods {
 					b.build({w, pf.ids[at]}, &u, &st)
 				}
@@ -163,7 +154,7 @@ prefabs_build :: proc(pf: ^Prefabs, defs: ^Defs, mods: Mods, allocator := contex
 	// any it must not have.
 	pf.matches = make([]Query_Set, total, allocator)
 	terms := make([dynamic]typeid, context.temp_allocator)
-	for q, qi in queries[:query_count] {
+	for q, qi in registry_items(&queries) {
 		clear(&terms)
 		append(&terms, Is_Prefab)
 		append(&terms, ..q.with)

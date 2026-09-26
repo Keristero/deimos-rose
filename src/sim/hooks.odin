@@ -42,48 +42,34 @@ Weapon_Filter :: struct {
 }
 
 @(private = "file")
-Hooks :: struct {
-	stats:         [MAX_HOOKS]Stat_Provider,
-	stat_count:    int,
-	holds:         [MAX_HOOKS]Hold,
-	hold_count:    int,
-	choosers:      [MAX_HOOKS]Weapon_Chooser,
-	chooser_count: int,
-	filters:       [MAX_HOOKS]Weapon_Filter,
-	filter_count:  int,
-}
-
+stat_providers: Registry(Stat_Provider, MAX_HOOKS)
 @(private = "file")
-hooks: Hooks
+holds: Registry(Hold, MAX_HOOKS)
+@(private = "file")
+choosers: Registry(Weapon_Chooser, MAX_HOOKS)
+@(private = "file")
+filters: Registry(Weapon_Filter, MAX_HOOKS)
 
 stat_provider_register :: proc(p: Stat_Provider) {
-	assert(hooks.stat_count < MAX_HOOKS, "sim: too many stat providers")
-	hooks.stats[hooks.stat_count] = p
-	hooks.stat_count += 1
+	registry_add(&stat_providers, p)
 }
 
 hold_register :: proc(h: Hold) {
-	assert(hooks.hold_count < MAX_HOOKS, "sim: too many holds")
-	hooks.holds[hooks.hold_count] = h
-	hooks.hold_count += 1
+	registry_add(&holds, h)
 }
 
 weapon_chooser_register :: proc(c: Weapon_Chooser) {
-	assert(hooks.chooser_count < MAX_HOOKS, "sim: too many weapon choosers")
-	hooks.choosers[hooks.chooser_count] = c
-	hooks.chooser_count += 1
+	registry_add(&choosers, c)
 }
 
 weapon_filter_register :: proc(f: Weapon_Filter) {
-	assert(hooks.filter_count < MAX_HOOKS, "sim: too many weapon filters")
-	hooks.filters[hooks.filter_count] = f
-	hooks.filter_count += 1
+	registry_add(&filters, f)
 }
 
 // Every provider's contribution to `stat`, summed: percentages and extras
 // add, and a switch is on if any turns it on.
 stat_of :: proc "contextless" (s: ^State, player: i32, stat: Stat, weapon: Res_ID) -> (t: Stat_Total) {
-	for &p in hooks.stats[:hooks.stat_count] {
+	for &p in registry_items(&stat_providers) {
 		if !mod_on(s, p.plugin) {
 			continue
 		}
@@ -97,7 +83,7 @@ stat_of :: proc "contextless" (s: ^State, player: i32, stat: Stat, weapon: Res_I
 
 // Whether any provider shapes `player`'s shots of `weapon`.
 stat_shapes :: proc "contextless" (s: ^State, player: i32, weapon: Res_ID) -> bool {
-	for &p in hooks.stats[:hooks.stat_count] {
+	for &p in registry_items(&stat_providers) {
 		if mod_on(s, p.plugin) && p.shapes(s, player, weapon) {
 			return true
 		}
@@ -108,7 +94,7 @@ stat_shapes :: proc "contextless" (s: ^State, player: i32, weapon: Res_ID) -> bo
 // Whether play stands still this step for a pause or a between-play screen:
 // the presentation holds its own effects still to match.
 session_frozen :: proc "contextless" (s: ^State) -> bool {
-	for &h in hooks.holds[:hooks.hold_count] {
+	for &h in registry_items(&holds) {
 		if mod_on(s, h.plugin) && h.held(s) {
 			return true
 		}
@@ -119,7 +105,7 @@ session_frozen :: proc "contextless" (s: ^State) -> bool {
 // The weapon chooser in this session, if any: the first registered that is
 // on.
 weapon_chooser :: proc "contextless" (s: ^State) -> (^Weapon_Chooser, bool) {
-	for &c in hooks.choosers[:hooks.chooser_count] {
+	for &c in registry_items(&choosers) {
 		if mod_on(s, c.plugin) {
 			return &c, true
 		}
@@ -140,7 +126,7 @@ weapon_allowed :: proc "contextless" (s: ^State, w: ^Weapon) -> bool {
 	if !w.extra {
 		return true
 	}
-	for &f in hooks.filters[:hooks.filter_count] {
+	for &f in registry_items(&filters) {
 		if mod_on(s, f.plugin) && f.allows(w) {
 			return true
 		}

@@ -114,54 +114,43 @@ Entity_Stage :: struct {
 }
 
 @(private = "file")
-systems: [MAX_SYSTEMS]System
+systems: Registry(System, MAX_SYSTEMS)
 @(private = "file")
-system_count: int
+player_stages: Registry(Player_Stage, MAX_STAGES)
 @(private = "file")
-player_stages: [MAX_STAGES]Player_Stage
-@(private = "file")
-player_stage_count: int
-@(private = "file")
-stages: [MAX_STAGES]Entity_Stage
-@(private = "file")
-stage_count: int
+stages: Registry(Entity_Stage, MAX_STAGES)
 
 // Called from `@(init)` procedures only, like component_register. The
 // `after` and `before` lists are kept, not copied, so they must outlive the
 // call: package variables, not slice literals, which live on the caller's
 // stack.
 system_register :: proc(sys: System) {
-	assert(system_count < MAX_SYSTEMS, "sim: too many systems")
-	systems[system_count] = sys
-	system_count += 1
+	registry_add(&systems, sys)
 }
 
 player_stage_register :: proc(stage: Player_Stage) {
-	assert(player_stage_count < MAX_STAGES, "sim: too many player stages")
-	player_stages[player_stage_count] = stage
-	player_stage_count += 1
+	registry_add(&player_stages, stage)
 }
 
 // The stage's `with` and `without` are copied (prefab_query_register), so
 // they may be slice literals.
 entity_stage_register :: proc(stage: Entity_Stage) {
-	assert(stage_count < MAX_STAGES, "sim: too many entity stages")
-	stages[stage_count] = stage
-	stages[stage_count].query = prefab_query_register(stage.with, stage.without)
-	stages[stage_count].with, stages[stage_count].without = nil, nil
-	stage_count += 1
+	kept := stage
+	kept.query = prefab_query_register(stage.with, stage.without)
+	kept.with, kept.without = nil, nil
+	registry_add(&stages, kept)
 }
 
 registered_systems :: proc "contextless" () -> []System {
-	return systems[:system_count]
+	return registry_items(&systems)
 }
 
 registered_player_stages :: proc "contextless" () -> []Player_Stage {
-	return player_stages[:player_stage_count]
+	return registry_items(&player_stages)
 }
 
 registered_entity_stages :: proc "contextless" () -> []Entity_Stage {
-	return stages[:stage_count]
+	return registry_items(&stages)
 }
 
 // The systems and stages a session runs, in order, by registry index.
@@ -179,9 +168,9 @@ Schedule :: struct {
 // `mods`. A cycle is a bug in whoever registered them, found the first time
 // a session with them starts.
 schedule_build :: proc(sched: ^Schedule, mods: Mods) {
-	sched.system_count = order_registered(systems[:system_count], mods, sched.systems[:])
-	sched.player_stage_count = order_registered(player_stages[:player_stage_count], mods, sched.player_stages[:])
-	sched.stage_count = order_registered(stages[:stage_count], mods, sched.stages[:])
+	sched.system_count = order_registered(registry_items(&systems), mods, sched.systems[:])
+	sched.player_stage_count = order_registered(registry_items(&player_stages), mods, sched.player_stages[:])
+	sched.stage_count = order_registered(registry_items(&stages), mods, sched.stages[:])
 }
 
 // Orders the items of `registered` that belong to the core or a plugin in
@@ -207,7 +196,7 @@ order_registered :: proc(registered: []$T, mods: Mods, out: []u8) -> u8 {
 // Runs the session's systems of the given kinds, in order.
 run_systems :: proc(s: ^State, step: ^Step, kinds: bit_set[System_Kind]) {
 	for idx in s.schedule.systems[:s.schedule.system_count] {
-		sys := &systems[idx]
+		sys := &systems.items[idx]
 		if sys.kind not_in kinds || (step.frozen && !sys.while_frozen) {
 			continue
 		}
@@ -222,7 +211,7 @@ run_systems :: proc(s: ^State, step: ^Step, kinds: bit_set[System_Kind]) {
 // the player is done.
 run_player_stages :: proc(s: ^State, p: Player, ps: ^Player_Step) {
 	for idx in s.schedule.player_stages[:s.schedule.player_stage_count] {
-		if !player_stages[idx].run(s, p, ps) {
+		if !player_stages.items[idx].run(s, p, ps) {
 			return
 		}
 	}
@@ -234,7 +223,7 @@ run_player_stages :: proc(s: ^State, p: Player, ps: ^Player_Step) {
 // comes up, since an earlier stage may have refreshed it.
 run_entity_stages :: proc(s: ^State, e: Entity, es: ^Entity_Step) {
 	for idx in s.schedule.stages[:s.schedule.stage_count] {
-		stage := &stages[idx]
+		stage := &stages.items[idx]
 		if !prefab_is(s, es.prefab, stage.query) {
 			continue
 		}
