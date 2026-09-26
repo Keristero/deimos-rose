@@ -32,6 +32,11 @@ Interp_Player :: struct {
 }
 
 interp_capture :: proc(p: ^Interp_Prev, s: ^sim.State) {
+	// The menus before the first session run on a zeroed state, which has
+	// no world to read yet.
+	if s.ecs == nil {
+		return
+	}
 	for used, i in sim.single(s, sim.Pool).entity_used {
 		p.numbers[i] = -1
 		if used {
