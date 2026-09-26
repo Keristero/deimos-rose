@@ -59,10 +59,12 @@ ground_obstacles_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Ste
 	return true
 }
 
-// Entities with Collides.
+// Shots and their kin: entities with Collides and Harmless_To_Players. (The
+// original tests every colliding entity, and finds nothing for one that is
+// not harmless to players.)
 shot_collisions_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool {
 	if !e.deleted {
-		entity_collisions(s, e)
+		entity_collisions(s, e, es)
 	}
 	return true
 }
@@ -73,16 +75,31 @@ circles_collide :: proc "contextless" (a: sim.Vec, ra: f32, b: sim.Vec, rb: f32)
 	return sim.m_sqrt(sim.trunc_i32(d.x * d.x + d.y * d.y)) < ra + rb
 }
 
+// What shot `es` can hit: an entity that collides and is not a shot
+// itself, on the ground if the shot is, and -- for a shot that is not a
+// player's -- only a player's shot it can hit.
+shot_query :: proc "contextless" (es: ^sim.Entity_Step) -> sim.Query {
+	q := shot_targets
+	if ground_based & es.mask != {} {
+		q.with += ground_based
+	} else {
+		q.without += ground_based
+	}
+	if player_projectile & es.mask == {} {
+		q.with += player_projectile
+	}
+	return q
+}
+
 // FUN_0041b920: collisions between a "harmless to players" entity (player
-// shots and their kin) and the entities it can hit. Candidate filtering and
-// the overlap test are ported; what a hit does is not yet.
-entity_collisions :: proc(s: ^sim.State, e: sim.Entity) {
+// shots and their kin) and the entities it can hit, in group order.
+entity_collisions :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) {
 	w := sim.single(s, sim.Pool)
-	u := sim.unit_of(s, e)
 	me := lifecycle.object_bounds(e.obj)
-	if u.player_projectile && me.bottom < 0 {
+	if player_projectile & es.mask != {} && me.bottom < 0 {
 		return
 	}
+	targets := shot_query(es)
 	n := w.active.count
 	gc := sim.Cursor{sim.NO_LINK}
 	for _ in 0 ..< n {
@@ -92,26 +109,12 @@ entity_collisions :: proc(s: ^sim.State, e: sim.Entity) {
 		for _ in 0 ..< m {
 			oi := sim.list_next(&sim.group_at(s, gi).entities, sim.entity_links(s), &ec)
 			o := sim.entity_at(s, oi)
-			ou := sim.unit_of(s, o)
-			ost := sim.state_of(s, o)
-			if !ost.collides || o.deleted || !o.hittable || o.number == e.number {
-				continue
-			}
-			if ou.is_ground_based != u.is_ground_based || !u.harmless_to_players || ou.harmless_to_players {
-				continue
-			}
-			if o.appear_delay >= 1 {
-				continue
-			}
-			if u.player_projectile {
-				if !ou.can_be_hit_by_player_projectile {
-					continue
-				}
-			} else if !(ou.can_be_hit_by_player_projectile && ou.player_projectile) {
+			om := sim.entity_mask(s, o)
+			if !sim.matches(targets, om) || o.deleted || !o.hittable || o.number == e.number || o.appear_delay >= 1 {
 				continue
 			}
 			ob := lifecycle.object_bounds(o.obj)
-			if ou.player_projectile && ob.bottom < 0 {
+			if player_projectile & om != {} && ob.bottom < 0 {
 				continue
 			}
 			if !(ob.top <= me.bottom && me.top <= ob.bottom && ob.left <= me.right && me.left <= ob.right) {

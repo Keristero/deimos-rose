@@ -98,6 +98,17 @@ Sighting :: struct {
 	found:  bool,
 }
 
+// Components an entity must have (with) and must not (without): what a
+// system asks for, matched against an entity's own components and its
+// prefabs' (entity_mask, Entity_Step.mask).
+Query :: struct {
+	with, without: Component_Mask,
+}
+
+matches :: #force_inline proc "contextless" (q: Query, m: Component_Mask) -> bool {
+	return q.with - m == {} && q.without & m == {}
+}
+
 // A stage returns false when the entity is done for this step (deleted,
 // destroyed, or not yet appeared). It runs for an entity only when the
 // entity has every component in `with` and none in `without` (mask_of),
@@ -230,7 +241,7 @@ run_player_stages :: proc(s: ^State, p: Player, ps: ^Player_Step) {
 run_entity_stages :: proc(s: ^State, e: Entity, es: ^Entity_Step) {
 	for idx in s.schedule.stages[:s.schedule.stage_count] {
 		stage := &stages[idx]
-		if stage.with - es.mask != {} || stage.without & es.mask != {} {
+		if !matches({stage.with, stage.without}, es.mask) {
 			continue
 		}
 		if !stage.run(s, e, es) {
@@ -251,7 +262,7 @@ entity_step :: proc(s: ^State, e: Entity, time: i32) -> Entity_Step {
 entity_step_state :: proc(s: ^State, e: Entity, es: ^Entity_Step) {
 	es.st = state_of(s, e)
 	es.state = e.state
-	es.mask = components_of(s.ecs, pool_entity(e.pool_index)) + s.prefabs.unit_mask[e.unit] + prefab_state_mask(s.prefabs, e.unit, e.state)
+	es.mask = entity_mask(s, e)
 }
 
 // T for the entity as the stage sees it: its own, else its state's (the
@@ -265,6 +276,12 @@ step_component :: proc(s: ^State, e: Entity, es: ^Entity_Step, $T: typeid) -> ^T
 		return c
 	}
 	return get(s.prefabs.world, prefab_unit_id(e.unit), T)
+}
+
+// The entity's components as it is now: its own, its unit's and its
+// current state's.
+entity_mask :: proc "contextless" (s: ^State, e: Entity) -> Component_Mask {
+	return components_of(s.ecs, pool_entity(e.pool_index)) + s.prefabs.unit_mask[e.unit] + prefab_state_mask(s.prefabs, e.unit, e.state)
 }
 
 // Whether the entity as the stage sees it has T: what a tag is asked with.

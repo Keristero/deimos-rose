@@ -163,8 +163,19 @@ builder of its own, and its builders run only in sessions with it on.
 |---|---|
 | `entity_system` | `Emits_Particles`, `Entry_Sound`, `Follows_Rules`, `Follows_Owner_Look`, `Pauses_Scrolling`, `Destructs_While_Scrolling`, `Motion_Blur` |
 | `movement_system` | `Deleted_Without_Players`, `Destructs_Without_Players`, `Flees_Without_Players`, `Cyclic_Motion`, `Constrained_To_Play_Area`, `Locked_To_Owner`, `Linked_To_Owner`, `Orbits_Owner` |
-| `collision_system` | `Collides`, `Collides_With_Players`, `Harmless_To_Players`, `Passes_Hits_To_Owner`, `Blocked_By_Wreckage` |
-| `weapon_system` | `Ground_Target`, `Targetable` |
+| `collision_system` | `Collides`, `Collides_With_Players`, `Harmless_To_Players`, `Passes_Hits_To_Owner`, `Blocked_By_Wreckage`, `Ground_Based`, `Player_Projectile`, `Hittable_By_Player_Shots` |
+| `weapon_system` | `Targetable` |
+
+Components are shared between systems, not owned by one. What a shot can
+hit is a query (`collision_system.shot_query`): Collides and
+Hittable_By_Player_Shots, not Harmless_To_Players, and on the ground if
+the shot is. The Chaingun's aim and the Discharge Beam ask the same
+components (`air_shot_targets`), and a ground crosshair locks onto what
+has Ground_Based, Hittable_By_Player_Shots and the state's Targetable.
+The shot collision stage itself runs only for entities with Collides and
+Harmless_To_Players. The original tested every colliding entity against
+every other and found nothing for the rest, so the tests run in 40% less
+time.
 
 Where a procedure did several things by flag, it became one stage per
 thing. DoMovementAI is now eight stages: flee steering, sensing the
@@ -333,9 +344,9 @@ them from its flags (`mods_from_flags`).
   draws, and the random draws depend on it (D39). Stages that neither
   draw nor read what another entity's stages write could run system by
   system, but none has been proved so yet.
-- **Some flags are still read directly.** The shot collision loop reads
-  the other entity's unit and state flags, the spawn sets are walked from
-  the definitions, and the players' stages are not gated by components.
+- **Some flags are still read directly.** The spawn sets are walked from
+  the definitions, lifecycle procedures such as change_state read their
+  state's flags, and the players' stages are not gated by components.
   Each can move to components the same way.
 - **Behavioural coverage is not measured.** The golden runs cover four
   demos and three sessions with the additions on. There is no coverage

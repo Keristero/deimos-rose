@@ -96,9 +96,14 @@ register :: proc "contextless" () {
 		run = collision_system.player_contact_stage,
 	})
 	sim.entity_stage_register({name = "motion_blur", with = sim.mask_of(entity_system.Motion_Blur), run = entity_system.motion_blur_stage})
-	sim.entity_stage_register({name = "crosshair_lock", with = sim.mask_of(weapon_system.Ground_Target, weapon_system.Targetable), run = weapon_system.crosshair_lock_stage})
+	sim.entity_stage_register({
+		name = "crosshair_lock",
+		with = sim.mask_of(collision_system.Ground_Based, collision_system.Hittable_By_Player_Shots, weapon_system.Targetable),
+		without = sim.mask_of(collision_system.Harmless_To_Players),
+		run = weapon_system.crosshair_lock_stage,
+	})
 	sim.entity_stage_register({name = "ground_obstacles", with = sim.mask_of(collision_system.Blocked_By_Wreckage), run = collision_system.ground_obstacles_stage})
-	sim.entity_stage_register({name = "shot_collisions", with = sim.mask_of(collision_system.Collides), run = collision_system.shot_collisions_stage})
+	sim.entity_stage_register({name = "shot_collisions", with = sim.mask_of(collision_system.Collides, collision_system.Harmless_To_Players), run = collision_system.shot_collisions_stage})
 }
 
 // The session's singletons, and the players' and crosshairs' components,

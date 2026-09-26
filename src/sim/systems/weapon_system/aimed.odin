@@ -10,6 +10,7 @@ import "core:math"
 
 import "dr:sim"
 import "dr:sim/lifecycle"
+import "dr:sim/systems/collision_system"
 
 // How far either side of the line of fire the two shots of a volley fly.
 // Provisional: picked by eye against the rice sprite's width.
@@ -73,12 +74,7 @@ air_shot_can_hit :: proc "contextless" (s: ^sim.State, e: sim.Entity) -> bool {
 	if e.deleted || !e.hittable || e.state < 0 || e.appear_delay >= 1 {
 		return false
 	}
-	u := sim.unit_of(s, e)
-	if u.is_ground_based || u.harmless_to_players || u.player_projectile ||
-	   !u.can_be_hit_by_player_projectile || !sim.state_of(s, e).collides {
-		return false
-	}
-	return true
+	return sim.matches(collision_system.air_shot_targets, sim.entity_mask(s, e))
 }
 
 // Where to aim, relative to the shooter, to meet a target at `offset`

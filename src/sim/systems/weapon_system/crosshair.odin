@@ -10,7 +10,8 @@ import "dr:sim"
 // tests each player in play whose crosshair is not locked yet this step
 // against the bounds taken after SpawnControl: left <= x < right,
 // top <= y < bottom. weapons_process unlocks it again every step.
-// Entities with Ground_Target and Targetable.
+// Entities with Ground_Based, Hittable_By_Player_Shots and Targetable, and
+// not Harmless_To_Players.
 crosshair_lock_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> bool {
 	b := es.bounds
 	for p in sim.players_of(s) {
