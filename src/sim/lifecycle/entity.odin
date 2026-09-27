@@ -452,14 +452,13 @@ entity_animate :: proc(s: ^sim.State, e: sim.Entity, time: i32) {
 // point goes in the hunt target, which Priv_MoveToTargetLoc then steers to at
 // the state's flee speed.
 //
-// Only the ids the shipped data uses are ported: nora, sora, cega, noce and
-// soce (1,150 states name "none"). The rest mark themselves unported rather
-// than guess which of Priv_Flee's twelve call sites belongs to which branch.
-//
-// The two sites seen in the traces both draw RandomFloat(0, 416) -- the x
-// coordinate for nora and sora -- so the RNG stream is the same either way,
-// but the site identifies the branch: de04 step 2065 shows a "sora" flee
-// drawing at 0x416630, so 0x4165f0 is nora.
+// The branches and their random call sites were read from the compare ladder
+// at 0x41652d and each branch's stores to +0x114/+0x118 (objdump), not from
+// Ghidra's ordering: each branch sets x before y, so a branch drawing both a
+// side and a coordinate draws the side first. The "opposite" flees go to the
+// far side: a unit strictly below the middle (h/2 < y) flees north, one
+// strictly right of it (w/2 < x) west. "none" and unknown ids only mark the
+// unit fleeing.
 entity_flee :: proc(s: ^sim.State, e: sim.Entity, flee: sim.Res_ID) {
 	e.fleeing = true
 	d := s.defs
@@ -467,20 +466,51 @@ entity_flee :: proc(s: ^sim.State, e: sim.Entity, flee: sim.Res_ID) {
 	h := d.perm_floats[sim.PF_VISIBLE_GAME_HEIGHT]
 	north := d.perm_floats[0xe] // Game_EntityFleeNorthLocation
 	south := d.perm_floats[0xf]
+	west := d.perm_floats[0x10]
+	east := d.perm_floats[0x11]
 	switch flee {
 	case sim.res_id("cega"): // centre
 		e.hunt_target = {w / 2, h / 2}
+	case sim.res_id("eara"): // east, random y
+		e.hunt_target = {east, sim.roll_float(s, 0, h, 0x4166bf)}
+	case sim.res_id("wera"): // west, random y
+		e.hunt_target = {west, sim.roll_float(s, 0, h, 0x416682)}
 	case sim.res_id("nora"): // north, random x
 		e.hunt_target = {sim.roll_float(s, 0, w, 0x4165f0), north}
 	case sim.res_id("sora"): // south, random x
 		e.hunt_target = {sim.roll_float(s, 0, w, 0x416630), south}
+	case sim.res_id("eace"): // east, centred
+		e.hunt_target = {east, h / 2}
+	case sim.res_id("wece"): // west, centred
+		e.hunt_target = {west, h / 2}
 	case sim.res_id("noce"): // north, centred
 		e.hunt_target = {w / 2, north}
 	case sim.res_id("soce"): // south, centred
 		e.hunt_target = {w / 2, south}
-	case sim.NONE:
-	case:
-		sim.unported(s, 0x416520) // east/west/random/opposite flees
+	case sim.res_id("rave"): // north or south at random, random x
+		if sim.roll_int(s, 0, 1, 0x4168ea) != 0 {
+			e.hunt_target = {sim.roll_float(s, 0, w, 0x41690e), north}
+		} else {
+			e.hunt_target = {sim.roll_float(s, 0, w, 0x41694e), south}
+		}
+	case sim.res_id("raho"): // east or west at random, random y
+		if sim.roll_int(s, 0, 1, 0x416987) != 0 {
+			e.hunt_target = {east, sim.roll_float(s, 0, h, 0x4169bd)}
+		} else {
+			e.hunt_target = {west, sim.roll_float(s, 0, h, 0x4169f7)}
+		}
+	case sim.res_id("opve"): // the vertical edge away from the unit, random x
+		if h / 2 < e.loc.y {
+			e.hunt_target = {sim.roll_float(s, 0, w, 0x4167d2), north}
+		} else {
+			e.hunt_target = {sim.roll_float(s, 0, w, 0x416812), south}
+		}
+	case sim.res_id("opho"): // the horizontal edge away from the unit, random y
+		if w / 2 < e.loc.x {
+			e.hunt_target = {west, sim.roll_float(s, 0, h, 0x416888)}
+		} else {
+			e.hunt_target = {east, sim.roll_float(s, 0, h, 0x4168c5)}
+		}
 	}
 }
 
