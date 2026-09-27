@@ -53,7 +53,7 @@ register_precharge :: proc() {
 		plugin = new_weapons.ID,
 		step   = precharge_step,
 		draw   = precharge_draw,
-		layer  = AIR_LAYER + 1,
+		layer  = render.layer_of(sim.res_id("play"), true), // over the ships
 		clear  = precharge_clear,
 	})
 }

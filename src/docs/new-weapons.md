@@ -75,7 +75,8 @@ The Chaingun is a plugin of its own, `plugins/chaingun`, which needs New
 Weapons and lists under it on the Mods page, on by default (D49). All of
 it is there: its content in `assets/extra/chaingun`, its recolour recipe
 `tools/recolour/chaingun.json`, its definition key, its firing hook and
-its screenshot scenarios (`MENU=chaingun`, `chaingun_charge`).
+its screenshot scenarios (`MENU=chaingun`, `chaingun_charge`,
+`chaingun_release`).
 
 The Chaingun is `aicg`. It is air weapon number five and unlocks at
 stage 7. Its ship is dark grey: `pl1k`/`pl2k`, recoloured from the Bacta
@@ -97,6 +98,16 @@ Gun's green by `tools/recolour` (see Content).
   - fires two parallel `cgpb` rounds at that point, 3 px either side of
     the line of fire. These rounds do not spin; they have one frame per
     direction.
+- **Muzzle flash.** Every round fired flashes at the ship's nose, bright
+  white fading to orange, gone within 3 steps, with a few sparks thrown
+  along the round's heading: at full strength for a charge's aimed
+  rounds and half for the burst's
+  ([notes/extra-weapon-passives-and-base-adjustments.md](../../notes/extra-weapon-passives-and-base-adjustments.md)).
+  It is presentation only, an effect system in
+  `plugins/chaingun/view/flash.odin`. It finds each new round by its
+  entity number, which counts up through a level, so a step a rollback
+  replays does not flash again, and draws over the ships. Several rounds
+  on one step make one flash, the strongest.
 
   With nothing to aim at, the volley flies straight ahead. It keeps firing
   until the charge is spent, one volley per level.
@@ -318,9 +329,11 @@ and each is waiting for a hand playtest:
 - a charge of 20 levels, 2 steps each, releasing a volley every 2 steps;
 - `AIMED_PAIR_OFFSET` (3 px);
 - `aimed_intercept`, which leads by velocity alone, so a target that turns
-  or accelerates is missed by as much as it changes.
+  or accelerates is missed by as much as it changes;
+- the muzzle flash's size, colours, 3-step life and sparks, all in
+  `plugins/chaingun/view/flash.odin`.
 
-The last two are marked provisional in the code. The rest are data, which
+The last three are marked provisional in the code. The rest are data, which
 has no room for a comment, so this list is where they are marked. The
 loadout screen reuses the reward screen's sounds.
 
@@ -429,8 +442,9 @@ extra sprite index beside the game's own.
 - `mise run oracle:diff` still matches all four demos call for call.
 - Looked at with `mise run menu-shot`:
   - `MENU=loadout`, `loadout_2p` and `loadout_placed` for the screen;
-  - `chaingun` for a burst in flight;
+  - `chaingun` for a burst in flight and its half-strength muzzle flash;
   - `chaingun_charge` for aimed pairs after a release;
+  - `chaingun_release` for the full-strength flash of a charge's release;
   - `discharge_windup` for the motes drawn in to the gun, `discharge` and
     `discharge_charge` for a pulse and a charged beam, and
     `discharge_motes` and `discharge_burst` for the motes lingering and

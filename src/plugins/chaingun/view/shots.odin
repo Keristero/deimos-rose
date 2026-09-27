@@ -5,7 +5,9 @@ package chaingun_view
 // handed the weapon and the loadout screen skipped. New content: visual
 // checks.
 // - chaingun: the burst a moment after a press;
-// - chaingun_charge: the aimed volleys a moment after a charge is let go.
+// - chaingun_charge: the aimed volleys a moment after a charge is let go;
+// - chaingun_release: the step a charge is let go, its muzzle flash at full
+//   strength (chaingun: the burst's, at half).
 
 
 import "dr:plugins/chaingun"
@@ -20,7 +22,7 @@ chaingun_shot :: proc(s: ^sim.State, name: string) -> string {
 		return "no Chaingun (is assets/extra/chaingun there?)"
 	}
 	// An idle ship is shot down about 220 steps in.
-	for _ in 0 ..< (name == "chaingun_charge" ? 120 : 180) {
+	for _ in 0 ..< (name == "chaingun" ? 180 : 120) {
 		_ = sim.session_step(s, {})
 	}
 	return ""
@@ -31,10 +33,13 @@ chaingun_shot :: proc(s: ^sim.State, name: string) -> string {
 TAP := []ui.Shot_Phase{{4, {{.Fire_Air}, {}}}, {6, {}}}
 @(private = "file", rodata)
 CHARGE := []ui.Shot_Phase{{70, {{.Fire_Air}, {}}}, {12, {}}}
+@(private = "file", rodata)
+RELEASE := []ui.Shot_Phase{{70, {{.Fire_Air}, {}}}, {1, {}}}
 
 register_shots :: proc() {
 	ui.shot_register({name = "chaingun", plugin = chaingun.ID, level = 6, setup = chaingun_shot, phases = TAP})
 	ui.shot_register({name = "chaingun_charge", plugin = chaingun.ID, level = 6, setup = chaingun_shot, phases = CHARGE})
+	ui.shot_register({name = "chaingun_release", plugin = chaingun.ID, level = 6, setup = chaingun_shot, phases = RELEASE})
 }
 
 @(init)

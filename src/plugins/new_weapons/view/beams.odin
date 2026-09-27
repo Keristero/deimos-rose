@@ -30,7 +30,8 @@ Beam_Fx :: struct {
 @(private = "file")
 live: [dynamic]Beam_Fx
 
-// The layer the air enemies are drawn in; the ships are in the next.
+// The layer the air enemies are drawn in; the ships are above.
+@(private = "file")
 AIR_LAYER :: 8
 
 register :: proc() {
