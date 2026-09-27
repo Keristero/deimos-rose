@@ -214,6 +214,11 @@ Renderer :: struct {
 	terrain:       rl.RenderTexture2D,
 	terrain_level: sim.Res_ID,
 	terrain_qt:    bool, // built with QuickTime's gamma (classic mode)
+	// The step whose marks the map holds, and whether this frame is the
+	// first drawn of a new one: marks go in once a step, however many
+	// frames draw it (the original draws a frame a step).
+	terrain_step:  Terrain_Step,
+	terrain_fresh: bool,
 	replay:        bool, // a film is playing: the original labels it "REPLAY"
 	// Set by DR_DUMP: print every sprite of the next frame, which is how a
 	// misplaced or mis-scaled draw gets identified.
@@ -362,17 +367,12 @@ object_place :: proc(r: ^Renderer, o: ^sim.Game_Object, prev: ^sim.Game_Object =
 		x = f32(sim.trunc_i32(o.loc.x))
 		y = f32(sim.trunc_i32(o.loc.y))
 	}
-	if o.draw_to_terrain {
-		x += 32
-		y += r.view_top
-	} else if o.scrolls_sideways {
+	if o.scrolls_sideways {
 		x -= r.side_scroll
 	}
-	// G_GameObject::Priv_Draw: draw_to_terrain objects skip the drawLayer_ID
-	// switch entirely and always land in layer 1, ahead of the terrain --
-	// live tank tracks and craters (stateDrawToTerrain), not the permanent
-	// wrecks stamp_object burns into the map at destruction.
-	layer := o.draw_to_terrain ? 1 : layer_of(o.draw_layer, o.is_air)
+	// draw_to_terrain objects never come here: they are burned into the
+	// map (terrain_burn).
+	layer := layer_of(o.draw_layer, o.is_air)
 	return {tex, src, place_rect(x, y, src, o.scale), layer, x, y}, true
 }
 
@@ -682,10 +682,24 @@ resume_canvas :: proc(r: ^Renderer) {
 	}
 }
 
-// Applies this step's marks. `loc` is where the object was on screen, so the
-// map position is that plus the scroll, and 32 across.
+Terrain_Step :: struct {
+	level, played: i32,
+	frame:         u32,
+}
+
+// Notes whether this frame starts a new step, for the marks.
+terrain_step_begin :: proc(r: ^Renderer, s: ^sim.State) {
+	info := sim.single(s, sim.Level_Info)
+	now := Terrain_Step{info.number, info.played, sim.frame_of(s)}
+	r.terrain_fresh = now != r.terrain_step
+	r.terrain_step = now
+}
+
+// Applies this step's marks, on the first frame drawn of it. `loc` is where
+// the object was on screen, so the map position is that plus the scroll,
+// and 32 across.
 terrain_stamp :: proc(r: ^Renderer, s: ^sim.State) {
-	if r.terrain.id == 0 || s.stamps.count == 0 {
+	if r.terrain.id == 0 || s.stamps.count == 0 || !r.terrain_fresh {
 		return
 	}
 	rl.BeginTextureMode(r.terrain)
@@ -696,15 +710,69 @@ terrain_stamp :: proc(r: ^Renderer, s: ^sim.State) {
 		}
 		x := sim.trunc_i32(st.loc.x) + 32
 		y := st.view_top + sim.trunc_i32(st.loc.y)
-		w := i32(src.width * st.scale)
-		h := i32(src.height * st.scale)
-		flipped := src
-		flipped.height = -flipped.height // the buffer is bottom-up
-		top := f32(r.terrain.texture.height) - f32(y - lifecycle.halve(h)) - f32(h)
-		dst := rl.Rectangle{f32(x - lifecycle.halve(w)), top, f32(w), f32(h)}
 		alpha := u8(clamp(st.visibility, 0, 100) * 255 / 100)
-		rl.DrawTexturePro(tex, flipped, dst, {0, 0}, 0, {255, 255, 255, alpha})
+		terrain_draw(r, tex, src, x, y, st.scale, {255, 255, 255, alpha})
 	}
+	rl.EndTextureMode()
+	resume_canvas(r)
+}
+
+// One frame drawn into the map, centred on (x, y) in map space, between
+// BeginTextureMode(r.terrain) and its end.
+@(private = "file")
+terrain_draw :: proc(r: ^Renderer, tex: rl.Texture2D, src: rl.Rectangle, x, y: i32, scale: f32, tint: rl.Color) {
+	w := i32(src.width * scale)
+	h := i32(src.height * scale)
+	flipped := src
+	flipped.height = -flipped.height // the buffer is bottom-up
+	top := f32(r.terrain.texture.height) - f32(y - lifecycle.halve(h)) - f32(h)
+	dst := rl.Rectangle{f32(x - lifecycle.halve(w)), top, f32(w), f32(h)}
+	rl.DrawTexturePro(tex, flipped, dst, {0, 0}, 0, tint)
+}
+
+// A live object with stateDrawToTerrain -- a crater, a scorch, a tank's
+// tracks -- drawn into the map rather than the frame, so what it leaves
+// stays where it was put after it is gone. G_GameObject::Priv_Draw sets
+// such an object's sprite flag 8 (0x424760), which U_Sprite_Draw
+// (0x40a070) reads as "draw into the map buffer", and does so at most once
+// a step (+0x86 holds the last game time drawn); Priv_DrawShadow sends its
+// shadow there too. G_GameInterface::Draw draws those lists before
+// G_Bgnd_CopyToFrontBuffer, so the mark shows the step it is made.
+//
+// Only the sprite and its shadow: the tint and glow passes, which the
+// original also sends to the map, have not been seen on a terrain object.
+// Provisional until one is.
+terrain_burn :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shadow: bool) {
+	if r.terrain.id == 0 || !r.terrain_fresh || o.visibility <= 0 {
+		return
+	}
+	tex, src, ok := frame_rect(&r.textures, o.sprite, o.frame)
+	if !ok {
+		return
+	}
+	view_top := sim.single(s, sim.Bgnd).view_top
+	x := sim.trunc_i32(o.loc.x) + 32
+	y := sim.trunc_i32(o.loc.y) + view_top
+	if r.dump || r.find != "" {
+		id := o.sprite
+		line := fmt.tprintf("  map       %v frame %v  at %.1f,%.1f  scale %.3f  vis %.0f  terrain true  shadow %v",
+			string(id[:]), o.frame, o.loc.x, o.loc.y, o.scale, o.visibility, casts_shadow)
+		if r.dump {
+			fmt.println(line)
+		}
+		if r.find != "" && strings.contains(line, r.find) {
+			r.find_hits += 1
+		}
+	}
+	rl.BeginTextureMode(r.terrain)
+	if casts_shadow && r.shadows {
+		// As draw_object's shadow, for a ground object.
+		pf := s.defs.perm_floats
+		blend := max(i32(32 - o.visibility * 32 / 100), 20)
+		ox, oy := sim.trunc_i32(pf[0x32] * o.scale), sim.trunc_i32(pf[0x33] * o.scale)
+		terrain_draw(r, tex, src, x + ox, y + oy, o.scale, {0, 0, 0, u8((32 - blend) * 255 / 32)})
+	}
+	terrain_draw(r, tex, src, x, y, o.scale, {255, 255, 255, u8(clamp(o.visibility, 0, 100) * 255 / 100)})
 	rl.EndTextureMode()
 	resume_canvas(r)
 }

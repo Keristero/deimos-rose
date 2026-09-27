@@ -98,6 +98,7 @@ layers_clear_render :: proc(r: ^Renderer, s: ^sim.State, f: ^Frame) {
 @(private = "file")
 terrain_render :: proc(r: ^Renderer, s: ^sim.State, f: ^Frame) {
 	terrain_prepare(r, s)
+	terrain_step_begin(r, s)
 	terrain_stamp(r, s)
 }
 
@@ -144,6 +145,10 @@ entities_render :: proc(r: ^Renderer, s: ^sim.State, f: ^Frame) {
 		before: ^sim.Game_Object
 		if prev != nil && prev.numbers[i] == e.number {
 			before = &prev.objects[i]
+		}
+		if e.draw_to_terrain {
+			terrain_burn(r, s, e.obj, u.casts_shadows)
+			continue
 		}
 		turn := e.turned ? f32(e.heading) : 0
 		draw_object(r, s, e.obj, u.casts_shadows, before, shot_accent(r, s, e), turn)
