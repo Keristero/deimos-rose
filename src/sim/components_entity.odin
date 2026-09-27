@@ -359,6 +359,10 @@ Shaped :: struct {
 	pace_acc:      i32,
 	spawn_clock:   i32, // the time its spawn sets run at, when paced
 	side_volley:   i32, // 1 + the step its one side-firing volley went out, 0 before
+	// A side-fired shot (spawners.odin, shaped_spawn_child). Its sprite
+	// faces north, like every shot of the weapon that fired it, so it is
+	// drawn turned to its heading. Presentation only; no step reads it.
+	turned:        bool,
 }
 
 // One pool entity: its components, as G_Entity's fields. A view, passed by
@@ -456,6 +460,7 @@ Spawn_Request :: struct {
 	// shot_shaper) and how many spawners removed from the weapon it is.
 	shaped_by:     u8,
 	shaped_depth:  u8,
+	turned:        bool, // a side-fired shot, drawn turned (Shaped.turned)
 }
 
 spawn_request :: proc "contextless" (unit: Res_ID) -> Spawn_Request {

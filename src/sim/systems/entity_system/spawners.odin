@@ -68,7 +68,7 @@ spawn_child :: proc(s: ^sim.State, e: sim.Entity, set: ^sim.Spawn_Set_Def) {
 
 // Place the child relative to its parent, optionally rotated with the
 // parent's facing.
-spawn_child_set :: proc(s: ^sim.State, e: sim.Entity, set: ^sim.Spawn_Set_Def) {
+spawn_child_set :: proc(s: ^sim.State, e: sim.Entity, set: ^sim.Spawn_Set_Def, turned := false) {
 	ci := sim.unit_index(s.defs, set.spawn)
 	child: ^sim.Unit = ci >= 0 ? &s.defs.units[ci] : nil
 	// Terrain effects only come from mobile parents that allow them.
@@ -128,6 +128,14 @@ spawn_child_set :: proc(s: ^sim.State, e: sim.Entity, set: ^sim.Spawn_Set_Def) {
 		req.shaped_by = e.shaped_by
 		req.shaped_depth = e.shaped_depth + 1
 	}
+	// Only a shot drawn one way needs turning; one with a frame per
+	// direction already shows its heading.
+	if turned && child != nil {
+		req.turned = true
+		for &st in child.states {
+			req.turned &&= st.num_directions <= 1
+		}
+	}
 	lifecycle.eg_request_spawn(s, req)
 }
 
@@ -170,12 +178,12 @@ shaped_spawn_child :: proc(s: ^sim.State, e: sim.Entity, set: ^sim.Spawn_Set_Def
 			n += 1
 		}
 	}
-	emit :: proc(s: ^sim.State, e: sim.Entity, set: ^sim.Spawn_Set_Def, x, y: i32, heading: i32, explicit: bool) {
+	emit :: proc(s: ^sim.State, e: sim.Entity, set: ^sim.Spawn_Set_Def, x, y: i32, heading: i32, explicit: bool, turned := false) {
 		alt := set^
 		alt.x_offset, alt.y_offset = x, y
 		alt.set_heading = explicit
 		alt.heading_degrees = heading
-		spawn_child_set(s, e, &alt)
+		spawn_child_set(s, e, &alt, turned)
 	}
 	if extra > 0 && n > 0 {
 		stats.lanes_sort(base[:n])
@@ -201,10 +209,10 @@ shaped_spawn_child :: proc(s: ^sim.State, e: sim.Entity, set: ^sim.Spawn_Set_Def
 	if side && (!set.set_heading || set.heading_degrees == 0) && (e.side_volley == 0 || e.side_volley == now) {
 		e.side_volley = now
 		if set.x_offset <= 0 {
-			emit(s, e, set, set.x_offset, set.y_offset, 270, true)
+			emit(s, e, set, set.x_offset, set.y_offset, 270, true, turned = true)
 		}
 		if set.x_offset >= 0 {
-			emit(s, e, set, set.x_offset, set.y_offset, 90, true)
+			emit(s, e, set, set.x_offset, set.y_offset, 90, true, turned = true)
 		}
 	}
 	return true

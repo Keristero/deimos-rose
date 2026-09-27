@@ -100,6 +100,10 @@ Item :: struct {
 	// Paint the tint's colour flat in the sprite's shape (the original's
 	// colorised blit, U_PixelScale16_Colorised_Alpha) rather than multiply.
 	colorise: bool,
+	// Degrees clockwise about the rectangle's centre. The original never
+	// turns a sprite -- a unit that faces a way has a frame for it -- so
+	// only what the port adds sets it.
+	rotation: f32,
 }
 
 // Accents (Extras, never in classic mode): drawn through
@@ -404,7 +408,8 @@ Draw_Accent :: struct {
 	lighten:  f32, // with recolour: towards white (the unlocked crosshair)
 }
 
-draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shadow: bool, prev: ^sim.Game_Object = nil, accent := Draw_Accent{}) {
+// `turn` draws the frame rotated by that many degrees clockwise.
+draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shadow: bool, prev: ^sim.Game_Object = nil, accent := Draw_Accent{}, turn: f32 = 0) {
 	if r.dump {
 		_, _, ok := frame_rect(&r.textures, o.sprite, o.frame)
 		if !ok || o.visibility <= 0 {
@@ -455,6 +460,7 @@ draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shad
 			src     = src,
 			dst     = sh,
 			tint    = {0, 0, 0, u8((32 - blend) * 255 / 32)},
+			rotation = turn,
 		})
 	}
 
@@ -467,7 +473,7 @@ draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shad
 		push_item(r, layer, Item {
 			texture = tex, src = src, dst = dst, tint = {255, 255, 255, alpha},
 			effect = accent.recolour ? .Recolour : .None, hue = accent.hue, sat = ACCENT_SATURATION,
-			lighten = accent.lighten,
+			lighten = accent.lighten, rotation = turn,
 		})
 	}
 	if accent.trim {
@@ -475,6 +481,7 @@ draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shad
 			push_item(r, layer, Item {
 				texture = trim, src = src, dst = dst, tint = {255, 255, 255, alpha},
 				effect = .Recolour, hue = accent.hue, sat = TRIM_SATURATION, shine = TRIM_SHINE,
+				rotation = turn,
 			})
 		}
 	}
@@ -492,6 +499,7 @@ draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shad
 			texture = tex, src = src, dst = dst,
 			tint = tint_color(o.tint_color, i32(o.tint * 32 / 100 * clamp(o.visibility, 0, 100) / 100)),
 			effect = over, hue = accent.hue, sat = ACCENT_SATURATION, colorise = true,
+			rotation = turn,
 		})
 	}
 	if o.glowing {
@@ -499,6 +507,7 @@ draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shad
 			texture = tex, src = src, dst = dst,
 			tint = tint_color(o.glow_color, 32 - o.glow_amount),
 			effect = over, hue = accent.hue, sat = ACCENT_SATURATION, colorise = true,
+			rotation = turn,
 		})
 	}
 }
@@ -570,10 +579,16 @@ build_frame :: proc(r: ^Renderer, s: ^sim.State, blurs: ^Blurs, notices: ^Notice
 // One item at its final screen rectangle, through ACCENT_SHADER when it
 // carries an effect. Also used directly by the Extras previews.
 draw_item :: proc(r: ^Renderer, it: Item, dst: rl.Rectangle) {
+	dst, origin := dst, rl.Vector2{}
+	if it.rotation != 0 {
+		origin = {dst.width / 2, dst.height / 2}
+		dst.x += origin.x
+		dst.y += origin.y
+	}
 	// An opaque plain draw blends the same either way; everything else goes
 	// through the shader for the original's alpha rule.
 	if (it.effect == .None && !it.colorise && it.tint.a == 255) || r.accent_shader.id == 0 {
-		rl.DrawTexturePro(it.texture, it.src, dst, {0, 0}, 0, it.tint)
+		rl.DrawTexturePro(it.texture, it.src, dst, origin, it.rotation, it.tint)
 		return
 	}
 	recolour := f32(it.effect != .None ? 1 : 0)
@@ -591,7 +606,7 @@ draw_item :: proc(r: ^Renderer, it: Item, dst: rl.Rectangle) {
 	rl.SetShaderValue(r.accent_shader, r.accent_shine_loc, &shine, .FLOAT)
 	rl.SetShaderValue(r.accent_shader, r.accent_recolour_loc, &recolour, .FLOAT)
 	rl.SetShaderValue(r.accent_shader, r.accent_colorise_loc, &colorise, .FLOAT)
-	rl.DrawTexturePro(it.texture, it.src, dst, {0, 0}, 0, it.tint)
+	rl.DrawTexturePro(it.texture, it.src, dst, origin, it.rotation, it.tint)
 	rl.EndShaderMode()
 }
 

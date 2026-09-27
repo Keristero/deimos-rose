@@ -208,6 +208,10 @@ is `plbo`, the Plasma Bomb, the only ground weapon.
     each shot only (`Shaped.side_volley` marks the step): on every volley
     it sent 8 bullets sideways a shot, which played too strong. The DPS
     report has no target to the side, so its numbers do not change.
+    The bullet (`rgbu`, sprite `regu`) has one frame, facing north, so a
+    side shot is drawn turned to its heading (`Shaped.turned`); a shot
+    with a frame per direction is left alone. `MENU=rear_gun_side` shows
+    it.
 - **Weapon 4** (Photon Beam). `firing_delay` scales
   `delay_between_launches`.
 

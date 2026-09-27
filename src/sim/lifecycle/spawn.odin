@@ -350,6 +350,7 @@ spawn_entity :: proc(
 	e.terrain_effects = req.terrain_effects
 	e.shaped_by = req.shaped_by
 	e.shaped_depth = req.shaped_depth
+	e.turned = req.turned
 
 	spawn_location(s, g, e)
 	spawn_velocity(s, g, e, use_heading, h, req.owner, req.speed_scale)

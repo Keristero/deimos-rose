@@ -487,7 +487,8 @@ run_menu_shot :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, r
 		}
 		// Not saved: a screenshot leaves the player's preferences alone.
 		ps.saved.classic, ps.launch.classic, r.classic = false, false, false
-		ps.saved.mods = sim.mods_with_deps(ps.saved.mods + {int(sh.plugin)})
+		others := sh.alone ? sim.Mods{} : prefs.defaults().mods
+		ps.saved.mods = sim.mods_with_deps(others + {int(sh.plugin)})
 		flow_start_session(&flow, 0x1234_5678, sh.co_op ? .Co_Op : .Single, sh.level)
 		if err := sh.setup(state, name); err != "" {
 			fmt.eprintfln("%s: %s", name, err)

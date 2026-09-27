@@ -3,7 +3,9 @@ package ui
 // Shots: a plugin's own screenshot scenarios for `mise run menu-shot
 // MENU=<name>` (game/main.odin, run_menu_shot), registered from its view/
 // package so the game renders them without naming the plugin or its
-// content. Each is a session outside classic mode with its plugin on:
+// content. Each is a session outside classic mode with its plugin on, and
+// the default mods unless `alone` -- never the player's own Mods page, so
+// a shot looks the same on every machine:
 // `setup` readies it -- steps it, hands a player a weapon, opens a screen
 // -- and then each phase holds its buttons for its steps while the
 // presentation (particles and effect systems) follows, so a shot fired in
@@ -23,6 +25,9 @@ Shot :: struct {
 	plugin: sim.Plugin_ID, // turned on, with what it needs
 	level:  int,           // index into the level list the session starts at
 	co_op:  bool,
+	// Only its plugin and what it needs, without the other mods that are
+	// on by default (a Level Select start with the Mods page untouched).
+	alone:  bool,
 	// Called once the session has started; a message fails the shot.
 	setup:  proc(s: ^sim.State, name: string) -> (err: string),
 	phases: []Shot_Phase,
