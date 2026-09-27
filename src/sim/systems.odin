@@ -1,5 +1,7 @@
 package sim
 
+import "base:intrinsics"
+
 // Systems: the only code that changes the state (notes/ecs-refactor.md).
 //
 // A step is the registered systems run in order. Each has one job and a
@@ -225,20 +227,32 @@ run_player_stages :: proc(s: ^State, p: Player, ps: ^Player_Step) {
 // Runs the session's entity stages on one entity, in order, until one
 // says the entity is done. A stage whose query the entity's prefab does not
 // match is passed over; the prefab is the one `es` holds when the stage
-// comes up, since an earlier stage may have refreshed it.
+// comes up, since an earlier stage may have refreshed it. The prefab's
+// stage_masks say which stages those are, so the rest are not visited.
 run_entity_stages :: proc(s: ^State, e: Entity, es: ^Entity_Step) {
-	for idx in s.schedule.stages[:s.schedule.stage_count] {
-		stage := &stages.items[idx]
-		if !prefab_is(s, es.prefab, stage.query) {
-			continue
+	pf := s.prefabs
+	pos: uint = 0 // the next position in the order to consider
+	for pos < uint(pf.stage_count) {
+		todo := pf.stage_masks[es.prefab] >> pos
+		if todo == 0 {
+			return
 		}
+		pos += uint(intrinsics.count_trailing_zeros(todo))
+		idx := pf.stages[pos]
+		pos += 1
 		c0 := profile_clock()
-		ok := stage.run(s, e, es)
+		ok := stages.items[idx].run(s, e, es)
 		profile_add(&profile.stages[idx], c0)
 		if !ok {
 			return
 		}
 	}
+}
+
+// The query of registered entity stage `idx`.
+@(private)
+stages_query :: #force_inline proc "contextless" (idx: u8) -> Prefab_Query {
+	return stages.items[idx].query
 }
 
 // Starts an entity's pass through the stages.

@@ -28,6 +28,11 @@ import ecs "dr:third_party/odecs"
 // each prefab keeps the set of queries it matches, so a step asks a bit and
 // not the world.
 //
+// Each prefab also keeps the entity stages it takes part in (stage_masks),
+// as bits over the session's stage order: an entity's pass through the
+// stages visits only those, where it would otherwise ask every stage's
+// query in turn.
+//
 // A prefab's components are looked up once, when they are built, into a
 // flat table (`has`, `data`): odecs's get_component hashes the type and
 // searches the archetype's columns on every call, and the stages ask
@@ -67,6 +72,12 @@ Prefabs :: struct {
 	// has nothing to point at, and for a component p does not have.
 	data:        []rawptr,
 	stride:      int,
+	// The session's entity stages, in order, as schedule_build orders them
+	// for these mods, and for each prefab the positions in that order whose
+	// stage's query it matches.
+	stages:      [MAX_STAGES]u8,
+	stage_count: u8,
+	stage_masks: []u64,
 	allocator:   runtime.Allocator,
 }
 
@@ -192,6 +203,19 @@ prefabs_build :: proc(pf: ^Prefabs, defs: ^Defs, mods: Mods, allocator := contex
 			}
 		}
 	}
+	// Each prefab's stages, by position in the session's order.
+	#assert(MAX_STAGES <= 64)
+	sched: Schedule
+	schedule_build(&sched, mods)
+	pf.stages, pf.stage_count = sched.stages, sched.stage_count
+	pf.stage_masks = make([]u64, total, allocator)
+	for &mask, at in pf.stage_masks {
+		for idx, pos in pf.stages[:pf.stage_count] {
+			if int(stages_query(idx)) in pf.matches[at] {
+				mask |= 1 << uint(pos)
+			}
+		}
+	}
 	// Each component, once: which prefabs have it, and where.
 	catalog := component_types()
 	pf.stride = len(catalog)
@@ -223,6 +247,7 @@ prefabs_destroy :: proc(pf: ^Prefabs) {
 	delete(pf.matches, pf.allocator)
 	delete(pf.has, pf.allocator)
 	delete(pf.data, pf.allocator)
+	delete(pf.stage_masks, pf.allocator)
 	pf^ = {}
 }
 

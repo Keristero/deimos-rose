@@ -116,6 +116,8 @@ init :: proc(s: ^State, session: Session, defs: ^Defs, log: ^Draw_Log = nil, eve
 	prefabs_ensure(s)
 	schedule_build(&s.schedule, session.mods)
 	assert(s.schedule.system_count > 0, "sim: no systems registered -- import dr:sim/core")
+	assert(s.prefabs.stages == s.schedule.stages && s.prefabs.stage_count == s.schedule.stage_count,
+		"sim: the prefabs' stage order is not the session's")
 	setup := Step{}
 	run_systems(s, &setup, {.Setup})
 }
