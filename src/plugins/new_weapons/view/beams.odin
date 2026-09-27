@@ -1,10 +1,11 @@
 package new_weapons_view
 
 // The Discharge Beam's shots (plugins/new_weapons/beam.odin), drawn: new
-// content, with no original to match. The simulation hands over each step's
-// beams as effect events; this keeps them for the few steps they fade over,
-// as an effect system (render/render_systems.odin) that forgets them when a
-// level starts, with the other in-play effects. Each is a line straight up
+// content, with no original to match. The simulation keeps its recent beams
+// in the session's Beam_Log; each step, this takes those still fading, as
+// an effect system (render/render_systems.odin). Reading the log rather than
+// the step's effect events is what shows the other player's beams in
+// netplay: they fire on steps a rollback replays (beam.odin). Each is a line straight up
 // from the gun to where it stopped, drawn additively over the air enemies
 // and under the ships: a wide glow fading to its edges, the beam's own
 // width in red, and a bright core, all narrowing as they fade. A charged
@@ -62,22 +63,28 @@ beam_life :: #force_inline proc(b: ^Beam_Fx) -> i32 {
 	return b.charged ? BEAM_CHARGED_LIFE : BEAM_LIFE
 }
 
-// One sim step: age the live beams, drop the spent, take this step's.
+// One sim step: the logged beams of this level still fading, their age
+// counted from the step they fired on, so one that a rollback replayed
+// shows as far through its fade as it would have.
 beams_step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles) {
-	n := 0
-	for &b in live {
-		b.age += 1
-		if b.age < beam_life(&b) {
-			live[n] = b
-			n += 1
+	clear(&live)
+	log := new_weapons.beam_log_of(s)
+	if log == nil {
+		return
+	}
+	time := sim.single(s, sim.Clock).time
+	level := sim.single(s, sim.Level_Info).played
+	for k in 0 ..< i32(new_weapons.MAX_RECENT_BEAMS) {
+		ev := log.events[(log.next + k) % new_weapons.MAX_RECENT_BEAMS]
+		if ev.width <= 0 || ev.level != level {
+			continue
+		}
+		b := Beam_Fx{ev = ev, age = time - 1 - ev.time}
+		if b.age >= 0 && b.age < beam_life(&b) {
+			append(&live, b)
 		}
 	}
-	resize(&live, n)
-	for ev in new_weapons.beam_shots(s) {
-		append(&live, Beam_Fx{ev = ev})
-	}
 }
-
 
 // `t` is how far the frame is from the last step to this one, so a beam
 // fades smoothly at high refresh rates.

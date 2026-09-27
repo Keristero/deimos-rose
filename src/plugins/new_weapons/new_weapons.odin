@@ -66,6 +66,7 @@ register :: proc "contextless" () {
 	BEAM_SHRAPNEL = sim.weapon_key_register("x_BeamShrapnel_ID")
 	BEAM_SHRAPNEL_COUNT = sim.weapon_key_register("x_BeamShrapnelCount_INT")
 	BEAM_SHOT = sim.effect_kind_register(Beam_Event)
+	sim.kind_component(.Session, Beam_Log{}, ID)
 
 	sim.weapon_fire_register({plugin = ID, fires = is_beam, shot = beam_shot, release = beam_release})
 	sim.weapon_fire_register({plugin = ID, fires = is_aimed, volley = aimed_release_spawn})

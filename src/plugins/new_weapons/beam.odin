@@ -13,8 +13,16 @@ package new_weapons
 //   protects), or goes off the top of the screen.
 //
 // The shrapnel pieces are ordinary player projectiles. Each shot is pushed
-// as a Beam_Event (sim/queue_effects.odin), which this plugin's view draws
-// as a line that fades.
+// as a Beam_Event (sim/queue_effects.odin), and kept in the session's
+// Beam_Log for the view, which draws it as a line that fades.
+//
+// The log is why the other player's beams show in netplay. The beam does
+// not auto-repeat: every pulse is a new press and a charge fires on
+// release, so the peer's prediction (the last buttons it had) never
+// guesses one, and the step that fires it is always one a rollback
+// replays. Effect events are read only after the newest step, so a replayed
+// step's are gone; the log is state, rolled back and replayed with the
+// rest.
 
 import "dr:sim"
 import "dr:sim/lifecycle"
@@ -48,6 +56,21 @@ Beam_Event :: struct {
 	width:   f32,
 	charged: bool,
 	player:  i32,
+	time:    i32, // the level step it fired on
+	level:   i32, // Level_Info.played when it fired
+}
+
+// The most recent beams, on the session entity, oldest overwritten first.
+// Enough for every beam still fading: two players, a pulse a step at most,
+// over the longest fade (the view's, 12 steps).
+MAX_RECENT_BEAMS :: 32
+Beam_Log :: struct {
+	events: [MAX_RECENT_BEAMS]Beam_Event,
+	next:   i32,
+}
+
+beam_log_of :: #force_inline proc "contextless" (s: ^sim.State) -> ^Beam_Log {
+	return sim.single(s, Beam_Log)
 }
 
 // The weapon's settings: new keys on its definition.
@@ -117,7 +140,12 @@ beam_fire :: proc(s: ^sim.State, h: ^sim.Weapon_Handler, wd: ^sim.Weapon, at: si
 			break
 		}
 	}
-	sim.effect_push(s, BEAM_SHOT, Beam_Event{from, to_y, width, charged, h.player})
+	ev := Beam_Event{from, to_y, width, charged, h.player, time, sim.single(s, sim.Level_Info).played}
+	sim.effect_push(s, BEAM_SHOT, ev)
+	if log := beam_log_of(s); log != nil {
+		log.events[log.next] = ev
+		log.next = (log.next + 1) % MAX_RECENT_BEAMS
+	}
 }
 
 // Everything across the line from `from` straight up that the beam can hit,
