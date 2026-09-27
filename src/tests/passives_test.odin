@@ -505,8 +505,9 @@ weapon_passives_shape_the_real_weapons :: proc(t: ^testing.T) {
 		testing.expectf(t, index(&defs, w) >= 0, "%v's weapon is not in the data", pa)
 	}
 	// A plugin weapon's passive only while its plugin is on: the Chaingun
-	// is not in this session.
+	// and the Discharge Beam are not in this session.
 	testing.expect(t, !passives.passive_available(s, .Weapon_5, 9))
+	testing.expect(t, !passives.passive_available(s, .Weapon_6, 10))
 
 	// The Chaingun's rounds stray further with its passive; a unit that
 	// flies straight still does, and another weapon's shots are left alone.
@@ -521,8 +522,8 @@ weapon_passives_shape_the_real_weapons :: proc(t: ^testing.T) {
 	testing.expect_value(t, stats.heading_tolerance(s, 0, 0, 8), 8)
 }
 
-// With its plugin on, the Chaingun's passive is offered from the level the
-// Chaingun is.
+// With their plugins on, the Chaingun's and the Discharge Beam's passives
+// are offered from the level each weapon is.
 @(test)
 chaingun_passive_offered_with_its_plugin :: proc(t: ^testing.T) {
 	if !os.exists("assets/data/index.json") {
@@ -543,6 +544,8 @@ chaingun_passive_offered_with_its_plugin :: proc(t: ^testing.T) {
 	defer sim.destroy(s)
 	sim.init(s, sim.Session{seed = 1, level_id = defs.levels[0].id, game_type = .Single, mods = session_mods(true, true)}, &defs)
 	testing.expect(t, passives.passive_available(s, .Weapon_5, 9))
+	testing.expect(t, !passives.passive_available(s, .Weapon_6, 9))
+	testing.expect(t, passives.passive_available(s, .Weapon_6, 10))
 }
 
 // Every passive has an icon recipe (tools/icons/passives.json), and the icon

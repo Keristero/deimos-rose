@@ -8,7 +8,9 @@ import vmem "core:mem/virtual"
 import "dr:data"
 import "dr:plugins/loadout"
 import "dr:plugins/new_weapons"
+import "dr:plugins/passives"
 import "dr:sim"
+import "dr:sim/stats"
 import "dr:sim/systems/weapon_system"
 import "dr:sim/lifecycle"
 
@@ -25,9 +27,10 @@ Beam_Fixture :: struct {
 	db:    i32, // the Discharge Beam's weapon index
 }
 
-// Stage 1 in a New Weapons session, once the ship is in play.
+// Stage 1 in a New Weapons session, once the ship is in play; with easy
+// mode's passives too if `easy`.
 @(private = "file")
-beam_fixture :: proc(t: ^testing.T, f: ^Beam_Fixture) -> bool {
+beam_fixture :: proc(t: ^testing.T, f: ^Beam_Fixture, easy := false) -> bool {
 	if !os.exists("assets/data/index.json") || !os.exists("assets/extra") {
 		log.info("skipped: needs the extracted assets tree")
 		return false
@@ -49,7 +52,7 @@ beam_fixture :: proc(t: ^testing.T, f: ^Beam_Fixture) -> bool {
 	}
 	f.s = new(sim.State, alloc)
 	context.allocator = alloc // the state's world goes in the arena too
-	sim.init(f.s, sim.Session{seed = 1, level_id = f.defs.levels[0].id, game_type = .Single, mods = session_mods(false, true)}, &f.defs)
+	sim.init(f.s, sim.Session{seed = 1, level_id = f.defs.levels[0].id, game_type = .Single, mods = session_mods(easy, true)}, &f.defs)
 	for i := 0; i < 300 && sim.player_at(f.s, 0).state != .Playing; i += 1 {
 		sim.session_step(f.s, {})
 	}
@@ -347,6 +350,62 @@ discharge_beam_winds_up_before_each_pulse :: proc(t: ^testing.T) {
 			// The next press lands on an even step.
 			gap := fired[k] - fired[k - 1]
 			testing.expectf(t, gap == cycle || gap == cycle + 1, "pulses %d steps apart, want %d", gap, cycle)
+		}
+	}
+}
+
+
+// The Weapon 6 passive: its damage scales a pulse, a release and the
+// fragments of the release's motes; the beam's width takes the damage's
+// percentage and its own.
+@(test)
+discharge_beam_passive_hits_harder_and_wider :: proc(t: ^testing.T) {
+	f: Beam_Fixture
+	defer vmem.arena_destroy(&f.arena)
+	if !beam_fixture(t, &f, true) {
+		return
+	}
+	s := f.s
+	pl := sim.player_at(s, 0)
+	h := pl.weapons
+	h.air.weapon = f.db
+	wd := &f.defs.weapons[f.db]
+	b := new_weapons.beam_def(wd)
+	at := sim.Vec{208, 420}
+	top := wd.powerup_air_max_power_level
+	wall := beam_target(t, s, at + {0, -100}, 100)
+	if wall.obj == nil {
+		return
+	}
+	passives.levels_of(s, pl.number)^ = #partial {.Weapon_6 = 3}
+	dmg := i32(passives.PASSIVES[.Weapon_6].mods[0].at[2])
+	wide := i32(passives.PASSIVES[.Weapon_6].mods[1].at[2])
+	scale := proc(v: f32, pct: i32) -> f32 {return v * f32(100 + pct) / 100}
+
+	s.effects.count = 0
+	new_weapons.beam_shot(s, h, wd, at, sim.single(s, sim.Clock).time)
+	testing.expect(t, abs(100 - wall.shields - scale(b.damage, dmg)) < 1e-3, "a pulse deals the scaled damage")
+	shots := new_weapons.beam_shots(s)
+	if testing.expect_value(t, len(shots), 1) {
+		testing.expect(t, abs(shots[0].width - scale(b.width, dmg + wide)) < 1e-3, "a pulse is as wide as both percentages")
+	}
+
+	wall.last_hit = -100
+	before := wall.shields
+	s.effects.count = 0
+	new_weapons.beam_release(s, h, wd, at, top, sim.single(s, sim.Clock).time)
+	testing.expect(t, abs(before - wall.shields - scale(b.release_damage, dmg)) < 1e-3, "a release deals the scaled damage")
+	shots = new_weapons.beam_shots(s)
+	if testing.expect_value(t, len(shots), 1) {
+		testing.expect(t, abs(shots[0].width - scale(b.release_width, dmg + wide)) < 1e-3)
+	}
+	// The motes carry the weapon, so their fragments deal its damage.
+	for used, i in sim.single(s, sim.Pool).entity_used {
+		e := sim.entity_at(s, i32(i))
+		if used && !e.deleted && e.unit == sim.unit_index(s.defs, b.mote) {
+			testing.expect_value(t, e.shaped_by, stats.shot_shaper(s, 0, f.db))
+			testing.expect(t, abs(stats.shot_damage(s, e, 0.4) - scale(0.4, dmg)) < 1e-3)
+			break
 		}
 	}
 }

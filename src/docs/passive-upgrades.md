@@ -80,6 +80,7 @@ The current set:
 | Ground Variant 1 | the ship above the plasma bomb's locked target (`pbta` 1) |
 | Weapon 1-4 | the weapon's score-bar symbol (`wesy` 0, 1, 3, 2), with the plus |
 | Weapon 5 | the Chaingun's score-bar symbol (`wesy` 4), with the plus |
+| Weapon 6 | the Discharge Beam's red symbol (`wesd` 0, New Weapons' own plate), with the plus |
 
 To add an icon, add an entry named after the new passive and rerun the
 task. `MENU=reward mise run menu-shot` shows the icons in place.
@@ -228,6 +229,14 @@ is `plbo`, the Plasma Bomb, the only ground weapon.
   scales a shaped shot's `initialHeadingTolerance`
   (`stats.heading_tolerance`), capped at a full turn. A unit with none
   still flies straight, and draws nothing more.
+- **Weapon 6.** The beam is not a projectile, so the plugin reads the
+  stats itself (`beam_scaled` in `plugins/new_weapons/beam.odin`).
+  `projectile_damage` scales a pulse and a charge's release; the motes a
+  release leaves carry the weapon's tag, so their fragments take it too
+  (`stats.shot_damage`). `base_beam_width` is `Shot_Width`, a stat for any
+  shot cast as a line rather than flown; the beam's width is scaled by it
+  plus the damage's percentage, as "width also scales with damage" asks,
+  so level 3 is 90% wider. The reward screen shows the width stat alone.
 
 ## Tuning (2026-09-25)
 
@@ -250,6 +259,7 @@ the Ion Cannon's 4 steps take 20% to lose one.
 | Weapon 3 (Rear Gun) | firing delay -10% | firing delay -20% | +1 volley, side fire | +10.2 / +22.0 / +39.6% |
 | Weapon 4 (Photon Beam) | firing delay -20% | firing delay -40% | firing delay -10%, +1 volley | +18.7 / +32.9 / +45.2% |
 | Weapon 5 (Chaingun) | firing delay -13%, spread +25% | firing delay -20%, spread +50% | firing delay -33%, spread +100% | +11.9 / +23.8 / +49.2% |
+| Weapon 6 (Discharge Beam) | damage +15%, width +10% | damage +30%, width +20% | damage +60%, width +30% | +10.7 / +21.4 / +42.9% |
 | Ground Variant 1 (Plasma Bomb) | fires backwards, damage +15% | damage +30% | damage +50%, +1 projectile | +14.9 / +29.8 / +49.8% |
 
 Levels carry what they do not change (the design's `x`).
@@ -271,7 +281,14 @@ Levels carry what they do not change (the design's `x`).
   last resort.
 - **Weapon 5 level 1** takes 13% off, not the design's 10%. 10% makes the
   delay 27 steps where 13% makes it 26, and 10% measured +8.6%.
-- Charge shots are not tuned. Weapon passives add at most 1% to them.
+- **Weapon 6** raises the damage 15/30/60%, not the design's 10/20/30%,
+  which measured +7.1 / +14.3 / +21.4%. In the wave a pulse already
+  kills what it hits and the next column is 40 px away, out of reach of
+  any width, so only the single and cluster targets gain: the Gain is
+  0.71 times the damage's percentage. The widths are the design's.
+- Charge shots are not tuned. Weapon passives add at most 1% to them,
+  except Weapon 6, whose damage bases the release and its fragments:
+  +12.3 / +24.5 / +49.1%.
 
 ## Provisional
 

@@ -4,7 +4,8 @@
 //   icons <recipe.json> <assets root> <out dir>
 //
 // A recipe is a canvas size and a list of icons, each a stack of layers drawn
-// bottom first. A layer is one frame of a sprite plate (sprites/index.json),
+// bottom first. A layer is one frame of a sprite plate (sprites/index.json,
+// or a plugin's own under assets/extra, for the plugins imported below),
 // scaled so its longer side is `fit` pixels (its own size when fit is left
 // out), centred on (x, y) (the canvas centre when left out), optionally
 // flipped, and faded to `alpha`:
@@ -32,6 +33,8 @@ import "core:strings"
 import rl "vendor:raylib"
 
 import "dr:data"
+// For its plates (the Discharge Beam's red symbol, WESD).
+import _ "dr:plugins/new_weapons"
 import "dr:sim"
 
 Layer :: struct {

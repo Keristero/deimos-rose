@@ -208,8 +208,9 @@ that plays the wind-up sound.
   longer. Its damage went from 7.5 to 5.0, as the motes' fragments now
   carry part of it.
 - **Weapon passives.** The Weapon 1–4 passives belong to the original's
-  weapons, so none applies. Improved Charge and Auto Charge work through
-  the ordinary power-up code.
+  weapons, so none applies. Weapon 6 is the beam's own: more damage and a
+  wider beam ([passive-upgrades.md](passive-upgrades.md)). Improved
+  Charge and Auto Charge work through the ordinary power-up code.
 
 #### Balance
 
@@ -219,7 +220,8 @@ upgrades by this point", which is stage 10. It was checked with
 [dps-report.md](dps-report.md). Its bare numbers are set against the
 others' with their weapon passive at level 2, or with Improved Charge 2
 for charge shots. The numbers below are from after the base changes (the
-wind-up, the motes).
+wind-up, the motes). Its own passive, Weapon 6, takes it to 7.20 ahead at
+level 2 and 9.60 at level 3.
 
 Primary fire, DPS (single / cluster / behind / wave, mean):
 

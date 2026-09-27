@@ -133,13 +133,14 @@ beam_origin :: proc "contextless" (wd: ^sim.Weapon, at: sim.Vec) -> sim.Vec {
 }
 
 // A pulse, or a charge's release: casts the line and deals `damage` along
-// it. Returns where it stopped.
+// it, both scaled by the weapon's stats for the player (beam_scaled).
+// Returns where it stopped.
 beam_fire :: proc(s: ^sim.State, h: ^sim.Weapon_Handler, wd: ^sim.Weapon, at: sim.Vec, damage, width: f32, charged: bool, time: i32) -> (to_y: f32) {
+	left, wide := beam_scaled(s, h, damage, width)
 	from := beam_origin(wd, at)
 	targets: [MAX_BEAM_TARGETS]sim.Entity
-	n := beam_targets(s, from, width, targets[:])
+	n := beam_targets(s, from, wide, targets[:])
 	to_y = -BEAM_OVERSHOOT
-	left := damage
 	for e in targets[:n] {
 		if e.deleted {
 			// Kills are only marked here and swept after the step, so nothing
@@ -161,13 +162,23 @@ beam_fire :: proc(s: ^sim.State, h: ^sim.Weapon_Handler, wd: ^sim.Weapon, at: si
 			break
 		}
 	}
-	ev := Beam_Event{from, to_y, width, charged, h.player, time, sim.single(s, sim.Level_Info).played}
+	ev := Beam_Event{from, to_y, wide, charged, h.player, time, sim.single(s, sim.Level_Info).played}
 	sim.effect_push(s, BEAM_SHOT, ev)
 	if log := beam_log_of(s); log != nil {
 		log.events[log.next] = ev
 		log.next = (log.next + 1) % MAX_RECENT_BEAMS
 	}
 	return
+}
+
+// A beam's damage and width for the player firing it: the damage stat
+// scales both, the width by its percentage added to the width stat's
+// (notes/extra-weapon-passives-and-base-adjustments.md: "width also scales
+// with damage"). Unchanged with no provider on.
+beam_scaled :: proc "contextless" (s: ^sim.State, h: ^sim.Weapon_Handler, damage, width: f32) -> (f32, f32) {
+	dmg := stats.weapon_stat(s, h.player, h.air.weapon, .Projectile_Damage).percent
+	wide := stats.weapon_stat(s, h.player, h.air.weapon, .Shot_Width).percent
+	return stats.scale_f32(damage, dmg), stats.scale_f32(width, dmg + wide)
 }
 
 // Everything across the line from `from` straight up that the beam can hit,

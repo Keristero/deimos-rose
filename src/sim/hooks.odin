@@ -199,6 +199,7 @@ Stat :: enum u8 {
 	Firing_Delay,             // the gap between shots
 	Projectile_Damage,        // the damage each shot, and what it spawns, deals
 	Random_Spread_Range,      // how far either side of its heading a shot may stray
+	Shot_Width,               // how wide a shot cast as a line, not flown, is
 }
 
 

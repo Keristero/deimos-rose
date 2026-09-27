@@ -41,6 +41,7 @@ Passive :: enum u8 {
 	Weapon_3,
 	Weapon_4,
 	Weapon_5,
+	Weapon_6,
 }
 
 Mod_Kind :: enum u8 {
@@ -83,6 +84,7 @@ WEAPON_PLASMA_BOMB :: Res_ID{'p', 'l', 'b', 'o'}
 // and the Discharge Beam (plugins/new_weapons). Their passives are offered
 // only while those plugins are on (passive_available).
 WEAPON_CHAINGUN :: Res_ID{'a', 'i', 'c', 'g'}
+WEAPON_DISCHARGE_BEAM :: Res_ID{'a', 'i', 'd', 'b'}
 
 PASSIVES := [Passive]Passive_Def {
 	.Improved_Manoeuvring = {
@@ -201,6 +203,19 @@ PASSIVES := [Passive]Passive_Def {
 			// rounds' spread widens with it.
 			{.Firing_Delay, .Decrease, {13, 20, 33}},
 			{.Random_Spread_Range, .Increase, {25, 50, 100}},
+		},
+	},
+	.Weapon_6 = {
+		levels = 3,
+		weapon = WEAPON_DISCHARGE_BEAM,
+		mods = {
+			// The damage bases the charge too, and its motes' fragments; the
+			// beam's width takes the damage's percentage as well as its own.
+			// The design's 10/20/30% damage gains only 7/14/21%: in the wave
+			// a pulse already kills what it hits, so only the single and
+			// cluster targets gain.
+			{.Projectile_Damage, .Increase, {15, 30, 60}},
+			{.Shot_Width, .Increase, {10, 20, 30}},
 		},
 	},
 }

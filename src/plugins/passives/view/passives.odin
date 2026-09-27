@@ -33,6 +33,7 @@ PASSIVE_NAMES := [passives.Passive]string {
 	.Weapon_3             = "REAR GUN UPGRADE",
 	.Weapon_4             = "PHOTON BEAM UPGRADE",
 	.Weapon_5             = "CHAINGUN UPGRADE",
+	.Weapon_6             = "DISCHARGE BEAM UPGRADE",
 }
 
 // A passive's icon, loaded on first use and cached with the other derived
@@ -86,6 +87,7 @@ STAT_DISPLAY := [sim.Stat]Stat_Display {
 	.Firing_Delay             = {"FIRING DELAY", .Percent, nil},
 	.Projectile_Damage        = {"DAMAGE", .Percent, nil},
 	.Random_Spread_Range      = {"SPREAD", .Percent, nil},
+	.Shot_Width               = {"BEAM WIDTH", .Percent, nil},
 }
 
 // A stat's value for a player holding `levels`, as the reward screen shows
