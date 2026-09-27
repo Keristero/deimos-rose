@@ -12,15 +12,10 @@ import "dr:data"
 import accent_view "dr:plugins/accent/view"
 import "dr:plugins/easy_mode"
 import "dr:plugins/fps_unlock"
-import "dr:plugins/loadout"
-import "dr:plugins/new_weapons"
-import "dr:plugins/passives"
 import "dr:prefs"
 import "dr:render"
 import "dr:sim"
 import "dr:sim/lifecycle"
-import "dr:sim/systems/player_system"
-import "dr:sim/systems/weapon_system"
 import "dr:ui"
 
 // A stall (window drag, breakpoint, GC pause) must not make the simulation
@@ -324,115 +319,6 @@ run_menu_shot :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, r
 		flow.pending_game_type = .Single
 		flow.mode = .Level_Select
 		level_select_init(&flow.level_select)
-	case "reward", "reward_2p":
-		// Easy mode's reward screen (plugins/easy_mode/view), opened straight over
-		// a level a couple of seconds in rather than played to its end. New
-		// content: a visual check. Player 1 already holds the first level
-		// of the first option, so its values read current -> next; in
-		// reward_2p both players are on the first option, player 1 locked,
-		// so the borders nest.
-		ps.saved.classic, ps.launch.classic, r.classic = false, false, false
-		ps.saved.mods = sim.mods_with_deps(ps.saved.mods + {int(easy_mode.ID)})
-		two := name == "reward_2p"
-		flow_start_session(&flow, 0x1234_5678, two ? .Co_Op : .Single, 0)
-		for _ in 0 ..< 60 {
-			_ = sim.session_step(state, {})
-		}
-		if !easy_mode.reward_begin(state, {}) {
-			fmt.eprintln("reward: no options to offer")
-			os.exit(1)
-		}
-		passives.levels_of(state, 0)[easy_mode.reward_of(state).options[0]] = 1
-		if two {
-			easy_mode.reward_of(state).cursor[1] = 0
-			easy_mode.reward_of(state).locked[0] = true
-		}
-		flow.mode = .Playing
-	case "loadout", "loadout_2p", "loadout_placed":
-		// New Weapons' loadout screen (plugins/loadout/view), played until the
-		// stage's title fades and the screen opens. New content: a visual
-		// check.
-		// - loadout: Level Select's stage 7, where the Chaingun unlocks. Five
-		//   weapons for a loadout of three, so two wait in the new row; the
-		//   cursor is on the Chaingun.
-		// - loadout_2p: the same for two. Player 1 has picked up a new weapon
-		//   and moved onto the loadout; player 2 is on READY, which is refused.
-		// - loadout_placed: stage 2, with the Bacta Gun taken away first, so
-		//   it comes back as new, straight into the free slot.
-		ps.saved.classic, ps.launch.classic, r.classic = false, false, false
-		prefs_mod_set(ps, new_weapons.ID, true)
-		two := name == "loadout_2p"
-		placed := name == "loadout_placed"
-		flow_start_session(&flow, 0x1234_5678, two ? .Co_Op : .Single, placed ? 1 : 6)
-		if placed {
-			loadout.slots_of(state, 0).loadout[1] = sim.NO_WEAPON
-		}
-		for i := 0; i < 2000 && !loadout.loadout_open(state); i += 1 {
-			_ = sim.session_step(state, {})
-		}
-		if !loadout.loadout_open(state) {
-			fmt.eprintln("loadout: the screen never opened (is assets/extra there?)")
-			os.exit(1)
-		}
-		if !placed {
-			loadout.loadout_of(state).boards[0].col = 1
-		}
-		if two {
-			b := &loadout.loadout_of(state).boards[0]
-			b.holding, b.hold_row, b.hold_col = true, .Fresh, 0
-			b.row, b.col = .Slots, 1
-			loadout.loadout_of(state).boards[1].row = .Ready
-		}
-		flow.mode = .Playing
-	case "chaingun", "chaingun_charge", "discharge", "discharge_charge":
-		// A new weapon in play (docs/new-weapons.md) once its stage's
-		// enemies are about: the Chaingun on stage 7, the Discharge Beam on
-		// stage 10. In chaingun, the burst a moment after a press; in
-		// chaingun_charge, the aimed volleys a moment after a charge is let
-		// go. In discharge, a pulse as it fades; in discharge_charge, the
-		// charged beam the step after it is let go. Player 1 is handed the
-		// weapon and the loadout screen is skipped. New content: a visual
-		// check.
-		ps.saved.classic, ps.launch.classic, r.classic = false, false, false
-		prefs_mod_set(ps, new_weapons.ID, true)
-		beam := strings.has_prefix(name, "discharge")
-		flow_start_session(&flow, 0x1234_5678, .Single, beam ? 9 : 6)
-		loadout.loadout_of(state).shown = sim.single(state, sim.Level_Info).played
-		p := sim.player_at(state, 0)
-		for &w, i in defs.weapons {
-			if w.id == sim.res_id(beam ? "aidb" : "aicg") {
-				loadout.slots_of(state, 0).loadout[0] = i32(i)
-				weapon_system.change_weapon(state, p.weapons, sim.WEP_AIR, i32(i))
-				player_system.player_sprite_from_weapon(state, p)
-			}
-		}
-		// An idle ship is shot down about 220 steps in.
-		warm, hold, after := 180, 4, 6
-		switch name {
-		case "chaingun_charge":
-			warm, hold, after = 120, 70, 12
-		case "discharge":
-			warm, hold, after = 180, 1, 1
-		case "discharge_charge":
-			warm, hold, after = 120, 90, 1
-		}
-		for _ in 0 ..< warm {
-			_ = sim.session_step(state, {})
-		}
-		// Taken now, so drawing the shot does not clear the effects below
-		// as a new level's.
-		flow_effects_sync(&flow, &particles, &blurs, &notices)
-		for _ in 0 ..< hold {
-			_ = sim.session_step(state, {{.Fire_Air}, {}})
-			render.particles_step(&particles, state)
-			render.effect_systems_step(r, state, &particles) // the beams
-		}
-		for _ in 0 ..< after {
-			_ = sim.session_step(state, {})
-			render.particles_step(&particles, state)
-			render.effect_systems_step(r, state, &particles)
-		}
-		flow.mode = .Playing
 	case "main_netplay":
 		// The main menu once its first update has built the links and the
 		// Netplay item -- "main" above is kept exactly as the oracle

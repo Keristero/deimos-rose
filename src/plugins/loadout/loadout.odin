@@ -393,6 +393,22 @@ loadout_apply :: proc(s: ^sim.State, p: sim.Player, b: ^Loadout_Board) {
 	player_system.player_sprite_from_weapon(s, p)
 }
 
+// Puts the air weapon `id` in the player's first slot and flies it, as if
+// chosen on the screen -- for a scenario or a test that starts with it.
+// false if no weapon has that id.
+loadout_give :: proc(s: ^sim.State, player: int, id: sim.Res_ID) -> bool {
+	for &w, i in s.defs.weapons {
+		if w.id == id {
+			p := sim.player_at(s, player)
+			slots_of(s, player).loadout[0] = i32(i)
+			weapon_system.change_weapon(s, p.weapons, sim.WEP_AIR, i32(i))
+			player_system.player_sprite_from_weapon(s, p)
+			return true
+		}
+	}
+	return false
+}
+
 // While the screen is open it takes the step.
 @(private = "file")
 screen_system :: proc(s: ^sim.State, step: ^sim.Step) {
