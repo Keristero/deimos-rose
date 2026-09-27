@@ -18,7 +18,7 @@
 // targets die: each has a real enemy's shields, is replaced a moment after
 // it is shot down, and only the shields taken off count, so what a weapon
 // wastes on overkill is seen, and what it carries through a kill (the
-// Discharge Beam's leftover damage and shrapnel) is too.
+// Discharge Beam's leftover damage) is too.
 //
 // A weapon is fired under every input policy weapon_policies lists, and the
 // report keeps two sets: primary fire (the best of the taps, and of holding

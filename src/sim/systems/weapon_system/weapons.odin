@@ -116,6 +116,7 @@ weapons_appear :: proc(s: ^sim.State, h: sim.Weapons, level_start: bool) {
 	h.ground_powerup = sim.Powerup{entity = -1}
 	h.ground_held = 0
 	h.air_idle, h.volleys_left, h.volley_pace, h.ground_pace = 0, 0, 0, 0
+	h.air_windup = 0
 	if h.queued_ground != sim.NO_WEAPON {
 		change_weapon(s, h, sim.WEP_GROUND, h.queued_ground)
 		h.queued_ground = sim.NO_WEAPON
@@ -234,6 +235,7 @@ weapons_process :: proc(
 		h.appeared = true
 		air_changed = true
 		h.volleys_left = 0
+		h.air_windup = 0
 		// U_Sound_Play(id, priority, volume, loop): no draws in this overload.
 		if id := s.defs.perm_sounds[0x12]; id != sim.NONE && s.sounds.count < sim.MAX_SOUND_EVENTS {
 			s.sounds.events[s.sounds.count] = {id, 100, 0x4b, 1, true}
@@ -271,7 +273,16 @@ weapons_process :: proc(
 	}
 	if fire_air {
 		spawn_air(s, h, at)
-		stats.air_volleys_schedule(s, h)
+		if h.air_windup == 0 {
+			stats.air_volleys_schedule(s, h)
+		}
+	} else if h.air_windup > 0 {
+		h.air_windup -= 1
+		if h.air_windup == 0 {
+			h.air.last, h.air.last2 = time, time
+			air_shot(s, h, at)
+			stats.air_volleys_schedule(s, h)
+		}
 	} else if stats.air_volley_due(s, h) {
 		spawn_air(s, h, at)
 	}
@@ -298,7 +309,7 @@ powerup_release :: proc(s: ^sim.State, entity: i32, time: i32) {
 // Priv_CheckSpawning_Air. Under Auto Charge holding fire-air autofires.
 check_spawning_air :: proc "contextless" (s: ^sim.State, h: sim.Weapons, time: i32) -> bool {
 	wd := sim.weapon_def(s, h.air.weapon)
-	if h.air.last + stats.air_firing_delay(s, h, h.air.weapon) < time {
+	if h.air_windup == 0 && h.air.last + stats.air_firing_delay(s, h, h.air.weapon) < time {
 		if !(!wd.auto_repeat && !stats.air_auto_charge(s, h) && h.prev_air) {
 			h.air.pending += 1
 			h.air.last = time
@@ -364,7 +375,8 @@ spawn_ground :: proc(s: ^sim.State, h: sim.Weapons, at: sim.Vec) {
 	}
 }
 
-// Priv_Spawn_Air.
+// Priv_Spawn_Air. A plugin's shot follows, or starts its wind-up
+// (Weapon_Fire.windup).
 spawn_air :: proc(s: ^sim.State, h: sim.Weapons, at: sim.Vec) {
 	if h.air.pending <= 0 {
 		return
@@ -380,6 +392,17 @@ spawn_air :: proc(s: ^sim.State, h: sim.Weapons, at: sim.Vec) {
 		req.shaped_by = tag
 		lifecycle.eg_request_spawn(s, req)
 	}
+	wd := sim.weapon_def(s, h.air.weapon)
+	if fire, ok := sim.weapon_fire(wd); ok && fire.windup != nil {
+		h.air_windup = max(fire.windup(wd), 0)
+	}
+	if h.air_windup == 0 {
+		air_shot(s, h, at)
+	}
+}
+
+// A plugin's shot of the air weapon (Weapon_Fire.shot), if it has one.
+air_shot :: proc(s: ^sim.State, h: sim.Weapons, at: sim.Vec) {
 	wd := sim.weapon_def(s, h.air.weapon)
 	if fire, ok := sim.weapon_fire(wd); ok && fire.shot != nil {
 		fire.shot(s, h, wd, at, sim.single(s, sim.Clock).time)

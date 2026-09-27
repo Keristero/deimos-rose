@@ -127,7 +127,7 @@
         },
         {
             "key": "delayBetweenLaunches_INT",
-            "value": "7"
+            "value": "8"
         },
         {
             "key": "delayBetweenLoadLaunches_INT",
@@ -151,11 +151,11 @@
         },
         {
             "key": "spawn_Name_STR",
-            "value": "Muzzle Flash"
+            "value": "Precharge"
         },
         {
             "key": "spawn_Unit_ID",
-            "value": "dbmf"
+            "value": "dbpc"
         },
         {
             "key": "spawn_XLoc_INT",
@@ -243,27 +243,47 @@
         },
         {
             "key": "x_BeamDamage_FLOAT",
-            "value": "1.600000"
+            "value": "3.000000"
         },
         {
             "key": "x_BeamWidth_FLOAT",
-            "value": "4.000000"
+            "value": "7.000000"
         },
         {
             "key": "x_BeamReleaseDamage_FLOAT",
-            "value": "7.500000"
+            "value": "5.000000"
         },
         {
             "key": "x_BeamReleaseWidth_FLOAT",
             "value": "14.000000"
         },
         {
-            "key": "x_BeamShrapnel_ID",
-            "value": "dbsh"
+            "key": "x_BeamWindup_INT",
+            "value": "6"
         },
         {
-            "key": "x_BeamShrapnelCount_INT",
-            "value": "3"
+            "key": "x_BeamFlash_ID",
+            "value": "dbmf"
+        },
+        {
+            "key": "x_BeamMote_ID",
+            "value": "dbcm"
+        },
+        {
+            "key": "x_BeamMoteSounded_ID",
+            "value": "dbcs"
+        },
+        {
+            "key": "x_BeamMoteSpacing_INT",
+            "value": "24"
+        },
+        {
+            "key": "x_BeamMoteDelayMin_INT",
+            "value": "6"
+        },
+        {
+            "key": "x_BeamMoteDelayMax_INT",
+            "value": "30"
         }
     ]
 }

@@ -54,8 +54,12 @@ Weapon_Filter :: struct {
 Weapon_Fire :: struct {
 	plugin:  Plugin_ID,
 	fires:   proc "contextless" (w: ^Weapon) -> bool,
-	// With every press, after the weapon's own spawns.
+	// With every press, after the weapon's own spawns and its wind-up.
 	shot:    proc(s: ^State, h: ^Weapon_Handler, w: ^Weapon, at: Vec, time: i32),
+	// Steps from a press to its shot. The weapon's own spawns come with
+	// the press, `shot` when the wind-up is over, and the firing delay
+	// counts from the shot. Nil or 0 fires on the press.
+	windup:  proc "contextless" (w: ^Weapon) -> i32,
 	// A charge let go all at once, whatever level it reached, in place of
 	// one volley per level.
 	release: proc(s: ^State, h: ^Weapon_Handler, w: ^Weapon, at: Vec, level: i32, time: i32),

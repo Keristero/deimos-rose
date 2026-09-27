@@ -1,47 +1,47 @@
 {
-    "id": "dbsx",
+    "id": "dbcm",
     "type": "unde",
-    "name": "Discharge Beam - Fragment Hit FX",
+    "name": "Discharge Beam - Lingering Mote",
     "family": "Discharge Beam",
     "states": [
         {
-            "name": "Expanding",
+            "name": "Linger",
             "spawn_sets": [],
             "rules": [
                 {
                     "name": "Rule",
                     "unit": "none",
                     "range": 0,
-                    "condition": "",
-                    "action": ""
+                    "condition": "Is Tracking Player",
+                    "action": "Delete"
                 },
                 {
                     "name": "Rule",
                     "unit": "none",
                     "range": 0,
-                    "condition": "",
-                    "action": ""
+                    "condition": "Is Tracking Player",
+                    "action": "Delete"
                 },
                 {
                     "name": "Rule",
                     "unit": "none",
                     "range": 0,
-                    "condition": "",
-                    "action": ""
+                    "condition": "Is Tracking Player",
+                    "action": "Delete"
                 },
                 {
                     "name": "Rule",
                     "unit": "none",
                     "range": 0,
-                    "condition": "",
-                    "action": ""
+                    "condition": "Is Tracking Player",
+                    "action": "Delete"
                 },
                 {
                     "name": "Rule",
                     "unit": "none",
                     "range": 0,
-                    "condition": "",
-                    "action": ""
+                    "condition": "Is Tracking Player",
+                    "action": "Delete"
                 }
             ],
             "fields": [
@@ -51,7 +51,7 @@
                 },
                 {
                     "key": "stateOnRangeChangeTo_STR",
-                    "value": ""
+                    "value": "No State"
                 },
                 {
                     "key": "stateOnHitChangeTo_STR",
@@ -63,15 +63,15 @@
                 },
                 {
                     "key": "stateOnTimerMin_INT",
-                    "value": "7"
+                    "value": "30"
                 },
                 {
                     "key": "stateOnTimerMax_INT",
-                    "value": "7"
+                    "value": "30"
                 },
                 {
                     "key": "stateOnTimerChangeTo_STR",
-                    "value": "Dwindle and Die"
+                    "value": "Burst"
                 },
                 {
                     "key": "stateOnCounter_INT",
@@ -83,15 +83,15 @@
                 },
                 {
                     "key": "stateSpriteFace_ID",
-                    "value": "bagu"
+                    "value": "glow"
                 },
                 {
                     "key": "stateSpriteFrameMin_INT",
-                    "value": "4"
+                    "value": "6"
                 },
                 {
                     "key": "stateSpriteFrameMax_INT",
-                    "value": "4"
+                    "value": "6"
                 },
                 {
                     "key": "stateUseParentDirection_BOOL",
@@ -103,19 +103,19 @@
                 },
                 {
                     "key": "stateVisibilityDeltaPercent_INT",
-                    "value": "10"
+                    "value": "0"
                 },
                 {
                     "key": "stateRequiredScalePercent_INT",
-                    "value": "100"
+                    "value": "55"
                 },
                 {
                     "key": "stateScaleDeltaPercent_INT",
-                    "value": "15"
+                    "value": "1"
                 },
                 {
                     "key": "stateTintPercent_INT",
-                    "value": "0"
+                    "value": "100"
                 },
                 {
                     "key": "stateTintDeltaPercent_INT",
@@ -123,7 +123,7 @@
                 },
                 {
                     "key": "stateTintColor_COLOR",
-                    "value": "F86038"
+                    "value": "F83820"
                 },
                 {
                     "key": "stateDoColorise_BOOL",
@@ -163,11 +163,11 @@
                 },
                 {
                     "key": "stateMaxSpeed_FLOAT",
-                    "value": "0.000000"
+                    "value": "0.300000"
                 },
                 {
                     "key": "stateDelta_FLOAT",
-                    "value": "0.000000"
+                    "value": "0.020000"
                 },
                 {
                     "key": "stateHoldMaxSpeed_FLOAT",
@@ -311,7 +311,7 @@
                 },
                 {
                     "key": "stateParticlesColor_COLOR",
-                    "value": "08D0E8"
+                    "value": "000000"
                 },
                 {
                     "key": "stateParticlesRepeat_BOOL",
@@ -378,14 +378,6 @@
                     "value": "FALSE"
                 },
                 {
-                    "key": "stateFleeNorth_BOOL",
-                    "value": "FALSE"
-                },
-                {
-                    "key": "stateFleeSouth_BOOL",
-                    "value": "FALSE"
-                },
-                {
                     "key": "stateDeleteOnNoActivePlayers_BOOL",
                     "value": "FALSE"
                 },
@@ -416,43 +408,308 @@
             ]
         },
         {
-            "name": "Dwindle and Die",
-            "spawn_sets": [],
+            "name": "Burst",
+            "spawn_sets": [
+                {
+                    "fields": [
+                        {
+                            "key": "stateSpawnSetName_STR",
+                            "value": "Fragment 1"
+                        },
+                        {
+                            "key": "stateSpawnSetSpawn_ID",
+                            "value": "dbfr"
+                        },
+                        {
+                            "key": "stateSpawnSetXOffset_INT",
+                            "value": "0"
+                        },
+                        {
+                            "key": "stateSpawnSetYOffset_INT",
+                            "value": "0"
+                        },
+                        {
+                            "key": "stateSpawnSetAdjustOffsetForUnitRotation_BOOL",
+                            "value": "FALSE"
+                        },
+                        {
+                            "key": "stateSpawnSet_AbsoluteCoordinates_BOOL",
+                            "value": "FALSE"
+                        },
+                        {
+                            "key": "stateSpawnSetRateMin_INT",
+                            "value": "0"
+                        },
+                        {
+                            "key": "stateSpawnSetRateMax_INT",
+                            "value": "0"
+                        },
+                        {
+                            "key": "stateSpawnSetNumInVolleyMin_INT",
+                            "value": "1"
+                        },
+                        {
+                            "key": "stateSpawnSetNumInVolleyMax_INT",
+                            "value": "1"
+                        },
+                        {
+                            "key": "stateSpawnSetDelayBetweenEntitiesMin_INT",
+                            "value": "0"
+                        },
+                        {
+                            "key": "stateSpawnSetDelayBetweenEntitiesMax_INT",
+                            "value": "0"
+                        },
+                        {
+                            "key": "stateSpawnSetRepeatSpawns_BOOL",
+                            "value": "FALSE"
+                        },
+                        {
+                            "key": "stateSpawnSetDon'tSpawnOffscreen_BOOL",
+                            "value": "FALSE"
+                        },
+                        {
+                            "key": "stateSpawnSetPauseAnyRotationWhileSpawning_BOOL",
+                            "value": "FALSE"
+                        },
+                        {
+                            "key": "stateSpawnSetTimeToPauseRotationAfterSpawning_INT",
+                            "value": "0"
+                        },
+                        {
+                            "key": "stateSpawnSetSpawnIfFleeing_BOOL",
+                            "value": "FALSE"
+                        },
+                        {
+                            "key": "stateSpawnSet_StationaryOption_BOOL",
+                            "value": "FALSE"
+                        },
+                        {
+                            "key": "stateSpawnSet_TerrainEffectsOption_BOOL",
+                            "value": "FALSE"
+                        },
+                        {
+                            "key": "stateSpawnSetSetHeading_BOOL",
+                            "value": "TRUE"
+                        },
+                        {
+                            "key": "stateSpawnSetHeadingDegrees_INT",
+                            "value": "0"
+                        }
+                    ]
+                },
+                {
+                    "fields": [
+                        {
+                            "key": "stateSpawnSetName_STR",
+                            "value": "Fragment 2"
+                        },
+                        {
+                            "key": "stateSpawnSetSpawn_ID",
+                            "value": "dbfr"
+                        },
+                        {
+                            "key": "stateSpawnSetXOffset_INT",
+                            "value": "0"
+                        },
+                        {
+                            "key": "stateSpawnSetYOffset_INT",
+                            "value": "0"
+                        },
+                        {
+                            "key": "stateSpawnSetAdjustOffsetForUnitRotation_BOOL",
+                            "value": "FALSE"
+                        },
+                        {
+                            "key": "stateSpawnSet_AbsoluteCoordinates_BOOL",
+                            "value": "FALSE"
+                        },
+                        {
+                            "key": "stateSpawnSetRateMin_INT",
+                            "value": "0"
+                        },
+                        {
+                            "key": "stateSpawnSetRateMax_INT",
+                            "value": "0"
+                        },
+                        {
+                            "key": "stateSpawnSetNumInVolleyMin_INT",
+                            "value": "1"
+                        },
+                        {
+                            "key": "stateSpawnSetNumInVolleyMax_INT",
+                            "value": "1"
+                        },
+                        {
+                            "key": "stateSpawnSetDelayBetweenEntitiesMin_INT",
+                            "value": "0"
+                        },
+                        {
+                            "key": "stateSpawnSetDelayBetweenEntitiesMax_INT",
+                            "value": "0"
+                        },
+                        {
+                            "key": "stateSpawnSetRepeatSpawns_BOOL",
+                            "value": "FALSE"
+                        },
+                        {
+                            "key": "stateSpawnSetDon'tSpawnOffscreen_BOOL",
+                            "value": "FALSE"
+                        },
+                        {
+                            "key": "stateSpawnSetPauseAnyRotationWhileSpawning_BOOL",
+                            "value": "FALSE"
+                        },
+                        {
+                            "key": "stateSpawnSetTimeToPauseRotationAfterSpawning_INT",
+                            "value": "0"
+                        },
+                        {
+                            "key": "stateSpawnSetSpawnIfFleeing_BOOL",
+                            "value": "FALSE"
+                        },
+                        {
+                            "key": "stateSpawnSet_StationaryOption_BOOL",
+                            "value": "FALSE"
+                        },
+                        {
+                            "key": "stateSpawnSet_TerrainEffectsOption_BOOL",
+                            "value": "FALSE"
+                        },
+                        {
+                            "key": "stateSpawnSetSetHeading_BOOL",
+                            "value": "TRUE"
+                        },
+                        {
+                            "key": "stateSpawnSetHeadingDegrees_INT",
+                            "value": "120"
+                        }
+                    ]
+                },
+                {
+                    "fields": [
+                        {
+                            "key": "stateSpawnSetName_STR",
+                            "value": "Fragment 3"
+                        },
+                        {
+                            "key": "stateSpawnSetSpawn_ID",
+                            "value": "dbfr"
+                        },
+                        {
+                            "key": "stateSpawnSetXOffset_INT",
+                            "value": "0"
+                        },
+                        {
+                            "key": "stateSpawnSetYOffset_INT",
+                            "value": "0"
+                        },
+                        {
+                            "key": "stateSpawnSetAdjustOffsetForUnitRotation_BOOL",
+                            "value": "FALSE"
+                        },
+                        {
+                            "key": "stateSpawnSet_AbsoluteCoordinates_BOOL",
+                            "value": "FALSE"
+                        },
+                        {
+                            "key": "stateSpawnSetRateMin_INT",
+                            "value": "0"
+                        },
+                        {
+                            "key": "stateSpawnSetRateMax_INT",
+                            "value": "0"
+                        },
+                        {
+                            "key": "stateSpawnSetNumInVolleyMin_INT",
+                            "value": "1"
+                        },
+                        {
+                            "key": "stateSpawnSetNumInVolleyMax_INT",
+                            "value": "1"
+                        },
+                        {
+                            "key": "stateSpawnSetDelayBetweenEntitiesMin_INT",
+                            "value": "0"
+                        },
+                        {
+                            "key": "stateSpawnSetDelayBetweenEntitiesMax_INT",
+                            "value": "0"
+                        },
+                        {
+                            "key": "stateSpawnSetRepeatSpawns_BOOL",
+                            "value": "FALSE"
+                        },
+                        {
+                            "key": "stateSpawnSetDon'tSpawnOffscreen_BOOL",
+                            "value": "FALSE"
+                        },
+                        {
+                            "key": "stateSpawnSetPauseAnyRotationWhileSpawning_BOOL",
+                            "value": "FALSE"
+                        },
+                        {
+                            "key": "stateSpawnSetTimeToPauseRotationAfterSpawning_INT",
+                            "value": "0"
+                        },
+                        {
+                            "key": "stateSpawnSetSpawnIfFleeing_BOOL",
+                            "value": "FALSE"
+                        },
+                        {
+                            "key": "stateSpawnSet_StationaryOption_BOOL",
+                            "value": "FALSE"
+                        },
+                        {
+                            "key": "stateSpawnSet_TerrainEffectsOption_BOOL",
+                            "value": "FALSE"
+                        },
+                        {
+                            "key": "stateSpawnSetSetHeading_BOOL",
+                            "value": "TRUE"
+                        },
+                        {
+                            "key": "stateSpawnSetHeadingDegrees_INT",
+                            "value": "240"
+                        }
+                    ]
+                }
+            ],
             "rules": [
                 {
                     "name": "Rule",
                     "unit": "none",
                     "range": 0,
-                    "condition": "",
-                    "action": ""
+                    "condition": "Is Tracking Player",
+                    "action": "Delete"
                 },
                 {
                     "name": "Rule",
                     "unit": "none",
                     "range": 0,
-                    "condition": "",
-                    "action": ""
+                    "condition": "Is Tracking Player",
+                    "action": "Delete"
                 },
                 {
                     "name": "Rule",
                     "unit": "none",
                     "range": 0,
-                    "condition": "",
-                    "action": ""
+                    "condition": "Is Tracking Player",
+                    "action": "Delete"
                 },
                 {
                     "name": "Rule",
                     "unit": "none",
                     "range": 0,
-                    "condition": "",
-                    "action": ""
+                    "condition": "Is Tracking Player",
+                    "action": "Delete"
                 },
                 {
                     "name": "Rule",
                     "unit": "none",
                     "range": 0,
-                    "condition": "",
-                    "action": ""
+                    "condition": "Is Tracking Player",
+                    "action": "Delete"
                 }
             ],
             "fields": [
@@ -474,11 +731,11 @@
                 },
                 {
                     "key": "stateOnTimerMin_INT",
-                    "value": "7"
+                    "value": "1"
                 },
                 {
                     "key": "stateOnTimerMax_INT",
-                    "value": "7"
+                    "value": "1"
                 },
                 {
                     "key": "stateOnTimerChangeTo_STR",
@@ -494,15 +751,15 @@
                 },
                 {
                     "key": "stateSpriteFace_ID",
-                    "value": "bagu"
+                    "value": "glow"
                 },
                 {
                     "key": "stateSpriteFrameMin_INT",
-                    "value": "4"
+                    "value": "6"
                 },
                 {
                     "key": "stateSpriteFrameMax_INT",
-                    "value": "4"
+                    "value": "6"
                 },
                 {
                     "key": "stateUseParentDirection_BOOL",
@@ -514,7 +771,7 @@
                 },
                 {
                     "key": "stateVisibilityDeltaPercent_INT",
-                    "value": "10"
+                    "value": "0"
                 },
                 {
                     "key": "stateRequiredScalePercent_INT",
@@ -522,11 +779,11 @@
                 },
                 {
                     "key": "stateScaleDeltaPercent_INT",
-                    "value": "15"
+                    "value": "0"
                 },
                 {
                     "key": "stateTintPercent_INT",
-                    "value": "0"
+                    "value": "100"
                 },
                 {
                     "key": "stateTintDeltaPercent_INT",
@@ -534,7 +791,7 @@
                 },
                 {
                     "key": "stateTintColor_COLOR",
-                    "value": "F86038"
+                    "value": "FFD0B0"
                 },
                 {
                     "key": "stateDoColorise_BOOL",
@@ -789,14 +1046,6 @@
                     "value": "FALSE"
                 },
                 {
-                    "key": "stateFleeNorth_BOOL",
-                    "value": "FALSE"
-                },
-                {
-                    "key": "stateFleeSouth_BOOL",
-                    "value": "FALSE"
-                },
-                {
                     "key": "stateDeleteOnNoActivePlayers_BOOL",
                     "value": "FALSE"
                 },
@@ -830,7 +1079,7 @@
     "header": [
         {
             "key": "name_STR",
-            "value": "Discharge Beam - Fragment Hit FX"
+            "value": "Discharge Beam - Lingering Mote"
         },
         {
             "key": "familyName_STR",
@@ -838,7 +1087,7 @@
         },
         {
             "key": "description_STR",
-            "value": "Visual effects for a Discharge Beam fragment destruction."
+            "value": "Left along a charged beam; bursts into fragments after a delay set by the charge."
         },
         {
             "key": "numInGroupMin_INT",
@@ -1002,7 +1251,7 @@
         },
         {
             "key": "destructParticleColor_COLOR",
-            "value": "000000"
+            "value": "F86038"
         },
         {
             "key": "destructNotice_STR",
@@ -1062,11 +1311,11 @@
         },
         {
             "key": "initialVisibilityPercent_INT",
-            "value": "60"
+            "value": "100"
         },
         {
             "key": "initialScalePercent_INT",
-            "value": "60"
+            "value": "45"
         },
         {
             "key": "initialScalePercentTolerance_INT",
@@ -1074,7 +1323,7 @@
         },
         {
             "key": "drawLayer_ID",
-            "value": "defa"
+            "value": "aihi"
         },
         {
             "key": "entryNotice_STR",
@@ -1166,11 +1415,11 @@
         },
         {
             "key": "unshieldedSound_MinPitch_FLOAT",
-            "value": "1.0"
+            "value": "1.000000"
         },
         {
             "key": "unshieldedSound_MaxPitch_FLOAT",
-            "value": "1.0"
+            "value": "1.000000"
         },
         {
             "key": "deletionSpawn_ID",
@@ -1178,19 +1427,19 @@
         },
         {
             "key": "xOffsetMin_FLOAT",
-            "value": "-2.000000"
+            "value": "0.000000"
         },
         {
             "key": "xOffsetMax_FLOAT",
-            "value": "2.000000"
+            "value": "0.000000"
         },
         {
             "key": "yOffsetMin_FLOAT",
-            "value": "-2.000000"
+            "value": "0.000000"
         },
         {
             "key": "yOffsetMax_FLOAT",
-            "value": "2.000000"
+            "value": "0.000000"
         },
         {
             "key": "initialHeading_INT",
@@ -1198,7 +1447,7 @@
         },
         {
             "key": "initialHeadingTolerance_INT",
-            "value": "0"
+            "value": "360"
         },
         {
             "key": "useOwnerHeading_BOOL",
@@ -1206,11 +1455,11 @@
         },
         {
             "key": "initialSpeedMin_FLOAT",
-            "value": "0.000000"
+            "value": "0.200000"
         },
         {
             "key": "initialSpeedMax_FLOAT",
-            "value": "0.000000"
+            "value": "0.400000"
         },
         {
             "key": "doBurst_BOOL",

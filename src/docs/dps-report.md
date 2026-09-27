@@ -88,8 +88,8 @@ carries on to another target. It is replaced 12 steps later.
   the first row where the single target stands. Each target has 0.8
   shields, about a stage 9–12 air enemy's, and is replaced 12 steps after
   it dies. This is the one scenario where overkill is wasted, and where
-  damage that carries through a kill (the Discharge Beam's leftover and
-  its shrapnel) counts.
+  damage that carries through a kill (the Discharge Beam's leftover)
+  counts.
 
 Both ground positions come from the crosshair's own sums
 (`ground_aim` in `tools/dps`, copied from `sim/systems/player_system/player.odin`). A scenario
@@ -281,12 +281,11 @@ plain shot the first press fires before a charge begins. The Rear Gun's
   fall to 1.40 and 3.09, since most of each burst lands on a target
   already dead. Charge releases lose the same way, except where they
   spread (the Photon Beam's and the Rear Gun's).
-- **The Discharge Beam leads the wave's straight lines.** Its pulse kills
-  the front target and carries the rest into the next, and its shrapnel
-  reaches the columns beside it: 8.90, against 4.33 to 5.55 for the other
-  single-lane weapons. Its charged beam carries 7.5 into a column only
-  2.4 deep, so in the wave most of it is overkill, and Improved Charge adds
-  nothing there.
+- **The Discharge Beam holds one column of the wave.** Its pulse kills
+  the front target and carries the rest into the next, but reaches no
+  other column: 4.80, against 4.33 to 5.55 for the other single-lane
+  weapons (it was 8.90 while its kills threw shrapnel). Its charged beam's
+  motes burst into fragments that reach the columns beside it, 1.53.
 - **Straight-firing weapons get nothing from a cluster.** Only the Bacta
   Gun's spread (+50%) and Weapon 1 level 3's wide lanes reach past the
   front target, which soaks every other shot.

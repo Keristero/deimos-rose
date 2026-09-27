@@ -154,6 +154,7 @@ Weapon_Handler :: struct {
 	volleys_left:    i32,  // extra volleys still owed by the last shot
 	volley_pace:     i32,  // hundredths of a step towards the next one
 	ground_pace:     i32,  // hundredths of a step towards the next bomb
+	air_windup:      i32,  // steps until a wound-up shot fires (Weapon_Fire.windup)
 }
 
 // The crosshair entity's own component; its Game_Object is the rest of it.

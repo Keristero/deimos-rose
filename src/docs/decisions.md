@@ -693,8 +693,10 @@ Why not a very fast, very long projectile:
   event carries.
 
 Nothing new is kept between steps. What the beam did lives in the
-entities it hit and the shrapnel it spawned, which are ordinary state, so
-snapshots, rollback and `sim.checksum` needed no change. The queue is
+entities it hit and the motes a charge leaves, which are ordinary state, so
+snapshots, rollback and `sim.checksum` needed no change. *The wind-up
+added one field, `Weapon_Handler.air_windup`, which is hashed with the
+rest.* The queue is
 presentation input only, cleared each step, and not hashed. The target
 filter (`air_shot_can_hit`) is the one the Chaingun's aiming already uses,
 so the beam can hit exactly what an air shot can.

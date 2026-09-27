@@ -1,47 +1,47 @@
 {
-    "id": "dbsh",
+    "id": "dbpc",
     "type": "unde",
-    "name": "Discharge Beam - Shrapnel",
+    "name": "Discharge Beam - Precharge",
     "family": "Discharge Beam",
     "states": [
         {
-            "name": "Flight",
+            "name": "Expand",
             "spawn_sets": [],
             "rules": [
                 {
                     "name": "Rule",
                     "unit": "none",
                     "range": 0,
-                    "condition": "Is Tracking Player",
-                    "action": "Delete"
+                    "condition": "",
+                    "action": ""
                 },
                 {
                     "name": "Rule",
                     "unit": "none",
                     "range": 0,
-                    "condition": "Is Tracking Player",
-                    "action": "Delete"
+                    "condition": "",
+                    "action": ""
                 },
                 {
                     "name": "Rule",
                     "unit": "none",
                     "range": 0,
-                    "condition": "Is Tracking Player",
-                    "action": "Delete"
+                    "condition": "",
+                    "action": ""
                 },
                 {
                     "name": "Rule",
                     "unit": "none",
                     "range": 0,
-                    "condition": "Is Tracking Player",
-                    "action": "Delete"
+                    "condition": "",
+                    "action": ""
                 },
                 {
                     "name": "Rule",
                     "unit": "none",
                     "range": 0,
-                    "condition": "Is Tracking Player",
-                    "action": "Delete"
+                    "condition": "",
+                    "action": ""
                 }
             ],
             "fields": [
@@ -63,11 +63,11 @@
                 },
                 {
                     "key": "stateOnTimerMin_INT",
-                    "value": "7"
+                    "value": "6"
                 },
                 {
                     "key": "stateOnTimerMax_INT",
-                    "value": "7"
+                    "value": "6"
                 },
                 {
                     "key": "stateOnTimerChangeTo_STR",
@@ -83,15 +83,15 @@
                 },
                 {
                     "key": "stateSpriteFace_ID",
-                    "value": "bgbu"
+                    "value": "phbe"
                 },
                 {
                     "key": "stateSpriteFrameMin_INT",
-                    "value": "0"
+                    "value": "1"
                 },
                 {
                     "key": "stateSpriteFrameMax_INT",
-                    "value": "0"
+                    "value": "1"
                 },
                 {
                     "key": "stateUseParentDirection_BOOL",
@@ -103,19 +103,19 @@
                 },
                 {
                     "key": "stateVisibilityDeltaPercent_INT",
-                    "value": "0"
+                    "value": "12"
                 },
                 {
                     "key": "stateRequiredScalePercent_INT",
-                    "value": "100"
+                    "value": "30"
                 },
                 {
                     "key": "stateScaleDeltaPercent_INT",
-                    "value": "0"
+                    "value": "3"
                 },
                 {
                     "key": "stateTintPercent_INT",
-                    "value": "0"
+                    "value": "100"
                 },
                 {
                     "key": "stateTintDeltaPercent_INT",
@@ -123,15 +123,15 @@
                 },
                 {
                     "key": "stateTintColor_COLOR",
-                    "value": "F86038"
+                    "value": "F83820"
                 },
                 {
                     "key": "stateDoColorise_BOOL",
-                    "value": "TRUE"
+                    "value": "FALSE"
                 },
                 {
                     "key": "stateNumDirections_INT",
-                    "value": "36"
+                    "value": "1"
                 },
                 {
                     "key": "stateFramesPerDirection_INT",
@@ -163,11 +163,11 @@
                 },
                 {
                     "key": "stateMaxSpeed_FLOAT",
-                    "value": "5.000000"
+                    "value": "0.000000"
                 },
                 {
                     "key": "stateDelta_FLOAT",
-                    "value": "0.400000"
+                    "value": "0.000000"
                 },
                 {
                     "key": "stateHoldMaxSpeed_FLOAT",
@@ -191,27 +191,27 @@
                 },
                 {
                     "key": "stateEntrySound_ID",
-                    "value": "none"
+                    "value": "icpo"
                 },
                 {
                     "key": "stateEntrySound_MinVolume_INT",
-                    "value": "100"
+                    "value": "70"
                 },
                 {
                     "key": "stateEntrySound_MaxVolume_INT",
-                    "value": "100"
+                    "value": "70"
                 },
                 {
                     "key": "stateEntrySound_Priority_INT",
-                    "value": "50"
+                    "value": "45"
                 },
                 {
                     "key": "stateEntrySound_MinPitch_FLOAT",
-                    "value": "1.000000"
+                    "value": "1.800000"
                 },
                 {
                     "key": "stateEntrySound_MaxPitch_FLOAT",
-                    "value": "1.000000"
+                    "value": "1.800000"
                 },
                 {
                     "key": "stateSoundLoopDelay_INT",
@@ -219,7 +219,7 @@
                 },
                 {
                     "key": "stateSoundMaxNumToPlay_INT",
-                    "value": "0"
+                    "value": "1"
                 },
                 {
                     "key": "stateSoundLoop_BOOL",
@@ -331,7 +331,7 @@
                 },
                 {
                     "key": "stateCollides_BOOL",
-                    "value": "TRUE"
+                    "value": "FALSE"
                 },
                 {
                     "key": "stateInvulnerable_ShieldsDoNotDepleteOnCollision_BOOL",
@@ -367,7 +367,7 @@
                 },
                 {
                     "key": "stateLockToOwnerLoc_BOOL",
-                    "value": "FALSE"
+                    "value": "TRUE"
                 },
                 {
                     "key": "stateLinkToOwnerLoc_BOOL",
@@ -415,36 +415,36 @@
                     "name": "Rule",
                     "unit": "none",
                     "range": 0,
-                    "condition": "Is Tracking Player",
-                    "action": "Delete"
+                    "condition": "",
+                    "action": ""
                 },
                 {
                     "name": "Rule",
                     "unit": "none",
                     "range": 0,
-                    "condition": "Is Tracking Player",
-                    "action": "Delete"
+                    "condition": "",
+                    "action": ""
                 },
                 {
                     "name": "Rule",
                     "unit": "none",
                     "range": 0,
-                    "condition": "Is Tracking Player",
-                    "action": "Delete"
+                    "condition": "",
+                    "action": ""
                 },
                 {
                     "name": "Rule",
                     "unit": "none",
                     "range": 0,
-                    "condition": "Is Tracking Player",
-                    "action": "Delete"
+                    "condition": "",
+                    "action": ""
                 },
                 {
                     "name": "Rule",
                     "unit": "none",
                     "range": 0,
-                    "condition": "Is Tracking Player",
-                    "action": "Delete"
+                    "condition": "",
+                    "action": ""
                 }
             ],
             "fields": [
@@ -466,11 +466,11 @@
                 },
                 {
                     "key": "stateOnTimerMin_INT",
-                    "value": "4"
+                    "value": "2"
                 },
                 {
                     "key": "stateOnTimerMax_INT",
-                    "value": "4"
+                    "value": "2"
                 },
                 {
                     "key": "stateOnTimerChangeTo_STR",
@@ -486,15 +486,15 @@
                 },
                 {
                     "key": "stateSpriteFace_ID",
-                    "value": "bgbu"
+                    "value": "phbe"
                 },
                 {
                     "key": "stateSpriteFrameMin_INT",
-                    "value": "0"
+                    "value": "1"
                 },
                 {
                     "key": "stateSpriteFrameMax_INT",
-                    "value": "0"
+                    "value": "1"
                 },
                 {
                     "key": "stateUseParentDirection_BOOL",
@@ -506,19 +506,19 @@
                 },
                 {
                     "key": "stateVisibilityDeltaPercent_INT",
-                    "value": "15"
+                    "value": "30"
                 },
                 {
                     "key": "stateRequiredScalePercent_INT",
-                    "value": "100"
+                    "value": "0"
                 },
                 {
                     "key": "stateScaleDeltaPercent_INT",
-                    "value": "0"
+                    "value": "10"
                 },
                 {
                     "key": "stateTintPercent_INT",
-                    "value": "0"
+                    "value": "100"
                 },
                 {
                     "key": "stateTintDeltaPercent_INT",
@@ -526,15 +526,15 @@
                 },
                 {
                     "key": "stateTintColor_COLOR",
-                    "value": "F86038"
+                    "value": "F83820"
                 },
                 {
                     "key": "stateDoColorise_BOOL",
-                    "value": "TRUE"
+                    "value": "FALSE"
                 },
                 {
                     "key": "stateNumDirections_INT",
-                    "value": "36"
+                    "value": "1"
                 },
                 {
                     "key": "stateFramesPerDirection_INT",
@@ -566,11 +566,11 @@
                 },
                 {
                     "key": "stateMaxSpeed_FLOAT",
-                    "value": "4.000000"
+                    "value": "0.000000"
                 },
                 {
                     "key": "stateDelta_FLOAT",
-                    "value": "0.200000"
+                    "value": "0.000000"
                 },
                 {
                     "key": "stateHoldMaxSpeed_FLOAT",
@@ -770,7 +770,7 @@
                 },
                 {
                     "key": "stateLockToOwnerLoc_BOOL",
-                    "value": "FALSE"
+                    "value": "TRUE"
                 },
                 {
                     "key": "stateLinkToOwnerLoc_BOOL",
@@ -814,7 +814,7 @@
     "header": [
         {
             "key": "name_STR",
-            "value": "Discharge Beam - Shrapnel"
+            "value": "Discharge Beam - Precharge"
         },
         {
             "key": "familyName_STR",
@@ -822,7 +822,7 @@
         },
         {
             "key": "description_STR",
-            "value": "Player projectile thrown out of an enemy the Discharge Beam destroys."
+            "value": "Glow and sound at the gun while a pulse winds up, locked to the player."
         },
         {
             "key": "numInGroupMin_INT",
@@ -858,7 +858,7 @@
         },
         {
             "key": "playerProjectile_BOOL",
-            "value": "TRUE"
+            "value": "FALSE"
         },
         {
             "key": "canBeHitByPlayerProjectile_BOOL",
@@ -898,7 +898,7 @@
         },
         {
             "key": "initialHeadingSetInEditor_BOOL",
-            "value": "TRUE"
+            "value": "FALSE"
         },
         {
             "key": "fleesNorthOnNoActivePlayers_BOOL",
@@ -954,7 +954,7 @@
         },
         {
             "key": "destructSpawn_ID",
-            "value": "dbsx"
+            "value": "none"
         },
         {
             "key": "destructSound_ID",
@@ -982,11 +982,11 @@
         },
         {
             "key": "destructParticle_ID",
-            "value": "tiny"
+            "value": "none"
         },
         {
             "key": "destructParticleColor_COLOR",
-            "value": "F86038"
+            "value": "000000"
         },
         {
             "key": "destructNotice_STR",
@@ -1034,7 +1034,7 @@
         },
         {
             "key": "shields_BaseAmount_FLOAT",
-            "value": "0.400000"
+            "value": "0.000000"
         },
         {
             "key": "score_INT",
@@ -1042,15 +1042,15 @@
         },
         {
             "key": "damage_FLOAT",
-            "value": "0.400000"
+            "value": "0.000000"
         },
         {
             "key": "initialVisibilityPercent_INT",
-            "value": "100"
+            "value": "10"
         },
         {
             "key": "initialScalePercent_INT",
-            "value": "100"
+            "value": "10"
         },
         {
             "key": "initialScalePercentTolerance_INT",
@@ -1058,7 +1058,7 @@
         },
         {
             "key": "drawLayer_ID",
-            "value": "aihi"
+            "value": "ailo"
         },
         {
             "key": "entryNotice_STR",
@@ -1190,11 +1190,11 @@
         },
         {
             "key": "initialSpeedMin_FLOAT",
-            "value": "9.000000"
+            "value": "0.000000"
         },
         {
             "key": "initialSpeedMax_FLOAT",
-            "value": "10.000000"
+            "value": "0.000000"
         },
         {
             "key": "doBurst_BOOL",

@@ -2,17 +2,19 @@ package new_weapons
 
 // The Discharge Beam (a weapon with x_Beam_BOOL, docs/new-weapons.md): new
 // content, not the original's, which has no instant shot. A beam is not a
-// projectile. On the step it fires, a line is cast straight ahead from the
-// gun, and everything a player's air shot could hit that lies across it is
-// hit in order, nearest first:
+// projectile. A press winds up first (Weapon_Fire.windup): the weapon's own
+// spawn, the precharge, plays while it does. Then, on the step it fires, a
+// line is cast straight ahead from the gun, and everything a player's air
+// shot could hit that lies across it is hit in order, nearest first:
 //
 // - the first target takes the beam's damage;
-// - a target it kills explodes into shrapnel, and the damage its shields did
-//   not soak carries on to the next target;
+// - a target it kills bursts, and the damage its shields did not soak
+//   carries on to the next target;
 // - the beam stops at the first target left standing (or one the hit delay
 //   protects), or goes off the top of the screen.
 //
-// The shrapnel pieces are ordinary player projectiles. Each shot is pushed
+// A charged beam leaves motes along its path, ordinary units that linger
+// and then burst into fragments, player projectiles. Each shot is pushed
 // as a Beam_Event (sim/queue_effects.odin), and kept in the session's
 // Beam_Log for the view, which draws it as a line that fades.
 //
@@ -29,9 +31,17 @@ import "dr:sim/lifecycle"
 import "dr:sim/stats"
 import "dr:sim/systems/collision_system"
 
-// A pulse: with every press, after the weapon's own spawns.
+// Steps from a press to its pulse.
+beam_windup :: proc "contextless" (wd: ^sim.Weapon) -> i32 {
+	return sim.weapon_int(wd, BEAM_WINDUP)
+}
+
+// A pulse: once a press has wound up, with its muzzle flash.
 beam_shot :: proc(s: ^sim.State, h: ^sim.Weapon_Handler, wd: ^sim.Weapon, at: sim.Vec, time: i32) {
 	b := beam_def(wd)
+	if b.flash != sim.NONE {
+		lifecycle.spawn_at(s, b.flash, beam_origin(wd, at), h.player)
+	}
 	beam_fire(s, h, wd, at, b.damage, b.width, false, time)
 }
 
@@ -39,8 +49,6 @@ beam_shot :: proc(s: ^sim.State, h: ^sim.Weapon_Handler, wd: ^sim.Weapon, at: si
 // picked by eye, the size of the largest burst in the red of the ship.
 @(private = "file") BEAM_BURST :: sim.Res_ID{'l', 'a', 'r', 'g'}
 @(private = "file") BEAM_BURST_COLOR :: sim.Color{0xf8, 0x60, 0x30}
-
-@(private = "file") SITE_SHRAPNEL :: sim.Site(0xe0000020)
 
 // The most targets one beam can pass through. A full screen of the densest
 // formation (Shuriken, groups of 11) in one column is well under this.
@@ -79,8 +87,16 @@ Beam_Def :: struct {
 	width:          f32, // px across the line that a target's circle must touch
 	release_damage: f32, // a charge's at the weapon's own max power level
 	release_width:  f32,
-	shrapnel:       sim.Res_ID, // the unit a kill throws out
-	shrapnel_count: i32,
+	flash:          sim.Res_ID, // spawned at the gun as a pulse fires
+	// A charged beam's motes: one every mote_spacing px along it, bursting
+	// mote_delay_min steps after it fired, and up to mote_delay_max more
+	// for a full charge. One of each release is mote_sounded, which plays
+	// the burst.
+	mote:           sim.Res_ID,
+	mote_sounded:   sim.Res_ID,
+	mote_spacing:   i32,
+	mote_delay_min: i32,
+	mote_delay_max: i32,
 }
 
 beam_def :: proc "contextless" (wd: ^sim.Weapon) -> Beam_Def {
@@ -89,8 +105,12 @@ beam_def :: proc "contextless" (wd: ^sim.Weapon) -> Beam_Def {
 		width          = sim.weapon_float(wd, BEAM_WIDTH),
 		release_damage = sim.weapon_float(wd, BEAM_RELEASE_DAMAGE),
 		release_width  = sim.weapon_float(wd, BEAM_RELEASE_WIDTH),
-		shrapnel       = sim.weapon_id(wd, BEAM_SHRAPNEL),
-		shrapnel_count = sim.weapon_int(wd, BEAM_SHRAPNEL_COUNT),
+		flash          = sim.weapon_id(wd, BEAM_FLASH),
+		mote           = sim.weapon_id(wd, BEAM_MOTE),
+		mote_sounded   = sim.weapon_id(wd, BEAM_MOTE_SOUNDED),
+		mote_spacing   = sim.weapon_int(wd, BEAM_MOTE_SPACING),
+		mote_delay_min = sim.weapon_int(wd, BEAM_MOTE_DELAY_MIN),
+		mote_delay_max = sim.weapon_int(wd, BEAM_MOTE_DELAY_MAX),
 	}
 }
 
@@ -104,7 +124,7 @@ beam_shots :: proc(s: ^sim.State, allocator := context.temp_allocator) -> []Beam
 	return out[:]
 }
 
-// Where the beam leaves the ship: the weapon's first spawn, its muzzle flash.
+// Where the beam leaves the ship: the weapon's first spawn, its precharge.
 beam_origin :: proc "contextless" (wd: ^sim.Weapon, at: sim.Vec) -> sim.Vec {
 	if len(wd.spawns) == 0 {
 		return at
@@ -112,12 +132,13 @@ beam_origin :: proc "contextless" (wd: ^sim.Weapon, at: sim.Vec) -> sim.Vec {
 	return at + {f32(wd.spawns[0].x_loc), f32(wd.spawns[0].y_loc)}
 }
 
-// A pulse, or a charge's release: casts the line and deals `damage` along it.
-beam_fire :: proc(s: ^sim.State, h: ^sim.Weapon_Handler, wd: ^sim.Weapon, at: sim.Vec, damage, width: f32, charged: bool, time: i32) {
+// A pulse, or a charge's release: casts the line and deals `damage` along
+// it. Returns where it stopped.
+beam_fire :: proc(s: ^sim.State, h: ^sim.Weapon_Handler, wd: ^sim.Weapon, at: sim.Vec, damage, width: f32, charged: bool, time: i32) -> (to_y: f32) {
 	from := beam_origin(wd, at)
 	targets: [MAX_BEAM_TARGETS]sim.Entity
 	n := beam_targets(s, from, width, targets[:])
-	to_y := f32(-BEAM_OVERSHOOT)
+	to_y = -BEAM_OVERSHOOT
 	left := damage
 	for e in targets[:n] {
 		if e.deleted {
@@ -133,7 +154,7 @@ beam_fire :: proc(s: ^sim.State, h: ^sim.Weapon_Handler, wd: ^sim.Weapon, at: si
 			to_y = loc.y // it stands, or the hit delay turned the beam away
 			break
 		}
-		beam_explode(s, wd, loc, h.player)
+		sim.particle_burst(s, loc, BEAM_BURST_COLOR, BEAM_BURST, false)
 		left -= before
 		if left <= 0 {
 			to_y = loc.y
@@ -146,6 +167,7 @@ beam_fire :: proc(s: ^sim.State, h: ^sim.Weapon_Handler, wd: ^sim.Weapon, at: si
 		log.events[log.next] = ev
 		log.next = (log.next + 1) % MAX_RECENT_BEAMS
 	}
+	return
 }
 
 // Everything across the line from `from` straight up that the beam can hit,
@@ -184,26 +206,6 @@ beam_before :: proc "contextless" (a, b: sim.Entity) -> bool {
 	return a.number < b.number
 }
 
-// A kill: a burst, and the shrapnel evenly spaced round from a random heading.
-@(private = "file")
-beam_explode :: proc(s: ^sim.State, wd: ^sim.Weapon, loc: sim.Vec, player: i32) {
-	sim.particle_burst(s, loc, BEAM_BURST_COLOR, BEAM_BURST, false)
-	b := beam_def(wd)
-	n := b.shrapnel_count
-	if b.shrapnel == sim.NONE || n <= 0 {
-		return
-	}
-	base := sim.roll_int(s, 0, 359, SITE_SHRAPNEL)
-	for k in 0 ..< n {
-		req := sim.spawn_request(b.shrapnel)
-		req.owner_player = player
-		req.loc = loc
-		req.explicit_heading = true
-		req.heading = stats.wrap_angle(base + k * 360 / n)
-		lifecycle.eg_request_spawn(s, req)
-	}
-}
-
 // The charge's release, all at once, however many levels it holds: the
 // release damage and width scaled by the power level reached against the
 // weapon's own max, so a part charge deals part and Improved Charge's
@@ -212,8 +214,45 @@ beam_release :: proc(s: ^sim.State, h: ^sim.Weapon_Handler, wd: ^sim.Weapon, at:
 	b := beam_def(wd)
 	top := max(wd.powerup_air_max_power_level, 1)
 	f := f32(level) / f32(top)
-	beam_fire(s, h, wd, at, b.release_damage * f, max(b.release_width * min(f, 1), b.width), true, time)
+	to_y := beam_fire(s, h, wd, at, b.release_damage * f, max(b.release_width * min(f, 1), b.width), true, time)
+	beam_motes(s, h, wd, beam_origin(wd, at), to_y, f)
 	if wd.powerup_air_release_spawn != sim.NONE {
 		lifecycle.spawn_at(s, wd.powerup_air_release_spawn, beam_origin(wd, at), h.player)
+	}
+}
+
+// The most motes one charged beam leaves: a full screen's height at the
+// shipped spacing is well under this.
+MAX_BEAM_MOTES :: 24
+
+// A charged beam's motes, one every mote_spacing px along it from the gun
+// to where it stopped (the top of the screen at most), nearest first. They
+// drift in a random direction (the unit's initialHeadingTolerance) and
+// burst together, later the fuller the charge (`f`, the level against the
+// weapon's max). Their fragments count as the weapon's shots
+// (shot_shaper), so its passives shape them.
+beam_motes :: proc(s: ^sim.State, h: ^sim.Weapon_Handler, wd: ^sim.Weapon, from: sim.Vec, to_y: f32, f: f32) {
+	b := beam_def(wd)
+	if b.mote == sim.NONE || b.mote_spacing <= 0 {
+		return
+	}
+	delay := b.mote_delay_min + stats.round_i32(f32(b.mote_delay_max - b.mote_delay_min) * f)
+	tag := stats.shot_shaper(s, h.player, h.air.weapon)
+	top := max(to_y, 0)
+	y := from.y - f32(b.mote_spacing) / 2
+	for k := 0; k < MAX_BEAM_MOTES && y > top; k += 1 {
+		req := sim.spawn_request(k == 0 && b.mote_sounded != sim.NONE ? b.mote_sounded : b.mote)
+		req.owner_player = h.player
+		req.loc = {from.x, y}
+		req.explicit_heading = true
+		req.shaped_by = tag
+		// Its fragments are spawned by a spawner the weapon did not fire:
+		// they take its damage, not its lanes (shaped_spawn_child).
+		req.shaped_depth = 1
+		ref := lifecycle.eg_request_spawn(s, req)
+		if ref.index != sim.NO_LINK && delay > 0 {
+			sim.entity_at(s, ref.index).timer = delay
+		}
+		y -= f32(b.mote_spacing)
 	}
 }

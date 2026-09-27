@@ -13,7 +13,7 @@ import "dr:sim"
 // The other player's Discharge Beam in netplay. The beam does not
 // auto-repeat, so every pulse is a new press, which the peer's prediction
 // (the last buttons it had) never guesses: the step that fires it is one a
-// rollback replays. The view draws the beams kept in the session's
+// rollback replays, once the latency is longer than the wind-up. The view draws the beams kept in the session's
 // Beam_Log (plugins/new_weapons/beam.odin), so after the replay the host
 // must hold the guest's beams, fired on the same steps as the guest's own.
 // Before they were kept, the host never drew them. Skipped without the
@@ -66,7 +66,10 @@ netplay_peer_keeps_the_other_players_beams :: proc(t: ^testing.T) {
 		buf: [128]byte,
 		n:   int,
 	}
-	LATENCY :: 4
+	// Longer than the pulse's wind-up: the pulse fires windup steps after
+	// its press, and a press the host has by then fires on its newest step
+	// without a replay.
+	LATENCY :: 8
 	FRAMES :: 240
 	queues: [2][dynamic]Delivery // to host, to guest
 	queues[0] = make([dynamic]Delivery, alloc)
@@ -88,9 +91,10 @@ netplay_peer_keeps_the_other_players_beams :: proc(t: ^testing.T) {
 		// The guest taps fire-air, a step down in every twelve; the host
 		// does nothing. Not on the first steps: a rollback restores the
 		// step before the one it replays, which a session begun mid-level
-		// has not saved.
+		// has not saved. Nor on the last: the host must have every press
+		// by the end, for the checksums to agree.
 		guest: sim.Buttons
-		if tick % 12 == 6 {
+		if tick % 12 == 6 && tick < FRAMES - 2 * LATENCY {
 			guest = {.Fire_Air}
 		}
 		net.rollback_session_advance(&rs[0], {})
