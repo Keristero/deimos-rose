@@ -397,3 +397,73 @@ rollback_session_converges_across_level_changes_and_pauses :: proc(t: ^testing.T
 	testing.expect_value(t, netplay_plugin.paused(states[0]), netplay_plugin.paused(states[1]))
 	testing.expect_value(t, sim.checksum(states[0]), sim.checksum(states[1]))
 }
+
+// A sound the peer's input starts lands on a frame first run on a guess,
+// and is only made when a rollback reruns it; the session hands it over as
+// late, once, and never hands back one the first run already played. The
+// weapon change's click (perm sound 0x12) stands in for a charge beginning:
+// both are made on the step a button goes down.
+@(test)
+rollback_session_plays_a_resimulated_sound_late :: proc(t: ^testing.T) {
+	CLICK :: sim.Res_ID{'c', 'l', 'i', 'k'}
+	defs := synthetic_defs()
+	defs.perm_sounds[0x12] = CLICK
+	session := sim.Session{seed = 0x50D, level_id = sim.level_id("le01"), game_type = .Co_Op}
+	FRAMES :: 30
+	LOCAL_PRESS :: 5
+	REMOTE_PRESS :: 20
+
+	clicks :: proc(events: []sim.Sound_Event) -> (n: int) {
+		for ev in events {
+			if ev.id == CLICK {
+				n += 1
+			}
+		}
+		return
+	}
+	local_input :: proc(f: int) -> sim.Buttons {
+		return f >= LOCAL_PRESS ? {.Change_Air} : {}
+	}
+
+	// Straight through, both presses click.
+	plain := new(sim.State, context.temp_allocator)
+	defer sim.destroy(plain)
+	sim.init(plain, session, defs)
+	straight := 0
+	for f in 0 ..< FRAMES {
+		_ = sim.session_step(plain, {local_input(f), f >= REMOTE_PRESS ? {.Change_Air} : {}})
+		straight += clicks(plain.sounds.events[:plain.sounds.count])
+	}
+	testing.expect_value(t, straight, 2)
+
+	// Nothing heard from the peer: its press is guessed away, and only the
+	// local click is played.
+	state := new(sim.State, context.temp_allocator)
+	defer sim.destroy(state)
+	sim.init(state, session, defs)
+	rs: net.Rollback_Session
+	net.rollback_session_init(&rs, state, 0, context.temp_allocator)
+	defer net.rollback_session_destroy(&rs, context.temp_allocator)
+	played := 0
+	for f in 0 ..< FRAMES {
+		net.rollback_session_advance(&rs, local_input(f))
+		played += clicks(state.sounds.events[:state.sounds.count])
+	}
+	testing.expect_value(t, played, 1)
+	testing.expect_value(t, len(net.rollback_session_late(&rs)), 0)
+
+	// The peer's real input arrives: the rerun clicks for it, late, and
+	// only for it.
+	pkt := net.Input_Packet{player = 1, start_frame = 0, count = FRAMES}
+	for f in 0 ..< FRAMES {
+		if f >= REMOTE_PRESS {
+			pkt.frames[f] = {.Change_Air}
+		}
+	}
+	net.rollback_session_receive(&rs, pkt)
+	testing.expect_value(t, rs.rollback_count, 1)
+	late := net.rollback_session_late(&rs)
+	testing.expect_value(t, clicks(late), 1)
+	testing.expect_value(t, len(late), 1)
+	testing.expect_value(t, len(net.rollback_session_late(&rs)), 0)
+}

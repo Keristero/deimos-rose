@@ -65,6 +65,73 @@ Rollback_Session :: struct {
 	// arrives, so rollback_session_frame_advantage can tell "no data yet"
 	// apart from "caught up".
 	remote_confirmed_frame: int,
+
+	// The sounds played for each recent frame, and those a rollback's
+	// resimulation emitted that its first run did not: late, which the
+	// caller plays alongside the current frame's (rollback_session_late).
+	// A sound the peer's input starts -- a charge beginning, a beam let
+	// go -- falls on a frame first run on a predicted input and only rerun
+	// once the real one arrives, and a resimulation is otherwise silent,
+	// so without these the other player's charge shots were never heard.
+	heard:          [ROLLBACK_DEPTH]Heard_Frame,
+	late:           sim.Sound_Queue,
+}
+
+// The ids of the sounds a frame's step emitted, once played.
+Heard_Frame :: struct {
+	frame: u32,
+	ids:   [sim.MAX_SOUND_EVENTS]sim.Res_ID,
+	count: int,
+}
+
+// Records what the step just taken emitted as played. Keyed by the frame
+// the step reached, which a resimulation reaches again.
+@(private = "file")
+heard_record :: proc(rs: ^Rollback_Session) {
+	h := &rs.heard[sim.frame_of(rs.state) % ROLLBACK_DEPTH]
+	h.frame = sim.frame_of(rs.state)
+	h.count = rs.state.sounds.count
+	for ev, i in rs.state.sounds.events[:h.count] {
+		h.ids[i] = ev.id
+	}
+}
+
+// After a resimulated step: queues as late each sound the first run of
+// this frame did not play, matched by id only (pitch and volume are drawn
+// from the RNG, so a rerun may draw them differently), then records the
+// frame as heard.
+@(private = "file")
+heard_resimulated :: proc(rs: ^Rollback_Session) {
+	h := &rs.heard[sim.frame_of(rs.state) % ROLLBACK_DEPTH]
+	before: Heard_Frame
+	if h.frame == sim.frame_of(rs.state) {
+		before = h^
+	}
+	for ev in rs.state.sounds.events[:rs.state.sounds.count] {
+		matched := false
+		for i in 0 ..< before.count {
+			if before.ids[i] == ev.id {
+				// Each first-run sound answers for one rerun sound.
+				before.ids[i] = before.ids[before.count - 1]
+				before.count -= 1
+				matched = true
+				break
+			}
+		}
+		if !matched && rs.late.count < sim.MAX_SOUND_EVENTS {
+			rs.late.events[rs.late.count] = ev
+			rs.late.count += 1
+		}
+	}
+	heard_record(rs)
+}
+
+// The sounds rollbacks since the last call found unplayed, for the caller
+// to play now; the queue is empty again after.
+rollback_session_late :: proc(rs: ^Rollback_Session) -> []sim.Sound_Event {
+	n := rs.late.count
+	rs.late.count = 0
+	return rs.late.events[:n]
 }
 
 rollback_session_init :: proc(rs: ^Rollback_Session, state: ^sim.State, local_player: int, allocator := context.allocator) {
@@ -75,6 +142,8 @@ rollback_session_init :: proc(rs: ^Rollback_Session, state: ^sim.State, local_pl
 	rs.local_log = {}
 	rs.remote_log = {}
 	rs.remote_confirmed_frame = -1
+	rs.heard = {}
+	rs.late = {}
 }
 
 rollback_session_destroy :: proc(rs: ^Rollback_Session, allocator := context.allocator) {
@@ -112,6 +181,7 @@ rollback_session_advance :: proc(rs: ^Rollback_Session, local_input: sim.Buttons
 	// what a rollback must replay (see its comment).
 	_ = sim.session_step(rs.state, input)
 	sim.snapshot_save(&rs.ring, rs.state)
+	heard_record(rs)
 }
 
 // Feed every Input_Packet decoded from the remote peer here, before this
@@ -197,6 +267,7 @@ rollback_to :: proc(rs: ^Rollback_Session, frame: u32) {
 		input[rs.remote_player] = remote
 		_ = sim.session_step(rs.state, input)
 		sim.snapshot_save(&rs.ring, rs.state)
+		heard_resimulated(rs)
 	}
 }
 

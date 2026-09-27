@@ -29,7 +29,11 @@ import rl "vendor:raylib"
 import "dr:sim"
 
 sounds_step :: proc(t: ^Textures, s: ^sim.State) {
-	for ev in s.sounds.events[:s.sounds.count] {
+	sounds_play(t, s.sounds.events[:s.sounds.count])
+}
+
+sounds_play :: proc(t: ^Textures, events: []sim.Sound_Event) {
+	for ev in events {
 		clip, ok := &t.sounds[ev.id]
 		if !ok {
 			continue

@@ -29,7 +29,10 @@ package game
 // call, exactly mirroring the single-player path in flow.odin. A
 // misprediction's already-played sound/particles from the wrong guess are
 // not undone (the standard rollback-netcode trade-off; GGPO does the same) --
-// only the simulation state itself is ever corrected.
+// only the simulation state itself is ever corrected. A sound the
+// resimulation makes that the guess did not is played late, though
+// (rollback_session_late): the peer's input starts it, so it is almost
+// always on a rerun frame, and would otherwise never be heard.
 
 import "core:fmt"
 import "core:strings"
@@ -1204,6 +1207,9 @@ netplay_playing_step :: proc(fl: ^Flow, r: ^render.Renderer, particles: ^render.
 	// While paused nothing moves; existing particles and ghosts freeze too.
 	flow_effects_step(fl, r, particles, blurs, notices)
 	render.sounds_step(&r.textures, fl.state)
+	// Sounds a rollback found the first run of a frame missed: the peer's
+	// charge shots, among others.
+	render.sounds_play(&r.textures, net.rollback_session_late(&nl.rs))
 
 	win: [NETPLAY_INPUT_WINDOW]sim.Buttons
 	start, count := net.rollback_session_local_window(&nl.rs, NETPLAY_INPUT_WINDOW, win[:])
