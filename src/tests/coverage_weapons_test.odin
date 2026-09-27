@@ -850,8 +850,8 @@ spawner_extra_volley_is_one_more_volley :: proc(t: ^testing.T) {
 }
 
 // Weapon 1 at level 3: the Ion Cannon's shots leave at half their speed
-// and speed up, ACCEL_RATE a step, towards ACCEL_TOP percent of it; with
-// level 1's extra lane there are three.
+// and speed up evenly, back to full speed ACCEL_SECONDS later; with level
+// 3's two extra lanes there are four.
 @(test)
 ion_cannon_level_3_shots_accelerate :: proc(t: ^testing.T) {
 	f: Assets_Fixture
@@ -884,14 +884,15 @@ ion_cannon_level_3_shots_accelerate :: proc(t: ^testing.T) {
 	shaped: [dynamic]i32
 	weapon_system.spawn_air(s, h, at)
 	cw_new_of(s, &seen, shot, &shaped)
-	if !testing.expect_value(t, len(shaped), 3) {
+	if !testing.expect_value(t, len(shaped), 4) {
 		return
 	}
 	for i in shaped {
 		e := sim.entity_at(s, i)
 		testing.expect(t, abs(sim.speed_from_vector(e.vel) - full / 2) < 1e-3, "leaves at half speed")
-		testing.expect(t, abs(sim.speed_from_vector(e.vel_target) - full * stats.ACCEL_TOP / 100) < 1e-3, "speeds up to ACCEL_TOP percent")
-		testing.expect(t, abs(sim.speed_from_vector(e.vel_delta) - stats.ACCEL_RATE) < 1e-3)
+		testing.expect(t, abs(sim.speed_from_vector(e.vel_target) - full) < 1e-3, "speeds up to its full speed")
+		steps := f32(stats.ACCEL_SECONDS * stats.step_hz(s))
+		testing.expect(t, abs(sim.speed_from_vector(e.vel_delta) - full / 2 / steps) < 1e-3, "over ACCEL_SECONDS")
 	}
 	sim.session_step(s, {})
 	e := sim.entity_at(s, shaped[0])

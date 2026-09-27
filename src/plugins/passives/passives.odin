@@ -145,7 +145,10 @@ PASSIVES := [Passive]Passive_Def {
 		levels = 3,
 		weapon = WEAPON_ION_CANNON,
 		mods = {
-			{.Extra_Projectiles, .Extra, {1, X, X}},
+			// Level 3's shots leave at half speed and take a second to get
+			// back to full (stats.ACCEL_SECONDS), which only delays them;
+			// its gain is the two extra lanes, 4 in all.
+			{.Extra_Projectiles, .Extra, {1, X, 2}},
 			{.Firing_Delay, .Decrease, {X, 20, X}},
 			{.Accelerating_Projectiles, .Enables, {X, X, 1}},
 			{.Initial_Projectile_Speed, .Decrease, {X, X, 50}},

@@ -198,8 +198,10 @@ is `plbo`, the Plasma Bomb, the only ground weapon.
   - The volley delay paces the bomb burst in hundredths. No passive uses
     it on the bomb any more (see Tuning).
 - **Weapon 1** (Ion Cannon). Accelerating shots leave at the scaled initial
-  speed (50% at level 3). They then gain `ACCEL_RATE` a step until they reach
-  `ACCEL_TOP`, 150% of the unit's speed.
+  speed (50% at level 3). They then speed up evenly and are back to the
+  unit's own speed `ACCEL_SECONDS` (1 s) later, as
+  [notes/extra-weapon-passives-and-base-adjustments.md](../../notes/extra-weapon-passives-and-base-adjustments.md)
+  asks. They used to climb to 150%, which made level 3 strong in the wave.
 - **Weapon 2** (Bacta Gun). `projectile_lifetime` scales the shot's timer,
   and so its range.
 - **Weapon 3** (Rear Gun)
@@ -231,7 +233,7 @@ the Ion Cannon's 4 steps take 20% to lose one.
 
 | Passive | Level 1 | Level 2 | Level 3 | Gain |
 |---|---|---|---|---|
-| Weapon 1 (Ion Cannon) | +1 projectile | firing delay -20% | accelerating shots, launch speed -50% | +16.8 / +31.0 / +51.9% |
+| Weapon 1 (Ion Cannon) | +1 projectile | firing delay -20% | +2 projectiles, accelerating shots, launch speed -50% | +16.8 / +31.0 / +51.1% |
 | Weapon 2 (Bacta Gun) | firing delay -20%, range +10% | +2 projectiles, range +20% | firing delay -40%, +4 projectiles, range +50% | +17.2 / +29.4 / +52.7% |
 | Weapon 3 (Rear Gun) | firing delay -10% | firing delay -20% | +1 volley, side fire | +10.2 / +22.0 / +39.6% |
 | Weapon 4 (Photon Beam) | firing delay -20% | firing delay -40% | firing delay -10%, +1 volley | +18.7 / +32.9 / +45.2% |
@@ -239,6 +241,10 @@ the Ion Cannon's 4 steps take 20% to lose one.
 
 Levels carry what they do not change (the design's `x`).
 
+- **Weapon 1 level 3.** Shots that start slow and only get back to full
+  speed add nothing but delay: alone they measured +31%. The band comes
+  from two extra lanes, which pay in the cluster and the wave. One extra
+  volley measured +122%, and a 40% shorter firing delay +71%.
 - **Weapon 3 level 3** stops at +39.6%. The bare Rear Gun already lands
   two thirds of the hits a lone target can take. A second extra volley
   measures the same as one.
@@ -259,8 +265,8 @@ Each of these is marked in the code, with what would settle it:
 - `VOLLEY_INTERVAL` = 2 steps. No original weapon fires volleys from the
   handler to measure. 2 is the gap the Rear Gun's and Photon Beam's
   spawners leave.
-- `ACCEL_RATE` = 1.0 and `ACCEL_TOP` = 150%. The design names the effect,
-  not the curve.
+- The accelerating shots' even climb over `ACCEL_SECONDS`. The design says
+  when they are back to full speed, not how they get there.
 - `REWARD_RESUME_DELAY` = 10 steps.
 - `LANE_SPACING` = 12 px, for a weapon with a single lane.
 - The icons' compositions (see Icons) are a first pass, not a

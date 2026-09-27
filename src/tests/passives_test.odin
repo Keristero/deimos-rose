@@ -459,9 +459,12 @@ weapon_passives_shape_the_real_weapons :: proc(t: ^testing.T) {
 	passives.levels_of(s, p.number)^[.Weapon_1] = 1
 	n := stats.weapon_spawns(s, ion, 0, false, out[:])
 	testing.expect_value(t, projectiles(s, out[:n]), projectiles(s, before[:nb]) + 1)
-	passives.levels_of(s, p.number)^[.Weapon_1] = 3 // x at levels 2-3: still the one extra
+	passives.levels_of(s, p.number)^[.Weapon_1] = 2 // x at level 2: still the one extra
 	n = stats.weapon_spawns(s, ion, 0, false, out[:])
 	testing.expect_value(t, projectiles(s, out[:n]), projectiles(s, before[:nb]) + 1)
+	passives.levels_of(s, p.number)^[.Weapon_1] = 3 // two, not three: only the level held counts
+	n = stats.weapon_spawns(s, ion, 0, false, out[:])
+	testing.expect_value(t, projectiles(s, out[:n]), projectiles(s, before[:nb]) + 2)
 
 	// The Bacta Gun's passive leaves the Ion Cannon alone.
 	passives.levels_of(s, p.number)^ = #partial {.Weapon_2 = 3}

@@ -391,11 +391,11 @@ shot_damage :: proc "contextless" (s: ^sim.State, e: sim.Entity, base: f32) -> f
 	return scale_f32(base, sim.stat_of(s, e.owner_player, .Projectile_Damage, w).percent)
 }
 
-// Accelerating shots leave at the scaled initial speed and speed up by
-// ACCEL_RATE a step to ACCEL_TOP percent of their unit's own speed.
-// Provisional: the design names the effect, not the curve.
-ACCEL_RATE :: 1.0
-ACCEL_TOP :: 150
+// Accelerating shots leave at the scaled initial speed and speed up evenly
+// until they are back to their unit's own speed ACCEL_SECONDS later
+// (notes/extra-weapon-passives-and-base-adjustments.md: "only get back to
+// the original speed after about 1 second").
+ACCEL_SECONDS :: 1
 
 // Right after a shaped entity spawns (spawn_entity): its weapon's stats
 // shape it. A projectile's flight (lifetime, speed); a spawner fired
@@ -418,9 +418,10 @@ shaped_entity_init :: proc(s: ^sim.State, e: sim.Entity, time: i32) {
 		dir := e.vel / speed
 		pct := sim.stat_of(s, p, .Initial_Projectile_Speed, w).percent
 		if sim.stat_of(s, p, .Accelerating_Projectiles, w).enabled {
-			e.vel = dir * scale_f32(speed, pct)
-			e.vel_target = dir * scale_f32(speed, ACCEL_TOP - 100)
-			e.vel_delta = dir * ACCEL_RATE
+			start := scale_f32(speed, pct)
+			e.vel = dir * start
+			e.vel_target = dir * speed
+			e.vel_delta = dir * (abs(speed - start) / f32(ACCEL_SECONDS * step_hz(s)))
 			e.vel_prev = e.vel
 		} else if pct != 0 {
 			e.vel = dir * scale_f32(speed, pct)
