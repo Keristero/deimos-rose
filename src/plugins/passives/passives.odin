@@ -40,6 +40,7 @@ Passive :: enum u8 {
 	Weapon_2,
 	Weapon_3,
 	Weapon_4,
+	Weapon_5,
 }
 
 Mod_Kind :: enum u8 {
@@ -77,6 +78,11 @@ WEAPON_BACTA_GUN :: Res_ID{'a', 'i', 'b', 'g'}
 WEAPON_REAR_GUN :: Res_ID{'a', 'i', 'r', 'g'}
 WEAPON_PHOTON_BEAM :: Res_ID{'a', 'i', 'p', 'b'}
 WEAPON_PLASMA_BOMB :: Res_ID{'p', 'l', 'b', 'o'}
+
+// Weapon 5 and 6 are the plugins' weapons, the Chaingun (plugins/chaingun)
+// and the Discharge Beam (plugins/new_weapons). Their passives are offered
+// only while those plugins are on (passive_available).
+WEAPON_CHAINGUN :: Res_ID{'a', 'i', 'c', 'g'}
 
 PASSIVES := [Passive]Passive_Def {
 	.Improved_Manoeuvring = {
@@ -185,6 +191,18 @@ PASSIVES := [Passive]Passive_Def {
 			{.Extra_Volley, .Extra, {X, X, 1}},
 		},
 	},
+	.Weapon_5 = {
+		levels = 3,
+		weapon = WEAPON_CHAINGUN,
+		mods = {
+			// A burst of 10 rounds takes 20 steps, and the gap after it is
+			// the firing delay's 30 less those; these close 40%, 60% and all
+			// of it (26, 24, 20), so level 3 fires without a break. The
+			// rounds' spread widens with it.
+			{.Firing_Delay, .Decrease, {13, 20, 33}},
+			{.Random_Spread_Range, .Increase, {25, 50, 100}},
+		},
+	},
 }
 
 Passive_Levels :: [Passive]u8
@@ -239,7 +257,8 @@ passive_maxed :: #force_inline proc "contextless" (levels: ^Passive_Levels, pa: 
 }
 
 // Whether a passive may be offered on the way into level `next`: a weapon
-// passive needs its weapon in the data and flyable there (the Ion Cannon,
+// passive needs its weapon in the data, allowed in the session
+// (sim.weapon_allowed: a plugin's weapon while its plugin is on) and flyable there (the Ion Cannon,
 // say, is gone after level 3). Where players keep their weapons
 // (sim.weapons_kept) a weapon is kept once unlocked, so its passive is
 // offered from then on.
@@ -251,6 +270,9 @@ passive_available :: proc "contextless" (s: ^sim.State, pa: Passive, next: i32) 
 	kept := sim.weapons_kept(s)
 	for &wd in s.defs.weapons {
 		if wd.id == w {
+			if !sim.weapon_allowed(s, &wd) {
+				return false
+			}
 			return wd.type == sim.WEP_GROUND || (wd.minimum_level_available <= next && (kept || next <= wd.maximum_level_available))
 		}
 	}

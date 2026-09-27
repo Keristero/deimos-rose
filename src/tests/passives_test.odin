@@ -415,6 +415,10 @@ weapon_passives_shape_the_real_weapons :: proc(t: ^testing.T) {
 	if !testing.expect(t, len(defs.levels) > 0, "the level list must load") {
 		return
 	}
+	// The plugins' weapons too, for Weapon 5 and 6.
+	if _, ok := data.extra_defs_load("assets", &defs, vmem.arena_allocator(&arena)); !testing.expect(t, ok) {
+		return
+	}
 	s := new(sim.State, context.temp_allocator)
 	defer sim.destroy(s)
 	sim.init(s, sim.Session{seed = 1, level_id = defs.levels[0].id, game_type = .Single, mods = session_mods(true, false)}, &defs)
@@ -500,6 +504,45 @@ weapon_passives_shape_the_real_weapons :: proc(t: ^testing.T) {
 		}
 		testing.expectf(t, index(&defs, w) >= 0, "%v's weapon is not in the data", pa)
 	}
+	// A plugin weapon's passive only while its plugin is on: the Chaingun
+	// is not in this session.
+	testing.expect(t, !passives.passive_available(s, .Weapon_5, 9))
+
+	// The Chaingun's rounds stray further with its passive; a unit that
+	// flies straight still does, and another weapon's shots are left alone.
+	cg := index(&defs, passives.WEAPON_CHAINGUN)
+	passives.levels_of(s, p.number)^ = #partial {.Weapon_5 = 3}
+	by := stats.shot_shaper(s, 0, cg)
+	testing.expect(t, by != 0)
+	testing.expect_value(t, stats.heading_tolerance(s, 0, by, 8), 16)
+	testing.expect_value(t, stats.heading_tolerance(s, 0, by, 0), 0)
+	testing.expect_value(t, stats.heading_tolerance(s, 0, by, 270), 360)
+	testing.expect_value(t, stats.heading_tolerance(s, 0, stats.shot_shaper(s, 0, ion), 8), 8)
+	testing.expect_value(t, stats.heading_tolerance(s, 0, 0, 8), 8)
+}
+
+// With its plugin on, the Chaingun's passive is offered from the level the
+// Chaingun is.
+@(test)
+chaingun_passive_offered_with_its_plugin :: proc(t: ^testing.T) {
+	if !os.exists("assets/data/index.json") {
+		log.info("skipped: needs the extracted assets tree")
+		return
+	}
+	arena: vmem.Arena
+	testing.expect(t, vmem.arena_init_growing(&arena) == nil)
+	defer vmem.arena_destroy(&arena)
+	defs, _ := data.assets_defs_load("assets", vmem.arena_allocator(&arena))
+	if !testing.expect(t, len(defs.levels) > 0, "the level list must load") {
+		return
+	}
+	if _, ok := data.extra_defs_load("assets", &defs, vmem.arena_allocator(&arena)); !testing.expect(t, ok) {
+		return
+	}
+	s := new(sim.State, context.temp_allocator)
+	defer sim.destroy(s)
+	sim.init(s, sim.Session{seed = 1, level_id = defs.levels[0].id, game_type = .Single, mods = session_mods(true, true)}, &defs)
+	testing.expect(t, passives.passive_available(s, .Weapon_5, 9))
 }
 
 // Every passive has an icon recipe (tools/icons/passives.json), and the icon

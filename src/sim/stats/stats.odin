@@ -379,6 +379,17 @@ weapon_spawns :: proc "contextless" (s: ^sim.State, weapon: i32, player: i32, ba
 	return count
 }
 
+// A shaped shot's initialHeadingTolerance, scaled by its weapon's
+// Random_Spread_Range, and at most a full turn. 0 stays 0, so a unit that
+// flies straight draws nothing more.
+heading_tolerance :: proc "contextless" (s: ^sim.State, owner_player: i32, shaped_by: u8, base: i32) -> i32 {
+	w, ok := shaped_weapon(s, shaped_by)
+	if !ok || base == 0 || owner_player < 0 || owner_player >= sim.MAX_PLAYERS {
+		return base
+	}
+	return min(scale_i32(base, sim.stat_of(s, owner_player, .Random_Spread_Range, w).percent), 360)
+}
+
 // Shaped entities.
 
 // The damage a shaped shot deals, scaled by its weapon's Projectile_Damage.

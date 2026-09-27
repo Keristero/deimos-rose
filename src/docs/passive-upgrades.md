@@ -79,6 +79,7 @@ The current set:
 | Shield Regen | the shield pickup (`pish` 0), with the plus |
 | Ground Variant 1 | the ship above the plasma bomb's locked target (`pbta` 1) |
 | Weapon 1-4 | the weapon's score-bar symbol (`wesy` 0, 1, 3, 2), with the plus |
+| Weapon 5 | the Chaingun's score-bar symbol (`wesy` 4), with the plus |
 
 To add an icon, add an entry named after the new passive and rerun the
 task. `MENU=reward mise run menu-shot` shows the icons in place.
@@ -216,6 +217,17 @@ is `plbo`, the Plasma Bomb, the only ground weapon.
     it.
 - **Weapon 4** (Photon Beam). `firing_delay` scales
   `delay_between_launches`.
+- **Weapon 5** (Chaingun, `plugins/chaingun`) and **Weapon 6** (Discharge
+  Beam, `plugins/new_weapons`) are the plugins' weapons, from
+  [notes/extra-weapon-passives-and-base-adjustments.md](../../notes/extra-weapon-passives-and-base-adjustments.md).
+  Their passives are offered only while the weapon's plugin is on
+  (`passive_available` asks `sim.weapon_allowed`).
+- **Weapon 5.** "Fires continuously" is read as closing the gap between
+  bursts. A burst of 10 rounds takes 20 steps, and the firing delay is 30,
+  so level 3's 33% off (20 steps) leaves no gap. `random_spread_range`
+  scales a shaped shot's `initialHeadingTolerance`
+  (`stats.heading_tolerance`), capped at a full turn. A unit with none
+  still flies straight, and draws nothing more.
 
 ## Tuning (2026-09-25)
 
@@ -237,6 +249,7 @@ the Ion Cannon's 4 steps take 20% to lose one.
 | Weapon 2 (Bacta Gun) | firing delay -20%, range +10% | +2 projectiles, range +20% | firing delay -40%, +4 projectiles, range +50% | +17.2 / +29.4 / +52.7% |
 | Weapon 3 (Rear Gun) | firing delay -10% | firing delay -20% | +1 volley, side fire | +10.2 / +22.0 / +39.6% |
 | Weapon 4 (Photon Beam) | firing delay -20% | firing delay -40% | firing delay -10%, +1 volley | +18.7 / +32.9 / +45.2% |
+| Weapon 5 (Chaingun) | firing delay -13%, spread +25% | firing delay -20%, spread +50% | firing delay -33%, spread +100% | +11.9 / +23.8 / +49.2% |
 | Ground Variant 1 (Plasma Bomb) | fires backwards, damage +15% | damage +30% | damage +50%, +1 projectile | +14.9 / +29.8 / +49.8% |
 
 Levels carry what they do not change (the design's `x`).
@@ -256,6 +269,8 @@ Levels carry what they do not change (the design's `x`).
   lever at the cap, the bands come from `projectile_damage`, a stat the
   design does not have. See Balance in AGENTS.md for why that stat is a
   last resort.
+- **Weapon 5 level 1** takes 13% off, not the design's 10%. 10% makes the
+  delay 27 steps where 13% makes it 26, and 10% measured +8.6%.
 - Charge shots are not tuned. Weapon passives add at most 1% to them.
 
 ## Provisional

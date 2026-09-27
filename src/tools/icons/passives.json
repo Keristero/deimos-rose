@@ -26,5 +26,8 @@
   {"sprite": "edut", "frame": 1, "fit": 11, "x": 26, "y": 26}]},
  {"name": "weapon_4", "layers": [
   {"sprite": "wesy", "frame": 2, "fit": 26, "x": 15, "y": 15},
+  {"sprite": "edut", "frame": 1, "fit": 11, "x": 26, "y": 26}]},
+ {"name": "weapon_5", "layers": [
+  {"sprite": "wesy", "frame": 4, "fit": 26, "x": 15, "y": 15},
   {"sprite": "edut", "frame": 1, "fit": 11, "x": 26, "y": 26}]}
 ]}

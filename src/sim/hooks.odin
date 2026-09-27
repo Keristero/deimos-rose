@@ -194,6 +194,7 @@ Stat :: enum u8 {
 	Side_Firing_Volley,       // each volley also fires to both sides
 	Firing_Delay,             // the gap between shots
 	Projectile_Damage,        // the damage each shot, and what it spawns, deals
+	Random_Spread_Range,      // how far either side of its heading a shot may stray
 }
 
 
