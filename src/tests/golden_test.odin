@@ -193,8 +193,8 @@ draws_hash :: proc(log: ^sim.Draw_Log) -> u64 {
 
 // The shipped demo `name` (de01..de04), stepped as oracle:diff steps it.
 @(private = "file")
-golden_demo :: proc(defs: ^sim.Defs, name: string, allocator := context.allocator) -> (r: Golden_Run, ok: bool) {
-	bytes, err := os.read_entire_file(fmt.tprintf("assets/films/%s.film", name), allocator)
+golden_demo :: proc(defs: ^sim.Defs, name: string, allocator := context.allocator, scratch := context.allocator) -> (r: Golden_Run, ok: bool) {
+	bytes, err := os.read_entire_file(fmt.tprintf("assets/films/%s.film", name), scratch)
 	if err != nil {
 		return
 	}
@@ -203,13 +203,13 @@ golden_demo :: proc(defs: ^sim.Defs, name: string, allocator := context.allocato
 		return
 	}
 	film := data.film_to_sim(f)
-	log := sim.Draw_Log{draws = make([]sim.Draw, 400_000, allocator)}
-	s := new(sim.State, allocator)
+	log := sim.Draw_Log{draws = make([]sim.Draw, 400_000, scratch)}
+	s := new(sim.State, scratch)
 	defer sim.destroy(s)
 	sim.init(s, film.session, defs, &log)
 	r = {name = name, checkpoints = make([dynamic]u64, allocator)}
 	max_steps := 4 * len(film.frames) + 10_000
-	for r.steps < max_steps && !sim.film_finished(s, &film) {
+	for r.steps < max_steps && !sim.demo_over(s, &film) {
 		sim.step(s, {}, &film)
 		r.steps += 1
 		if r.steps % GOLDEN_EVERY == 0 {
@@ -443,6 +443,41 @@ golden_check :: proc(t: ^testing.T, runs: []Golden_Run, path, update: string, al
 			}
 		}
 	}
+}
+
+GOLDEN_FILMS_PATH :: "tests/golden/films.txt"
+
+// The players' films (PLAYERS_FILMS, mise run assets:films), stepped as the
+// shipped demos are. Fetched rather than committed, so skipped without
+// them; DR_GOLDEN_FILMS_UPDATE=1 rewrites tests/golden/films.txt. The
+// original's play of each is traced by oracle:trace with the films in its
+// Data/Local/film, and oracle:diff compares; docs/phase-4-sim.md ("The
+// players' films") says which of them match it.
+@(test)
+golden_players_films_match_the_recorded_fingerprints :: proc(t: ^testing.T) {
+	if !os.exists("assets/data/index.json") || !os.exists("assets/films/pd01.film") {
+		log.info("skipped: needs the extracted assets tree and mise run assets:films")
+		return
+	}
+	arena: vmem.Arena
+	testing.expect(t, vmem.arena_init_growing(&arena) == nil)
+	defer vmem.arena_destroy(&arena)
+	alloc := vmem.arena_allocator(&arena)
+	context.allocator = alloc
+
+	defs, _ := data.assets_defs_load("assets", alloc)
+	data.extra_defs_load("assets", &defs, alloc)
+	runs := make([dynamic]Golden_Run, alloc)
+	for e in PLAYERS_FILMS {
+		run_arena: vmem.Arena
+		testing.expect(t, vmem.arena_init_growing(&run_arena) == nil)
+		r, ok := golden_demo(&defs, e.name, alloc, vmem.arena_allocator(&run_arena))
+		if testing.expectf(t, ok, "%s must load", e.name) {
+			append(&runs, r)
+		}
+		vmem.arena_destroy(&run_arena)
+	}
+	golden_check(t, runs[:], GOLDEN_FILMS_PATH, "DR_GOLDEN_FILMS_UPDATE", alloc)
 }
 
 GOLDEN_WIDE_PATH :: "tests/golden/wide.txt"

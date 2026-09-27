@@ -153,6 +153,54 @@ shipped_films_parse :: proc(t: ^testing.T) {
 	}
 }
 
+// The players' films from the add-ons archive (mise run assets:films):
+// name, level, seed and recorded frames, read off each file when it was
+// fetched. Demo NN plays level NN, so the levels run in play order.
+PLAYERS_FILMS := [?]struct {
+	name, level: string,
+	seed, frames: u32,
+} {
+	{"pd01", "le07", 1006960, 4510}, {"pd02", "le06", 1023357, 8076},
+	{"pd03", "le02", 1116505, 9631}, {"pd04", "le08", 1171388, 6831},
+	{"pd05", "le11", 176546, 8215}, {"pd06", "le04", 568248, 7648},
+	{"pd07", "le12", 484656, 9562}, {"pd08", "le03", 945965, 9778},
+	{"pd09", "le05", 494337, 10065}, {"pd10", "le01", 237738, 12651},
+	// A full track: the recording ran out before the level did.
+	{"pd11", "le10", 590189, data.FILM_MAX_FRAMES},
+	{"dl01", "le07", 30867, 4496}, {"dl04", "le08", 89760, 7486},
+	{"dl05", "le11", 10615, 8467}, {"dl06", "le04", 66122, 7681},
+	{"dl07", "le12", 120811, 9382}, {"dl08", "le03", 147522, 10091},
+	{"dl09", "le05", 383478, 10834},
+	{"dl10", "le01", 254750, data.FILM_MAX_FRAMES},
+}
+
+@(test)
+players_films_parse :: proc(t: ^testing.T) {
+	if !os.exists("assets/films/pd01.film") {
+		return // not fetched: mise run assets:films
+	}
+	for e in PLAYERS_FILMS {
+		path := fmt.tprintf("assets/films/%s.film", e.name)
+		raw, rerr := os.read_entire_file(path, context.temp_allocator)
+		if !testing.expectf(t, rerr == nil, "cannot read %v", path) {
+			continue
+		}
+		testing.expect_value(t, len(raw), data.FILM_SIZE)
+		f, err := data.film_parse(raw)
+		defer data.film_destroy(&f)
+		if !testing.expectf(t, err == .None, "%v: %v", path, err) {
+			continue
+		}
+		// Recorded on the Mac, as the shipped demos were.
+		testing.expectf(t, f.big_endian, "%v should be big-endian", e.name)
+		testing.expect_value(t, data.fourcc_string(&f.level_id), e.level)
+		testing.expect_value(t, f.seed, e.seed)
+		testing.expect_value(t, f.game_type, u8(data.FILM_GAME_TYPE_SINGLE))
+		testing.expect_value(t, f.tracks[0].frame_count, e.frames)
+		testing.expect_value(t, f.tracks[1].frame_count, u32(0))
+	}
+}
+
 @(test)
 film_input_bits_match_the_recovered_control_order :: proc(t: ^testing.T) {
 	// From G_Film::GetInputs' field mapping and what G_Player::Process does

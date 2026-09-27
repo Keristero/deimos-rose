@@ -369,10 +369,58 @@ Layer 3 found the last two divergences. Both were cases where the port did
   quantised colours. Before that, GLOW measured 49x92 instead of 49x49. All
   1,037 frames now match.
 
+## The players' films
+
+The four shipped demos cover levels 7, 6, 2 and 8. Two sets of films that
+players recorded in 2002 cover every level, and `mise run assets:films`
+fetches them from Macintosh Garden (`tools/films/fetch.sh` says where they
+come from): pd01..pd11 ("Perfect Demos", levels 1-11) and dl01, dl04..dl10
+("Demo Levels"; its 02 and 03 are the shipped de02 and de03). The original
+played each of them under the oracle, and the traces are committed in
+`tests/oracle/`, so `mise run oracle:diff:saved` compares against them
+without a Wine prefix to record from.
+
+**How a demo ends.** The original stops a film at game over, when the level's
+tally finishes (`Level_End.complete`), or when the film runs out, and then
+starts the next film, whose first call is the nag screen's
+`RandomInt(400, 2000)` at `G_Game_Play+0x26` (0x41e6b6). The last film
+read in each trace equals our read count at that point: 4490 for pd01, 20
+frames before its film ends, and 8076, 9611, 6831, 4496 (dl01), 7486
+(dl04) and 8467 (dl05). `sim.demo_over` is that rule. Attract mode, the
+golden test and the diff all use it, and the diff treats the nag-screen
+call after the last read as the next demo's rather than a divergence.
+
+**Results** (2026-09-27), call for call:
+
+| Films | Result |
+|---|---|
+| pd01..pd10, dl01, dl04..dl08, and de01..de04 | match to the last film read |
+| pd11 (read 4345), dl10 (read 3803) | reach `G_Entity::Priv_Flee` (0x416520), not ported |
+| dl09 (read 707, level 9) | the original starts smbl 1949's "Dwindle & Die"; ours deleted it at read 701 |
+
+pd08 and pd09 play levels 8 and 9 through, and so every Silo Zapper in them
+behaves as the original's does.
+
+dl09, what is known: the smoke puff smbl (a harmless ground unit) spawns at
+read 537 beside its owner 1640 and drifts at its spawn velocity, 0.467 per
+step at heading 220. Scrolling pauses at read 673 in both (`09s1` enters
+"Pause Scrolling, Wait" there; the trace's `RandomInt(100, 110)` is on the
+same read). Ours deletes the puff in `MoveAndCheckPosition` when its top edge
+(y - 13) passes 480 + 128, at y 621.23. The original keeps it through read
+707, so the original's puff sits at least 2.5 px higher. The bounds check,
+the scroll, the spawn scatter (`FUN_0041c540`), the velocity and the scaling
+read the same in the decompiled code. Still unproven. Next: record the
+puff's position in the original with `ENTITY=1949` (`tools/oracle/trace.sh`)
+and compare it step by step.
+
+`tests/golden/films.txt` pins each players' film's replay (steps and state
+hashes), so a change that alters any of them shows in `mise run test`, not
+only against the oracle.
+
 ## What is not ported
 
-Nothing the demos reach. These sites remain, all on paths the four films
-never take, and each is marked in the source:
+Nothing the shipped demos reach. These sites remain, and each is marked in
+the source. The players' films reach one of them, the flees:
 
 - notices that play sounds (`0x415328`, `0x41cdf0`)
 - the auxiliary weapon list, ground power-up and auxiliary spawns

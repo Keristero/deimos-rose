@@ -116,11 +116,22 @@ main :: proc() {
 		os.exit(2)
 	}
 
-	// Index the shipped films by seed; each demo's seed is distinct.
+	// Index every film by seed: the shipped demos and the players' films
+	// (mise run assets:films), whose seeds are all distinct. The original
+	// plays the players' films too, from Data/Local/film, so one trace
+	// may hold any of them.
 	films: map[u32]string
-	for i in 1 ..= 4 {
-		name := fmt.tprintf("de%02d", i)
-		bytes, ferr := os.read_entire_file(fmt.tprintf("%s/%s.film", films_dir, name), context.allocator)
+	entries: []os.File_Info
+	if dir, oerr := os.open(films_dir); oerr == nil {
+		entries, _ = os.read_directory(dir, -1, context.allocator)
+		os.close(dir)
+	}
+	for e in entries {
+		if !strings.has_suffix(e.name, ".film") {
+			continue
+		}
+		name := strings.trim_suffix(e.name, ".film")
+		bytes, ferr := os.read_entire_file(fmt.tprintf("%s/%s", films_dir, e.name), context.allocator)
 		if ferr != nil {
 			continue
 		}
@@ -175,7 +186,7 @@ main :: proc() {
 		snaps := make([dynamic]oracle.Player_Snapshot, 0, len(t.players), context.temp_allocator)
 		max_steps := 4 * len(film.frames) + 10_000
 		sim.init(state, film.session, &defs, &log, len(t.events) > 0 ? &events : nil)
-		for i := 0; i < max_steps && !sim.film_finished(state, &film); i += 1 {
+		for i := 0; i < max_steps && !sim.demo_over(state, &film); i += 1 {
 			if len(t.players) > 0 {
 				for p in sim.players_of(state) {
 					append(&snaps, oracle.Player_Snapshot {
@@ -292,17 +303,21 @@ main :: proc() {
 		}
 
 		if div, bad := d.first.?; bad {
-			// The trace runs on past the film: when the demo ends the
-			// original starts the next session, whose first act is the nag
-			// draw at the top of G_Game_Play. The replay stops with the
-			// film, so calls left over at a step beyond its last frame are
-			// out of scope, not a disagreement.
-			after_film := false
+			// The trace runs on past the demo: when it ends the original
+			// starts the next session, whose first act is the nag draw at
+			// the top of G_Game_Play, still counted on the last demo's
+			// final read. The replay stops where the demo does
+			// (sim.demo_over), so that draw, left over at or after our last
+			// read, belongs to the next demo. Only that draw: any other
+			// leftover means the original played on where we stopped, as
+			// after a game over it never had.
+			NAG_DRAW :: sim.Site(0x41e6b6) // G_Game_Play+0x26, RandomInt(400, 2000)
+			after_demo := false
 			if w, ok := div.want.?; ok && div.got == nil {
-				after_film = int(w.frame) > len(film.frames)
+				after_demo = w.site == NAG_DRAW && w.frame >= u32(sim.single(state, sim.Film_Cursor).reads[0])
 			}
-			if after_film {
-				fmt.printfln("    matched the original to the last frame of the film;" +
+			if after_demo {
+				fmt.printfln("    matched the original to the end of the demo;" +
 					" %d later call(s) belong to the next demo", len(t.calls) - div.index)
 				continue
 			}

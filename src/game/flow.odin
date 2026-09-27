@@ -473,7 +473,7 @@ flow_step :: proc(fl: ^Flow, r: ^render.Renderer, particles: ^render.Particles, 
 		// Plain sim.step: a demo that finishes its level moves on to the
 		// next demo (below), not to the next level.
 		flow_sim_step(fl, r, particles, blurs, notices, {}, &fl.sim_film, false)
-		if sim.single(fl.state, sim.Game_Status).game_over || sim.single(fl.state, sim.Level_End).complete || sim.film_finished(fl.state, &fl.sim_film) {
+		if sim.demo_over(fl.state, &fl.sim_film) {
 			flow_load_demo(fl, (fl.demo_index + 1) % DEMO_COUNT)
 		}
 	case .Game_Over, .Complete:

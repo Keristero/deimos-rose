@@ -25,8 +25,11 @@ DR_GHIDRA = "{{ get_env(name='HOME', default=get_env(name='USERPROFILE', default
 # gitignored work/ directory beside the repo's tracked files. Kept out of
 # src/build/ so that `mise run clean` does not discard minutes of analysis.
 DR_DECOMP = "{{config_root}}/../work/decomp"
-# Wine prefix and the oracle's captures (traces, the sprite dump).
-DR_WINE   = "{{config_root}}/../work/wine"
+# Wine prefix and the oracle's captures (traces, the sprite dump). A value
+# already in the environment wins, so two oracles can run side by side on
+# copies of the prefix (DR_WINE=../work/wine-b mise run oracle:trace);
+# otherwise both would write to, and clear, the same traces directory.
+DR_WINE   = "{{ get_env(name='DR_WINE', default=config_root ~ '/../work/wine') }}"
 DR_EXE    = "{{config_root}}/../game/DeimosRising.exe"
 DR_SYMS   = "{{config_root}}/../symbols/functions.csv"
 # Odin collection so packages import as "dr:sim", "dr:data", ...
@@ -312,6 +315,23 @@ DR_ASSETS=$DR_ASSETS DR_FILM=${FILM:-de01} DR_SHOT=/dev/null DR_SHOT_AT=${UNTIL:
 description = "Compare the simulation's random calls with the original's trace, per demo film"
 run = "odin run tools/diff $DR_COLL -out:$DR_BUILD/oracle-diff$DR_EXT --"
 
+[tasks."oracle:diff:saved"]
+description = "Compare the simulation with the committed traces in tests/oracle (shipped demos and players' films); needs the Wine prefix's install (or DR_ORIG_FULL) and assets:films"
+run = """
+set -e
+orig="${DR_ORIG_FULL:-$DR_WINE/prefix/drive_c/DR}"
+odin build tools/diff $DR_COLL -o:speed -out:$DR_BUILD/oracle-diff$DR_EXT
+mkdir -p $DR_BUILD/traces
+status=0
+for t in tests/oracle/*.trace.xz; do
+  n=$(basename "$t" .trace.xz)
+  xz -dc "$t" > "$DR_BUILD/traces/$n.txt"
+  echo "== $n"
+  DR_ORIG="$orig" $DR_BUILD/oracle-diff$DR_EXT "$DR_BUILD/traces/$n.txt" || status=1
+done
+exit $status
+"""
+
 [tasks.bench]
 description = "Time the simulation alone: demo replays, every level in co-op, and rollback snapshots (needs extracted assets)"
 run = "odin run tools/simbench $DR_COLL -o:speed -out:$DR_BUILD/simbench$DR_EXT"
@@ -401,6 +421,10 @@ odin build tools/dps $DR_COLL $DR_LINK -o:speed -out:$DR_BUILD/dps$DR_EXT && \
   "$DR_BUILD/dps$DR_EXT" "$DR_ASSETS" "${OUT:-$DR_SRC/../work/reports}" \
   -seconds:${DPS_SECONDS:-60} -stage:${DPS_STAGE:-7} ${WEAPON:+"-weapon:$WEAPON"}
 """
+
+[tasks."assets:films"]
+description = "Fetch the players' demo films for levels 1-11 from Macintosh Garden's add-ons archive (checksum-pinned, kept in orig/) and extract them to assets/films as pd01..pd11 and dl01, dl04..dl10; needs unar"
+run = "bash tools/films/fetch.sh"
 
 [tasks."assets:verify"]
 description = "Verify extracted assets against the manifest and the original PAKs"
