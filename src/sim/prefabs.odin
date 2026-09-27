@@ -28,6 +28,12 @@ import ecs "dr:third_party/odecs"
 // each prefab keeps the set of queries it matches, so a step asks a bit and
 // not the world.
 //
+// A prefab's components are looked up once, when they are built, into a
+// flat table (`has`, `data`): odecs's get_component hashes the type and
+// searches the archetype's columns on every call, and the stages ask
+// several times per entity per step. The prefab world is not changed after
+// the build, so the pointers stay good for the session.
+//
 // Prefabs are derived from the definitions, which never change in a
 // session, so they are not state: snapshots leave them out, as they leave
 // out `defs`, and a state read from elsewhere builds its own.
@@ -45,6 +51,9 @@ Prefab_Query :: distinct u8
 // The queries a prefab matches.
 Query_Set :: bit_set[0 ..< MAX_PREFAB_QUERIES; u128]
 
+// The components a prefab has, by catalog id (component_id).
+Component_Set :: bit_set[0 ..< MAX_COMPONENTS; u128]
+
 Prefabs :: struct {
 	world:       ^ecs.World,
 	defs:        ^Defs,
@@ -53,6 +62,11 @@ Prefabs :: struct {
 	first_state: []i32,
 	ids:         []ecs.EntityID,
 	matches:     []Query_Set,
+	has:         []Component_Set,
+	// Prefab p's component c is data[p * stride + c]; nil for a tag, which
+	// has nothing to point at, and for a component p does not have.
+	data:        []rawptr,
+	stride:      int,
 	allocator:   runtime.Allocator,
 }
 
@@ -178,6 +192,25 @@ prefabs_build :: proc(pf: ^Prefabs, defs: ^Defs, mods: Mods, allocator := contex
 			}
 		}
 	}
+	// Each component, once: which prefabs have it, and where.
+	catalog := component_types()
+	pf.stride = len(catalog)
+	pf.has = make([]Component_Set, total, allocator)
+	pf.data = make([]rawptr, total * pf.stride, allocator)
+	for &c, ci in catalog {
+		if c.type == Is_Prefab {
+			continue
+		}
+		for arch in ecs.query_raw(w, {Is_Prefab, c.type}) {
+			for id in ecs.get_entities(arch) {
+				at := index[id]
+				pf.has[at] += {ci}
+				if c.size > 0 {
+					pf.data[at * pf.stride + ci] = c.get(w, id)
+				}
+			}
+		}
+	}
 }
 
 prefabs_destroy :: proc(pf: ^Prefabs) {
@@ -188,6 +221,8 @@ prefabs_destroy :: proc(pf: ^Prefabs) {
 	delete(pf.first_state, pf.allocator)
 	delete(pf.ids, pf.allocator)
 	delete(pf.matches, pf.allocator)
+	delete(pf.has, pf.allocator)
+	delete(pf.data, pf.allocator)
 	pf^ = {}
 }
 
@@ -222,10 +257,16 @@ prefab_is :: #force_inline proc "contextless" (s: ^State, prefab: i32, q: Prefab
 
 // A prefab's T: nil when it has none, and for a tag, which has nothing to
 // point at (prefab_has).
-prefab_component :: proc(s: ^State, prefab: i32, $T: typeid) -> ^T {
-	return ecs.get_component(s.prefabs.world, s.prefabs.ids[prefab], T)
+prefab_component :: #force_inline proc "contextless" (s: ^State, prefab: i32, $T: typeid) -> ^T {
+	pf := s.prefabs
+	c := component_id(T)
+	if c < 0 {
+		return nil // never registered, so no prefab has one
+	}
+	return (^T)(pf.data[int(prefab) * pf.stride + c])
 }
 
-prefab_has :: proc(s: ^State, prefab: i32, $T: typeid) -> bool {
-	return ecs.has_component(s.prefabs.world, s.prefabs.ids[prefab], T)
+prefab_has :: #force_inline proc "contextless" (s: ^State, prefab: i32, $T: typeid) -> bool {
+	c := component_id(T)
+	return c >= 0 && c in s.prefabs.has[prefab]
 }
