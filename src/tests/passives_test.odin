@@ -538,3 +538,78 @@ every_passive_has_an_icon :: proc(t: ^testing.T) {
 		}
 	}
 }
+
+// Weapon 3's side fire goes out on one volley of each shot, not on the
+// extra volley as well. One press of the Rear Gun at level 3: the bullets
+// heading sideways number what one volley's forward-facing sets fire, and
+// every one leaves on the same step. Skipped without the extracted data.
+@(test)
+rear_gun_fires_one_volley_to_the_sides :: proc(t: ^testing.T) {
+	if !os.exists("assets/data/index.json") {
+		log.info("skipped: needs the extracted assets tree")
+		return
+	}
+	arena: vmem.Arena
+	testing.expect(t, vmem.arena_init_growing(&arena) == nil)
+	defer vmem.arena_destroy(&arena)
+	defs, _ := data.assets_defs_load("assets", vmem.arena_allocator(&arena))
+	rear := -1
+	for &w, i in defs.weapons {
+		if w.id == passives.WEAPON_REAR_GUN {
+			rear = i
+		}
+	}
+	if !testing.expect(t, rear >= 0, "no Rear Gun in the data") {
+		return
+	}
+	s := new(sim.State, context.temp_allocator)
+	defer sim.destroy(s)
+	sim.init(s, sim.Session{seed = 1, level_id = defs.levels[0].id, game_type = .Single, mods = session_mods(true, false)}, &defs)
+	for i := 0; i < 300 && sim.player_at(s, 0).state != .Playing; i += 1 {
+		sim.session_step(s, {})
+	}
+	p := sim.player_at(s, 0)
+	p.weapons.air.weapon = i32(rear)
+	passives.levels_of(s, 0)[.Weapon_3] = 3
+	p.invulnerable_always, p.invulnerable = true, true
+
+	seen: [dynamic]i32
+	seen.allocator = context.temp_allocator
+	sideways, forward: int
+	steps: [dynamic]i32
+	steps.allocator = context.temp_allocator
+	for i in 0 ..< 60 {
+		input: sim.Frame_Input
+		if i == 0 {
+			input[0] = {.Fire_Air}
+		}
+		sim.session_step(s, input)
+		walk := sim.walk_entities(s)
+		for e in sim.walk_next(&walk) {
+			if e.deleted || !s.defs.units[e.unit].player_projectile || e.owner_player != 0 {
+				continue
+			}
+			known := false
+			for n in seen {
+				known ||= n == e.number
+			}
+			if known {
+				continue
+			}
+			append(&seen, e.number)
+			time := sim.single(s, sim.Clock).time
+			if abs(e.vel.x) > abs(e.vel.y) {
+				sideways += 1
+				if len(steps) == 0 || steps[len(steps) - 1] != time {
+					append(&steps, time)
+				}
+			} else if e.vel.y < 0 {
+				forward += 1
+			}
+		}
+	}
+	log.infof("forward %d, sideways %d, on steps %v", forward, sideways, steps[:])
+	testing.expect(t, sideways > 0, "level 3 must fire to the sides")
+	testing.expect(t, forward > sideways, "the extra volley must not fire to the sides as well")
+	testing.expect_value(t, len(steps), 1)
+}

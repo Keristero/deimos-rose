@@ -358,6 +358,7 @@ Shaped :: struct {
 	spawn_pace:    i32, // 0, or its spawn sets' pace in hundredths of a step
 	pace_acc:      i32,
 	spawn_clock:   i32, // the time its spawn sets run at, when paced
+	side_volley:   i32, // 1 + the step its one side-firing volley went out, 0 before
 }
 
 // One pool entity: its components, as G_Entity's fields. A view, passed by

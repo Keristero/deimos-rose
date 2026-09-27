@@ -192,8 +192,14 @@ shaped_spawn_child :: proc(s: ^sim.State, e: sim.Entity, set: ^sim.Spawn_Set_Def
 		spawn_child_set(s, e, set)
 	}
 	// Side fire: each forward-facing set also fires outward, left of the
-	// centre line to the left and right of it to the right.
-	if side && (!set.set_heading || set.heading_degrees == 0) {
+	// centre line to the left and right of it to the right -- on the shot's
+	// first volley only. Every volley fired it once, which with the extra
+	// volley that comes with it was too strong to the sides (play report,
+	// 2026-09-27). The sets of one volley fire on the same step, so the
+	// step marks it.
+	now := sim.single(s, sim.Clock).time + 1
+	if side && (!set.set_heading || set.heading_degrees == 0) && (e.side_volley == 0 || e.side_volley == now) {
+		e.side_volley = now
 		if set.x_offset <= 0 {
 			emit(s, e, set, set.x_offset, set.y_offset, 270, true)
 		}

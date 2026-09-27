@@ -204,7 +204,10 @@ is `plbo`, the Plasma Bomb, the only ground weapon.
   and so its range.
 - **Weapon 3** (Rear Gun)
   - Side fire makes each forward-facing set fire to the side it is on as
-    well. A centre lane fires both ways.
+    well. A centre lane fires both ways. It fires on the first volley of
+    each shot only (`Shaped.side_volley` marks the step): on every volley
+    it sent 8 bullets sideways a shot, which played too strong. The DPS
+    report has no target to the side, so its numbers do not change.
 - **Weapon 4** (Photon Beam). `firing_delay` scales
   `delay_between_launches`.
 
