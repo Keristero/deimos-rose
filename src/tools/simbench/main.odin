@@ -6,8 +6,16 @@ package simbench
 // on the fullest one those sessions reached. Each figure is the best of REPS runs, so noise
 // from the rest of the machine shows as little as it can. Needs the
 // extracted assets (mise run extract); `mise run bench` runs it.
+//
+// Built with -define:DR_SIM_PROFILE=true (`mise run bench:profile`), it
+// also says where the demos' and the sessions' steps spent their time, by
+// system and by stage (sim/profile.odin). The counting slows every step,
+// so read the shares from that run and the times from a plain one. Reading
+// the counter costs about 34 cycles, so a stage near that per call does
+// next to nothing; its cost is the counting's.
 
 import "core:fmt"
+@(require) import "core:slice" // used when profiling
 import "core:os"
 import "core:time"
 import vmem "core:mem/virtual"
@@ -55,6 +63,7 @@ main :: proc() {
 		}
 		demo_t[rep] = time.since(t)
 	}
+	profile_report("demos")
 	d := best(demo_t[:])
 	fmt.printfln("demos      %d steps  %.2f ms  %.2f us/step", demo_steps, time.duration_milliseconds(d), time.duration_microseconds(d) / f64(demo_steps))
 
@@ -100,6 +109,7 @@ main :: proc() {
 		}
 		sess_t[rep] = time.since(t)
 	}
+	profile_report("sessions")
 	d = best(sess_t[:])
 	fmt.printfln("sessions   %d steps  %.2f ms  %.2f us/step", sess_steps, time.duration_milliseconds(d), time.duration_microseconds(d) / f64(sess_steps))
 
@@ -111,6 +121,54 @@ main :: proc() {
 	}
 	rollback_bench(s, "level 6, 2000 steps")
 	rollback_bench(fullest, fmt.tprintf("fullest (level %d)", fullest_level + 1))
+}
+
+// The shares of the systems' cycles since the last report, largest first;
+// then the entity stages', and what the entities system spent outside its
+// stages: walking the pool, starting each entity, and matching stages.
+profile_report :: proc(label: string) {
+	when sim.SIM_PROFILE {
+		Row :: struct {
+			name:   string,
+			count:  sim.Profile_Count,
+		}
+		print :: proc(title: string, rows: []Row, total: i64) {
+			slice.sort_by(rows, proc(a, b: Row) -> bool {return a.count.cycles > b.count.cycles})
+			fmt.printfln("  %s", title)
+			for r in rows {
+				if r.count.calls == 0 {
+					continue
+				}
+				fmt.printfln("    %6s  %-24s %12s calls  %8s cycles/call", fmt.tprintf("%.1f%%", f64(r.count.cycles) * 100 / f64(total)),
+					r.name, fmt.tprint(r.count.calls), fmt.tprintf("%.1f", f64(r.count.cycles) / f64(r.count.calls)))
+			}
+		}
+		p := &sim.profile
+		total, in_stages, entities: i64
+		systems := make([dynamic]Row, context.temp_allocator)
+		for sys, i in sim.registered_systems() {
+			append(&systems, Row{sys.name, p.systems[i]})
+			total += p.systems[i].cycles
+			if sys.name == "entities" {
+				entities = p.systems[i].cycles
+			}
+		}
+		stages := make([dynamic]Row, context.temp_allocator)
+		for st, i in sim.registered_entity_stages() {
+			append(&stages, Row{st.name, p.stages[i]})
+			in_stages += p.stages[i].cycles
+		}
+		players := make([dynamic]Row, context.temp_allocator)
+		for st, i in sim.registered_player_stages() {
+			append(&players, Row{st.name, p.player_stages[i]})
+		}
+		fmt.printfln("profile, %s: shares of all systems' cycles", label)
+		print("systems", systems[:], total)
+		print("entity stages", stages[:], total)
+		fmt.printfln("    %6s  (entities, outside its stages)", fmt.tprintf("%.1f%%", f64(entities - in_stages) * 100 / f64(total)))
+		print("player stages", players[:], total)
+		sim.profile_reset()
+	}
 }
 
 slots_used :: proc(s: ^sim.State) -> i32 {

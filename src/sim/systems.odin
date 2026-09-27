@@ -200,7 +200,9 @@ run_systems :: proc(s: ^State, step: ^Step, kinds: bit_set[System_Kind]) {
 		if sys.kind not_in kinds || (step.frozen && !sys.while_frozen) {
 			continue
 		}
+		c0 := profile_clock()
 		sys.run(s, step)
+		profile_add(&profile.systems[idx], c0)
 		if step.done {
 			return
 		}
@@ -211,7 +213,10 @@ run_systems :: proc(s: ^State, step: ^Step, kinds: bit_set[System_Kind]) {
 // the player is done.
 run_player_stages :: proc(s: ^State, p: Player, ps: ^Player_Step) {
 	for idx in s.schedule.player_stages[:s.schedule.player_stage_count] {
-		if !player_stages.items[idx].run(s, p, ps) {
+		c0 := profile_clock()
+		ok := player_stages.items[idx].run(s, p, ps)
+		profile_add(&profile.player_stages[idx], c0)
+		if !ok {
 			return
 		}
 	}
@@ -227,7 +232,10 @@ run_entity_stages :: proc(s: ^State, e: Entity, es: ^Entity_Step) {
 		if !prefab_is(s, es.prefab, stage.query) {
 			continue
 		}
-		if !stage.run(s, e, es) {
+		c0 := profile_clock()
+		ok := stage.run(s, e, es)
+		profile_add(&profile.stages[idx], c0)
+		if !ok {
 			return
 		}
 	}
