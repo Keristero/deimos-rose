@@ -127,7 +127,11 @@ DETAILS = [
         f"w={s32(u32s(ecx + 0x24, 1)[0])} h={s32(u32s(ecx + 0x28, 1)[0])} "
         f"hw={s32(u32s(ecx + 0x2C, 1)[0])} hh={s32(u32s(ecx + 0x30, 1)[0])} "
         f"sprite={fourcc(u32s(ecx + 0x1C, 1)[0])} frame={s32(u32s(ecx + 0x20, 1)[0])} "
-        f"scale={f32(u32s(ecx + 0x7A, 1)[0]):g}"
+        f"scale={f32(u32s(ecx + 0x7A, 1)[0]):g} "
+        # Velocity, target velocity and per-step delta, as f32 bits: an angle
+        # derived from them can turn on the last bit.
+        "vel=%08x,%08x target=%08x,%08x delta=%08x,%08x" % (
+            *u32s(ecx + 0x10, 2), *u32s(ecx + 0x100, 2), *u32s(ecx + 0x108, 2))
         if TRACE_ENTITY and u32s(ecx + 0x92, 1)[0] == TRACE_ENTITY else None)),
     ("spawn_control", 0x414AE0, lambda esp, ecx: (
         f"entity={u32s(ecx + 0x92, 1)[0]} state={s32(u32s(ecx + 0x9E, 1)[0])}")),

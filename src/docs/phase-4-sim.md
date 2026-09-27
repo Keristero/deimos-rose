@@ -390,28 +390,43 @@ frames before its film ends, and 8076, 9611, 6831, 4496 (dl01), 7486
 golden test and the diff all use it, and the diff treats the nag-screen
 call after the last read as the next demo's rather than a divergence.
 
-**Results** (2026-09-27), call for call:
+**Results** (2026-09-28): every film matches the original call for call to
+its last film read -- pd01..pd11, dl01, dl04..dl10 and de01..de04, 2.5
+million calls. pd08 and pd09 play levels 8 and 9 through, and so every Silo
+Zapper in them behaves as the original's does. Two fixes closed the last
+three films, and a third turned up on the way (2026-09-27 had pd11 and dl10
+stopping at `Priv_Flee`, dl09 at read 707):
 
-| Films | Result |
-|---|---|
-| pd01..pd10, dl01, dl04..dl08, and de01..de04 | match to the last film read |
-| pd11 (read 4345), dl10 (read 3803) | reach `G_Entity::Priv_Flee` (0x416520), not ported |
-| dl09 (read 707, level 9) | the original starts smbl 1949's "Dwindle & Die"; ours deleted it at read 701 |
-
-pd08 and pd09 play levels 8 and 9 through, and so every Silo Zapper in them
-behaves as the original's does.
-
-dl09, what is known: the smoke puff smbl (a harmless ground unit) spawns at
-read 537 beside its owner 1640 and drifts at its spawn velocity, 0.467 per
-step at heading 220. Scrolling pauses at read 673 in both (`09s1` enters
-"Pause Scrolling, Wait" there; the trace's `RandomInt(100, 110)` is on the
-same read). Ours deletes the puff in `MoveAndCheckPosition` when its top edge
-(y - 13) passes 480 + 128, at y 621.23. The original keeps it through read
-707, so the original's puff sits at least 2.5 px higher. The bounds check,
-the scroll, the spawn scatter (`FUN_0041c540`), the velocity and the scaling
-read the same in the decompiled code. Still unproven. Next: record the
-puff's position in the original with `ENTITY=1949` (`tools/oracle/trace.sh`)
-and compare it step by step.
+- **The flees.** pd11 (read 4345) and dl10 (read 3803) reach flees the
+  shipped demos never did. `entity_flee` now has all twelve branches of
+  `G_Entity::Priv_Flee` (0x416520). Which id goes to which branch was read
+  from the compare ladder at 0x41652d, and each random call site from the
+  branch's stores to +0x114/+0x118 (objdump), not from Ghidra's ordering.
+  The "opposite" flees go to the far side: a unit below the middle flees
+  north.
+- **`U_Math_GetSpeedFromVector` rounds once.** dl09's smoke puff smbl 1949
+  entered "Contract and Steady" at read 607 in both, but the original turned
+  it to heading 315 and we turned it to 316. The puff then drifted about 2
+  px lower in ours, left the screen at read 701 and was deleted, where the
+  original's puff reached "Dwindle & Die" at 707. The cause was 67 steps
+  earlier. On entering "Expanding", ChangeState re-derives a velocity from
+  the speed and steps toward it by the difference. The original sums the
+  squares on the x87 stack and rounds to f32 once, so its re-derived vel.y
+  came out one ulp low: delta (0, -2^-25), and vel.y fell by an ulp per step.
+  Ours rounded each square and the sum, got a delta of exactly 0, and held
+  its velocity. The heading is `360 - atan(|x|/y)` truncated, and |x|/y
+  here is tan 44 degrees to within 2e-5 degrees, so those 67 ulps decide
+  it. `tools/oracle/trace.py`'s `move` hook now logs velocity, target
+  velocity and delta as f32 bits, which is what showed it. The position
+  alone matched to three decimals until read 607.
+- **`atanf` rounds to f32.** MSL's `atanf` (0x457420) stores `fpatan`'s
+  result to a float before returning it, so `U_Math_GetAngleFromVector`
+  works from a rounded arctangent. It was modelled unrounded (marked
+  provisional). No film's random calls depend on it, but the state does:
+  de04's entity 1451, a velocity one ulp off the diagonal, turns to 224 in
+  the original and turned to 225 in ours at read 505, and its traced
+  velocity, target and delta now match bit for bit. It changes the state
+  of de04, pd06, pd11, dl06 and dl09.
 
 `tests/golden/films.txt` pins each players' film's replay (steps and state
 hashes), so a change that alters any of them shows in `mise run test`, not
@@ -419,15 +434,14 @@ only against the oracle.
 
 ## What is not ported
 
-Nothing the shipped demos reach. These sites remain, and each is marked in
-the source. The players' films reach one of them, the flees:
+Nothing any of the films reach. These sites remain, and each is marked in
+the source:
 
 - notices that play sounds (`0x415328`, `0x41cdf0`)
 - the auxiliary weapon list, ground power-up and auxiliary spawns
   (`0x447130`, `0x44741a`, `0x448590`)
 - game over (`0x42037a`) and the between-levels transition (`FUN_004207f0`,
   which runs outside the game step and starts the next level)
-- east/west/random/opposite flees (`0x416520`)
 - spawn headings that hunt the closest player, burst or implode, or come
   from the owner's sprite (`0x41c8f0`, `0x41c9a0`, `0x41ca5c`)
 - the sprite a weapon pickup shows for the weapon it carries (`0x41377e`)
