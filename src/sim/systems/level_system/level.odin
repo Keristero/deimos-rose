@@ -132,3 +132,25 @@ level_end_system :: proc(s: ^sim.State, step: ^sim.Step) {
 		level_end_step(s, sim.single(s, sim.Clock).time)
 	}
 }
+
+// Not the original's: a test's shortcut to the end of the level just
+// started, `steps_left` steps of scrolling before the background reaches
+// the top (one row a step). The level is set up as level_start leaves
+// it, only further up the map: the entities are cleared and the rows in
+// and above the view spawned, as at a level's start, so what lies
+// between is never met. Deterministic, so two netplay peers that both
+// call it straight after starting stay in step (game/netplay.odin,
+// DR_NETPLAY_END).
+level_skip_to_end :: proc(s: ^sim.State, steps_left: i32) {
+	b := sim.single(s, sim.Bgnd)
+	h := sim.view_height(s.defs)
+	top := clamp(steps_left, 1, b.view_top)
+	b.view_top = top
+	b.view_bottom = h + top
+	// bgnd_reset's progress (h + 1) with view_top at map_bottom - h: the
+	// two always sum to map_bottom + 1.
+	b.progress = b.map_bottom + 1 - top
+	lifecycle.eg_reset(s, sim.level_def(s))
+	sim.single(s, sim.Level_Info).title = sim.NO_REF
+	background_system.bgnd_initial_spawns(s)
+}

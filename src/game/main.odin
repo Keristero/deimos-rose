@@ -67,10 +67,14 @@ main :: proc() {
 	rl.InitWindow(render.SCREEN_W * render.WINDOW_SCALE, render.SCREEN_H * render.WINDOW_SCALE, "Deimos Rising")
 	defer rl.CloseWindow()
 
-	if !headless {
+	// DR_NO_AUDIO=1 plays silently otherwise as usual, for a scripted run
+	// on a machine someone is using (tools/netplay/level_end_check.sh):
+	// no device, and no sounds loaded, as for a shot.
+	audio := !headless && os.get_env("DR_NO_AUDIO", context.temp_allocator) == ""
+	if audio {
 		rl.InitAudioDevice()
 	}
-	defer if !headless {
+	defer if audio {
 		rl.CloseAudioDevice()
 	}
 
@@ -83,7 +87,7 @@ main :: proc() {
 	rl.SetTargetFPS(i32(step_hz)) // the interactive loop retargets per the high refresh rate setting
 
 	renderer: render.Renderer
-	render.renderer_init(&renderer, root, prefs_classic(&ps), !headless)
+	render.renderer_init(&renderer, root, prefs_classic(&ps), audio)
 	defer render.renderer_destroy(&renderer)
 
 	particles: render.Particles
@@ -170,6 +174,10 @@ main :: proc() {
 	// netplay_lobby_start_from_flag's comment for why (a scripted test
 	// driving two instances at once, tools/netplay/loopback_check.sh).
 	if netplay_flag := os.get_env("DR_NETPLAY", context.temp_allocator); netplay_flag != "" {
+		if end, ok := strconv.parse_int(os.get_env("DR_NETPLAY_END", context.temp_allocator)); ok && end > 0 {
+			netplay_test_end = i32(end)
+		}
+		netplay_shot_path = os.get_env("DR_NETPLAY_SHOT", context.allocator)
 		netplay_lobby_init(&flow.netplay, &renderer)
 		flow.mode = .Netplay_Lobby
 		netplay_lobby_start_from_flag(&flow.netplay, &ps.saved, netplay_flag)
@@ -258,6 +266,9 @@ main :: proc() {
 		}
 		diagnostics_draw(&diagnostics, flow.netplay_active, flow.netplay.ping_ms)
 		rl.EndTextureMode()
+		if netplay_shot_due() {
+			canvas_save(renderer.canvas, netplay_shot_path)
+		}
 
 		rl.BeginDrawing()
 		rl.ClearBackground(rl.Color{0, 0, 0, 255})
@@ -275,6 +286,19 @@ main :: proc() {
 		rl.EndBlendMode()
 		rl.EndDrawing()
 	}
+}
+
+// The canvas as <path>.png.
+canvas_save :: proc(canvas: rl.RenderTexture2D, path: string) {
+	img := rl.LoadImageFromTexture(canvas.texture)
+	rl.ImageFlipVertical(&img) // render textures are bottom-up
+	// Blending leaves the texture's alpha below 255 wherever something
+	// translucent was drawn; its colour is already composited, so drop it.
+	rl.ImageFormat(&img, .UNCOMPRESSED_R8G8B8)
+	out := fmt.ctprintf("%s.png", path)
+	rl.ExportImage(img, out)
+	rl.UnloadImage(img)
+	fmt.printfln("wrote %s", out)
 }
 
 // Where the canvas goes in the window: as large as fits without cropping,
@@ -534,15 +558,7 @@ run_menu_shot :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, r
 		fmt.eprintfln("new game drawn with: %d particles, %d ghosts", len(particles.live), len(blurs.live))
 	}
 	rl.EndTextureMode()
-	img := rl.LoadImageFromTexture(r.canvas.texture)
-	rl.ImageFlipVertical(&img) // render textures are bottom-up
-	// Blending leaves the texture's alpha below 255 wherever something
-	// translucent was drawn; its colour is already composited, so drop it.
-	rl.ImageFormat(&img, .UNCOMPRESSED_R8G8B8)
-	out := fmt.ctprintf("%s.png", path)
-	rl.ExportImage(img, out)
-	rl.UnloadImage(img)
-	fmt.printfln("wrote %s", out)
+	canvas_save(r.canvas, path)
 }
 
 // Steps the simulation, capturing the frame at each requested step.

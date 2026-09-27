@@ -46,6 +46,7 @@ import "dr:plugins/new_weapons"
 import "dr:prefs"
 import "dr:render"
 import "dr:sim"
+import "dr:sim/systems/level_system"
 import "dr:ui"
 
 // Chosen from IANA's dynamic/private port range (49152-65535) to avoid
@@ -176,6 +177,8 @@ Netplay :: struct {
 	rs:            net.Rollback_Session,
 	desync:        net.Desync_Monitor,
 	warned_desync: bool,
+	// Whether play was held (sim.session_frozen) last step, for the log.
+	was_held:      bool,
 
 	// Phase 8 stage 3/4: pause on disconnect + reconnect.
 	link_state:     Link_State,
@@ -390,6 +393,26 @@ netplay_start_hosting :: proc(nl: ^Netplay) {
 	// who is joining ahead of time.
 }
 
+// DR_NETPLAY_END: see netplay_lobby_start_from_flag. 0 outside a test.
+netplay_test_end: i32
+// DR_NETPLAY_SHOT=<path>: the frame a second after play is first held is
+// saved as <path>.png, to see what the peer showed (main.odin).
+netplay_shot_path: string
+@(private = "file")
+netplay_shot_in: int // frames until that shot; 0 when none is due, -1 once taken
+
+netplay_shot_due :: proc() -> bool {
+	if netplay_shot_in <= 0 {
+		return false
+	}
+	netplay_shot_in -= 1
+	if netplay_shot_in == 0 {
+		netplay_shot_in = -1
+		return true
+	}
+	return false
+}
+
 // Skips the Menu/Enter_Address phases and their mouse/keyboard-driven UI,
 // going straight to hosting or joining. Used by main.odin's DR_NETPLAY hook
 // (tools/netplay/loopback_check.sh) so a scripted two-instance test only
@@ -398,7 +421,21 @@ netplay_start_hosting :: proc(nl: ^Netplay) {
 // button pixel coordinates blindly. `mode` is "host" or "join:<address>".
 // The saved name and accent are used as they are, or "Player 1"/"Player 2"
 // without a name.
+//
+// DR_NETPLAY_END=<steps> as well (main.odin sets netplay_test_end) makes
+// the run a test of a level's end without anyone at the keyboard: each
+// side readies as soon as it is connected, the host turns Easy Mode on
+// for the run, and both start the level that many steps before its end
+// (level_system.level_skip_to_end), so the reward screen opens a few
+// seconds in. Both sides must be given the same number, or they are not
+// playing the same game (the desync check says so). The log then says
+// when play is held and resumed (netplay_playing_step), which
+// tools/netplay/level_end_check.sh greps for.
 netplay_lobby_start_from_flag :: proc(nl: ^Netplay, saved: ^prefs.Prefs, mode: string) {
+	if netplay_test_end > 0 && mode == "host" {
+		// For this run only: nothing here saves the preferences.
+		saved.mods = sim.mods_with_deps(saved.mods + {int(easy_mode.ID)})
+	}
 	nl.local_name = saved.netplay_name
 	nl.local_hue = saved.settings[accent_view.HUE_P1]
 	if nl.local_name.len == 0 {
@@ -597,7 +634,7 @@ netplay_update_connected :: proc(fl: ^Flow, nl: ^Netplay, r: ^render.Renderer) {
 	if !nl.local_ready && ui.hue_slider_update(&nl.local_hue, accent_slider_rect(), true) {
 		nl.hue_dirty = true
 	}
-	if !nl.local_ready && !host_locked && ui.text_button_update(r, &nl.ready_btn, mouse, dt) {
+	if !nl.local_ready && !host_locked && (netplay_test_end > 0 || ui.text_button_update(r, &nl.ready_btn, mouse, dt)) {
 		nl.local_ready = true
 		nl.ready_unsent = true
 	}
@@ -873,12 +910,17 @@ netplay_begin_session :: proc(fl: ^Flow, nl: ^Netplay, seed: u32, level_index: i
 	}
 	level := fl.defs.levels[level_index].id
 	sim.init(fl.state, session_from_mods(seed, level, .Co_Op, mods, online = true), fl.defs)
+	if netplay_test_end > 0 {
+		level_system.level_skip_to_end(fl.state, netplay_test_end)
+		fmt.eprintfln("netplay: test starts %d steps before the level's end, mods %v", netplay_test_end, mods)
+	}
 	flow_session_began(fl)
 	local_player := nl.role == .Host ? 0 : 1
 	net.rollback_session_init(&nl.rs, fl.state, local_player)
 	netplay_name_session(fl, nl, local_player)
 	nl.desync = {}
 	nl.warned_desync = false
+	nl.was_held = false
 	nl.link_state = .Live
 	nl.last_peer_seen = time.now()
 	fl.session_start_pos = level_index + 1
@@ -1116,6 +1158,13 @@ netplay_playing_step :: proc(fl: ^Flow, r: ^render.Renderer, particles: ^render.
 	// so both sides pause, and resume, on the same frame.
 	local := gather_input(&fl.prefs.saved.bindings[0])
 	net.rollback_session_advance(&nl.rs, local)
+	if held := sim.session_frozen(fl.state); held != nl.was_held {
+		nl.was_held = held
+		if held && netplay_shot_path != "" && netplay_shot_in == 0 {
+			netplay_shot_in = 30
+		}
+		fmt.eprintfln("netplay: play %s at frame %d, level %d", held ? "held" : "resumed", sim.frame_of(fl.state), sim.single(fl.state, sim.Level_Info).number)
+	}
 	flow_effects_sync(fl, particles, blurs, notices)
 	// While paused nothing moves; existing particles and ghosts freeze too.
 	flow_effects_step(fl, r, particles, blurs, notices)

@@ -334,6 +334,11 @@ description = "Three-instance loopback smoke test for pause-on-disconnect + reco
 depends = ["build"]
 run = "bash tools/netplay/reconnect_check.sh"
 
+[tasks."netplay:level-end"]
+description = "Two instances play the end of the first level together with Easy Mode on, headless and silent, and must both reach the reward screen and stay up (the crash of D50). END=150 steps before the end; HOST_BIN or GUEST_BIN runs one side on another build; KEEP=1 keeps the logs"
+depends = ["build"]
+run = "bash tools/netplay/level_end_check.sh"
+
 [tasks."netplay:lobby-shots"]
 description = "Screenshot every visually distinct netplay lobby state plus the diagnostics overlay, no comparison (there is no original to compare against) -- just for a quick look"
 depends = ["build"]
