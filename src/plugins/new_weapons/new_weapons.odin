@@ -6,19 +6,15 @@ import _ "dr:plugins/extra_prefs"
 import _ "dr:plugins/loadout"
 import "dr:sim"
 
-// The new weapons (assets/extra; docs/new-weapons.md): the original's
-// rules never choose them (Weapon.extra), and this lets them in. They are
-// handed over the way every other weapon is under plugins/loadout.
+// The new weapons (assets/extra/new_weapons; docs/new-weapons.md): the
+// original's rules never choose them (Weapon.extra), and they are in play
+// while this is on. They are handed over the way every other weapon is
+// under plugins/loadout.
 //
 // What they do that no original weapon does is here too: the Discharge
 // Beam's instant shot (beam.odin) and the Chaingun's aimed release
 // (aimed.odin), each fired through the core's Weapon_Fire hook for the
 // weapons whose definitions carry this plugin's keys, and drawn by its view.
-
-@(private = "file")
-allows :: proc "contextless" (w: ^sim.Weapon) -> bool {
-	return true
-}
 
 ID: sim.Plugin_ID
 
@@ -54,8 +50,8 @@ register :: proc "contextless" () {
 		deps        = DEPS,
 		session     = true,
 		default_on  = true,
+		content     = true,
 	})
-	sim.weapon_filter_register({plugin = ID, allows = allows})
 
 	AIMED_RELEASE = sim.weapon_key_register("x_AimedRelease_BOOL")
 	BEAM = sim.weapon_key_register("x_Beam_BOOL")

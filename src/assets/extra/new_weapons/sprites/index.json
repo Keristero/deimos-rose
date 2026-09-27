@@ -3,7 +3,7 @@
         {
             "fourcc": "PL1K",
             "dir": "im08",
-            "image": "extra/sprites/im08/PL1K.png",
+            "image": "extra/new_weapons/sprites/im08/PL1K.png",
             "width": 394,
             "height": 48,
             "frames": [
@@ -54,7 +54,7 @@
         {
             "fourcc": "PL2K",
             "dir": "im08",
-            "image": "extra/sprites/im08/PL2K.png",
+            "image": "extra/new_weapons/sprites/im08/PL2K.png",
             "width": 394,
             "height": 48,
             "frames": [
@@ -105,7 +105,7 @@
         {
             "fourcc": "PL1D",
             "dir": "im08",
-            "image": "extra/sprites/im08/PL1D.png",
+            "image": "extra/new_weapons/sprites/im08/PL1D.png",
             "width": 394,
             "height": 48,
             "frames": [
@@ -156,7 +156,7 @@
         {
             "fourcc": "PL2D",
             "dir": "im08",
-            "image": "extra/sprites/im08/PL2D.png",
+            "image": "extra/new_weapons/sprites/im08/PL2D.png",
             "width": 394,
             "height": 48,
             "frames": [
@@ -207,7 +207,7 @@
         {
             "fourcc": "WESD",
             "dir": "im08",
-            "image": "extra/sprites/im08/WESD.png",
+            "image": "extra/new_weapons/sprites/im08/WESD.png",
             "width": 300,
             "height": 31,
             "frames": [
@@ -252,7 +252,7 @@
         {
             "fourcc": "CGBU",
             "dir": "im08",
-            "image": "extra/sprites/im08/CGBU.png",
+            "image": "extra/new_weapons/sprites/im08/CGBU.png",
             "width": 866,
             "height": 26,
             "frames": [

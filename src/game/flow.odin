@@ -57,7 +57,6 @@ Flow :: struct {
 	quit:       bool, // Escape at the title screen; see main.odin's SetExitKey(.KEY_NULL)
 	root:       string,
 	defs:       ^sim.Defs,
-	extra_content: bool, // defs carries the new weapons (assets/extra)
 	state:      ^sim.State,
 	demo_index: int,       // which of de01..de04 is playing, only set in .Attract
 	film:       data.Film, // owns film.frames; film_destroy before loading another
@@ -257,9 +256,6 @@ flow_init :: proc(fl: ^Flow, root: string, defs: ^sim.Defs, state: ^sim.State, r
 	fl.root = root
 	fl.prefs = ps
 	fl.defs = defs
-	for &w in defs.weapons {
-		fl.extra_content ||= w.extra
-	}
 	fl.state = state
 	fl.mode = .Title
 	fl.highest_reached = progress_load()
@@ -599,14 +595,11 @@ flow_random_seed :: proc() -> u32 {
 }
 
 // The session plugins this player has on, as Start carries them: none in
-// classic mode. New Weapons also needs the new content to be there
-// (assets/extra). Netplay's own is left to session_from_mods, which knows
-// whether the session is online.
+// classic mode, nor any whose own content is not there (assets/extra).
+// Netplay's own is left to session_from_mods, which knows whether the
+// session is online.
 flow_session_mods :: proc(fl: ^Flow) -> sim.Mods {
-	mods := prefs_mods(fl.prefs)
-	if !fl.extra_content {
-		mods = sim.mods_resolve(mods - {int(new_weapons.ID)})
-	}
+	mods := sim.mods_with_content(prefs_mods(fl.prefs), fl.defs.content)
 	// Resolved before the session's are picked out: a session plugin's
 	// dependencies need not be session plugins themselves.
 	return sim.mods_session(mods) - {int(netplay_plugin.ID)}

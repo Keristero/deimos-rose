@@ -16,6 +16,7 @@ import "core:encoding/json"
 import "core:image/png"
 import "core:os"
 import "core:path/filepath"
+import "core:slice"
 import "core:strconv"
 import "core:strings"
 
@@ -230,12 +231,19 @@ id_of :: proc(path: string) -> string {
 assets_open :: proc(root: string, allocator := context.allocator) -> (a: Assets) {
 	a.root = strings.clone(root, allocator)
 
-	// The game's plates, then the new content's (assets/extra): both
-	// indexes give image paths relative to the assets root.
+	// The game's plates, then each plugin's (extra_defs_load): every
+	// index gives image paths relative to the assets root.
 	plates := make([dynamic]Sprite_Plate, 0, 400, allocator)
-	for index in ([2]string{"/sprites/index.json", "/extra/sprites/index.json"}) {
+	indexes := make([dynamic]string, 0, len(sim.registered_plugins()), context.temp_allocator)
+	append(&indexes, strings.concatenate({root, "/sprites/index.json"}, context.temp_allocator))
+	for i in 1 ..< len(sim.registered_plugins()) {
+		if dir, found := plugin_content_dir(root, sim.Plugin_ID(i)); found {
+			append(&indexes, strings.concatenate({dir, "/sprites/index.json"}, context.temp_allocator))
+		}
+	}
+	for index in indexes {
 		idx: Json_Sprite_Index
-		if !read_json(strings.concatenate({root, index}, context.temp_allocator), &idx, context.temp_allocator) {
+		if !read_json(index, &idx, context.temp_allocator) {
 			continue
 		}
 		for s in idx.sprites {
@@ -541,33 +549,59 @@ weapon_keys_fill :: proc(w: ^sim.Weapon, header: []Tag) {
 	}
 }
 
-// The new content (docs/new-weapons.md): units, weapons and sprites under
-// `<root>/extra`, laid out as the game's own tree is, added to `defs` after
-// the game's own so no original index moves. Kept out of assets_defs_load,
-// which has to match the original exactly. Returns false when there is no
-// extra tree; the game then plays without the new weapons.
+// The plugins' own content (docs/new-weapons.md): units, weapons and
+// sprites under `<root>/extra/<plugin name>`, each laid out as the game's
+// own tree is, for every plugin in the build. Added to `defs` after the
+// game's own so no original index moves, and ordered by id rather than by
+// plugin, so moving content from one plugin to another renumbers nothing.
+// Each weapon records the plugin it came from (Weapon.plugin), and
+// `defs.content` the plugins that brought any. Kept out of
+// assets_defs_load, which has to match the original exactly. Returns false
+// when no plugin has content here; the game then plays without it.
 extra_defs_load :: proc(root: string, defs: ^sim.Defs, allocator := context.allocator) -> (report: Defs_Report, ok: bool) {
-	extra := strings.concatenate({root, "/extra"}, context.temp_allocator)
-	if !os.exists(extra) {
-		return
-	}
 	units := make([dynamic]sim.Unit, 0, len(defs.units) + 16, allocator)
 	append(&units, ..defs.units)
-	units_append(&units, extra, &report, allocator)
-	report.units = len(units) - len(defs.units)
-	defs.units = units[:]
-
 	weapons := make([dynamic]sim.Weapon, 0, len(defs.weapons) + 4, allocator)
 	append(&weapons, ..defs.weapons)
-	weapons_append(&weapons, extra, true, &report, allocator)
-	defs.weapons = weapons[:]
-
 	sprites := make([dynamic]sim.Sprite, 0, len(defs.sprites) + 4, allocator)
 	append(&sprites, ..defs.sprites)
-	sprites_append(&sprites, extra, allocator)
+	for i in 1 ..< len(sim.registered_plugins()) {
+		dir, found := plugin_content_dir(root, sim.Plugin_ID(i))
+		if !found {
+			continue
+		}
+		units_append(&units, dir, &report, allocator)
+		first := len(weapons)
+		weapons_append(&weapons, dir, true, &report, allocator)
+		for &w in weapons[first:] {
+			w.plugin = sim.Plugin_ID(i)
+		}
+		sprites_append(&sprites, dir, allocator)
+		defs.content += {i}
+	}
+	slice.sort_by(units[len(defs.units):], proc(a, b: sim.Unit) -> bool {return res_id_less(a.id, b.id)})
+	slice.sort_by(weapons[len(defs.weapons):], proc(a, b: sim.Weapon) -> bool {return res_id_less(a.id, b.id)})
+	report.units = len(units) - len(defs.units)
 	report.sprites = len(sprites) - len(defs.sprites)
-	defs.sprites = sprites[:]
-	return report, true
+	defs.units, defs.weapons, defs.sprites = units[:], weapons[:], sprites[:]
+	return report, defs.content != {}
+}
+
+// `<root>/extra/<plugin name>`, where a plugin's own content is, if it has
+// any.
+plugin_content_dir :: proc(root: string, id: sim.Plugin_ID) -> (dir: string, found: bool) {
+	dir = strings.concatenate({root, "/extra/", sim.registered_plugins()[id].name}, context.temp_allocator)
+	return dir, os.exists(dir)
+}
+
+@(private = "file")
+res_id_less :: proc(a, b: sim.Res_ID) -> bool {
+	for k in 0 ..< len(a) {
+		if a[k] != b[k] {
+			return a[k] < b[k]
+		}
+	}
+	return false
 }
 
 // Levels, the permanent tables: the rest of assets_defs_load.

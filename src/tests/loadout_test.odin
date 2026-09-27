@@ -41,6 +41,7 @@ loadout_defs :: proc() -> ^sim.Defs {
 		weapons[k].minimum_level_available = 2
 	}
 	weapons[4].extra = true
+	weapons[4].plugin = new_weapons.ID // its content, as data.extra_defs_load marks it
 	defs.weapons = weapons
 	return defs
 }

@@ -133,7 +133,7 @@ been confirmed.
 
 - **"A fast DPS check for each weapon."** Every air weapon and the ground
   weapon in `Defs.weapons` are checked, the Chaingun and the Discharge
-  Beam included. They are loaded from `assets/extra` and flown without a
+  Beam included. They are loaded from `assets/extra/<plugin>` and flown without a
   New Weapons session.
 - **"Every passive, at each possible level."** One passive at a time, not
   combinations. There are 25 levels, and combinations would multiply them.

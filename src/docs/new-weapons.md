@@ -28,8 +28,9 @@ Where it can be changed:
 - in the netplay lobby, where the host can change it. It sits beside Easy
   Mode, and the guest sees what the host chose.
 
-A session only turns it on when the new content has loaded. That content
-is `assets/extra`, which `Flow.extra_content` checks for.
+A session only turns it on when its content has loaded: the plugin is
+marked `content`, and `sim.mods_with_content` drops it when
+`assets/extra/new_weapons` is missing (D49).
 
 ### Carrying the setting
 
@@ -70,7 +71,7 @@ The presentation effects freeze too, through `sim.session_frozen`.
 
 ### The Chaingun
 
-The Chaingun is `aicg`, with its units in `assets/extra/data`. It is air
+The Chaingun is `aicg`, with its units in `assets/extra/new_weapons/data`. It is air
 weapon number five and unlocks at stage 7. Its ship is dark grey:
 `pl1k`/`pl2k`, recoloured from the Bacta Gun's green by `tools/recolour`
 (see Content).
@@ -102,8 +103,8 @@ is loaded in every session. `oracle:diff` stays exact.
 
 ### The Discharge Beam
 
-The Discharge Beam is `aidb`, with its units in `assets/extra/data`. It is
-air weapon number six and unlocks at stage 10. Its ship is red:
+The Discharge Beam is `aidb`, with its units in
+`assets/extra/new_weapons/data`. It is air weapon number six and unlocks at stage 10. Its ship is red:
 `pl1d`/`pl2d`, turned from the Ion Cannon's yellow by `tools/recolour`
 (see Content).
 
@@ -281,9 +282,11 @@ Balance), but its feel is untested by hand:
 
 ## Content
 
-`assets/extra` holds the new content: records in `data/` and sprites in
-`sprites/`, laid out like `assets/`. `data.extra_defs_load` appends it after
-the original definitions. Each weapon it loads is marked `extra`. Its
+`assets/extra/<plugin>` holds each plugin's own content: records in
+`data/` and sprites in `sprites/`, laid out like `assets/` (D49).
+`data.extra_defs_load` appends it after the original definitions, ordered
+by id whichever plugin it came from. Each weapon it loads is marked
+`extra`, and records its plugin, which lets it into play while on. Its
 `x_` keys are read into `Weapon.keys` for the plugin that registered them
 (`sim/def_keys.odin`); the loader knows none of them. `assets_open` reads the
 extra sprite index beside the game's own.
@@ -296,7 +299,7 @@ extra sprite index beside the game's own.
 
   They are the source now, and are edited by hand.
 - **Ships.** `mise run assets:extra` (`tools/recolour`, following the
-  recipe in `tools/recolour/extra.json`) writes the dark grey ships from the
+  recipe for the plugin in `tools/recolour/`) writes the dark grey ships from the
   extracted Bacta Gun plates. Pixels in the green hue band keep 12% of their
   saturation and 60% of their value. `assets:all` runs it after extracting.
 - **Rounds.** `jgbu` is white at full value, a bright core in a halo

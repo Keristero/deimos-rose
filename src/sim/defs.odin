@@ -90,9 +90,11 @@ Weapon :: struct {
 	id:        Res_ID,
 	using def: Wep_Def,
 	spawns:    []Wep_Spawn_Def, // +0x1c0
-	// Not the original's: set only on the new weapons (assets/extra,
-	// docs/new-weapons.md), which exist only in a New Weapons session.
-	extra: bool,
+	// Not the original's: set only on a plugin's own weapons
+	// (assets/extra/<plugin name>, docs/new-weapons.md), which exist only
+	// in a session with that plugin on (weapon_allowed).
+	extra:  bool,
+	plugin: Plugin_ID, // whose they are, when extra
 	// The values of the keys plugins register (def_keys.odin), by Weapon_Key.
 	keys:  [MAX_WEAPON_KEYS]u32,
 }
@@ -143,6 +145,9 @@ Defs :: struct {
 	perm_floats:  [PERM_FLOATS]f32,
 	perm_objects: [PERM_OBJECTS]Res_ID,
 	perm_sounds:  [PERM_SOUNDS]Res_ID,
+	// Not the original's: the plugins whose own content loaded
+	// (data.extra_defs_load).
+	content:      Mods,
 }
 
 unit_find :: proc "contextless" (d: ^Defs, id: Res_ID) -> ^Unit {

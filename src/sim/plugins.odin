@@ -33,6 +33,9 @@ Plugin :: struct {
 	session:     bool,
 	// On for a player who has never visited the Mods page.
 	default_on:  bool,
+	// Needs its own content, under assets/extra/<name>: off when that did
+	// not load (Defs.content, mods_with_content).
+	content:     bool,
 }
 
 // Slot 0, CORE's, is empty.
@@ -105,6 +108,18 @@ mods_with_deps :: proc "contextless" (want: Mods) -> Mods {
 			return mods
 		}
 	}
+}
+
+// `mods` without the plugins that need content `loaded` does not hold, and
+// what needs them.
+mods_with_content :: proc "contextless" (mods: Mods, loaded: Mods) -> Mods {
+	missing: Mods
+	for id in 1 ..< plugins.count {
+		if plugins.items[id].content && id not_in loaded {
+			missing += {id}
+		}
+	}
+	return mods_resolve(mods - missing)
 }
 
 // The session plugins in `mods`: what a Session carries.

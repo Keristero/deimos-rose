@@ -158,10 +158,11 @@ weapons_kept :: proc "contextless" (s: ^State) -> bool {
 	return ok
 }
 
-// Whether a weapon can be chosen in this session: any of the original's,
-// and new content's once a plugin lets it in.
+// Whether a weapon can be chosen in this session: any of the original's, a
+// plugin's own while that plugin is on, and any other once a filter lets it
+// in.
 weapon_allowed :: proc "contextless" (s: ^State, w: ^Weapon) -> bool {
-	if !w.extra {
+	if !w.extra || (w.plugin != CORE && mod_on(s, w.plugin)) {
 		return true
 	}
 	for &f in registry_items(&filters) {

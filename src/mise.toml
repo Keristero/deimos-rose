@@ -377,12 +377,14 @@ odin run tools/icons $DR_COLL $DR_LINK -out:$DR_BUILD/icons$DR_EXT -- \
 """
 
 [tasks."assets:extra"]
-description = "Recolour extracted sprite plates into the new content's own (RECIPE=tools/recolour/extra.json by default: the Chaingun's dark grey ships, from the Bacta Gun's, and its brighter rounds). Writes assets/extra/sprites/, which the game loads beside its own sprites; the extra tree's records in assets/extra/data are written by hand"
+description = "Recolour extracted sprite plates into the plugins' own, one recipe per plugin (RECIPE=tools/recolour/new_weapons.json for one; every tools/recolour/*.json by default). Each writes assets/extra/<plugin>/sprites/, which the game loads beside its own sprites while that plugin is in the build; the records in assets/extra/<plugin>/data are written by hand"
 depends = ["setup"]
 # CPU-side raylib image calls only: no window and no audio device are opened.
 run = """
-odin run tools/recolour $DR_COLL $DR_LINK -out:$DR_BUILD/recolour$DR_EXT -- \
-  "${RECIPE:-tools/recolour/extra.json}" "$DR_ASSETS"
+odin build tools/recolour $DR_COLL $DR_LINK -out:$DR_BUILD/recolour$DR_EXT
+for recipe in ${RECIPE:-tools/recolour/*.json}; do
+  $DR_BUILD/recolour$DR_EXT "$recipe" "$DR_ASSETS" || exit 1
+done
 """
 
 [tasks."dps:report"]
