@@ -84,8 +84,8 @@ Score_Entry :: struct {
 // runs, matching G_Scores_GetPlayerNamesAndDisplay's own two-pass shape.
 // Returns false (and leaves se untouched) if neither player qualifies, so
 // the caller can skip the mode switch entirely.
-score_entry_start :: proc(se: ^Score_Entry, player_scores: [sim.MAX_PLAYERS]int, player_active: [sim.MAX_PLAYERS]bool, sector: string) -> bool {
-	save := high_scores_load()
+score_entry_start :: proc(se: ^Score_Entry, levels: []sim.Level_Def, player_scores: [sim.MAX_PLAYERS]int, player_active: [sim.MAX_PLAYERS]bool, sector: string) -> bool {
+	save := high_scores_load(levels)
 	table := save.table
 	ranks := [sim.MAX_PLAYERS]int{-1, -1}
 	any := false

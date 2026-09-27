@@ -154,7 +154,7 @@ main_menu_activate :: proc(fl: ^Flow, r: ^render.Renderer, slot: Main_Menu_Slot)
 		flow_load_demo(fl, 0)
 	case .High_Scores:
 		fl.mode = .High_Scores
-		high_scores_view_init(&fl.high_scores)
+		high_scores_view_init(&fl.high_scores, fl.defs.levels)
 	case .Quit:
 		fl.quit = true
 	case .Preferences:

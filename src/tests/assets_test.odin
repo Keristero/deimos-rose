@@ -129,6 +129,7 @@ assets_defs_match_the_original :: proc(t: ^testing.T) {
 		g := &got.levels[i]
 		testing.expect_value(t, g.id, w.id)
 		testing.expect_value(t, g.number, w.number)
+		testing.expect_value(t, g.name, w.name)
 		testing.expect_value(t, g.identifier, w.identifier)
 		testing.expect_value(t, g.background, w.background)
 		testing.expect_value(t, len(g.placements), len(w.placements))

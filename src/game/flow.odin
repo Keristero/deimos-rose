@@ -386,22 +386,25 @@ flow_finish_session :: proc(fl: ^Flow) {
 		active[i] = fl.state.session.game_type != .Single || i == 0
 	}
 	if sim.level_def(fl.state) != nil {
-		sector = sim.level_def(fl.state).identifier
+		// The level's name, as Level Select shows it: the original copies
+		// the first field of the G_Level it loads by the player's level id,
+		// name_STR (G_Scores_GetPlayerNamesAndDisplay, 0x43b3a0).
+		sector = sim.level_def(fl.state).name
 	}
 	if fl.session_named {
 		// Netplay: both names are already known, so there is nothing to
 		// type -- each qualifying score goes straight into the table, which
 		// is then shown.
 		fl.session_named = false
-		if high_scores_record(scores, active, fl.session_names, sector) {
-			high_scores_view_init(&fl.high_scores)
+		if high_scores_record(fl.defs.levels, scores, active, fl.session_names, sector) {
+			high_scores_view_init(&fl.high_scores, fl.defs.levels)
 			fl.mode = .High_Scores
 		} else {
 			fl.mode = .Title
 		}
 		return
 	}
-	if score_entry_start(&fl.score_entry, scores, active, sector) {
+	if score_entry_start(&fl.score_entry, fl.defs.levels, scores, active, sector) {
 		fl.mode = .Score_Entry
 	} else {
 		fl.mode = .Title

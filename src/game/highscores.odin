@@ -74,7 +74,10 @@ High_Scores_Save :: struct {
 	last_name_player: [2]string,
 }
 
-high_scores_load :: proc() -> High_Scores_Save {
+// `levels` names the sectors of scores saved before they were written by
+// the level's name: those hold its identifier ("Lucena" for Mariner
+// Valley), and read as the name.
+high_scores_load :: proc(levels: []sim.Level_Def) -> High_Scores_Save {
 	fallback := High_Scores_Save {
 		table            = high_scores_default(),
 		last_name_player = {high_scores_default_last_name(0), high_scores_default_last_name(1)},
@@ -97,7 +100,13 @@ high_scores_load :: proc() -> High_Scores_Save {
 		if !ok {
 			return fallback
 		}
-		out.table[i] = {strings.clone(lines[i * 3 + 1]), score, strings.clone(lines[i * 3 + 2])}
+		sector := lines[i * 3 + 2]
+		for &l in levels {
+			if sector == l.identifier {
+				sector = l.name
+			}
+		}
+		out.table[i] = {strings.clone(lines[i * 3 + 1]), score, strings.clone(sector)}
 	}
 	out.last_name_player[0] = strings.clone(lines[HIGH_SCORE_SLOTS * 3])
 	out.last_name_player[1] = strings.clone(lines[HIGH_SCORE_SLOTS * 3 + 1])
@@ -144,8 +153,8 @@ high_scores_insert :: proc(table: ^[HIGH_SCORE_SLOTS]High_Score_Entry, name: str
 // entry screen. Inserted in player order, as score_entry_start does. The
 // last-name cache is left alone: that belongs to the local name entry.
 // Returns whether anything was recorded.
-high_scores_record :: proc(scores: [sim.MAX_PLAYERS]int, active: [sim.MAX_PLAYERS]bool, names: [sim.MAX_PLAYERS]prefs.Name, sector: string) -> bool {
-	save := high_scores_load()
+high_scores_record :: proc(levels: []sim.Level_Def, scores: [sim.MAX_PLAYERS]int, active: [sim.MAX_PLAYERS]bool, names: [sim.MAX_PLAYERS]prefs.Name, sector: string) -> bool {
+	save := high_scores_load(levels)
 	recorded := false
 	for i in 0 ..< sim.MAX_PLAYERS {
 		if !active[i] {

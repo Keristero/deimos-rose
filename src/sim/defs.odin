@@ -69,6 +69,8 @@ Placement_Def :: struct {
 
 Level_Def :: struct {
 	id:         Res_ID,
+	// The level's name_STR, as Level Select shows it: "Mariner Valley".
+	name:       string,
 	identifier: string,
 	// 1-based play order. G_Level_BuildInfoList numbers levels by matching
 	// each level's identifier against twelve encrypted names built into the

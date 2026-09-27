@@ -66,8 +66,8 @@ High_Scores :: struct {
 	table:    [HIGH_SCORE_SLOTS]High_Score_Entry,
 }
 
-high_scores_view_init :: proc(hs: ^High_Scores) {
-	save := high_scores_load()
+high_scores_view_init :: proc(hs: ^High_Scores, levels: []sim.Level_Def) {
+	save := high_scores_load(levels)
 	hs^ = High_Scores{table = save.table}
 }
 

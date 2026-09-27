@@ -311,6 +311,7 @@ defs_load :: proc(p: ^Resource_Provider, allocator := context.allocator) -> (def
 			}
 			l := sim.Level_Def {
 				id         = sim.Res_ID(key.id),
+				name       = strings.clone(lv.name, allocator),
 				identifier = strings.clone(lv.identifier, allocator),
 				number     = i32(i + 1),
 				background = rect_from(lv.background),

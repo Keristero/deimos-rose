@@ -622,6 +622,7 @@ assets_defs_load_rest :: proc(root: string, defs: ^sim.Defs, report: ^Defs_Repor
 			}
 			l := sim.Level_Def {
 				id         = sim.res_id(lv.id),
+				name       = strings.clone(lv.name, allocator),
 				identifier = strings.clone(lv.identifier, allocator),
 				number     = i32(i + 1),
 				background = rect_from(Rect{

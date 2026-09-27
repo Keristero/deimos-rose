@@ -407,7 +407,7 @@ run_menu_shot :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, r
 		flow.credits.state = .Holding
 	case "high_scores":
 		flow.mode = .High_Scores
-		high_scores_view_init(&flow.high_scores)
+		high_scores_view_init(&flow.high_scores, defs.levels)
 		// Skip the fade-in -- run_menu_shot draws exactly one static frame,
 		// so start already settled at full opacity rather than mid-fade.
 		flow.high_scores.state = .Holding
@@ -419,7 +419,7 @@ run_menu_shot :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, r
 		// completed session with a high enough score, which isn't practical
 		// to script through xdotool -- see docs/phase-7-faithful-menus.md's
 		// Stage 4 notes).
-		score_entry_start(&flow.score_entry, {99999, 0}, {true, false}, "Lucena")
+		score_entry_start(&flow.score_entry, defs.levels, {99999, 0}, {true, false}, "Mariner Valley")
 		flow.mode = .Score_Entry
 		flow.score_entry.state = .Editing
 	case "netplay_lobby":
