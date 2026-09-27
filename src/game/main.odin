@@ -21,6 +21,7 @@ import "dr:sim"
 import "dr:sim/lifecycle"
 import "dr:sim/systems/player_system"
 import "dr:sim/systems/weapon_system"
+import "dr:ui"
 
 // A stall (window drag, breakpoint, GC pause) must not make the simulation
 // try to catch up all at once; cap how many steps one render frame can run.
@@ -592,8 +593,33 @@ run_menu_shot :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, r
 		flow.netplay.phase = .Connected
 		flow.netplay.ping_ms = 42
 	case:
-		fmt.eprintfln("unknown menu %v (see run_menu_shot)", name)
-		os.exit(1)
+		// A plugin's own scenario (ui/shots.odin).
+		sh, ok := ui.shot_find(name)
+		if !ok {
+			fmt.eprintfln("unknown menu %v (see run_menu_shot and ui.shot_register)", name)
+			os.exit(1)
+		}
+		// Not saved: a screenshot leaves the player's preferences alone.
+		ps.saved.classic, ps.launch.classic, r.classic = false, false, false
+		ps.saved.mods = sim.mods_with_deps(ps.saved.mods + {int(sh.plugin)})
+		flow_start_session(&flow, 0x1234_5678, sh.co_op ? .Co_Op : .Single, sh.level)
+		if err := sh.setup(state, name); err != "" {
+			fmt.eprintfln("%s: %s", name, err)
+			os.exit(1)
+		}
+		if len(sh.phases) > 0 {
+			// Taken now, so drawing a shot does not clear the effects below
+			// as a new level's.
+			flow_effects_sync(&flow, &particles, &blurs, &notices)
+		}
+		for ph in sh.phases {
+			for _ in 0 ..< ph.steps {
+				_ = sim.session_step(state, ph.input)
+				render.particles_step(&particles, state)
+				render.effect_systems_step(r, state, &particles)
+			}
+		}
+		flow.mode = .Playing
 	}
 	// game/diagnostics.odin's overlay: this menu name doubles as its visual
 	// smoke check (there's no baseline to compare against, just a look --
