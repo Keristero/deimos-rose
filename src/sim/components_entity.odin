@@ -157,7 +157,7 @@ cursor_walk :: proc "contextless" (s: ^State, fixed: bool) -> Cursor_Walk {
 	return {s = s, fixed = fixed, gc = {NO_LINK}, group_end = single(s, Pool).active.count}
 }
 
-cursor_next :: proc "contextless" (w: ^Cursor_Walk) -> (e: Entity, index: i32, ok: bool) {
+cursor_next :: #force_inline proc "contextless" (w: ^Cursor_Walk) -> (e: Entity, index: i32, ok: bool) {
 	pool := single(w.s, Pool)
 	for {
 		if w.in_group {
