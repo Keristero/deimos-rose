@@ -970,3 +970,54 @@ The Beam's and the Chaingun's DPS figures, the golden fingerprints and
 plugin and its data, and no core change unless it needs a kind of hook
 the core does not have yet.
 
+### D49 — A plugin owns its content and its screenshots
+
+Making the Chaingun a plugin of its own showed what D48 had left shared.
+Its records and sprites sat in one `assets/extra` tree with the Discharge
+Beam's, let in by New Weapons' filter that allowed every extra weapon.
+Its recolour plates were in a recipe with the Beam's. Its screenshot
+scenarios, like every plugin's, were cases in `game/main.odin`, which
+imported the plugins to write them. Three extension points now make a
+weapon, or any content, one plugin:
+
+- **Content trees.** A plugin's content is `assets/extra/<plugin name>`,
+  laid out as `assets/` is. `data.extra_defs_load` reads the tree of each
+  plugin in the build, and orders what it loads by id rather than by
+  plugin, so moving a record between plugins renumbers nothing. Each
+  weapon records its plugin (`Weapon.plugin`), and `weapon_allowed` lets
+  it into play while that plugin is on. A plugin marked `content` is left
+  out of a session when its tree did not load (`sim.mods_with_content`),
+  where flow used to check for New Weapons by name. Each recolour recipe
+  names its plugin and writes into its tree; `assets:extra` runs them
+  all. A tool that registers no plugin (`tools/simbench`) loads no
+  content, which suits it: it runs the core alone.
+- **Screenshot scenarios** (`ui/shots.odin`). A plugin's view registers a
+  named scenario: its plugin, the level and players, a setup procedure,
+  and phases of held buttons played with the presentation following.
+  `mise run menu-shot MENU=<name>` runs it. `game/main.odin` names no
+  plugin's scenario; only Level Select's Easy Mode switch remains, which
+  waits for a menu-item extension point.
+- **`loadout.loadout_give`**, handing a player a weapon as if chosen on
+  the loadout screen, for scenarios and tests.
+
+The Chaingun (`plugins/chaingun`) needs New Weapons, which hands the new
+weapons over and gives the aim its targets (`air_shot_can_hit`). It is on
+by default and lists under New Weapons on the Mods page, where it can be
+turned off alone. Turning New Weapons off takes it too, as with any
+dependant. The lobby has one New Weapons switch, so turning that on
+brings back the default-on plugins that need it
+(`sim.mods_default_dependants`); an older build's Start flag reads the
+same way. The Mods page keeps its rule that turning a mod on turns on
+only what it needs, since the dependants have rows of their own there.
+
+The split was proved neutral at each step: the extra units and weapons
+load at the same indexes (only the extra sprites' order changed, and
+sprites are only found by id); the golden fingerprints, `coop_extras_l6`
+among them, are unchanged; both weapons' `dps:report` pages are
+byte-identical; and every moved scenario renders byte-identical, bar the
+three whose particles take random directions, which differ from before
+by no more than two runs of one build differ from each other.
+
+The Discharge Beam could follow the same pattern, leaving New Weapons
+as the shared part: the loadout hand-over, the targets and the beam's
+effect queue if a second weapon ever wants it.

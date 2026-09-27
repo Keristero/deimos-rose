@@ -94,9 +94,11 @@ Performance:
 
 Architecture (mostly from the phase doc's "Still open"):
 
-- [ ] Let plugins register their own screenshot scenarios, so
+- [x] Let plugins register their own screenshot scenarios, so
   `src/game/main.odin` stops naming the loadout, passives and Discharge
-  Beam plugins.
+  Beam plugins. Done (`ui.shot_register`); each plugin also owns its
+  content under `assets/extra/<plugin>`, and the Chaingun is a plugin of
+  its own (decisions.md D49).
 - [ ] Add a recolour hook in `draw_object`, so accent colours and their
   shader move from `Renderer` into Accent Color's view.
 - [ ] Add a menu-item extension point, so the Easy Mode switch (Level

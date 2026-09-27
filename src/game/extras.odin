@@ -49,6 +49,18 @@ prefs_mod_toggle :: proc(ps: ^Prefs_State, id: sim.Plugin_ID) {
 	prefs_state_save(ps)
 }
 
+// A switch for a mod and what comes with it: turned on, the mod brings back
+// its default-on dependants too (the lobby's New Weapons brings the
+// Chaingun); turned off, it takes them all, as any mod does.
+prefs_mod_toggle_group :: proc(ps: ^Prefs_State, id: sim.Plugin_ID) {
+	prefs_mod_toggle(ps, id)
+	if int(id) in ps.saved.mods {
+		for d in sim.mods_default_dependants(id) {
+			prefs_mod_set(ps, sim.Plugin_ID(d), true)
+		}
+	}
+}
+
 // Switches a mod on or off, leaving it as it is when it already is.
 prefs_mod_set :: proc(ps: ^Prefs_State, id: sim.Plugin_ID, on: bool) {
 	if (int(id) in ps.saved.mods) != on {

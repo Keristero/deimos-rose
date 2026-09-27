@@ -4,6 +4,7 @@ import "core:testing"
 
 import "dr:game"
 import "dr:net"
+import "dr:plugins/chaingun"
 import "dr:plugins/easy_mode"
 import netplay_plugin "dr:plugins/netplay"
 import "dr:plugins/new_weapons"
@@ -22,7 +23,7 @@ session_mods :: proc(easy, weapons: bool, online := false) -> sim.Mods {
 		want += {int(easy_mode.ID)}
 	}
 	if weapons {
-		want += {int(new_weapons.ID)}
+		want += {int(new_weapons.ID), int(chaingun.ID)}
 	}
 	return sim.mods_session(sim.mods_with_deps(want))
 }
@@ -147,7 +148,7 @@ plugins_netplay_only_online :: proc(t: ^testing.T) {
 // label, whatever order the packages registered them in.
 @(test)
 mods_page_lists_a_tree_of_needs :: proc(t: ^testing.T) {
-	want := []string{"extra_prefs", "fps_unlock", "accent", "loadout", "new_weapons", "passives", "easy_mode", "netplay"}
+	want := []string{"extra_prefs", "fps_unlock", "accent", "loadout", "new_weapons", "chaingun", "passives", "easy_mode", "netplay"}
 	got := game.mods_order()
 	testing.expect_value(t, len(got), len(want))
 	for id, i in got {
@@ -155,4 +156,38 @@ mods_page_lists_a_tree_of_needs :: proc(t: ^testing.T) {
 			testing.expect_value(t, sim.registered_plugins()[id].name, want[i])
 		}
 	}
+}
+
+// A plugin's own weapon is in play exactly while that plugin is on; an
+// original weapon always is (D49).
+@(test)
+plugins_own_weapons_follow_their_plugin :: proc(t: ^testing.T) {
+	s: sim.State
+	mine := sim.Weapon{extra = true, plugin = chaingun.ID}
+	original := sim.Weapon{}
+	s.session.mods = session_mods(false, true)
+	testing.expect(t, sim.weapon_allowed(&s, &mine))
+	s.session.mods -= {int(chaingun.ID)}
+	testing.expect(t, !sim.weapon_allowed(&s, &mine), "not with its plugin off, New Weapons or not")
+	testing.expect(t, sim.weapon_allowed(&s, &original))
+	s.session.mods = {}
+	testing.expect(t, sim.weapon_allowed(&s, &original))
+}
+
+// A plugin whose content did not load is dropped, with what needs it.
+@(test)
+plugins_without_their_content_are_off :: proc(t: ^testing.T) {
+	want := sim.mods_with_deps({int(chaingun.ID), int(easy_mode.ID)})
+	both := sim.Mods{int(new_weapons.ID), int(chaingun.ID)}
+	testing.expect_value(t, sim.mods_with_content(want, both), want)
+	testing.expect_value(t, sim.mods_with_content(want, {int(new_weapons.ID)}), want - {int(chaingun.ID)})
+	testing.expect_value(t, sim.mods_with_content(want, {int(chaingun.ID)}), want - both)
+}
+
+// New Weapons as one switch (the lobby's, and an older build's Start
+// flag) brings the Chaingun with it.
+@(test)
+new_weapons_switch_brings_the_chaingun :: proc(t: ^testing.T) {
+	testing.expect_value(t, sim.mods_default_dependants(new_weapons.ID), sim.Mods{int(chaingun.ID)})
+	testing.expect(t, int(chaingun.ID) in game.mods_from_flags(net.START_LOADOUT))
 }

@@ -71,10 +71,15 @@ The presentation effects freeze too, through `sim.session_frozen`.
 
 ### The Chaingun
 
-The Chaingun is `aicg`, with its units in `assets/extra/new_weapons/data`. It is air
-weapon number five and unlocks at stage 7. Its ship is dark grey:
-`pl1k`/`pl2k`, recoloured from the Bacta Gun's green by `tools/recolour`
-(see Content).
+The Chaingun is a plugin of its own, `plugins/chaingun`, which needs New
+Weapons and lists under it on the Mods page, on by default (D49). All of
+it is there: its content in `assets/extra/chaingun`, its recolour recipe
+`tools/recolour/chaingun.json`, its definition key, its firing hook and
+its screenshot scenarios (`MENU=chaingun`, `chaingun_charge`).
+
+The Chaingun is `aicg`. It is air weapon number five and unlocks at
+stage 7. Its ship is dark grey: `pl1k`/`pl2k`, recoloured from the Bacta
+Gun's green by `tools/recolour` (see Content).
 
 - **Standard attack.** A press spawns `cgbs`, a spawner cloned from the
   turrets' `rgbs`. The spawner fires 10 of `cgbu`, the turrets' spinning
@@ -84,9 +89,9 @@ weapon number five and unlocks at stage 7. Its ship is dark grey:
   steps, where the others' is shorter.
 - **Charge attack.** Holding fire charges as the original's weapons do,
   with the ordinary power-up state machine. A weapon marked
-  `x_AimedRelease_BOOL` changes one step: the New Weapons plugin fires
+  `x_AimedRelease_BOOL` changes one step: the Chaingun plugin fires
   each volley through the core's Weapon_Fire hook, `aimed_release_spawn`
-  in `plugins/new_weapons/aimed.odin`. Every release volley:
+  in `plugins/chaingun/aimed.odin`. Every release volley:
   - finds the nearest enemy a player shot could hit;
   - leads it by its current velocity;
   - fires two parallel `cgpb` rounds at that point, 3 px either side of

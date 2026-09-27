@@ -5,6 +5,7 @@ import "core:testing"
 
 import "dr:plugins/accent"
 import accent_view "dr:plugins/accent/view"
+import "dr:plugins/chaingun"
 import "dr:plugins/easy_mode"
 import "dr:plugins/extra_prefs"
 import "dr:plugins/fps_unlock"
@@ -180,11 +181,11 @@ prefs_mods_round_trip_by_name :: proc(t: ^testing.T) {
 	testing.expect_value(t, prefs.parse("mods=").mods, sim.Mods{})
 }
 
-// A new player starts with Accent Color, New Weapons and Netplay on, and
-// what those need.
+// A new player starts with Accent Color, New Weapons, the Chaingun and
+// Netplay on, and what those need.
 @(test)
 prefs_default_mods :: proc(t: ^testing.T) {
-	want := sim.mods_with_deps({int(accent.ID), int(new_weapons.ID), int(netplay_plugin.ID)})
+	want := sim.mods_with_deps({int(accent.ID), int(new_weapons.ID), int(chaingun.ID), int(netplay_plugin.ID)})
 	testing.expect_value(t, prefs.defaults().mods, want)
 	testing.expect_value(t, prefs.parse("").mods, want)
 }
@@ -198,8 +199,8 @@ prefs_legacy_extras_become_mods :: proc(t: ^testing.T) {
 	testing.expect_value(t, prefs.parse("accent_colours=0").mods, defaults - {int(accent.ID)})
 	testing.expect_value(t, prefs.parse("easy_mode=1").mods, sim.mods_with_deps(defaults + {int(easy_mode.ID)}))
 	// Without New Weapons, the loadout it brought stays on: it is a mod of
-	// its own now.
-	testing.expect_value(t, prefs.parse("new_weapons=0").mods, defaults - {int(new_weapons.ID)})
+	// its own now. The Chaingun, which needs it, goes with it.
+	testing.expect_value(t, prefs.parse("new_weapons=0").mods, defaults - {int(new_weapons.ID), int(chaingun.ID)})
 	testing.expect_value(t, prefs.parse("mods=accent\neasy_mode=1").mods, sim.Mods{int(accent.ID)})
 }
 

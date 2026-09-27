@@ -1,4 +1,4 @@
-package new_weapons
+package chaingun
 
 // The Chaingun's charge (a weapon with x_AimedRelease_BOOL, docs/new-weapons.md):
 // new content, not the original's. Where an original weapon's release
@@ -8,9 +8,9 @@ package new_weapons
 
 import "core:math"
 
+import "dr:plugins/new_weapons"
 import "dr:sim"
 import "dr:sim/lifecycle"
-import "dr:sim/systems/collision_system"
 
 // How far either side of the line of fire the two shots of a volley fly.
 // Provisional: picked by eye against the rice sprite's width.
@@ -47,7 +47,7 @@ aimed_target :: proc "contextless" (s: ^sim.State, at: sim.Vec) -> (target: sim.
 	best: f32
 	walk := sim.walk_entities(s)
 	for e in sim.walk_next(&walk) {
-		if !air_shot_can_hit(s, e) {
+		if !new_weapons.air_shot_can_hit(s, e) {
 			continue
 		}
 		if e.loc.x < 0 || e.loc.x > width || e.loc.y < 0 || e.loc.y > height {
@@ -59,15 +59,6 @@ aimed_target :: proc "contextless" (s: ^sim.State, at: sim.Vec) -> (target: sim.
 		}
 	}
 	return
-}
-
-// Whether a player's air shot can hit `e`: the candidates entity_collisions
-// would test a player projectile against, bar the overlap itself.
-air_shot_can_hit :: proc "contextless" (s: ^sim.State, e: sim.Entity) -> bool {
-	if e.deleted || !e.hittable || e.state < 0 || e.appear_delay >= 1 {
-		return false
-	}
-	return sim.prefab_is(s, sim.prefab_of(s, e), collision_system.air_shot_targets)
 }
 
 // Where to aim, relative to the shooter, to meet a target at `offset`

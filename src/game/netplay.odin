@@ -578,7 +578,7 @@ netplay_update_connected :: proc(fl: ^Flow, nl: ^Netplay, r: ^render.Renderer) {
 		}
 		ui.text_button_relabel(r, &nl.weapons_btn, mod_label(nl.mods, new_weapons.ID), WEAPONS_X, EASY_Y)
 		if ui.text_button_update(r, &nl.weapons_btn, mouse, dt) {
-			prefs_mod_toggle(fl.prefs, new_weapons.ID)
+			prefs_mod_toggle_group(fl.prefs, new_weapons.ID)
 		}
 	}
 	if nl.role == .Host {

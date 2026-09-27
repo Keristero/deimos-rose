@@ -8,6 +8,8 @@ package game
 
 import _ "dr:plugins/accent"
 import _ "dr:plugins/accent/view"
+import _ "dr:plugins/chaingun"
+import _ "dr:plugins/chaingun/view"
 import _ "dr:plugins/easy_mode"
 import _ "dr:plugins/easy_mode/view"
 import _ "dr:plugins/extra_prefs"

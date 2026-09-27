@@ -6,6 +6,7 @@ import "core:testing"
 import vmem "core:mem/virtual"
 
 import "dr:data"
+import "dr:plugins/chaingun"
 import "dr:plugins/easy_mode"
 import "dr:plugins/loadout"
 import "dr:plugins/new_weapons"
@@ -656,8 +657,8 @@ beam_leaves_from_the_muzzle :: proc(t: ^testing.T) {
 // one running away can never be caught, and is aimed at directly.
 @(test)
 aimed_shots_meet_a_target_as_fast_as_they_are :: proc(t: ^testing.T) {
-	testing.expect_value(t, new_weapons.aimed_intercept({0, -100}, {0, 10}, 10), sim.Vec{0, -50})
-	testing.expect_value(t, new_weapons.aimed_intercept({0, -100}, {0, -10}, 10), sim.Vec{0, -100})
+	testing.expect_value(t, chaingun.aimed_intercept({0, -100}, {0, 10}, 10), sim.Vec{0, -50})
+	testing.expect_value(t, chaingun.aimed_intercept({0, -100}, {0, -10}, 10), sim.Vec{0, -100})
 }
 
 // Against the shipped weapons.
@@ -996,7 +997,7 @@ aimed_volley_ignores_enemies_off_screen :: proc(t: ^testing.T) {
 	if above.obj == nil || below.obj == nil {
 		return
 	}
-	found, ok := new_weapons.aimed_target(s, at)
+	found, ok := chaingun.aimed_target(s, at)
 	testing.expect(t, ok && found == below, "the mine in view must be the target")
 }
 

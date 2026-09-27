@@ -122,6 +122,31 @@ mods_with_content :: proc "contextless" (mods: Mods, loaded: Mods) -> Mods {
 	return mods_resolve(mods - missing)
 }
 
+// The default-on plugins that need `id`, directly or through others: what
+// a switch that stands for a whole group (the lobby's New Weapons) turns
+// back on with it, where each has no switch of its own.
+mods_default_dependants :: proc "contextless" (id: Plugin_ID) -> Mods {
+	under := Mods{int(id)}
+	for {
+		added := false
+		for p in 1 ..< plugins.count {
+			if p in under || !plugins.items[p].default_on {
+				continue
+			}
+			for dep in plugins.items[p].deps {
+				if d, ok := plugin_find(dep); ok && int(d) in under {
+					under += {p}
+					added = true
+					break
+				}
+			}
+		}
+		if !added {
+			return under - {int(id)}
+		}
+	}
+}
+
 // The session plugins in `mods`: what a Session carries.
 mods_session :: proc "contextless" (mods: Mods) -> (out: Mods) {
 	for id in 1 ..< plugins.count {

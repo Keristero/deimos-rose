@@ -633,7 +633,7 @@ mods_from_flags :: proc(flags: u8) -> sim.Mods {
 		want += {int(easy_mode.ID)}
 	}
 	if flags & net.START_LOADOUT != 0 {
-		want += {int(new_weapons.ID)}
+		want += {int(new_weapons.ID)} + sim.mods_default_dependants(new_weapons.ID)
 	}
 	return sim.mods_session(sim.mods_with_deps(want))
 }

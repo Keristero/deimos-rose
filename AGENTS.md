@@ -274,6 +274,8 @@ The extension points today:
 | effects that live between steps and draw between layers | `effect_system_register` | `render/render_systems.odin` |
 | a screen over the play field | `ui.overlay_register` | `ui/overlays.odin` |
 | a setting on the Extras page | `prefs.setting_register` | `prefs/settings.odin` |
+| records, weapons and sprites of a plugin's own | `assets/extra/<plugin name>`, a recipe in `tools/recolour/`, `content = true` | `data/assets.odin` (D49) |
+| a screenshot scenario (`mise run menu-shot MENU=...`) | `ui.shot_register` | `ui/shots.odin` |
 
 ## Finishing a phase
 

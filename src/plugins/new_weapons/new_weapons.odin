@@ -12,14 +12,15 @@ import "dr:sim"
 // under plugins/loadout.
 //
 // What they do that no original weapon does is here too: the Discharge
-// Beam's instant shot (beam.odin) and the Chaingun's aimed release
-// (aimed.odin), each fired through the core's Weapon_Fire hook for the
-// weapons whose definitions carry this plugin's keys, and drawn by its view.
+// Beam's instant shot (beam.odin), fired through the core's Weapon_Fire
+// hook for the weapons whose definitions carry this plugin's keys, and
+// drawn by its view. A weapon can also be a plugin of its own that needs
+// this one, as the Chaingun is (plugins/chaingun): it lists under New
+// Weapons on the Mods page, and goes when New Weapons does.
 
 ID: sim.Plugin_ID
 
 // Keys on the new weapons' definitions (sim/def_keys.odin).
-AIMED_RELEASE: sim.Weapon_Key // the charge fires aimed volleys at the nearest enemy
 BEAM: sim.Weapon_Key // an instant laser instead of projectiles
 BEAM_DAMAGE, BEAM_WIDTH, BEAM_RELEASE_DAMAGE, BEAM_RELEASE_WIDTH: sim.Weapon_Key
 BEAM_SHRAPNEL, BEAM_SHRAPNEL_COUNT: sim.Weapon_Key
@@ -30,11 +31,6 @@ BEAM_SHOT: sim.Effect_Kind
 @(private = "file")
 is_beam :: proc "contextless" (w: ^sim.Weapon) -> bool {
 	return sim.weapon_bool(w, BEAM)
-}
-
-@(private = "file")
-is_aimed :: proc "contextless" (w: ^sim.Weapon) -> bool {
-	return sim.weapon_bool(w, AIMED_RELEASE)
 }
 
 @(private = "file", rodata)
@@ -53,7 +49,6 @@ register :: proc "contextless" () {
 		content     = true,
 	})
 
-	AIMED_RELEASE = sim.weapon_key_register("x_AimedRelease_BOOL")
 	BEAM = sim.weapon_key_register("x_Beam_BOOL")
 	BEAM_DAMAGE = sim.weapon_key_register("x_BeamDamage_FLOAT")
 	BEAM_WIDTH = sim.weapon_key_register("x_BeamWidth_FLOAT")
@@ -65,5 +60,4 @@ register :: proc "contextless" () {
 	sim.kind_component(.Session, Beam_Log{}, ID)
 
 	sim.weapon_fire_register({plugin = ID, fires = is_beam, shot = beam_shot, release = beam_release})
-	sim.weapon_fire_register({plugin = ID, fires = is_aimed, volley = aimed_release_spawn})
 }
