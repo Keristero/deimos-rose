@@ -4,7 +4,6 @@ package collision_system
 // that gives them to the units and states whose definitions ask for them
 // (sim/prefabs.odin). Their stages ask for them in sim/core.
 
-import "base:runtime"
 import "dr:sim"
 
 // stateCollides: the state can touch players and be hit by shots.
@@ -35,9 +34,7 @@ Blocked_By_Wreckage :: struct {
 	becomes_wreckage: bool,
 }
 
-@(init)
-register_components :: proc "contextless" () {
-	context = runtime.default_context()
+register_components :: proc() {
 	sim.component_register(Collides)
 	sim.component_register(Collides_With_Players)
 	sim.component_register(Harmless_To_Players)
@@ -54,6 +51,11 @@ register_components :: proc "contextless" () {
 	shot_targets = sim.prefab_query_register({Collides, Hittable_By_Player_Shots}, {Harmless_To_Players})
 	ground_based = sim.prefab_query_register({Ground_Based})
 	player_projectile = sim.prefab_query_register({Player_Projectile})
+}
+
+@(init)
+register_components_step :: proc "contextless" () {
+	sim.register_step(.Core, "sim/systems/collision_system register_components", register_components)
 }
 
 // What a player's air shot can hit, bar where it is (FUN_0041b920's tests

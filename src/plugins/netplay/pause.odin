@@ -3,7 +3,6 @@ package netplay_plugin
 // Named apart from its folder: net/ is package netplay, and package names
 // must be unique.
 
-import "base:runtime"
 import _ "dr:sim/core"
 import "dr:sim"
 
@@ -68,9 +67,7 @@ ID: sim.Plugin_ID
 @(private = "file", rodata)
 BEFORE := []string{"step_events"}
 
-@(init)
-register :: proc "contextless" () {
-	context = runtime.default_context()
+register :: proc() {
 	ID = sim.plugin_register({
 		name        = "netplay",
 		label       = "NETPLAY",
@@ -81,4 +78,9 @@ register :: proc "contextless" () {
 	sim.kind_component(.Session, Pause{}, ID)
 	sim.system_register({name = "netplay_pause", before = BEFORE, plugin = ID, kind = .Session, run = pause_system})
 	sim.hold_register({plugin = ID, held = held})
+}
+
+@(init)
+register_step :: proc "contextless" () {
+	sim.register_step(.Plugin, "plugins/netplay register", register)
 }

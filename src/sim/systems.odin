@@ -8,7 +8,7 @@ import "base:intrinsics"
 // name; it is placed by naming the systems it runs after or before
 // (schedule.odin), and otherwise runs in registration order. The original
 // game registers its systems, in the original's order, from dr:sim/core; a
-// plugin registers its own from its own @(init).
+// plugin registers its own from its own registration step.
 //
 // A step's players and entities are processed one at a time, as
 // G_Player::Process and G_EG_Process do: every stage for one, then every
@@ -122,7 +122,7 @@ player_stages: Registry(Player_Stage, MAX_STAGES)
 @(private = "file")
 stages: Registry(Entity_Stage, MAX_STAGES)
 
-// Called from `@(init)` procedures only, like component_register. The
+// Called from registration steps only (sim.register_step), like component_register. The
 // `after` and `before` lists are kept, not copied, so they must outlive the
 // call: package variables, not slice literals, which live on the caller's
 // stack.

@@ -247,7 +247,7 @@ draw without the game:
 | `game` | the flow between screens, the menus, preferences, netplay, `main` |
 
 Each imports only those above it in the table. A plugin's view registers
-what it draws from its `@(init)`, through three registries:
+what it draws from its registration step, through three registries:
 - **render systems** (`render.render_system_register`): Accent Color's
   Self Outline;
 - **overlays** (`ui.overlay_register`), drawn over the play field after
@@ -275,7 +275,8 @@ string.
 ### Plugins (D40)
 
 Each plugin is a folder under `plugins/` that registers itself, its
-components, its systems and its hooks from an `@(init)` procedure:
+components, its systems and its hooks from a registration step, which
+its `@(init)` names (D50):
 
 | Plugin | Needs | In the session | On by default |
 |---|---|---|---|
@@ -362,6 +363,21 @@ Weapons, or the passives alone, reaches the guest as the host has it.
 The flags are still sent, so a build that reads only them sees what it
 did before. A Start from such a build has no mods, and the game makes
 them from its flags (`mods_from_flags`).
+
+### Registration order and the build check (D50)
+
+A Windows guest of a Linux host crashed when the reward screen opened,
+because the Windows build ran the packages' `@(init)` procedures in
+another order. It numbered the plugins and components differently, so
+the host's mods meant other plugins to the guest. An `@(init)` now only
+names a step (`sim.register_step`). `sim.register_all` runs the steps by
+stage and name, first thing in every `main` and in the tests' set-up.
+Peers compare `sim.registration_hash` in their Hello, and refuse another
+build. A snapshot that does not read now ends the connection instead of
+playing on. `mise run netplay:level-end` plays two instances to the
+reward screen, headless and silent. `DR_NETPLAY_END` is the launch flag
+behind it: each side readies itself, the host turns Easy Mode on, and
+the level starts that many steps before its end.
 
 ## Verification
 
@@ -456,6 +472,11 @@ none of the four demos reaches them:
   of it, and [Coverage](#coverage) lists the readings worth checking.
 - **A session with the passives but not Easy Mode** has no way to earn a
   passive. It runs, and is the same as neither.
+- **Registration order is unproven on Windows itself.** The Windows
+  build is not linked locally (D27). The fix is shown by construction
+  and on Linux, where `netplay:level-end` passes and refuses v166 in
+  either seat. A release's Windows build joining a Linux host will show
+  it.
 - **The new Start is untested between two builds** and on two machines,
   as is all of Phase 6 stage 6. On one machine,
   `tools/netplay/loopback_check.sh` and `reconnect_check.sh` pass; running

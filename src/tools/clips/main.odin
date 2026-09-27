@@ -46,6 +46,8 @@ STEPS :: 145
 SEED :: 0x1234_5678
 
 main :: proc() {
+	// Every registry filled, in the same order on every platform.
+	sim.register_all()
 	if len(os.args) < 4 {
 		fmt.eprintln("usage: clips <assets root> <out dir> <weapon id>...")
 		os.exit(2)

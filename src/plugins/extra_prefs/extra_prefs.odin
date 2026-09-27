@@ -1,6 +1,5 @@
 package extra_prefs
 
-import "base:runtime"
 import "dr:sim"
 
 // A page of preferences the original does not have, where the other plugins
@@ -8,12 +7,15 @@ import "dr:sim"
 
 ID: sim.Plugin_ID
 
-@(init)
-register :: proc "contextless" () {
-	context = runtime.default_context()
+register :: proc() {
 	ID = sim.plugin_register({
 		name        = "extra_prefs",
 		label       = "EXTRA PREFERENCES",
 		description = "A page of settings for the other mods",
 	})
+}
+
+@(init)
+register_step :: proc "contextless" () {
+	sim.register_step(.Plugin, "plugins/extra_prefs register", register)
 }

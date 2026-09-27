@@ -196,6 +196,8 @@ Shared :: struct {
 }
 
 main :: proc() {
+	// Every registry filled, in the same order on every platform.
+	sim.register_all()
 	if len(os.args) < 3 {
 		fmt.eprintln("usage: dps <assets root> <out dir> [-seconds:N] [-stage:N] [-threads:N] [-weapon:NAME]")
 		os.exit(2)

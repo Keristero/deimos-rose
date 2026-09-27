@@ -740,8 +740,9 @@ odecs was not written for rollback, so the sim uses it under three rules:
 notes/ecs-refactor.md splits new content into plugins, each in a folder of
 its own under `plugins/`, with dependencies between them. A plugin
 registers itself (`sim.plugin_register`), its components, its systems and
-its hooks from an `@(init)` procedure. A plugin's ID is its place in the
-registry, and a set of plugins is `sim.Mods`, a 32-bit set.
+its hooks from an `@(init)` procedure (a registration step since D50). A
+plugin's ID is its place in the registry, and a set of plugins is
+`sim.Mods`, a 32-bit set.
 
 - **A plugin is on only while everything it needs is.** `mods_resolve`
   drops the rest. The Mods page turns dependencies on with a plugin, and
@@ -1021,3 +1022,58 @@ by no more than two runs of one build differ from each other.
 The Discharge Beam could follow the same pattern, leaving New Weapons
 as the shared part: the loadout hand-over, the targets and the beam's
 effect queue if a second weapon ever wants it.
+
+### D50 — Registration runs in a fixed order, and peers compare builds
+
+A Windows player joining a Linux host crashed when Easy Mode's reward
+screen opened at the end of the first level, and again on rejoining.
+Both machines ran v0.1.166. The cause was the order the packages'
+`@(init)` procedures ran in. Odin runs a package's after those of the
+packages it imports, but orders unrelated packages differently for
+different targets. The Linux and Windows objects of one commit, compiled
+with `-build-mode:obj`, call them in different orders:
+
+- the components: movement, entity, collision on Linux; collision,
+  entity, movement on Windows (with winsock's start-up between them);
+- the plugins: passives 4, netplay 5, Easy Mode 6, Loadout 7 on Linux;
+  netplay 4, passives 5, Loadout 6, Easy Mode 7 on Windows.
+
+Every registry hands out ids in the order it fills: plugins, components,
+effect kinds, weapon keys and prefab queries. It also breaks ties
+between systems by that order, and the state keeps the schedule as
+indexes into the registries. So a Linux host's mods meant other plugins
+to a Windows guest. The host's Easy Mode was the guest's Loadout, and
+the guest had no reward screen for the host's to hold. On rejoining, the
+guest's catalog check refused the host's snapshot ("the game state
+received is not from this build"). The guest played on without a world
+and page-faulted. That was reproduced: a Windows v166 build under Wine
+rejoined a Linux v166 host held at the reward screen. The Linux release
+rejoined the same host cleanly.
+
+- **An `@(init)` only names a step.** `sim.register_step(stage, name,
+  proc)` records it, and `sim.register_all`, first thing in every
+  `main` and in the tests' set-up, runs the steps by stage (core,
+  plugins, presentation, views), then by name. A view runs after every
+  plugin, so it may read its plugin's ids. A plugin's step reads
+  nothing another plugin registers. `sim.init` asserts that
+  registration ran. The order no longer depends on the compiler, so a
+  plugin's id follows its name (`plugins_ids_follow_their_names`).
+- **Peers compare builds in their Hello.** `sim.registration_hash`
+  digests the catalog, the plugins, the systems, the stages and the
+  weapon keys, in id order. The Hello carries it after the name, where
+  older builds ignore it. A host that meets another build answers with
+  its own Hello and waits for a peer it can play with. A guest that
+  meets one returns to the lobby menu saying "the host runs a different
+  version of the game". An older build sends no digest and is refused
+  the same way.
+- **A snapshot that does not read ends the connection.** Before, the
+  resync logged the failure and played on.
+
+Saved preferences name their mods, so the new ids leave them as they
+were. The golden fingerprints are unchanged, and the Chaingun's
+`dps:report` page is byte-identical. `mise run netplay:level-end` plays
+two instances to the reward screen headlessly. `HOST_BIN` or `GUEST_BIN`
+runs one side on another build: v166 as the host is refused by the new
+guest, and v166 as the guest by the new host. A Windows build is not
+linked locally (D27), so the fix is unproven on Windows itself until a
+release's Windows build joins a Linux host.

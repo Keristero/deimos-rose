@@ -28,6 +28,8 @@ mix :: proc(h: ^u64, v: u64) {
 }
 
 main :: proc() {
+	// Every registry filled, in the same order on every platform.
+	sim.register_all()
 	r := sim.rand_init(0x5EED)
 	h: u64 = 0xcbf29ce484222325
 	for i in 0 ..< 20_000 {

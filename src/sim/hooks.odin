@@ -2,7 +2,7 @@ package sim
 
 // Hooks: the few places the core asks the plugins that are on for an
 // answer mid-step, where a system of their own could not come in between.
-// Each is registered from an @(init) procedure with the plugin it belongs
+// Each is registered from a registration step with the plugin it belongs
 // to, and consulted only when that plugin runs in the session; with none
 // on, every one answers as the original game does.
 

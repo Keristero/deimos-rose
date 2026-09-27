@@ -4,17 +4,19 @@ package weapon_system
 // builder that gives them to the units and states whose definitions ask for
 // them (sim/prefabs.odin).
 
-import "base:runtime"
 import "dr:sim"
 
 // stateIsTargetable: a ground unit in the state that a player's shots can
 // hit can be locked by a ground crosshair (sim/core has its query).
 Targetable :: struct {}
 
-@(init)
-register_components :: proc "contextless" () {
-	context = runtime.default_context()
+register_components :: proc() {
 	sim.component_register(Targetable)
+}
+
+@(init)
+register_components_step :: proc "contextless" () {
+	sim.register_step(.Core, "sim/systems/weapon_system register_components", register_components)
 }
 
 weapon_prefab :: proc(p: sim.Prefab, u: ^sim.Unit, st: ^sim.Unit_State) {

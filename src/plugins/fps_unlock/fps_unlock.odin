@@ -1,6 +1,5 @@
 package fps_unlock
 
-import "base:runtime"
 // Imported for its registration: a dependency is always in the build.
 import _ "dr:plugins/extra_prefs"
 import "dr:sim"
@@ -13,13 +12,16 @@ ID: sim.Plugin_ID
 @(private = "file", rodata)
 DEPS := []string{"extra_prefs"}
 
-@(init)
-register :: proc "contextless" () {
-	context = runtime.default_context()
+register :: proc() {
 	ID = sim.plugin_register({
 		name        = "fps_unlock",
 		label       = "30FPS UNLOCK",
 		description = "Smoother motion at your display's refresh rate",
 		deps        = DEPS,
 	})
+}
+
+@(init)
+register_step :: proc "contextless" () {
+	sim.register_step(.Plugin, "plugins/fps_unlock register", register)
 }

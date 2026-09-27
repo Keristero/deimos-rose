@@ -36,7 +36,7 @@ Shot :: struct {
 @(private = "file")
 shots: sim.Registry(Shot, MAX_SHOTS)
 
-// Called from `@(init)` procedures only; `phases` must outlive the call.
+// Called from registration steps only (sim.register_step); `phases` must outlive the call.
 shot_register :: proc(sh: Shot) {
 	sim.registry_add(&shots, sh)
 }

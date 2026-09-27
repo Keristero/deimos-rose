@@ -13,7 +13,6 @@ package new_weapons_view
 //
 // Provisional: every size and colour here was picked by eye.
 
-import "base:runtime"
 
 import rl "vendor:raylib"
 
@@ -34,9 +33,7 @@ live: [dynamic]Beam_Fx
 // The layer the air enemies are drawn in; the ships are in the next.
 @(private = "file") AIR_LAYER :: 8
 
-@(init)
-register :: proc "contextless" () {
-	context = runtime.default_context()
+register :: proc() {
 	render.effect_system_register({
 		name   = "beams",
 		plugin = new_weapons.ID,
@@ -45,6 +42,11 @@ register :: proc "contextless" () {
 		layer  = AIR_LAYER,
 		clear  = beams_clear,
 	})
+}
+
+@(init)
+register_step :: proc "contextless" () {
+	sim.register_step(.View, "plugins/new_weapons/view register", register)
 }
 
 @(private = "file")

@@ -1,6 +1,5 @@
 package core
 
-import "base:runtime"
 import "dr:sim"
 import "dr:sim/systems/weapon_system"
 import "dr:sim/systems/player_system"
@@ -22,10 +21,7 @@ import "dr:sim/systems/background_system"
 // the package that owns it. Plugins place their systems against these by
 // name (sim/schedule.odin).
 
-@(init)
-register :: proc "contextless" () {
-	context = runtime.default_context()
-
+register :: proc() {
 	// A session's set-up, G_Game_Play's: the seed, then both players, then
 	// the first level. The world comes built, every entity with its
 	// components and the session plugins' (sim/ecs.odin).
@@ -104,6 +100,11 @@ register :: proc "contextless" () {
 	})
 	sim.entity_stage_register({name = "ground_obstacles", with = {collision_system.Blocked_By_Wreckage}, run = collision_system.ground_obstacles_stage})
 	sim.entity_stage_register({name = "shot_collisions", with = {collision_system.Collides, collision_system.Harmless_To_Players}, run = collision_system.shot_collisions_stage})
+}
+
+@(init)
+register_step :: proc "contextless" () {
+	sim.register_step(.Core, "sim/core register", register)
 }
 
 // srand(seed).

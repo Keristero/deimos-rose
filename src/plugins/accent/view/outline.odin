@@ -3,17 +3,19 @@ package accent_view
 // Self Outline: the local player's ship ringed in its accent, a render
 // system of the Accent Color plugin's, drawn only while the plugin is on.
 
-import "base:runtime"
 
 import "dr:plugins/accent"
 import "dr:render"
 import "dr:sim"
 
-@(init)
-register_outline :: proc "contextless" () {
-	context = runtime.default_context()
+register_outline :: proc() {
 	// Under the local player's ship, so ahead of it.
 	render.render_system_register({name = "outline", before = OUTLINE_BEFORE, plugin = accent.ID, run = outline_render})
+}
+
+@(init)
+register_outline_step :: proc "contextless" () {
+	sim.register_step(.View, "plugins/accent/view register_outline", register_outline)
 }
 
 @(private = "file", rodata)

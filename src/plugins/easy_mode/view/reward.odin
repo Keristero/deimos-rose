@@ -14,7 +14,6 @@ package easy_mode_view
 // are on: every stat it changes at the level it would give them, current
 // value to new.
 
-import "base:runtime"
 import "core:fmt"
 
 import rl "vendor:raylib"
@@ -71,10 +70,13 @@ window_rect :: proc(r: rl.Rectangle) -> rl.Rectangle {
 	return {r.x * render.WINDOW_SCALE, r.y * render.WINDOW_SCALE, r.width * render.WINDOW_SCALE, r.height * render.WINDOW_SCALE}
 }
 
-@(init)
-register_reward_view :: proc "contextless" () {
-	context = runtime.default_context()
+register_reward_view :: proc() {
 	ui.overlay_register({name = "reward", plugin = easy_mode.ID, draw = reward_draw})
+}
+
+@(init)
+register_reward_view_step :: proc "contextless" () {
+	sim.register_step(.View, "plugins/easy_mode/view register_reward_view", register_reward_view)
 }
 
 reward_draw :: proc(r: ^render.Renderer, s: ^sim.State, names: ^ui.Player_Names) {

@@ -10,7 +10,6 @@ package sim
 // uses them. The players' are in components_player.odin, and the entity
 // pool's and the groups' in components_entity.odin.
 
-import "base:runtime"
 
 // Game time and session time.
 Clock :: struct {
@@ -54,9 +53,7 @@ Game_Status :: struct {
 	game_over_notice:     bool,
 }
 
-@(init)
-register_core_components :: proc "contextless" () {
-	context = runtime.default_context()
+register_core_components :: proc() {
 	// Singletons, on the session entity only.
 	kind_component(.Session, Clock{})
 	kind_component(.Session, Rng{})
@@ -90,6 +87,11 @@ register_core_components :: proc "contextless" () {
 	kind_component(.Pool, Link{})
 	kind_component(.Group, Group{})
 	kind_component(.Group, Link{})
+}
+
+@(init)
+register_core_components_step :: proc "contextless" () {
+	register_step(.Core, "sim register_core_components", register_core_components)
 }
 
 // The session's T; nil for a plugin's that is off.

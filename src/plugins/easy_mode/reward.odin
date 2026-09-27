@@ -1,6 +1,5 @@
 package easy_mode
 
-import "base:runtime"
 import "dr:plugins/passives"
 import _ "dr:sim/core"
 import "dr:sim"
@@ -247,9 +246,7 @@ SCREEN_BEFORE := []string{"step_events"}
 @(private = "file", rodata)
 OPEN_BEFORE := []string{"level_transition"}
 
-@(init)
-register :: proc "contextless" () {
-	context = runtime.default_context()
+register :: proc() {
 	ID = sim.plugin_register({
 		name        = "easy_mode",
 		label       = "EASY MODE",
@@ -268,4 +265,9 @@ register :: proc "contextless" () {
 	})
 	sim.system_register({name = "reward_open", before = OPEN_BEFORE, plugin = ID, kind = .Session, run = open_system})
 	sim.hold_register({plugin = ID, held = held})
+}
+
+@(init)
+register_step :: proc "contextless" () {
+	sim.register_step(.Plugin, "plugins/easy_mode register", register)
 }

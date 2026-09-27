@@ -1,6 +1,5 @@
 package tests
 
-import "base:runtime"
 import "core:testing"
 
 import "dr:plugins/fps_unlock"
@@ -43,9 +42,8 @@ Test_Empty_Array :: struct {
 
 Test_Tag :: struct {}
 
-@(init)
-register_test_components :: proc "contextless" () {
-	context = runtime.default_context()
+// Called from setup.odin, after the build\'s own registration.
+register_test_components :: proc() {
 	// On every pool entity in a session with 30FPS Unlock, which no real
 	// session names: something padded to scribble on.
 	sim.kind_component(.Pool, Test_Padded{}, fps_unlock.ID)

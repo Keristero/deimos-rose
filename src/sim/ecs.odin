@@ -67,9 +67,10 @@ component_slot :: #force_inline proc "contextless" ($T: typeid) -> ^i32 {
 	return &id
 }
 
-// Adds T to the catalog. Called from `@(init)` procedures only, the sim's
-// own and each plugin's, so the catalog is complete and fixed before any
-// world exists, and ids are the same in every world of the process.
+// Adds T to the catalog. Called from registration steps only
+// (register_step), the sim's own and each plugin's, so the catalog is
+// complete and fixed before any world exists, and ids are the same in every
+// world of the process and on every platform.
 //
 // T must be plain data: a snapshot copies its bytes, so a pointer, slice,
 // string or map would copy an address, not a value.
@@ -249,7 +250,7 @@ start_values: [1024]u128
 start_used: int
 
 // Gives every entity of `kind` a T, starting as `value`, in a session with
-// `plugin` on. Called from `@(init)` procedures only, like
+// `plugin` on. Called from registration steps only (sim.register_step), like
 // component_register, which it does for T.
 kind_component :: proc(kind: Kind, value: $T, plugin := CORE) {
 	component_register(T)

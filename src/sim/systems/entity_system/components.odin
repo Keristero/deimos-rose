@@ -7,7 +7,6 @@ package entity_system
 // give the behaviour to a unit or state the definitions never gave it. A
 // tag, with no fields, is a behaviour with nothing to set.
 
-import "base:runtime"
 import "dr:sim"
 
 // stateParticles_*: a burst of particles on entering the state, or one
@@ -57,9 +56,7 @@ Motion_Blur :: struct {
 	allow_glow:         bool,
 }
 
-@(init)
-register_components :: proc "contextless" () {
-	context = runtime.default_context()
+register_components :: proc() {
 	sim.component_register(Emits_Particles)
 	sim.component_register(Entry_Sound)
 	sim.component_register(Follows_Rules)
@@ -67,6 +64,11 @@ register_components :: proc "contextless" () {
 	sim.component_register(Pauses_Scrolling)
 	sim.component_register(Destructs_While_Scrolling)
 	sim.component_register(Motion_Blur)
+}
+
+@(init)
+register_components_step :: proc "contextless" () {
+	sim.register_step(.Core, "sim/systems/entity_system register_components", register_components)
 }
 
 // A state's components, from the flags its definition sets. Each test is

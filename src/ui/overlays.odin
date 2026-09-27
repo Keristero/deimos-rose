@@ -24,7 +24,7 @@ Overlay :: struct {
 @(private = "file")
 overlays: sim.Registry(Overlay, MAX_OVERLAYS)
 
-// Called from `@(init)` procedures only.
+// Called from registration steps only (sim.register_step).
 overlay_register :: proc(o: Overlay) {
 	sim.registry_add(&overlays, o)
 }

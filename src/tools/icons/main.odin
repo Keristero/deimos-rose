@@ -56,6 +56,8 @@ Recipe :: struct {
 }
 
 main :: proc() {
+	// Every registry filled, in the same order on every platform.
+	sim.register_all()
 	if len(os.args) != 4 {
 		fmt.eprintln("usage: icons <recipe.json> <assets root> <out dir>")
 		os.exit(2)

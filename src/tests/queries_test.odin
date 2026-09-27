@@ -1,6 +1,5 @@
 package tests
 
-import "base:runtime"
 import "core:log"
 import vmem "core:mem/virtual"
 import "core:os"
@@ -29,9 +28,8 @@ MINE :: sim.Res_ID{'m', 'i', 'n', 'e'}
 @(private = "file")
 player_stage_runs: [sim.MAX_PLAYERS]int
 
-@(init)
-register_query_tests :: proc "contextless" () {
-	context = runtime.default_context()
+// Called from setup.odin, after the build\'s own registration.
+register_query_tests :: proc() {
 	sim.component_register(Test_Mark)
 	sim.prefab_builder_register({
 		name = "test_queries",

@@ -1,6 +1,5 @@
 package loadout
 
-import "base:runtime"
 // Imported for its registration: a dependency is always in the build.
 import _ "dr:plugins/extra_prefs"
 import _ "dr:sim/core"
@@ -446,9 +445,7 @@ OPEN_AFTER := []string{"reward_open"}
 @(private = "file", rodata)
 OPEN_BEFORE := []string{"level_transition"}
 
-@(init)
-register :: proc "contextless" () {
-	context = runtime.default_context()
+register :: proc() {
 	ID = sim.plugin_register({
 		name        = "loadout",
 		label       = "LOADOUT",
@@ -480,4 +477,9 @@ register :: proc "contextless" () {
 	})
 	sim.hold_register({plugin = ID, held = held})
 	sim.weapon_chooser_register({plugin = ID, new_game = loadout_new_game, next = loadout_next})
+}
+
+@(init)
+register_step :: proc "contextless" () {
+	sim.register_step(.Plugin, "plugins/loadout register", register)
 }

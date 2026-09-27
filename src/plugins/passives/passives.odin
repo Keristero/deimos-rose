@@ -16,7 +16,6 @@ package passives
 // gives a player a passive: easy mode's reward screen (plugins/easy_mode)
 // does.
 
-import "base:runtime"
 
 // Imported for its registration: a dependency is always in the build.
 import _ "dr:plugins/extra_prefs"
@@ -368,9 +367,7 @@ DEPS := []string{"extra_prefs"}
 @(private = "file", rodata)
 BEFORE_CALM := []string{"calm"}
 
-@(init)
-register :: proc "contextless" () {
-	context = runtime.default_context()
+register :: proc() {
 	ID = sim.plugin_register({
 		name        = "passives",
 		label       = "PASSIVE UPGRADES",
@@ -385,4 +382,9 @@ register :: proc "contextless" () {
 	sim.player_stage_register({name = "shield_regen", before = BEFORE_CALM, plugin = ID, run = shield_regen_stage})
 	sim.player_stage_register({name = "risky_reward", before = BEFORE_CALM, plugin = ID, run = risky_reward_stage})
 	sim.stat_provider_register({plugin = ID, total = provide, shapes = shapes})
+}
+
+@(init)
+register_step :: proc "contextless" () {
+	sim.register_step(.Plugin, "plugins/passives register", register)
 }

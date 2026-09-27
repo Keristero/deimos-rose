@@ -1,6 +1,5 @@
 package tests
 
-import "base:runtime"
 import "core:testing"
 
 import "dr:plugins/new_weapons"
@@ -151,9 +150,8 @@ Test_Effect :: struct {
 @(private = "file")
 TEST_EFFECT: sim.Effect_Kind
 
-@(init)
-register_test_effect :: proc "contextless" () {
-	context = runtime.default_context()
+// Called from setup.odin, after the build\'s own registration.
+register_test_effect :: proc() {
 	TEST_EFFECT = sim.effect_kind_register(Test_Effect)
 }
 

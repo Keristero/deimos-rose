@@ -1,6 +1,5 @@
 package tests
 
-import "base:runtime"
 import "core:testing"
 
 import "dr:plugins/fps_unlock"
@@ -20,9 +19,8 @@ Test_Prefab_Tag :: struct {}
 @(private = "file")
 particles_without_rules: sim.Prefab_Query
 
-@(init)
-register_test_prefab :: proc "contextless" () {
-	context = runtime.default_context()
+// Called from setup.odin, after the build\'s own registration.
+register_test_prefab :: proc() {
 	sim.component_register(Test_Prefab_Tag)
 	sim.prefab_builder_register({
 		name = "test_prefab",

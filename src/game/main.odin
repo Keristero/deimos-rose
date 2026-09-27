@@ -23,6 +23,8 @@ import "dr:ui"
 MAX_STEPS_PER_FRAME :: 4
 
 main :: proc() {
+	// Every registry filled, in the same order on every platform.
+	sim.register_all()
 	settings := settings_parse(os.args)
 	// Saved preferences, with this run's launch flags layered on top.
 	// Headless captures use the defaults instead, so a player's own

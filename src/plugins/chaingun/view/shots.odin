@@ -7,7 +7,6 @@ package chaingun_view
 // - chaingun: the burst a moment after a press;
 // - chaingun_charge: the aimed volleys a moment after a charge is let go.
 
-import "base:runtime"
 
 import "dr:plugins/chaingun"
 import "dr:plugins/loadout"
@@ -33,9 +32,12 @@ TAP := []ui.Shot_Phase{{4, {{.Fire_Air}, {}}}, {6, {}}}
 @(private = "file", rodata)
 CHARGE := []ui.Shot_Phase{{70, {{.Fire_Air}, {}}}, {12, {}}}
 
-@(init)
-register_shots :: proc "contextless" () {
-	context = runtime.default_context()
+register_shots :: proc() {
 	ui.shot_register({name = "chaingun", plugin = chaingun.ID, level = 6, setup = chaingun_shot, phases = TAP})
 	ui.shot_register({name = "chaingun_charge", plugin = chaingun.ID, level = 6, setup = chaingun_shot, phases = CHARGE})
+}
+
+@(init)
+register_shots_step :: proc "contextless" () {
+	sim.register_step(.View, "plugins/chaingun/view register_shots", register_shots)
 }

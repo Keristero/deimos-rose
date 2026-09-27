@@ -1,7 +1,8 @@
 package game
 
 // The plugins in this build, each with its view package where it has one.
-// Importing a package is what registers it (its `@(init)`), and the game
+// Importing a package is what registers it (the step its `@(init)` names
+// for sim.register_all), and the game
 // names no plugin's screen or effect itself: each view registers its own
 // render systems, overlays, effects and settings. A plugin is added to the
 // build by adding it here.

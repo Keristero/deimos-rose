@@ -10,7 +10,6 @@ package render
 // Every draw only appends to its own layer's list, and present draws the
 // layers in order, so what the order decides is the order within a layer.
 
-import "base:runtime"
 
 import "dr:sim"
 
@@ -36,7 +35,7 @@ Render_System :: struct {
 @(private = "file")
 render_systems: sim.Registry(Render_System, MAX_RENDER_SYSTEMS)
 
-// Called from `@(init)` procedures only, like sim.system_register, and as
+// Called from registration steps only (sim.register_step), like sim.system_register, and as
 // there the `after` and `before` lists must outlive the call: package
 // variables, not slice literals, which live on the caller's stack.
 render_system_register :: proc(sys: Render_System) {
@@ -72,9 +71,7 @@ run_render_systems :: proc(r: ^Renderer, s: ^sim.State, f: ^Frame) {
 	}
 }
 
-@(init)
-register_core_render_systems :: proc "contextless" () {
-	context = runtime.default_context()
+register_core_render_systems :: proc() {
 	render_system_register({name = "layers_clear", run = layers_clear_render})
 	render_system_register({name = "terrain", run = terrain_render})
 	render_system_register({name = "scorebar", run = scorebar_render})
@@ -83,6 +80,11 @@ register_core_render_systems :: proc "contextless" () {
 	render_system_register({name = "players", run = players_render})
 	render_system_register({name = "blurs", run = blurs_render})
 	render_system_register({name = "notices", run = notices_render})
+}
+
+@(init)
+register_core_render_systems_step :: proc "contextless" () {
+	sim.register_step(.Presentation, "render register_core_render_systems", register_core_render_systems)
 }
 
 @(private = "file")
@@ -222,7 +224,7 @@ Effect_System :: struct {
 @(private = "file")
 effect_systems: sim.Registry(Effect_System, MAX_EFFECT_SYSTEMS)
 
-// Called from `@(init)` procedures only.
+// Called from registration steps only (sim.register_step).
 effect_system_register :: proc(sys: Effect_System) {
 	sim.registry_add(&effect_systems, sys)
 }

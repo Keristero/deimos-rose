@@ -28,7 +28,7 @@ Effect_Queue :: struct {
 @(private = "file")
 effect_kinds: Registry(typeid, MAX_EFFECT_KINDS)
 
-// Called from `@(init)` procedures only.
+// Called from registration steps only (sim.register_step).
 effect_kind_register :: proc($T: typeid) -> Effect_Kind {
 	#assert(size_of(T) <= EFFECT_BYTES, "an effect event's value is at most EFFECT_BYTES")
 	return Effect_Kind(registry_add(&effect_kinds, T))

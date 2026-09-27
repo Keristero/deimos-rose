@@ -4,7 +4,6 @@ package movement_system
 // that gives them to the units and states whose definitions ask for them
 // (sim/prefabs.odin). Their stages ask for them in sim/core.
 
-import "base:runtime"
 import "dr:sim"
 
 // stateDeleteOnNoActivePlayers: deleted when no player is in play.
@@ -33,9 +32,7 @@ Locked_To_Owner :: struct {}
 Linked_To_Owner :: struct {}
 Orbits_Owner :: struct {}
 
-@(init)
-register_components :: proc "contextless" () {
-	context = runtime.default_context()
+register_components :: proc() {
 	sim.component_register(Deleted_Without_Players)
 	sim.component_register(Destructs_Without_Players)
 	sim.component_register(Flees_Without_Players)
@@ -44,6 +41,11 @@ register_components :: proc "contextless" () {
 	sim.component_register(Locked_To_Owner)
 	sim.component_register(Linked_To_Owner)
 	sim.component_register(Orbits_Owner)
+}
+
+@(init)
+register_components_step :: proc "contextless" () {
+	sim.register_step(.Core, "sim/systems/movement_system register_components", register_components)
 }
 
 // A state's components, from the flags its unit's and its own definitions

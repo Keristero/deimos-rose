@@ -8,7 +8,6 @@ package easy_mode_view
 // both players are on the first option, player 1 locked, so the borders
 // nest.
 
-import "base:runtime"
 
 import "dr:plugins/easy_mode"
 import "dr:plugins/passives"
@@ -32,9 +31,12 @@ reward_shot :: proc(s: ^sim.State, name: string) -> string {
 	return ""
 }
 
-@(init)
-register_reward_shots :: proc "contextless" () {
-	context = runtime.default_context()
+register_reward_shots :: proc() {
 	ui.shot_register({name = "reward", plugin = easy_mode.ID, setup = reward_shot})
 	ui.shot_register({name = "reward_2p", plugin = easy_mode.ID, co_op = true, setup = reward_shot})
+}
+
+@(init)
+register_reward_shots_step :: proc "contextless" () {
+	sim.register_step(.View, "plugins/easy_mode/view register_reward_shots", register_reward_shots)
 }

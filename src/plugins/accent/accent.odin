@@ -1,6 +1,5 @@
 package accent
 
-import "base:runtime"
 // Imported for its registration: a dependency is always in the build.
 import _ "dr:plugins/extra_prefs"
 import "dr:sim"
@@ -14,9 +13,7 @@ ID: sim.Plugin_ID
 @(private = "file", rodata)
 DEPS := []string{"extra_prefs"}
 
-@(init)
-register :: proc "contextless" () {
-	context = runtime.default_context()
+register :: proc() {
 	ID = sim.plugin_register({
 		name        = "accent",
 		label       = "ACCENT COLOR",
@@ -24,4 +21,9 @@ register :: proc "contextless" () {
 		deps        = DEPS,
 		default_on  = true,
 	})
+}
+
+@(init)
+register_step :: proc "contextless" () {
+	sim.register_step(.Plugin, "plugins/accent register", register)
 }

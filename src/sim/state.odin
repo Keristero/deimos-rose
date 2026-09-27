@@ -99,6 +99,7 @@ unported :: proc "contextless" (s: ^State, site: Site) {
 // The state's world is kept for the next session, put back to its start
 // values, while the plugins stay the same; destroy frees it.
 init :: proc(s: ^State, session: Session, defs: ^Defs, log: ^Draw_Log = nil, events: ^Event_Log = nil) {
+	assert(registered(), "sim: register_all has not run; call it first thing in main")
 	world, prefabs := s.ecs, s.prefabs
 	s^ = State{}
 	if world != nil && world.mods == session.mods {

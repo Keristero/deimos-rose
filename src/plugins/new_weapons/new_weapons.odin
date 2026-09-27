@@ -1,6 +1,5 @@
 package new_weapons
 
-import "base:runtime"
 // Imported for their registration: a dependency is always in the build.
 import _ "dr:plugins/extra_prefs"
 import _ "dr:plugins/loadout"
@@ -36,9 +35,7 @@ is_beam :: proc "contextless" (w: ^sim.Weapon) -> bool {
 @(private = "file", rodata)
 DEPS := []string{"extra_prefs", "loadout"}
 
-@(init)
-register :: proc "contextless" () {
-	context = runtime.default_context()
+register :: proc() {
 	ID = sim.plugin_register({
 		name        = "new_weapons",
 		label       = "NEW WEAPONS",
@@ -60,4 +57,9 @@ register :: proc "contextless" () {
 	sim.kind_component(.Session, Beam_Log{}, ID)
 
 	sim.weapon_fire_register({plugin = ID, fires = is_beam, shot = beam_shot, release = beam_release})
+}
+
+@(init)
+register_step :: proc "contextless" () {
+	sim.register_step(.Plugin, "plugins/new_weapons register", register)
 }

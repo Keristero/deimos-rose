@@ -33,6 +33,8 @@ best :: proc(ds: []time.Duration) -> time.Duration {
 }
 
 main :: proc() {
+	// Every registry filled, in the same order on every platform.
+	sim.register_all()
 	arena: vmem.Arena
 	_ = vmem.arena_init_growing(&arena)
 	context.allocator = vmem.arena_allocator(&arena)

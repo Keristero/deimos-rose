@@ -179,6 +179,8 @@ Netplay :: struct {
 	warned_desync: bool,
 	// Whether play was held (sim.session_frozen) last step, for the log.
 	was_held:      bool,
+	// A peer of another build was refused: said once, not per resent Hello.
+	refused:       bool,
 
 	// Phase 8 stage 3/4: pause on disconnect + reconnect.
 	link_state:     Link_State,
@@ -553,7 +555,7 @@ netplay_join :: proc(nl: ^Netplay, text: string) {
 	nl.role = .Guest
 	nl.peer, nl.have_peer = ep, true
 	net.reliable_init(&nl.rc, ep)
-	net.send_hello(&nl.rc, &nl.sock, 1, u16(nl.local_hue), prefs.name_string(&nl.local_name)) // guest is always player 1; see netplay_start_hosting/netplay_poll for the host's player 0
+	net.send_hello(&nl.rc, &nl.sock, 1, u16(nl.local_hue), prefs.name_string(&nl.local_name), sim.registration_hash()) // guest is always player 1; see netplay_start_hosting/netplay_poll for the host's player 0
 	nl.sent_own_hello = true
 	nl.phase = .Connecting
 	nl.error = ""
@@ -641,7 +643,7 @@ netplay_update_connected :: proc(fl: ^Flow, nl: ^Netplay, r: ^render.Renderer) {
 	if !nl.rc.pending {
 		if nl.hue_dirty {
 			nl.hue_dirty = false
-			net.send_hello(&nl.rc, &nl.sock, nl.role == .Host ? 0 : 1, u16(nl.local_hue), prefs.name_string(&nl.local_name))
+			net.send_hello(&nl.rc, &nl.sock, nl.role == .Host ? 0 : 1, u16(nl.local_hue), prefs.name_string(&nl.local_name), sim.registration_hash())
 			if setting_value(fl.prefs, accent_view.HUE_P1) != nl.local_hue {
 				fl.prefs.saved.settings[accent_view.HUE_P1] = nl.local_hue
 				prefs_state_save(fl.prefs)
@@ -735,9 +737,30 @@ netplay_poll :: proc(fl: ^Flow, r: ^render.Renderer, nl: ^Netplay) {
 		}
 		switch kind {
 		case .Hello:
-			seq, _, peer_hue, peer_name, hok := net.decode_hello(buf[:n]) // the peer's player index isn't needed: role/local_player are fixed by who hosted vs. joined, or -- reconnecting -- by Resync_Start's assigned_player
+			seq, _, peer_hue, peer_name, peer_build, hok := net.decode_hello(buf[:n]) // the peer's player index isn't needed: role/local_player are fixed by who hosted vs. joined, or -- reconnecting -- by Resync_Start's assigned_player
 			if !hok {
 				continue
+			}
+			// A peer whose build registers differently reads this one's
+			// mods and snapshots as other things: a Windows guest of a
+			// Linux host once crashed so at the end of a level (D50). The
+			// host answers with its own Hello, so the guest can say why,
+			// and keeps waiting for a peer it can play with.
+			if peer_build != sim.registration_hash() {
+				if nl.role == .Host {
+					if !nl.refused {
+						fmt.eprintfln("netplay: refused a peer running a different build")
+						nl.refused = true
+					}
+					hello: [net.HELLO_SIZE_MAX]byte
+					hn := net.encode_hello(hello[:], 0, 0, u16(nl.local_hue), prefs.name_string(&nl.local_name), sim.registration_hash())
+					net.send(&nl.sock, from, hello[:hn])
+					continue
+				}
+				fmt.eprintfln("netplay: the host runs a different build")
+				netplay_fail(nl, "the host runs a different version of the game")
+				netplay_build_buttons(nl, r)
+				return
 			}
 			// Phase 8 stage 4: a Hello arriving while Waiting_Reconnect is a
 			// fresh peer reconnecting, exactly like the very first Hello a
@@ -761,7 +784,7 @@ netplay_poll :: proc(fl: ^Flow, r: ^render.Renderer, nl: ^Netplay) {
 				}
 			}
 			if (nl.role == .Host || reconnecting) && !nl.sent_own_hello {
-				net.send_hello(&nl.rc, &nl.sock, 0, u16(nl.local_hue), prefs.name_string(&nl.local_name)) // unused by the receiver either way -- see the comment above
+				net.send_hello(&nl.rc, &nl.sock, 0, u16(nl.local_hue), prefs.name_string(&nl.local_name), sim.registration_hash()) // unused by the receiver either way -- see the comment above
 				nl.sent_own_hello = true
 			}
 			if reconnecting && is_new {
@@ -849,7 +872,10 @@ netplay_poll :: proc(fl: ^Flow, r: ^render.Renderer, nl: ^Netplay) {
 			an := net.encode_state_chunk_ack(ackbuf[:], pkt.chunk_index)
 			net.send(&nl.sock, from, ackbuf[:an])
 			if nl.recv_got_count >= nl.recv_chunks {
-				netplay_finish_resync_receive(fl, nl)
+				if !netplay_finish_resync_receive(fl, nl) {
+					netplay_build_buttons(nl, r)
+					return
+				}
 			}
 		case .State_Chunk_Ack:
 			if nl.link_state != .Resync_Sending {
@@ -1061,16 +1087,24 @@ netplay_begin_resync_receive :: proc(nl: ^Netplay) {
 // process's own definitions (never sent) and event log; state_read builds
 // the world the sender's plugins need.
 @(private = "file")
-netplay_finish_resync_receive :: proc(fl: ^Flow, nl: ^Netplay) {
+netplay_finish_resync_receive :: proc(fl: ^Flow, nl: ^Netplay) -> bool {
 	fl.state.defs = fl.defs
 	fl.state.events = nil
-	if !sim.state_read(fl.state, nl.recv_buf) {
-		fmt.eprintln("netplay: the game state received is not from this build")
-	}
+	ok := sim.state_read(fl.state, nl.recv_buf)
 	delete(nl.recv_buf)
 	nl.recv_buf = nil
 	delete(nl.recv_got)
 	nl.recv_got = nil
+	if !ok {
+		// Playing on from a state that did not read would read a world
+		// that is not there: the page fault a Windows guest of a Linux host
+		// met on rejoining (D50). The Hello's build check should keep such
+		// a peer out; this is the last line.
+		fmt.eprintln("netplay: the game state received is not from this build")
+		netplay_disconnect(nl)
+		nl.error = "the host runs a different version of the game"
+		return false
+	}
 
 	net.rollback_session_init(&nl.rs, fl.state, int(nl.recv_assigned_player))
 	netplay_name_session(fl, nl, int(nl.recv_assigned_player))
@@ -1081,6 +1115,7 @@ netplay_finish_resync_receive :: proc(fl: ^Flow, nl: ^Netplay) {
 	nl.link_state = .Live
 	nl.last_peer_seen = time.now()
 	fmt.eprintfln("netplay: reconnected as player %d at frame %d", nl.recv_assigned_player, sim.frame_of(fl.state)) // tools/netplay/loopback_check.sh-style marker for a future reconnect smoke check
+	return true
 }
 
 // Phase 8 stage 3: bottom-right/banner text for a frozen .Playing session --

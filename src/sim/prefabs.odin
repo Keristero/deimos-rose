@@ -111,19 +111,22 @@ term_pool: [512]typeid
 @(private = "file")
 term_used: int
 
-@(init)
-register_prefab_marker :: proc "contextless" () {
-	context = runtime.default_context()
+register_prefab_marker :: proc() {
 	component_register(Is_Prefab)
 }
 
-// Called from `@(init)` procedures only, like system_register.
+@(init)
+register_prefab_marker_step :: proc "contextless" () {
+	register_step(.Core, "sim register_prefab_marker", register_prefab_marker)
+}
+
+// Called from registration steps only (sim.register_step), like system_register.
 prefab_builder_register :: proc(b: Prefab_Builder) {
 	registry_add(&builders, b)
 }
 
 // The prefabs that have every component in `with` and none in `without`.
-// Called from `@(init)` procedures only; the lists are copied.
+// Called from registration steps only (sim.register_step); the lists are copied.
 prefab_query_register :: proc(with: []typeid, without: []typeid = nil) -> Prefab_Query {
 	keep :: proc(types: []typeid) -> []typeid {
 		assert(term_used + len(types) <= len(term_pool), "sim: too many prefab query terms")

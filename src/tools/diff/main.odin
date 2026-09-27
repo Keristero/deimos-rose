@@ -99,6 +99,8 @@ describe :: proc(syms: []Symbol, d: Maybe(sim.Draw)) -> string {
 }
 
 main :: proc() {
+	// Every registry filled, in the same order on every platform.
+	sim.register_all()
 	trace_path := len(os.args) > 1 ? os.args[1] : fmt.tprintf("%s/../work/wine/traces/trace.txt", os.get_env("DR_SRC", context.temp_allocator))
 	films_dir := fmt.tprintf("%s/films", os.get_env("DR_ASSETS", context.temp_allocator))
 	syms := load_symbols()

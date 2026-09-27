@@ -15,7 +15,6 @@ package loadout_view
 // accent, until it is put down. Under the rows, the weapon under the cursor
 // (or the one being moved) is named and described.
 
-import "base:runtime"
 import "core:fmt"
 import "core:strings"
 
@@ -75,10 +74,13 @@ panel_height :: proc(b: ^loadout.Loadout_Board) -> f32 {
 	return h + READY_H + 4 + 3 * LINE + PAD
 }
 
-@(init)
-register_loadout_view :: proc "contextless" () {
-	context = runtime.default_context()
+register_loadout_view :: proc() {
 	ui.overlay_register({name = "loadout", plugin = loadout.ID, draw = loadout_draw})
+}
+
+@(init)
+register_loadout_view_step :: proc "contextless" () {
+	sim.register_step(.View, "plugins/loadout/view register_loadout_view", register_loadout_view)
 }
 
 loadout_draw :: proc(r: ^render.Renderer, s: ^sim.State, names: ^ui.Player_Names) {

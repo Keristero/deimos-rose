@@ -4,7 +4,7 @@ import "dr:sim"
 
 // Settings the mods add: what the Extra Preferences plugin shows on its
 // page (notes/ecs-refactor.md). A plugin registers each of its settings
-// from the @(init) of its view/ package -- not the plugin's own, which
+// from the registration step of its view/ package -- not the plugin's own, which
 // stays pure for the simulation (mise run purity) while this package
 // formats text -- and the page lists them, while their plugin is on.
 //
@@ -35,7 +35,7 @@ settings: [MAX_SETTINGS]Setting
 @(private = "file")
 setting_count: int
 
-// Called from `@(init)` procedures only, like sim.plugin_register.
+// Called from registration steps only (sim.register_step), like sim.plugin_register.
 setting_register :: proc(s: Setting) -> Setting_ID {
 	assert(setting_count < MAX_SETTINGS, "prefs: too many settings")
 	for other in settings[:setting_count] {

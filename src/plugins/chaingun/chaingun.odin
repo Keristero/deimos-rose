@@ -1,6 +1,5 @@
 package chaingun
 
-import "base:runtime"
 // Imported for its registration: a dependency is always in the build.
 import _ "dr:plugins/new_weapons"
 import "dr:sim"
@@ -28,9 +27,7 @@ is_aimed :: proc "contextless" (w: ^sim.Weapon) -> bool {
 @(private = "file", rodata)
 DEPS := []string{"new_weapons"}
 
-@(init)
-register :: proc "contextless" () {
-	context = runtime.default_context()
+register :: proc() {
 	ID = sim.plugin_register({
 		name        = "chaingun",
 		label       = "CHAINGUN",
@@ -42,4 +39,9 @@ register :: proc "contextless" () {
 	})
 	AIMED_RELEASE = sim.weapon_key_register("x_AimedRelease_BOOL")
 	sim.weapon_fire_register({plugin = ID, fires = is_aimed, volley = aimed_release_spawn})
+}
+
+@(init)
+register_step :: proc "contextless" () {
+	sim.register_step(.Plugin, "plugins/chaingun register", register)
 }

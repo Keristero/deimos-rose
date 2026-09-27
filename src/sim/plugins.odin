@@ -2,7 +2,7 @@ package sim
 
 // Plugins: what Deimos Rose adds to the original, each in a folder of its
 // own under plugins/ that registers itself, its components and its systems
-// from an @(init) procedure (notes/ecs-refactor.md). The core, this
+// from a registration step (register_step, notes/ecs-refactor.md). The core, this
 // package, is the original game, and runs alone when no plugin is on: in
 // classic mode, in films and for the oracle.
 //
@@ -13,8 +13,9 @@ package sim
 MAX_PLUGINS :: 31
 
 // A plugin's index in the registry, from 1; CORE is the original game.
-// Indexes follow registration order, which is fixed for a build: peers
-// agree on them only when they run the same build, as netplay requires.
+// Indexes follow registration order, which is by name (register_all), the
+// same on every platform: peers agree on them when they run the same
+// build, as netplay requires and checks (registration_hash).
 Plugin_ID :: distinct u8
 
 CORE :: Plugin_ID(0)
@@ -42,7 +43,7 @@ Plugin :: struct {
 @(private = "file")
 plugins := Registry(Plugin, MAX_PLUGINS + 1){count = 1}
 
-// Called from `@(init)` procedures only, like system_register; `deps` must
+// Called from registration steps only (sim.register_step), like system_register; `deps` must
 // outlive the call. Returns the plugin's ID, for its systems and hooks.
 plugin_register :: proc(p: Plugin) -> Plugin_ID {
 	return Plugin_ID(registry_add(&plugins, p))

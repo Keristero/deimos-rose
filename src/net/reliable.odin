@@ -45,9 +45,9 @@ reliable_begin :: proc(rc: ^Reliable_Channel) -> u8 {
 	return rc.seq
 }
 
-send_hello :: proc(rc: ^Reliable_Channel, sock: ^Socket, player: u8, hue: u16, name: string) {
+send_hello :: proc(rc: ^Reliable_Channel, sock: ^Socket, player: u8, hue: u16, name: string, build: u64) {
 	seq := reliable_begin(rc)
-	rc.length = encode_hello(rc.buf[:], seq, player, hue, name)
+	rc.length = encode_hello(rc.buf[:], seq, player, hue, name, build)
 	send(sock, rc.to, rc.buf[:rc.length])
 }
 

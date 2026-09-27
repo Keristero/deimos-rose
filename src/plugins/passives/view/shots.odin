@@ -6,7 +6,6 @@ package passives_view
 // right beside the rear shots. Alone, so no loadout screen opens. New content: a visual check that the side
 // shots are drawn turned to the way they fly.
 
-import "base:runtime"
 
 import "dr:plugins/passives"
 import "dr:sim"
@@ -34,8 +33,11 @@ rear_gun_shot :: proc(s: ^sim.State, name: string) -> string {
 @(private = "file", rodata)
 REAR_GUN_PHASES := []ui.Shot_Phase{{4, {{.Fire_Air}, {}}}}
 
-@(init)
-register_shots :: proc "contextless" () {
-	context = runtime.default_context()
+register_shots :: proc() {
 	ui.shot_register({name = "rear_gun_side", plugin = passives.ID, level = 2, alone = true, setup = rear_gun_shot, phases = REAR_GUN_PHASES})
+}
+
+@(init)
+register_shots_step :: proc "contextless" () {
+	sim.register_step(.View, "plugins/passives/view register_shots", register_shots)
 }

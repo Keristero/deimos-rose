@@ -60,6 +60,19 @@ plugins_have_unique_names :: proc(t: ^testing.T) {
 	}
 }
 
+// Registration runs by stage, then by name (sim.register_all), not in the
+// order the compiler runs the packages' `@(init)`s, which differs between
+// targets: so a plugin's id follows its name, the same on every platform
+// (D50).
+@(test)
+plugins_ids_follow_their_names :: proc(t: ^testing.T) {
+	ps := sim.registered_plugins()[1:]
+	for i in 1 ..< len(ps) {
+		testing.expectf(t, ps[i - 1].name < ps[i].name, "%q has id %d, after %q", ps[i].name, i + 1, ps[i - 1].name)
+	}
+	testing.expect(t, sim.registered())
+}
+
 // The names of a schedule's items, in order.
 @(private = "file")
 scheduled_names :: proc(registered: []$T, mods: sim.Mods) -> []string {

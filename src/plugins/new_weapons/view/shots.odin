@@ -20,7 +20,6 @@ package new_weapons_view
 // - discharge: a pulse as it fades;
 // - discharge_charge: the charged beam the step after it is let go.
 
-import "base:runtime"
 
 import "dr:plugins/loadout"
 import "dr:plugins/new_weapons"
@@ -71,13 +70,16 @@ DISCHARGE_PHASES := []ui.Shot_Phase{{1, {{.Fire_Air}, {}}}, {1, {}}}
 @(private = "file", rodata)
 DISCHARGE_CHARGE_PHASES := []ui.Shot_Phase{{90, {{.Fire_Air}, {}}}, {1, {}}}
 
-@(init)
-register_shots :: proc "contextless" () {
-	context = runtime.default_context()
+register_shots :: proc() {
 	id := new_weapons.ID
 	ui.shot_register({name = "loadout", plugin = id, level = 6, setup = loadout_shot})
 	ui.shot_register({name = "loadout_2p", plugin = id, level = 6, co_op = true, setup = loadout_shot})
 	ui.shot_register({name = "loadout_placed", plugin = id, level = 1, setup = loadout_shot})
 	ui.shot_register({name = "discharge", plugin = id, level = 9, setup = discharge_shot, phases = DISCHARGE_PHASES})
 	ui.shot_register({name = "discharge_charge", plugin = id, level = 9, setup = discharge_shot, phases = DISCHARGE_CHARGE_PHASES})
+}
+
+@(init)
+register_shots_step :: proc "contextless" () {
+	sim.register_step(.View, "plugins/new_weapons/view register_shots", register_shots)
 }

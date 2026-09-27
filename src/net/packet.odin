@@ -84,10 +84,16 @@ get_u64 :: proc(b: []byte) -> u64 {
 // (a length byte, then up to HELLO_NAME_MAX bytes), so each side can record
 // both players' high scores under their own names when a netplay game ends.
 // A longer name is cut short rather than refused.
+//
+// After the name come 8 bytes (little-endian) of the sender's build: its
+// sim.registration_hash. Peers whose builds register differently read each
+// other's snapshots and mods differently, and refuse each other on it. A
+// build older than it sends none, and reads 0; an older build ignores the
+// bytes.
 HELLO_NAME_MAX :: 20
-HELLO_SIZE_MAX :: 6 + HELLO_NAME_MAX
+HELLO_SIZE_MAX :: 6 + HELLO_NAME_MAX + 8
 
-encode_hello :: proc(buf: []byte, seq: u8, player: u8, hue: u16, name: string) -> int {
+encode_hello :: proc(buf: []byte, seq: u8, player: u8, hue: u16, name: string, build: u64) -> int {
 	cut := name[:min(len(name), HELLO_NAME_MAX)]
 	buf[0] = u8(Packet_Kind.Hello)
 	buf[1] = seq
@@ -95,11 +101,15 @@ encode_hello :: proc(buf: []byte, seq: u8, player: u8, hue: u16, name: string) -
 	buf[3] = u8(hue); buf[4] = u8(hue >> 8)
 	buf[5] = u8(len(cut))
 	copy(buf[6:], cut)
-	return 6 + len(cut)
+	at := 6 + len(cut)
+	for i in 0 ..< 8 {
+		buf[at + i] = u8(build >> uint(8 * i))
+	}
+	return at + 8
 }
 
 // `name` is a view into `buf`: copy it out before buf is reused.
-decode_hello :: proc(buf: []byte) -> (seq: u8, player: u8, hue: u16, name: string, ok: bool) {
+decode_hello :: proc(buf: []byte) -> (seq: u8, player: u8, hue: u16, name: string, build: u64, ok: bool) {
 	if len(buf) < 6 || Packet_Kind(buf[0]) != .Hello {
 		return
 	}
@@ -107,7 +117,13 @@ decode_hello :: proc(buf: []byte) -> (seq: u8, player: u8, hue: u16, name: strin
 	if n > HELLO_NAME_MAX || len(buf) < 6 + n {
 		return
 	}
-	return buf[1], buf[2], u16(buf[3]) | u16(buf[4]) << 8, string(buf[6:6 + n]), true
+	at := 6 + n
+	if len(buf) >= at + 8 {
+		for i in 0 ..< 8 {
+			build |= u64(buf[at + i]) << uint(8 * i)
+		}
+	}
+	return buf[1], buf[2], u16(buf[3]) | u16(buf[4]) << 8, string(buf[6:at]), build, true
 }
 
 encode_ready :: proc(buf: []byte, seq: u8) -> int {

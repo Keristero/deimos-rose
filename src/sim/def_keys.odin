@@ -31,7 +31,7 @@ Def_Key :: struct {
 @(private = "file")
 weapon_keys: Registry(Def_Key, MAX_WEAPON_KEYS)
 
-// Called from `@(init)` procedures only. `name` must outlive the call (a
+// Called from registration steps only (sim.register_step). `name` must outlive the call (a
 // string literal does).
 weapon_key_register :: proc(name: string) -> Weapon_Key {
 	kind: Def_Key_Kind

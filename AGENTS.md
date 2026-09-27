@@ -90,6 +90,13 @@ and fast tests all die without it, and it cannot be retrofitted cheaply.
 **RNG lives in the state.** An ambient global generator desyncs rollback
 silently. `G_Film::GetRandomSeed` shows the original made the same choice.
 
+**Register through a named step.** An `@(init)` procedure only calls
+`sim.register_step`. `sim.register_all` runs the steps in a fixed order,
+and every `main` that touches the simulation calls it first. Odin orders
+`@(init)` procedures differently for different targets, and a registry's
+order gives the ids peers exchange. That once made a Linux host's Easy
+Mode a Windows guest's Loadout (decisions.md D50).
+
 **Classic mode is the original, exactly.** With classic mode on, the game
 must look and behave as the 2003 build does: same sprites, colours, frames,
 text and timing. Anything this port adds — a colour, an outline, a menu, a
