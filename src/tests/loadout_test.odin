@@ -411,4 +411,18 @@ aimed_volley_turns_towards_an_air_enemy :: proc(t: ^testing.T) {
 	gap := shots[1].loc - shots[0].loc
 	testing.expect(t, abs(gap.x * d.x + gap.y * d.y) < 0.01, "the pair must fly abreast")
 	testing.expect(t, abs(math.sqrt(gap.x * gap.x + gap.y * gap.y) - 2 * new_weapons.AIMED_PAIR_OFFSET) < 0.01)
+
+	// The volley sounds as the Juno Gun turrets' rounds do (jgbu's laso),
+	// the round it copies: it was silent.
+	laso := false
+	for _ in 0 ..< 2 {
+		for ev in s.sounds.events[:s.sounds.count] {
+			laso ||= ev.id == sim.res_id("laso")
+		}
+		if laso {
+			break
+		}
+		sim.session_step(s, {})
+	}
+	testing.expect(t, laso, "a charge volley must play the Juno Gun's laso")
 }
