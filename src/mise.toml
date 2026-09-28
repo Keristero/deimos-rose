@@ -381,6 +381,10 @@ description = "Extract original PAKs into modern formats (PNG/WAV/JSON)"
 depends = ["setup"]
 run = "odin run tools/extract $DR_COLL $DR_LINK -out:$DR_BUILD/extract$DR_EXT -- $DR_ORIG $DR_ASSETS"
 
+[tasks."addons:extract"]
+description = "Unpack orig/deimos_addons.sit (fan mods, demo films, the Mac 1.0.6 bundle update) into work/addons/ for study; needs unar and hfsutils"
+run = "bash ../tools/extract_addons.sh"
+
 [tasks."assets:records"]
 description = "Decode the tagged-text resources into JSON under assets/data/"
 depends = ["setup"]

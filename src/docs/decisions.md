@@ -185,6 +185,13 @@ with new (netplay) menu items added in the same style but hidden under
   original binary can show but are hidden developer tools, not normal player
   menus. Deferred to a new "Bonus — Developer tools" phase rather than
   in scope for faithful player-menu recreation (see `docs/README.md`).
+  *Corrected:* the level editor is not in the binary. Its art (`edpa`,
+  `EDBU`, `EDPR`, `EDUT`, `BIGR`), its string list and its unit-def fields
+  ship, but no code in the Windows 1.0.2 or Mac 1.0.6 build reads the
+  editor tags, and no key, menu or flag reaches it. It ran in a developer
+  build. Only 10 console commands are registered: `G_Console_RegisterCommand`
+  (0x4114e0) drops the 54 debug-only ones. Evidence in
+  `notes/headless-3d-to-2d-findings.md`.
 - **Pause has no "PAUSED" banner in the original.** *Corrected:* this
   first said it showed no text at all, which was wrong.
   `G_GameInterface::Process_StartFrame` (0x4230f0) pauses on Caps Lock and
