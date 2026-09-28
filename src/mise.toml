@@ -32,6 +32,10 @@ DR_DECOMP = "{{config_root}}/../work/decomp"
 DR_WINE   = "{{ get_env(name='DR_WINE', default=config_root ~ '/../work/wine') }}"
 DR_EXE    = "{{config_root}}/../game/DeimosRising.exe"
 DR_SYMS   = "{{config_root}}/../symbols/functions.csv"
+# Python venv for the HD map upscaler (torch + diffusers, ~6 GB), and the
+# Hugging Face cache it downloads FLUX.2 [klein] into (~16 GB) unless HF_HOME
+# is already set. Kept out of the repo like Ghidra.
+DR_HD_VENV = "{{ get_env(name='HOME', default=get_env(name='USERPROFILE', default='')) }}/.cache/deimos-rising/hd-venv"
 # Odin collection so packages import as "dr:sim", "dr:data", ...
 # Kept separate because `odin check` rejects linker flags.
 DR_COLL   = "-collection:dr={{config_root}}"
@@ -384,6 +388,28 @@ run = "odin run tools/extract $DR_COLL $DR_LINK -out:$DR_BUILD/extract$DR_EXT --
 [tasks."addons:extract"]
 description = "Unpack orig/deimos_addons.sit (fan mods, demo films, the Mac 1.0.6 bundle update) into work/addons/ for study; needs unar and hfsutils"
 run = "bash ../tools/extract_addons.sh"
+
+[tasks."hd:setup"]
+description = "Create the Python venv for hd:upscale (torch from TORCH_INDEX, default CUDA 12.8; see tools/hd_upscale/README.md for ROCm)"
+run = """
+set -e
+TORCH_INDEX="${TORCH_INDEX:-https://download.pytorch.org/whl/cu128}"
+[ -d "$DR_HD_VENV" ] || python3 -m venv "$DR_HD_VENV"
+PY="$DR_HD_VENV/bin/python"; [ -x "$PY" ] || PY="$DR_HD_VENV/Scripts/python.exe"
+"$PY" -m pip install --upgrade pip
+"$PY" -m pip install --index-url "$TORCH_INDEX" torch
+"$PY" -m pip install -r tools/hd_upscale/requirements.txt
+"$PY" -c "import torch; print('torch', torch.__version__, 'GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none')"
+"""
+
+[tasks."hd:upscale"]
+description = "Upscale a level map 4x with Flux detail transfer into work/hd/MAP/ (MAP=jum2 is level 1; resumable; extra flags pass through, e.g. -- --limit 2)"
+run = """
+set -e
+PY="$DR_HD_VENV/bin/python"; [ -x "$PY" ] || PY="$DR_HD_VENV/Scripts/python.exe"
+[ -x "$PY" ] || { echo "no venv at $DR_HD_VENV: run 'mise run hd:setup' first"; exit 1; }
+"$PY" tools/hd_upscale/upscale.py "${MAP:-jum2}" --images "$DR_ASSETS/images/im16" --out "$DR_SRC/../work/hd/${MAP:-jum2}" "$@"
+"""
 
 [tasks."assets:records"]
 description = "Decode the tagged-text resources into JSON under assets/data/"

@@ -1,0 +1,12 @@
+# Exact versions the tool was tested with (2026-09-28, Python 3.14). torch is
+# not listed: its wheel depends on the GPU, so `mise run hd:setup` installs it
+# first from TORCH_INDEX (CUDA by default, see README.md).
+diffusers==0.38.0
+transformers==5.4.0
+accelerate==1.13.0
+huggingface_hub==1.33.0
+tokenizers==0.22.2
+safetensors==0.8.0
+numpy==2.5.3
+scipy==1.18.1
+pillow==12.3.0

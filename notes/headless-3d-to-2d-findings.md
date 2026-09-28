@@ -465,6 +465,17 @@ blurred (σ 3).
   tiles, about 15 minutes) needs seam blending, and the detail style must
   stay consistent from tile to tile.
 
+  **Update: now a tool [V].** `mise run hd:upscale` (in
+  `src/tools/hd_upscale/`) runs this at 4x over a whole map, using
+  diffusers instead of lemonade. It uses 256 px tiles with feathered
+  overlaps, a resumable tile cache, and a manifest with per-tile checks. A
+  prompt listing the materials made Flux invent ferns and a pool on bare
+  rock (shrink-back error 11 levels). The conservative prompt "A sharper,
+  higher-resolution version of this exact image. Do not add, remove or
+  move anything." kept every tile tested faithful (2-5 levels), bunkers
+  and palms included. On the Radeon 8060S a tile takes about 60 s, and
+  `jum2` (level 1) is 32 tiles. The README has the measurements.
+
 **Material labels, lemonade Qwen3.8-27B vision [V].** Each 60x60 cell of
 the crop (120 cells, about 2 s each) got one word from a fixed list.
 
