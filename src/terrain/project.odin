@@ -2,8 +2,8 @@ package terrain
 
 // A level project: what the level editor saves, and what the renderer
 // draws. `<name>.drproj.json` beside its side files: the heightmap as a
-// 16-bit PNG, and optionally the unlit colour, the material weights and the
-// canopy, each one PNG pixel per map pixel. The level's own record (its
+// 16-bit PNG, and optionally the unlit colour, the material weights, the
+// canopy and the occlusion, each one PNG pixel per map pixel. The level's own record (its
 // placements, lighting, water and wind, D54) is inside, as the game reads
 // it. Maps, masks and previews are exports of a project, not part of it.
 
@@ -54,6 +54,10 @@ Project :: struct {
 	canopy:          []u8,
 	canopy_height:   f32,
 	canopy_material: int,
+	// How open to the sky each map pixel is, 0-255 (255 fully), or nil: all
+	// open. It darkens only the ambient light. Baked, as the originals had
+	// none of it: tools/terrain_occlusion infers it from the colour.
+	occlusion:       []u8,
 	materials:       [dynamic]Material,
 	material_images: [MAX_MATERIALS]Picture,
 	cliff, shore:    Rule,
@@ -86,6 +90,7 @@ Json_Project :: struct {
 	canopy:          string          `json:"canopy"`,
 	canopy_height:   f32             `json:"canopy_height"`,
 	canopy_material: int             `json:"canopy_material"`,
+	occlusion:       string          `json:"occlusion"`,
 	materials:       []Material      `json:"materials"`,
 	cliff:           Rule            `json:"cliff"`,
 	shore:           Rule            `json:"shore"`,
@@ -128,7 +133,7 @@ project_save :: proc(p: ^Project, path: string) -> bool {
 		pixels:   []u8,
 		channels: int,
 		out:      ^string,
-	}{{"albedo", p.albedo, 3, &j.albedo}, {"splat", p.splat, 4, &j.splat}, {"canopy", p.canopy, 1, &j.canopy}}
+	}{{"albedo", p.albedo, 3, &j.albedo}, {"splat", p.splat, 4, &j.splat}, {"canopy", p.canopy, 1, &j.canopy}, {"occlusion", p.occlusion, 1, &j.occlusion}}
 	for l in layers {
 		if l.pixels == nil {
 			continue
@@ -180,6 +185,7 @@ project_load :: proc(path: string, allocator := context.allocator) -> (p: Projec
 	p.albedo = side(dir, j.albedo, &p, 3, allocator) or_return
 	p.splat = side(dir, j.splat, &p, 4, allocator) or_return
 	p.canopy = side(dir, j.canopy, &p, 1, allocator) or_return
+	p.occlusion = side(dir, j.occlusion, &p, 1, allocator) or_return
 	p.canopy_height, p.canopy_material = j.canopy_height, j.canopy_material
 	append(&p.materials, ..j.materials)
 	for m, i in p.materials[:min(len(p.materials), MAX_MATERIALS)] {

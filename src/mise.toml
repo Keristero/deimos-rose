@@ -439,7 +439,7 @@ depends = ["setup"]
 run = "odin build tools/terrain $DR_COLL $DR_LINK -o:speed -out:$DR_BUILD/terrain$DR_EXT"
 
 [tasks."terrain:render"]
-description = "Draw a level project headlessly (PROJECT=path/le07.drproj.json [OUT=path/stem] [OUTPUT=lit|albedo|normal|height|shadow|all, default all] [SCALE=1]; extra flags pass through, e.g. -- -quantise)"
+description = "Draw a level project headlessly (PROJECT=path/le07.drproj.json [OUT=path/stem] [OUTPUT=lit|albedo|normal|height|shadow|occlusion|all, default all] [SCALE=1]; extra flags pass through, e.g. -- -quantise)"
 depends = ["terrain:build"]
 run = """
 set -e
@@ -466,7 +466,8 @@ headless "$DR_BUILD/terrain$DR_EXT" compare "$PROJECT" $ORIGINAL $MASK -images="
 """
 
 [tasks."terrain:recover"]
-description = "Recover a level project from an original map (LEVEL=le07 into work/terrain/LEVEL/): Marigold V2 heights (-- --seed depth-anything for the fallback), water from the mask, crude unlit colour; in the terrain:marigold-setup venv"
+description = "Recover a level project from an original map (LEVEL=le07 into work/terrain/LEVEL/, or OUT=dir): Marigold V2 heights refined against the shadows (-- --seed depth-anything for the fallback), water from the mask and moved to the art's shoreline, the canopy split off, the renderer's light divided out of the colour; in the terrain:marigold-setup venv"
+depends = ["terrain:build"]
 run = """
 set -e
 PY="$DR_MARIGOLD/venv/bin/python"; [ -x "$PY" ] || PY="$DR_MARIGOLD/venv/Scripts/python.exe"
@@ -475,8 +476,64 @@ LEVEL="${LEVEL:-le07}"
 REC="$DR_PLUGINS/classic_levels/data/levels/$LEVEL.json"
 MAP=$("$PY" -c "import json,sys; print(json.load(open(sys.argv[1]))['background_image'])" "$REC")
 MASK=$("$PY" -c "import json,sys; print(json.load(open(sys.argv[1]))['media_mask'])" "$REC")
-"$PY" tools/terrain_recover/recover.py "$MAP" --mask "$MASK" --level "$REC" \
-  --images "$DR_PLUGINS/classic_levels/images/im16" --out "$DR_SRC/../work/terrain/$LEVEL" "$@"
+"$PY" tools/terrain_recover/recover.py "$MAP" --mask "$MASK" --level "$REC" --renderer "$DR_BUILD/terrain$DR_EXT" \
+  --images "$DR_PLUGINS/classic_levels/images/im16" --out "${OUT:-$DR_SRC/../work/terrain/$LEVEL}" "$@"
+"""
+
+[tasks."terrain:recover-all"]
+description = "Recover every Classic Levels map into work/recovered/LEVEL/, bake its occlusion, and score them all (terrain:report); LEVELS='le01 le07' for some"
+depends = ["terrain:build"]
+run = '''
+set -e
+DIR="$DR_SRC/../work/recovered"
+LEVELS="${LEVELS:-$(ls "$DR_PLUGINS/classic_levels/data/levels" | sed -n 's/\.json$//p')}"
+for L in $LEVELS; do
+  echo "== $L"
+  LEVEL="$L" OUT="$DIR/$L" mise run terrain:recover
+  PROJECT="$DIR/$L/$L.drproj.json" mise run terrain:occlusion
+done
+LEVELS="$LEVELS" mise run terrain:report
+'''
+
+[tasks."terrain:report"]
+description = "Score each recovered level in work/recovered/ against its original (terrain:compare, without the occlusion the originals lacked, and with it) into work/recovered/report.md; LEVELS='le01 le07' for some"
+depends = ["terrain:build"]
+run = '''
+set -e
+DIR="$DR_SRC/../work/recovered"
+LEVELS="${LEVELS:-$(ls "$DR_PLUGINS/classic_levels/data/levels" | sed -n 's/\.json$//p')}"
+REPORT="$DIR/report.md"
+{
+  echo "# Recovered Classic Levels"
+  echo
+  echo "terrain:compare on each project, whole map, $(date +%Y-%m-%d). The plan's bar: shadow IoU 0.75, drawn without the occlusion layer, as the originals were."
+  echo
+  echo "| Level | Shadow IoU | Shadow light (render / original) | Fitted azimuth (cast IoU) | Shadow IoU with occlusion |"
+  echo "|---|---|---|---|---|"
+} > "$REPORT"
+for L in $LEVELS; do
+  echo "== $L"
+  P="$DIR/$L/$L.drproj.json"
+  PROJECT="$P" mise run terrain:compare -- -no-occlusion | tee "$DIR/$L/compare.txt"
+  PROJECT="$P" OUT="$DIR/$L/$L.compare-occlusion.png" mise run terrain:compare | tee "$DIR/$L/compare-occlusion.txt"
+  IOU=$(sed -n 's/^shadow IoU \([0-9.]*\).*/\1/p' "$DIR/$L/compare.txt")
+  LIGHT=$(sed -n 's/^shadow light: original \([0-9.]*\), render \([0-9.]*\).*/\2 \/ \1/p' "$DIR/$L/compare.txt")
+  AZ=$(sed -n 's/^fitted azimuth \([0-9]*\) (cast-shadow IoU \([0-9.]*\)).*/\1° (\2)/p' "$DIR/$L/compare.txt")
+  AO=$(sed -n 's/^shadow IoU \([0-9.]*\).*/\1/p' "$DIR/$L/compare-occlusion.txt")
+  echo "| $L | $IOU | $LIGHT | $AZ | $AO |" >> "$REPORT"
+done
+cat "$REPORT"
+'''
+
+[tasks."terrain:occlusion"]
+description = "Bake a level project's occlusion layer, how open to the sky each pixel is, from its colour with Flux 2 [klein] (PROJECT=...; in the hd:setup venv)"
+depends = ["terrain:build"]
+run = """
+set -e
+[ -n "$PROJECT" ] || { echo "terrain:occlusion: set PROJECT=path/to/level.drproj.json" >&2; exit 2; }
+PY="$DR_HD_VENV/bin/python"; [ -x "$PY" ] || PY="$DR_HD_VENV/Scripts/python.exe"
+[ -x "$PY" ] || { echo "no venv at $DR_HD_VENV: run 'mise run hd:setup' first"; exit 1; }
+"$PY" tools/terrain_occlusion/occlusion.py "$PROJECT" --renderer "$DR_BUILD/terrain$DR_EXT" "$@"
 """
 
 [tasks."terrain:marigold-setup"]

@@ -355,16 +355,25 @@ It turns the findings' recipe into a tool:
    Per-pixel refinement reached IoU 0.91 by cheating. The 1/4-resolution
    version reached 0.76.
 3. **Water** comes from the shipped mask, which is exact. Set the water
-   height just above the terrain under it.
+   height just above the terrain under it. *Corrected in Stage 6:* the mask is exact
+   only to its 5 px cells, so every shore stepped; near the cells' edge
+   the water is moved to the art's shoreline by colour.
 4. **Canopy** is masked with k-means, or the vision model where the
    clusters fail (findings: jungle canopy became bumpy terrain). It becomes
-   vegetation, not height.
+   vegetation, not height. *Corrected in Stage 6:* k-means clusters
+   mixed grass with jungle, and cam1's autumn trees with its cliffs, so
+   the mask is CLIPSeg's zero-shot "trees", and the heights under it are
+   split into ground and canopy cover without changing the surface.
 5. **Unlit colour** is the original with its shadows divided out: where
    the art is in shadow, divided by the light the refined heights give it.
    It is the exemplar source for materials (Stage 7). *Corrected in Stage
    6:* dividing by the Marigold IID shading removed the shadows on small
    tiles but left 83% of le07's over the whole map, and Flux edits kept the
-   scene only where they kept the shadows (docs/level-editor.md).
+   scene only where they kept the shadows (docs/level-editor.md). Dividing
+   out only the shadows left the art's slope shading in the colour, so
+   relit slopes were shaded twice (le01 at IoU 0.709): the colour is now
+   divided by the renderer's whole light at the art's sun, the slope term
+   and its shadow, the shadow only where detected (0.920).
 6. **Output** is an editor project (Stage 7's format) per level.
 
 **Verification**, as the pipeline task's update asks: the tool renders each
@@ -524,8 +533,9 @@ position.
 
 **Layers:**
 - Export renders any scale in strips (Stage 5).
-- The deferred layers are the renderer's albedo, normal, height and shadow
-  mask at the same scale. The shadow mask is a separate layer, so later
+- The deferred layers are the renderer's albedo, normal, height, shadow
+  mask and occlusion at the same scale (the occlusion layer was added in
+  Stage 6, D56). The shadow mask is a separate layer, so later
   lighting can brighten shadowed areas, as the New Features section asks.
 
 **The Remastered Levels plugin:**

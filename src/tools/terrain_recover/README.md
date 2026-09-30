@@ -20,6 +20,19 @@ Extra flags go after `--`. For example, `-- --seed depth-anything` seeds the
 heights from Depth Anything V2 Large instead of Marigold V2. That model is
 1.3 GB and downloads on first use.
 
+`mise run terrain:recover-all` recovers all 12 levels into
+`work/recovered/<level>/`, bakes each one's occlusion layer
+(`tools/terrain_occlusion/`, which needs `mise run hd:setup`), and then
+runs `terrain:report`, which writes each one's `terrain:compare` scores to
+`work/recovered/report.md` (`LEVELS='le01 le07'` for some). The scores are
+taken without the occlusion layer, because the originals had none, and
+the report also gives the IoU with it. The canopy mask comes from CLIPSeg
+(`CIDAS/clipseg-rd64-refined`, 0.6 GB), which also downloads on first use.
+
+The recovery draws the project with `tools/terrain` (built by the task) to
+divide the renderer's own light out of the colour, headless under
+`xvfb-run` when it is installed.
+
 ## Setup
 
 `terrain:marigold-setup` follows the upstream `setup/setup_env.sh`, with a

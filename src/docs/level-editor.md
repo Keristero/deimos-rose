@@ -1,7 +1,7 @@
 # Level editor and remastered levels
 
 Progress on [notes/level-editor-plan.md](../../notes/level-editor-plan.md),
-stage by stage. The decisions are D51–D55 in [decisions.md](decisions.md).
+stage by stage. The decisions are D51–D56 in [decisions.md](decisions.md).
 
 | Stage | Status | Where |
 |---|---|---|
@@ -98,7 +98,9 @@ What the numbers say:
 `tools/terrain_recover/` (its README says how to run and set it up)
 seeds the heights with Marigold V2, fits their range, removes the water's
 drift, refines them against the detected shadows and divides the shadows
-out of the colour. The recipe is in `recover.py`'s docstring.
+out of the colour. The recipe is in `recover.py`'s docstring, and the whole
+pipeline, with a flow diagram, is in
+[level-recovery-pipeline.md](level-recovery-pipeline.md).
 
 ### The unlit colour
 
@@ -137,5 +139,41 @@ A water-drift bug found on the way: far from the water the smoothed trend
 fell to zero, a 141 px cliff across le07 at row 2794; it is now held at its
 nearest value.
 
-Still to come: the canopy split (palms and canopy still come out as
-bumps), the other 11 levels into `work/recovered/`, and their report.
+### The twelve
+
+`mise run terrain:recover`, `terrain:occlusion` and `terrain:report` on
+all twelve, 2026-09-30, sun 36° and 40° up for each. The shadow IoU is
+drawn without the occlusion, as the originals were (the plan's bar: 0.75);
+with it, the added darkening reads as more shadow and the score falls.
+
+| Level | Map | Shadow IoU | With occlusion | Shadow light, render / art | Fitted azimuth (cast IoU) |
+|---|---|---|---|---|---|
+| le01 | `cam1` | **0.920** | 0.819 | 0.43 / 0.43 | 36° (0.791) |
+| le02 | `cam2` | **0.798** | 0.712 | 0.42 / 0.41 | 38° (0.670) |
+| le03 | `ism1` | **0.961** | 0.881 | 0.38 / 0.37 | 36° (0.785) |
+| le04 | `cam3` | **0.916** | 0.830 | 0.44 / 0.44 | 36° (0.754) |
+| le05 | `jum3` | **0.831** | 0.773 | 0.44 / 0.43 | 36° (0.642) |
+| le06 | `inm3` | **0.963** | 0.842 | 0.46 / 0.46 | 36° (0.784) |
+| le07 | `jum2` | **0.937** | 0.890 | 0.39 / 0.38 | 36° (0.719) |
+| le08 | `ism3` | **0.946** | 0.890 | 0.34 / 0.33 | 36° (0.792) |
+| le09 | `ism2` | **0.945** | 0.865 | 0.38 / 0.38 | 36° (0.773) |
+| le10 | `inm2` | **0.924** | 0.816 | 0.48 / 0.48 | 36° (0.744) |
+| le11 | `jum1` | **0.894** | 0.826 | 0.44 / 0.43 | 38° (0.690) |
+| le12 | `inm1` | **0.936** | 0.825 | 0.46 / 0.46 | 36° (0.740) |
+
+All twelve pass, and the shadow is as dark against the ground around as
+the art's to within 0.01. The fitted azimuth lands on the measured 36°
+or next to it, so the heights cast their shadows where the art's fall.
+
+- **le02 and le05 are the weakest**, and their heights' cast IoU is the
+  lowest too (0.670, 0.642): more of their shadow is kept by the colour
+  than cast by the heights.
+- **le09's range fit reached 960 px**, the most the fit tries, so its
+  relief may be clipped short; its IoU is 0.945 all the same.
+- The water is flat, the level's median water colour: the originals'
+  translucent shallows, where the sand shows through, are the next step.
+
+Each level's scores are in `work/recovered/leNN/compare.txt` and
+`compare-occlusion.txt`, with side-by-sides. `work/` is not committed: it
+holds the original art. The projects are a starting point for artists, not
+finished levels.

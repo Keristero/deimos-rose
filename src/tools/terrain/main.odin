@@ -3,8 +3,8 @@ package terrain_tool
 // Level projects from the command line (Stage 5 of
 // notes/level-editor-plan.md), through a hidden window:
 //
-//   terrain render  <project> <out> [-output=lit|albedo|normal|height|shadow|all] [-scale=N] [-quantise] [-from=ROW] [-to=ROW] [-smoothing=SIGMA]
-//   terrain compare <project> [<original.png> <mask.png>] [-images=DIR] [-out=side.png] [-from=ROW] [-to=ROW] [-fit] [-smoothing=SIGMA]
+//   terrain render  <project> <out> [-output=lit|albedo|normal|height|shadow|occlusion|all] [-scale=N] [-quantise] [-from=ROW] [-to=ROW] [-smoothing=SIGMA] [-no-occlusion]
+//   terrain compare <project> [<original.png> <mask.png>] [-images=DIR] [-out=side.png] [-from=ROW] [-to=ROW] [-fit] [-smoothing=SIGMA] [-no-occlusion]
 //
 // render writes <out>.png, or <out>.<output>.png for each with -output=all.
 // compare finds the original map and mask by the level's image ids in
@@ -15,6 +15,8 @@ package terrain_tool
 // original's best, and writes original | render | overlap side by side.
 // -smoothing is the geometry's smoothing, a Gaussian's sigma in map pixels
 // (terrain.GEOMETRY_SMOOTHING when not given; 0 for none).
+// -no-occlusion draws the project without its occlusion layer: the
+// originals had none, so it is how a recovery is scored against them.
 
 import "core:fmt"
 import "core:os"
@@ -38,14 +40,17 @@ main :: proc() {
 		}
 	}
 	if len(plain) < 1 || (plain[0] == "render" && len(plain) != 3) || (plain[0] == "compare" && len(plain) != 2 && len(plain) != 4) {
-		fmt.eprintln("usage: terrain render <project> <out> [-output=lit|albedo|normal|height|shadow|all] [-scale=N] [-quantise] [-from=ROW] [-to=ROW] [-smoothing=SIGMA]")
-		fmt.eprintln("       terrain compare <project> [<original.png> <mask.png>] [-images=DIR] [-out=side.png] [-from=ROW] [-to=ROW] [-fit] [-smoothing=SIGMA]")
+		fmt.eprintln("usage: terrain render <project> <out> [-output=lit|albedo|normal|height|shadow|occlusion|all] [-scale=N] [-quantise] [-from=ROW] [-to=ROW] [-smoothing=SIGMA] [-no-occlusion]")
+		fmt.eprintln("       terrain compare <project> [<original.png> <mask.png>] [-images=DIR] [-out=side.png] [-from=ROW] [-to=ROW] [-fit] [-smoothing=SIGMA] [-no-occlusion]")
 		os.exit(2)
 	}
 	p, ok := terrain.project_load(plain[1])
 	if !ok {
 		fmt.eprintfln("terrain: cannot load %s", plain[1])
 		os.exit(1)
+	}
+	if "no-occlusion" in flags {
+		p.occlusion = nil
 	}
 	rl.SetTraceLogLevel(.WARNING)
 	rl.SetConfigFlags({.WINDOW_HIDDEN})

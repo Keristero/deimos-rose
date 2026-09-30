@@ -1266,8 +1266,9 @@ exports and for comparison with the original art.
 - **The project**, `terrain/project.odin`: `<level>.drproj.json` beside
   its side files, each one PNG pixel per map pixel.
   - the heightmap, 16-bit grey in 1/32 map pixel (up to 2048 high);
-  - optionally the unlit colour (RGB), four materials' weights (RGBA) and
-    the canopy cover (grey), with the canopy's height and material;
+  - optionally the unlit colour (RGB), four materials' weights (RGBA),
+    the canopy cover (grey), with the canopy's height and material, and
+    the occlusion (grey, D56);
   - up to four materials (a colour, or a tiling image tinted by it, and
     tags such as `original-derived`), and the cliff and shore rules that
     lay one automatically by slope or by height above the water;
@@ -1288,8 +1289,9 @@ exports and for comparison with the original art.
     a time, from a whole pixel past the penumbra; the deepest the ray goes
     under the surface sets a smoothstep `softness` pixels wide. No shadow
     maps, so strips have no seams and the shadow layer comes free.
-  - Outputs: lit, albedo, normal, height (16-bit) and shadow, at any whole
-    scale, each optionally through the originals' 15-bit colour.
+  - Outputs: lit, albedo, normal, height (16-bit), shadow and occlusion
+    (D56), at any whole scale, each optionally through the originals'
+    15-bit colour.
   - Textures go through `DrawMesh`'s material maps, seven slots, since
     rlgl's batch binds only four; the height texture is RGBA32F (surface
     with canopy, cover, bare ground, then the surface unsmoothed). The
@@ -1314,3 +1316,40 @@ the whole; 2x averaged down within quantisation of 1x; heights back
 exactly), the save-load-save round trip and the 15-bit colour. Goldens,
 `oracle:diff` and `oracle:diff:saved` are unchanged: nothing in the game
 uses the package yet.
+
+### D56 — Recovered levels: the renderer's light divided out, and a baked occlusion layer
+
+Stage 6 of notes/level-editor-plan.md turns each original map back into a
+level project (`tools/terrain_recover/`). Three choices in it hold beyond
+the originals.
+
+- **The colour is divided by the renderer's own light.** The recovery
+  writes the project, has `tools/terrain` draw its normals and shadow at
+  the art's sun, and divides the art by ambient + (1 − ambient) × slope
+  term × shadow, with the shadow counted only where the art is detected in
+  shadow. A render at the original sun then gives the art back, apart
+  from shadows the heights cast wrongly, and a relight does not shade the
+  slopes twice. Dividing out only the detected shadows had left the art's
+  slope shading in the colour: le01 rendered at shadow IoU 0.709, 0.920
+  with this. The light is the renderer's, not a copy of it in Python: a
+  copy from the refinement's half-size shadow gave 0.887.
+- **Canopy is a layer, not height.** CLIPSeg's zero-shot "trees" finds
+  it, and the heights are split under it into a smooth ground and the
+  cover above it. The split is lossless: ground + cover × canopy_height is
+  the heights, so the render does not change, and the editor can treat
+  the trees as vegetation.
+- **Ambient occlusion is a baked project layer, `occlusion`** (grey,
+  255 open to the sky, optional). The renderer multiplies only the
+  ambient light by it. It is baked, by `tools/terrain_occlusion` with
+  FLUX.2 [klein] 4B from the renderer's albedo, rather than computed from
+  the heights, because the texture shows what the heights lack: stones,
+  cracks, the gaps between crowns. GTAO on the heights saw only the
+  geometry, and was heavy on the jungle. Marigold V2 normals of the
+  colour added under a pixel of relief (work/reports/level-recovery.md,
+  chapter 6). A painted level bakes its layer the same way.
+  - It rides in the albedo texture's alpha: `DrawMesh` binds material
+    slots 7–9 as cubemaps, so an eighth texture would need a gap in the
+    slots. The white stand-in texture reads as fully open when neither
+    layer is present.
+  - It is an output of the renderer too, for the deferred layers of
+    Stage 10.

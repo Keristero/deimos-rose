@@ -18,13 +18,19 @@ point an artist can take into the editor:
      against the shadows detected in the art.
   3. Refinement: smooth offsets fitted, through a differentiable render,
      so the heights' shadows match the detected ones (refine()).
-  4. Water from the shipped media mask, which is exact: one water height
-     just above the terrain under it.
-  5. Unlit colour: the art divided by the light, where the art is in
-     shadow and the recovered heights cast it (unlit()).
+  4. Water from the shipped media mask, which is exact to its 5 px cells,
+     moved to the art's shoreline by colour within a cell of their edge
+     (shoreline()): one water height just above the terrain under it.
+  5. Unlit colour: the art divided by the renderer's light at the art's
+     sun, slope term and all, with the heights' cast shadow counted only
+     where the art is in shadow (unlit()).
+  6. Canopy: CLIPSeg's "trees" says where it is (canopy_mask()); the
+     heights are split there into a smooth ground and the canopy's cover
+     above it, losslessly (split_canopy()), so it can be edited as
+     vegetation and the render is unchanged.
 
-This is Stage 6 of notes/level-editor-plan.md, in progress: the canopy is
-to come.
+This is Stage 6 of notes/level-editor-plan.md; terrain:recover-all runs it
+on all 12 levels.
 
 The unlit colour matters only for relighting the originals faithfully: a
 new level's colour is painted unlit. Tried on le07 (and on a shadowed
@@ -38,7 +44,12 @@ the lit ground's (the art: 1.0 and 0.30):
                                                ground (12%) where the
                                                heights cast false shadows
   both: the rendered light, in the detected    0.50, 0.53: lit ground as
-  shadows only (this)                          it was, no speckle
+  shadows only                                 it was, no speckle; but the
+                                               slopes are shaded twice
+                                               (le01 renders at shadow IoU
+                                               0.709)
+  as above, and the slope term everywhere      le01 at 0.922, shadow light
+  (this)                                       0.43 as the art's
   Marigold IID's shading                       0.83, 0.37 over the whole
                                                map (good on the tiles
                                                only, at 3x its scale)
@@ -48,8 +59,12 @@ the lit ground's (the art: 1.0 and 0.30):
 What stays dark is mostly canopy, dark in its own colour, and the shadows
 the heights do not cast.
 
-The depth is cached in OUT/cache/, keyed by model revisions, so a rerun
-only refits.
+For the canopy, k-means on colour and texture (the findings') could not
+tell grass from jungle, nor cam1's autumn trees from its cliffs, without a
+rule per map; one CLIPSeg prompt finds them all.
+
+The depth and the canopy are cached in OUT/cache/, keyed by model
+revisions, so a rerun only refits.
 OUT/manifest.json records the settings, the versions and the fit.
 
     python recover.py jum2 --mask jut2 --level .../le07.json --images DIR --out DIR
@@ -62,6 +77,7 @@ import hashlib
 import json
 import os
 import platform
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -72,6 +88,11 @@ from scipy import ndimage as ndi
 
 DEPTH_MODEL = "depth-anything/Depth-Anything-V2-Large-hf"
 DEPTH_REVISION = "7581137eff8d4e94f6e796d3baea0e9fa79b22d2"
+CANOPY_MODEL = "CIDAS/clipseg-rd64-refined"
+CANOPY_REVISION = "999e0328d9e10b484360c477313983f9afdd7050"
+CANOPY_PROMPT = "trees"
+# A tree crown's radius, in map pixels: le07's palms are about 30-40 across.
+CROWN = 20
 AMBIENT = 0.44  # shadowed / lit ground, measured on cam1
 # The sun: azimuth measured on cam1's silos; elevation fitted on le07 (the
 # silos said about 28, but at 40 the shadows fit as well and their darkness
@@ -94,6 +115,29 @@ REFINE_SHADING = 0.0
 
 def luminance(rgb):
     return rgb @ np.array([0.299, 0.587, 0.114], np.float32)
+
+
+def shoreline(rgb8, water, cell):
+    """The media mask's water, moved to the art's own shoreline. The mask is
+    exact to its cells only, so it steps along every shore. Within a cell
+    of its edge, each pixel is taken as water where its colour (Lab, blurred
+    a little) is nearer the water's around it than the land's, both the
+    local means of pixels more than a cell from the edge; the choice is
+    then smoothed. Farther out the mask is kept as it is."""
+    from skimage.color import rgb2lab
+
+    lab = rgb2lab(rgb8).astype(np.float32)
+    inside = ndi.distance_transform_edt(water)
+    outside = ndi.distance_transform_edt(~water)
+    band = ((inside > 0) & (inside <= cell)) | ((outside > 0) & (outside <= cell))
+
+    def around(known):
+        wt = ndi.gaussian_filter(known.astype(np.float32), 2 * cell)
+        return np.dstack([ndi.gaussian_filter(np.where(known, lab[..., c], 0), 2 * cell) for c in range(3)]) / np.maximum(wt, 1e-6)[..., None]
+
+    near = np.dstack([ndi.gaussian_filter(lab[..., c], 1.5) for c in range(3)])
+    wet = np.linalg.norm(near - around(inside > cell), axis=2) < np.linalg.norm(near - around(outside > cell), axis=2)
+    return np.where(band, ndi.gaussian_filter(wet.astype(np.float32), 2.0) > 0.5, water)
 
 
 def detect_shadows(rgb, water, ratio=0.66):
@@ -133,8 +177,8 @@ def refine(H, detected, land, rgb, device, az, el, floor, iters=REFINE_ITERS, cu
     the shadows wanted, so the change is only smooth offsets, on grids of
     1/16, 1/8 and 1/4 of the half-size map, and its curvature along the sun
     direction is penalised. The water's bed is left as it is, and the land
-    kept at or above `floor`. Returns the new heights at full size, each
-    step's scores, and their soft shadow (0 lit, 1 shadowed) at full size."""
+    kept at or above `floor`. Returns the new heights at full size and each
+    step's scores."""
     import torch
     import torch.nn.functional as F
 
@@ -199,17 +243,116 @@ def refine(H, detected, land, rgb, device, az, el, floor, iters=REFINE_ITERS, cu
     with torch.no_grad():
         d = sum(up(o) for o in offsets)[None, None] * 2  # full-size pixels
         d = F.interpolate(d, size=H.shape, mode="bicubic", align_corners=True)[0, 0].cpu().numpy()
-        shadow = F.interpolate(shadow[None, None], size=H.shape, mode="bilinear", align_corners=True)[0, 0].cpu().numpy()
-    return np.where(land, np.maximum(H + d, floor), H), history, shadow
+    return np.where(land, np.maximum(H + d, floor), H), history
 
 
-def unlit(rgb, detected, shadow):
-    """The art without its shadows: where it is in shadow (detected) it is
-    divided by the light the heights give it (the ambient where they cast a
-    shadow, full light where they do not). Everywhere else it is left as it
-    is. 0..1 RGB."""
-    light = np.where(detected, AMBIENT + (1 - AMBIENT) * (1 - shadow), 1)
+def unlit(rgb, detected, normal, shadow, azimuth, elevation):
+    """The art without its light: divided by the light the renderer gives
+    it at the art's own sun, from the renderer's own normals and shadow.
+    That is the ambient plus the slope term times the cast shadow, the
+    shadow counted only where the art is in shadow (detected): where the
+    heights cast a shadow the art does not have, the art is taken as lit.
+    A render at the original sun then gives back the art, and a relight
+    does not shade the slopes twice. 0..1 RGB."""
+    a, e = np.radians(azimuth), np.radians(elevation)
+    sun = np.array([np.cos(a) * np.cos(e), -np.sin(a) * np.cos(e), np.sin(e)], np.float32)
+    direct = np.clip(normal @ sun, 0, None) / sun[2]
+    light = AMBIENT + (1 - AMBIENT) * direct * np.where(detected, shadow, 1)
     return np.clip(rgb / light[..., None], 0, 1)
+
+
+def render_layers(renderer: str, project: Path, cache: Path):
+    """The renderer's normals (x east, y down the rows, z up) and shadow
+    (1 lit) for a project, drawn headless (tools/terrain)."""
+    cmd = [renderer, "render", str(project), str(cache / "light"), "-output=all"]
+    if shutil.which("xvfb-run"):
+        cmd = ["xvfb-run", "-a", "-s", "-screen 0 1280x1024x24", *cmd]
+    subprocess.run(cmd, env=dict(os.environ, DISPLAY="", WAYLAND_DISPLAY=""), check=True, stdout=subprocess.DEVNULL)
+    n = np.asarray(Image.open(cache / "light.normal.png").convert("RGB"), np.float32) / 255 * 2 - 1
+    shadow = np.asarray(Image.open(cache / "light.shadow.png").convert("L"), np.float32) / 255
+    return n / np.linalg.norm(n, axis=2, keepdims=True), shadow
+
+
+def canopy_mask(rgb8, cache: Path, device: str):
+    """How likely each pixel is to be tree canopy, 0..1: CLIPSeg asked for
+    CANOPY_PROMPT on overlapping square windows the map's width, feathered
+    together. It finds cam1's autumn trees and the jungle alike, and leaves
+    grass, sand and rock, where k-means on colour and texture could not
+    tell grass from jungle or trees from cliffs."""
+    h, w = rgb8.shape[:2]
+    key = hashlib.sha256(rgb8.tobytes() + CANOPY_REVISION.encode() + CANOPY_PROMPT.encode()).hexdigest()[:16]
+    path = cache / f"canopy-{key}.npy"
+    if path.exists():
+        return np.load(path)
+    import torch
+    from huggingface_hub import snapshot_download
+    from transformers import CLIPSegForImageSegmentation, CLIPSegProcessor
+
+    if torch.version.hip:
+        torch.backends.cudnn.enabled = False  # MIOpen's convolutions fail on gfx1151
+    files = snapshot_download(CANOPY_MODEL, revision=CANOPY_REVISION, allow_patterns=["*.json", "*.txt", "model.safetensors"])
+    proc = CLIPSegProcessor.from_pretrained(files)
+    model = CLIPSegForImageSegmentation.from_pretrained(files).to(device).eval()
+    side, stride = w, w // 2
+    starts = list(range(0, max(h - side, 0) + 1, stride))
+    if starts[-1] + side < h:
+        starts.append(h - side)
+    ramp = np.minimum(np.arange(side) + 1, side - np.arange(side)).astype(np.float32)
+    ramp = np.minimum(ramp / (side - stride), 1)[:, None]
+    prob = np.zeros((h, w), np.float32)
+    weight = np.zeros((h, 1), np.float32)
+    for y0 in starts:
+        inputs = proc(text=[CANOPY_PROMPT], images=[Image.fromarray(rgb8[y0 : y0 + side])], return_tensors="pt").to(device)
+        with torch.no_grad():
+            logits = model(**inputs).logits
+        p = torch.sigmoid(logits.reshape(1, 1, *logits.shape[-2:]))
+        p = torch.nn.functional.interpolate(p, size=(side, w), mode="bilinear", align_corners=False)[0, 0].cpu().numpy()
+        prob[y0 : y0 + side] += p * ramp
+        weight[y0 : y0 + side] += ramp
+    prob /= np.maximum(weight, 1e-6)
+    cache.mkdir(parents=True, exist_ok=True)
+    np.save(path, prob)
+    return prob
+
+
+def fill(H, known):
+    """H where `known`, and elsewhere the known values around, smoothed:
+    each pixel from the smallest Gaussian (8 to 512 px) that reaches enough
+    of them."""
+    out = np.where(known, H, 0).astype(np.float32)
+    todo = ~known
+    for sigma in (8, 16, 32, 64, 128, 256, 512):
+        if not todo.any():
+            break
+        wt = ndi.gaussian_filter(known.astype(np.float32), sigma)
+        val = ndi.gaussian_filter(np.where(known, H, 0).astype(np.float32), sigma) / np.maximum(wt, 1e-9)
+        take = todo & (wt > 0.05)
+        out[take] = val[take]
+        todo &= ~take
+    out[todo] = H[known].mean() if known.any() else 0
+    return out
+
+
+def split_canopy(H, canopy, land):
+    """The heights as ground and canopy, losslessly. The ground under the
+    canopy is the lower of two guesses: filled in from the ground around
+    it (a canopy standing above its surroundings), and the heights' own
+    lower envelope, a grey opening a crown wide, smoothed (crowns in a
+    canopy the refinement lowered below them). The cover is the canopy's
+    rise above that ground, over canopy_height (the rise's 99th
+    percentile), so ground + cover * canopy_height is H again. Returns the
+    ground, the cover (0-255) and canopy_height."""
+    trees = (canopy > 0.5) & land
+    yy, xx = np.mgrid[-CROWN : CROWN + 1, -CROWN : CROWN + 1]
+    envelope = ndi.gaussian_filter(ndi.grey_opening(H, footprint=xx * xx + yy * yy <= CROWN * CROWN), CROWN / 2)
+    ground = np.where(trees, np.minimum(H, np.minimum(fill(H, ~trees), envelope)), H)
+    rise = (H - ground)[trees]
+    top = float(np.percentile(rise, 99)) if rise.size else 0.0
+    if top <= 0:
+        return H, np.zeros(H.shape, np.uint8), 0.0
+    cover = np.where(trees, np.clip((H - ground) / top, 0, 1), 0)
+    cover = (cover * 255 + 0.5).astype(np.uint8)
+    return H - cover / 255 * top, cover, top
 
 
 def model_input(tile: Image.Image):
@@ -322,6 +465,7 @@ def main():
     ap.add_argument("--level", required=True, help="the level's JSON record, embedded in the project")
     ap.add_argument("--images", required=True, help="the folder holding MAP.png and MASK.png")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--renderer", required=True, help="the terrain tool (tools/terrain), which draws the light the colour is divided by")
     ap.add_argument("--seed", choices=("marigold", "depth-anything"), default="marigold", help="the depth model the heights start from")
     ap.add_argument("--marigold", default=os.environ.get("DR_MARIGOLD"), help="Marigold V2's setup (terrain:marigold-setup; default DR_MARIGOLD)")
     ap.add_argument("--device", default=None, help="torch device for the refinement and Depth Anything (default cuda when available)")
@@ -347,6 +491,8 @@ def main():
     m = np.asarray(Image.open(Path(args.images) / f"{args.mask}.png").convert("RGB"))
     cell = w // m.shape[1]
     water = np.kron((m[..., 2] == 255) & (m[..., 0] == 0), np.ones((cell, cell), bool))[:h, :w]
+    mask_water = water
+    water = shoreline(rgb8, water, cell)
     land = ~water
     shadows = out / "cache" / f"shadows-{hashlib.sha256(rgb8.tobytes() + water.tobytes()).hexdigest()[:16]}.npy"
     if shadows.exists():
@@ -397,11 +543,11 @@ def main():
     if water.any():
         H = np.where(water, np.minimum(H, level_h - 0.5), np.maximum(H, floor))
 
-    # With no steps this is only the seed's soft shadow, for unlit().
-    H, history, shadow = refine(H, detected, land, rgb, args.device, args.azimuth, args.elevation, floor, args.iters, args.curvature, args.shading)
+    H, history = refine(H, detected, land, rgb, args.device, args.azimuth, args.elevation, floor, args.iters, args.curvature, args.shading)
     water_colour = [int(v) for v in np.median(rgb8[water], 0)] if water.any() else [0, 0, 0]
 
-    albedo = (unlit(rgb, detected, shadow) * 255 + 0.5).astype(np.uint8)
+    canopy = canopy_mask(rgb8, out / "cache", args.device)
+    ground, cover, canopy_height = split_canopy(H, canopy, land)
 
     level = json.loads(Path(args.level).read_text())
     level["lighting"] = {
@@ -414,8 +560,9 @@ def main():
     }
     level["water"] = {"height": level_h, "colour": water_colour, "visible": bool(water.any())}
     stem = level.get("id", args.map)
-    Image.fromarray(np.clip(H / HEIGHT_UNIT + 0.5, 0, 65535).astype(np.uint16)).save(out / f"{stem}.height.png")
-    Image.fromarray(albedo).save(out / f"{stem}.albedo.png")
+    Image.fromarray(np.clip(ground / HEIGHT_UNIT + 0.5, 0, 65535).astype(np.uint16)).save(out / f"{stem}.height.png")
+    Image.fromarray(rgb8).save(out / f"{stem}.albedo.png")  # until unlit() below
+    Image.fromarray(cover).save(out / f"{stem}.canopy.png")
     project = {
         "format": "deimos-rising.level-project",
         "version": 1,
@@ -425,8 +572,8 @@ def main():
         "height_unit": HEIGHT_UNIT,
         "albedo": f"{stem}.albedo.png",
         "splat": "",
-        "canopy": "",
-        "canopy_height": 0,
+        "canopy": f"{stem}.canopy.png",
+        "canopy_height": canopy_height,
         "canopy_material": -1,
         "materials": [],
         "cliff": {"material": -1, "from": 0, "to": 0},
@@ -434,6 +581,9 @@ def main():
         "level": level,
     }
     (out / f"{stem}.drproj.json").write_text(json.dumps(project, indent=2) + "\n")
+    # The colour, divided by the light the renderer gives the project.
+    normal, lit = render_layers(args.renderer, out / f"{stem}.drproj.json", out / "cache")
+    Image.fromarray((unlit(rgb, detected, normal, lit, args.azimuth, args.elevation) * 255 + 0.5).astype(np.uint8)).save(out / f"{stem}.albedo.png")
 
     import torch
     import transformers
@@ -442,13 +592,15 @@ def main():
         "map": args.map,
         "mask": args.mask,
         "seed": seed,
-        "unlit": "the detected shadows divided by the refined heights' light",
+        "unlit": "divided by the renderer's light at the original sun, its cast shadow only where detected",
+        "canopy": {"model": CANOPY_MODEL, "revision": CANOPY_REVISION, "prompt": CANOPY_PROMPT, "share_of_land": float((canopy > 0.5)[land].mean()), "height": canopy_height},
         "window": WINDOW,
         "stride": STRIDE,
         "sun": {"azimuth": args.azimuth, "elevation": args.elevation, "ambient": AMBIENT},
         "height_range_fits": fits,
         "height_range": best,
         "water_drift_removed": bool(water.any()),
+        "shoreline_moved_share": float((water != mask_water).mean()),
         "refinement": {"iters": args.iters, "lr": REFINE_LR, "grids": REFINE_GRIDS, "ray_steps": REFINE_STEPS, "curvature": args.curvature, "shading": args.shading, "history": history},
         "device": args.device,
         "water_height": level_h,

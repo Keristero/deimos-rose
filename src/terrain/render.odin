@@ -21,6 +21,7 @@ Output :: enum {
 	Normal, // the surface's normal, n*0.5+0.5 with z up
 	Height, // 16-bit grey, in HEIGHT_UNIT: the heightmap resampled
 	Shadow, // how much of the sun reaches the ground, grey
+	Occlusion, // how open to the sky the ground is, grey: the project's layer
 }
 
 // No strip is taller than this, in output pixels.
@@ -36,7 +37,8 @@ MARCH_MAX :: 4096
 // The textures, by the material slot DrawMesh binds each to. The height
 // texture holds the surface (ground, then canopy) in R, the canopy's cover
 // in G and the bare ground in B, those two smoothed, and the surface as it
-// is in A.
+// is in A. The albedo texture holds the occlusion in A: DrawMesh binds
+// slots 7-9 as cubemaps, so a texture of its own would need a gap.
 @(private = "file")
 Slot :: enum {
 	Height,
@@ -110,8 +112,15 @@ renderer_init :: proc(r: ^Renderer, p: ^Project, smoothing: f32 = GEOMETRY_SMOOT
 	smooth(h, p.width, p.length, 0, smoothing)
 	smooth(h, p.width, p.length, 2, smoothing)
 	r.textures[.Height] = upload(raw_data(h), p.width, p.length, .UNCOMPRESSED_R32G32B32A32, .CLAMP)
-	if p.albedo != nil {
-		r.textures[.Albedo] = upload(raw_data(p.albedo), p.width, p.length, .UNCOMPRESSED_R8G8B8, .CLAMP)
+	if p.albedo != nil || p.occlusion != nil {
+		c := make([]u8, n * 4, context.temp_allocator)
+		for i in 0 ..< n {
+			if p.albedo != nil {
+				copy(c[i * 4:][:3], p.albedo[i * 3:][:3])
+			}
+			c[i * 4 + 3] = p.occlusion != nil ? p.occlusion[i] : 255
+		}
+		r.textures[.Albedo] = upload(raw_data(c), p.width, p.length, .UNCOMPRESSED_R8G8B8A8, .CLAMP)
 	}
 	if p.splat != nil {
 		r.textures[.Splat] = upload(raw_data(p.splat), p.width, p.length, .UNCOMPRESSED_R8G8B8A8, .CLAMP)
@@ -171,7 +180,7 @@ render :: proc(r: ^Renderer, p: ^Project, o: Render_Options, allocator := contex
 	#partial switch o.output {
 	case .Height:
 		channels, depth = 1, 16
-	case .Shadow:
+	case .Shadow, .Occlusion:
 		channels = 1
 	}
 	pic = picture_make(w, (to - from) * scale, channels, depth, allocator)
@@ -210,7 +219,7 @@ render :: proc(r: ^Renderer, p: ^Project, o: Render_Options, allocator := contex
 				switch o.output {
 				case .Height:
 					(transmute([]u16)pic.pixels)[d] = u16(s[0]) << 8 | u16(s[1])
-				case .Shadow:
+				case .Shadow, .Occlusion:
 					pic.pixels[d] = s[0]
 				case .Lit, .Albedo, .Normal:
 					copy(pic.pixels[d * 3:][:3], s[:3])
@@ -387,7 +396,8 @@ void main() {
 }
 `
 
-// Light: ambient, plus the sun by how squarely it meets the ground, scaled
+// Light: ambient, as open to the sky as the occlusion says, plus the sun by
+// how squarely it meets the ground, scaled
 // so that flat ground in the sun is its albedo, times how much of the sun
 // is not blocked. Blocked: walking toward the sun a map pixel at a time,
 // how far the ray from this point passes under the surface (the penumbra
@@ -398,7 +408,7 @@ TERRAIN_SHADER :: `#version 330
 out vec4 finalColor;
 
 uniform sampler2D heights; // R surface, G canopy cover, B ground, smoothed; A surface
-uniform sampler2D albedo;
+uniform sampler2D albedo; // RGB the unlit colour, A the occlusion
 uniform sampler2D splat;
 uniform sampler2D material0;
 uniform sampler2D material1;
@@ -521,6 +531,11 @@ void main() {
 		finalColor = vec4(n * 0.5 + 0.5, 1.0);
 		return;
 	}
+	float open = texture(albedo, map / size).a;
+	if (mode == 5) {
+		finalColor = vec4(vec3(open), 1.0);
+		return;
+	}
 	vec3 col = water ? waterColour : colourAt(map, h, slope);
 	if (mode == 1) {
 		finalColor = vec4(col, 1.0);
@@ -546,7 +561,7 @@ void main() {
 		return;
 	}
 	float direct = sun.z > 0.0 ? max(dot(n, sun), 0.0) / sun.z : 0.0;
-	vec3 light = ambient * ambientColour + (1.0 - ambient) * sunColour * direct * vis;
+	vec3 light = ambient * open * ambientColour + (1.0 - ambient) * sunColour * direct * vis;
 	finalColor = vec4(col * light, 1.0);
 }
 `

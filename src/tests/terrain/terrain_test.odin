@@ -42,9 +42,11 @@ project_round_trips :: proc(t: ^testing.T) {
 	p := hills(24, 16, context.temp_allocator)
 	p.splat = make([]u8, 24 * 16 * 4, context.temp_allocator)
 	p.canopy = make([]u8, 24 * 16, context.temp_allocator)
+	p.occlusion = make([]u8, 24 * 16, context.temp_allocator)
 	for i in 0 ..< 24 * 16 {
 		p.splat[i * 4 + i % 4] = 255
 		p.canopy[i] = u8(i * 7)
+		p.occlusion[i] = u8(255 - i * 3)
 	}
 	p.canopy_height, p.canopy_material = 4, 1
 	append(&p.materials, terrain.Material{name = "grass", colour = {60, 140, 50}, tile = 32})
@@ -78,6 +80,7 @@ project_round_trips :: proc(t: ^testing.T) {
 	testing.expect(t, string(q.albedo) == string(p.albedo))
 	testing.expect(t, string(q.splat) == string(p.splat))
 	testing.expect(t, string(q.canopy) == string(p.canopy))
+	testing.expect(t, string(q.occlusion) == string(p.occlusion))
 
 	testing.expect(t, terrain.project_save(&q, path))
 	second, _ := os.read_entire_file(path, context.temp_allocator)
@@ -114,6 +117,7 @@ terrain_renders :: proc(t: ^testing.T) {
 	flat_ground_is_lit(t)
 	block_shadow_is_as_long_as_the_sun_says(t)
 	smoothing_rounds_edges(t)
+	occlusion_darkens_the_ambient(t)
 	strips_are_the_whole(t)
 	scales_agree(t)
 	heights_come_back(t)
@@ -158,6 +162,41 @@ flat_ground_is_lit :: proc(t: ^testing.T) {
 			break
 		}
 	}
+}
+
+// Occlusion takes away only the sky's light: fully occluded ground in
+// the sun keeps the sun's share, in shadow it is black, and its layer
+// comes back as the occlusion output.
+@(private = "file")
+occlusion_darkens_the_ambient :: proc(t: ^testing.T) {
+	W, L :: 128, 16
+	p := terrain.project_make(W, L, context.temp_allocator)
+	p.albedo = make([]u8, W * L * 3, context.temp_allocator)
+	p.occlusion = make([]u8, W * L, context.temp_allocator)
+	for x in 0 ..< W {
+		for y in 0 ..< L {
+			i := y * W + x
+			p.heights[i] = x >= 100 && x < 110 ? 20 : 0
+			p.albedo[i * 3], p.albedo[i * 3 + 1], p.albedo[i * 3 + 2] = 200, 200, 200
+			p.occlusion[i] = x < 50 ? 0 : 255
+		}
+	}
+	p.level.lighting.sun_azimuth_degrees = 0
+	p.level.lighting.sun_elevation_degrees = 45
+	p.level.lighting.softness = 0
+	a := p.level.lighting.ambient
+	lit := draw(t, &p, {output = .Lit}, 0)
+	open := draw(t, &p, {output = .Occlusion}, 0)
+	grey :: proc(pic: terrain.Picture, x, y, channels: int) -> int {
+		return int(pic.pixels[(y * pic.width + x) * channels])
+	}
+	// West of x 50, in the sun, occluded; at x 90, in the wall's shadow
+	// (20 long), open; at x 20 the sun's share alone.
+	testing.expect(t, abs(grey(lit, 20, 8, 3) - int(200 * (1 - a) + 0.5)) <= 1, "occluded in the sun")
+	testing.expect(t, abs(grey(lit, 70, 8, 3) - 200) <= 1, "open in the sun")
+	testing.expect(t, abs(grey(lit, 90, 8, 3) - int(200 * a + 0.5)) <= 1, "open in shadow")
+	testing.expect_value(t, grey(open, 20, 8, 1), 0)
+	testing.expect_value(t, grey(open, 70, 8, 1), 255)
 }
 
 // A wall h high, with the sun due east at elevation e, shades h/tan(e)
