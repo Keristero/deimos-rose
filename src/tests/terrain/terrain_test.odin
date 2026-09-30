@@ -113,15 +113,16 @@ terrain_renders :: proc(t: ^testing.T) {
 	os.make_directory_all(OUT)
 	flat_ground_is_lit(t)
 	block_shadow_is_as_long_as_the_sun_says(t)
+	smoothing_rounds_edges(t)
 	strips_are_the_whole(t)
 	scales_agree(t)
 	heights_come_back(t)
 }
 
 @(private = "file")
-draw :: proc(t: ^testing.T, p: ^terrain.Project, o: terrain.Render_Options) -> terrain.Picture {
+draw :: proc(t: ^testing.T, p: ^terrain.Project, o: terrain.Render_Options, smoothing: f32 = terrain.GEOMETRY_SMOOTHING) -> terrain.Picture {
 	r: terrain.Renderer
-	testing.expect(t, terrain.renderer_init(&r, p))
+	testing.expect(t, terrain.renderer_init(&r, p, smoothing))
 	defer terrain.renderer_destroy(&r)
 	pic, ok := terrain.render(&r, p, o, context.temp_allocator)
 	testing.expect(t, ok)
@@ -160,7 +161,8 @@ flat_ground_is_lit :: proc(t: ^testing.T) {
 }
 
 // A wall h high, with the sun due east at elevation e, shades h/tan(e)
-// of the ground west of it; the shade is the ambient light.
+// of the ground west of it; the shade is the ambient light. Unsmoothed:
+// smoothing rounds the wall's edge, and its shadow is a little shorter.
 @(private = "file")
 block_shadow_is_as_long_as_the_sun_says :: proc(t: ^testing.T) {
 	W, L :: 128, 16
@@ -174,7 +176,7 @@ block_shadow_is_as_long_as_the_sun_says :: proc(t: ^testing.T) {
 	}
 	p.level.lighting.sun_azimuth_degrees = 0
 	p.level.lighting.sun_elevation_degrees = 28
-	shadow := draw(t, &p, {output = .Shadow})
+	shadow := draw(t, &p, {output = .Shadow}, 0)
 	row := shadow.pixels[8 * W:][:W]
 	edge := -1
 	for x in 0 ..< 96 {
@@ -188,9 +190,45 @@ block_shadow_is_as_long_as_the_sun_says :: proc(t: ^testing.T) {
 	testing.expect_value(t, row[90], 0)
 	testing.expect_value(t, row[20], 255)
 	testing.expect_value(t, row[100], 255)
-	lit := draw(t, &p, {output = .Lit})
+	lit := draw(t, &p, {output = .Lit}, 0)
 	shade := lit.pixels[(8 * W + 90) * 3]
 	testing.expectf(t, abs(int(shade) - int(200 * 0.44)) <= 1, "shade is %d", shade)
+}
+
+// The geometry drawn smoothed: the wall's edge tilts over a few pixels, not
+// the two a central difference sees, and its shadow is shorter than the
+// sharp wall's by less than 3 sigma.
+@(private = "file")
+smoothing_rounds_edges :: proc(t: ^testing.T) {
+	W, L :: 128, 16
+	p := terrain.project_make(W, L, context.temp_allocator)
+	for i in 0 ..< W * L {
+		if x := i % W; x >= 96 && x < 112 {
+			p.heights[i] = 16
+		}
+	}
+	p.level.lighting.sun_azimuth_degrees = 0
+	p.level.lighting.sun_elevation_degrees = 28
+	tilted :: proc(pic: terrain.Picture, W: int) -> (n: int) {
+		for x in 80 ..< 104 {
+			if pic.pixels[(8 * W + x) * 3 + 2] < 250 {
+				n += 1
+			}
+		}
+		return
+	}
+	sharp, soft := tilted(draw(t, &p, {output = .Normal}, 0), W), tilted(draw(t, &p, {output = .Normal}), W)
+	testing.expectf(t, sharp <= 2 && soft >= 4, "tilted pixels at the edge: %d sharp, %d smoothed", sharp, soft)
+	edge :: proc(pic: terrain.Picture, W: int) -> int {
+		for x in 0 ..< 96 {
+			if pic.pixels[8 * W + x] < 128 {
+				return x
+			}
+		}
+		return -1
+	}
+	a, b := edge(draw(t, &p, {output = .Shadow}, 0), W), edge(draw(t, &p, {output = .Shadow}), W)
+	testing.expectf(t, b >= a && f32(b - a) < 3 * terrain.GEOMETRY_SMOOTHING / math.tan(math.to_radians(f32(28))) + 1, "the smoothed shadow starts at %d, the sharp one at %d", b, a)
 }
 
 // Drawn a few rows at a time, the map is the map drawn at once.

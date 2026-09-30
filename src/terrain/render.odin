@@ -25,12 +25,18 @@ Output :: enum {
 
 // No strip is taller than this, in output pixels.
 STRIP_MAX :: 4096
+// The geometry is drawn smoothed by a Gaussian this wide (its sigma, in map
+// pixels): faint, so a heightmap's per-pixel steps and facets shade as a
+// smooth surface, as a mesh with smooth vertex normals would. The project's
+// heights are left as they are, and the height output is theirs.
+GEOMETRY_SMOOTHING :: 1.0
 // The longest shadow walked, in map pixels.
 MARCH_MAX :: 4096
 
 // The textures, by the material slot DrawMesh binds each to. The height
 // texture holds the surface (ground, then canopy) in R, the canopy's cover
-// in G and the bare ground in B.
+// in G and the bare ground in B, those two smoothed, and the surface as it
+// is in A.
 @(private = "file")
 Slot :: enum {
 	Height,
@@ -64,8 +70,9 @@ Renderer :: struct {
 	max_height: f32,
 }
 
-// Uploads the project. Call again after changing its layers.
-renderer_init :: proc(r: ^Renderer, p: ^Project) -> bool {
+// Uploads the project, its geometry smoothed by `smoothing` (a Gaussian's
+// sigma in map pixels, 0 for none). Call again after changing its layers.
+renderer_init :: proc(r: ^Renderer, p: ^Project, smoothing: f32 = GEOMETRY_SMOOTHING) -> bool {
 	if r.shader.id == 0 {
 		r.shader = rl.LoadShaderFromMemory(VERTEX_SHADER, TERRAIN_SHADER)
 		if !rl.IsShaderValid(r.shader) {
@@ -87,18 +94,22 @@ renderer_init :: proc(r: ^Renderer, p: ^Project) -> bool {
 	}
 	r.width, r.length = p.width, p.length
 
-	// Heights: the surface with the canopy on it, the cover, the ground.
+	// Heights: the surface with the canopy on it, the cover, the ground,
+	// the surface unsmoothed.
 	n := p.width * p.length
-	h := make([]f32, n * 3, context.temp_allocator)
+	h := make([]f32, n * 4, context.temp_allocator)
 	r.max_height = p.level.water.visible ? p.level.water.height : 0
 	for i in 0 ..< n {
 		cover := p.canopy != nil ? f32(p.canopy[i]) / 255 : 0
-		h[i * 3 + 0] = p.heights[i] + cover * p.canopy_height
-		h[i * 3 + 1] = cover
-		h[i * 3 + 2] = p.heights[i]
-		r.max_height = max(r.max_height, h[i * 3])
+		h[i * 4 + 0] = p.heights[i] + cover * p.canopy_height
+		h[i * 4 + 1] = cover
+		h[i * 4 + 2] = p.heights[i]
+		h[i * 4 + 3] = h[i * 4 + 0]
+		r.max_height = max(r.max_height, h[i * 4])
 	}
-	r.textures[.Height] = upload(raw_data(h), p.width, p.length, .UNCOMPRESSED_R32G32B32, .CLAMP)
+	smooth(h, p.width, p.length, 0, smoothing)
+	smooth(h, p.width, p.length, 2, smoothing)
+	r.textures[.Height] = upload(raw_data(h), p.width, p.length, .UNCOMPRESSED_R32G32B32A32, .CLAMP)
 	if p.albedo != nil {
 		r.textures[.Albedo] = upload(raw_data(p.albedo), p.width, p.length, .UNCOMPRESSED_R8G8B8, .CLAMP)
 	}
@@ -295,6 +306,51 @@ fmt_index :: proc(name: string, i: int) -> string {
 	return strings.concatenate({name, DIGITS[i]}, context.temp_allocator)
 }
 
+// Channel `c` of the RGBA picture `px` (w x l) blurred by a Gaussian of
+// `sigma` map pixels, edges repeated: across the rows, then down the columns.
+@(private = "file")
+smooth :: proc(px: []f32, w, l, c: int, sigma: f32) {
+	if sigma <= 0 {
+		return
+	}
+	radius := int(math.ceil(3 * sigma))
+	kernel := make([]f32, 2 * radius + 1, context.temp_allocator)
+	sum: f32
+	for &k, i in kernel {
+		x := f32(i - radius)
+		k = math.exp(-x * x / (2 * sigma * sigma))
+		sum += k
+	}
+	for &k in kernel {
+		k /= sum
+	}
+	line := make([]f32, max(w, l), context.temp_allocator)
+	for y in 0 ..< l {
+		for x in 0 ..< w {
+			line[x] = px[(y * w + x) * 4 + c]
+		}
+		for x in 0 ..< w {
+			v: f32
+			for k, i in kernel {
+				v += k * line[clamp(x + i - radius, 0, w - 1)]
+			}
+			px[(y * w + x) * 4 + c] = v
+		}
+	}
+	for x in 0 ..< w {
+		for y in 0 ..< l {
+			line[y] = px[(y * w + x) * 4 + c]
+		}
+		for y in 0 ..< l {
+			v: f32
+			for k, i in kernel {
+				v += k * line[clamp(y + i - radius, 0, l - 1)]
+			}
+			px[(y * w + x) * 4 + c] = v
+		}
+	}
+}
+
 @(private = "file")
 upload :: proc(pixels: rawptr, w, h: int, format: rl.PixelFormat, wrap: rl.TextureWrap) -> rl.Texture2D {
 	img := rl.Image {
@@ -341,7 +397,7 @@ void main() {
 TERRAIN_SHADER :: `#version 330
 out vec4 finalColor;
 
-uniform sampler2D heights; // R surface, G canopy cover, B ground
+uniform sampler2D heights; // R surface, G canopy cover, B ground, smoothed; A surface
 uniform sampler2D albedo;
 uniform sampler2D splat;
 uniform sampler2D material0;
@@ -379,6 +435,10 @@ uniform int canopyMaterial;
 
 vec3 at(vec2 map) {
 	return texture(heights, map / size).rgb;
+}
+
+float unsmoothed(vec2 map) {
+	return texture(heights, map / size).a;
 }
 
 float surface(vec2 map) {
@@ -452,7 +512,7 @@ void main() {
 	vec3 n = water ? vec3(0.0, 0.0, 1.0) : normalize(vec3(-slope, 1.0));
 
 	if (mode == 3) {
-		float v = clamp(floor(h0 / heightUnit + 0.5), 0.0, 65535.0);
+		float v = clamp(floor((water ? waterHeight : unsmoothed(map)) / heightUnit + 0.5), 0.0, 65535.0);
 		float hi = floor(v / 256.0);
 		finalColor = vec4(hi / 255.0, (v - hi * 256.0) / 255.0, 0.0, 1.0);
 		return;

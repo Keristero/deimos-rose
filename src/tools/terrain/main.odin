@@ -3,8 +3,8 @@ package terrain_tool
 // Level projects from the command line (Stage 5 of
 // notes/level-editor-plan.md), through a hidden window:
 //
-//   terrain render  <project> <out> [-output=lit|albedo|normal|height|shadow|all] [-scale=N] [-quantise] [-from=ROW] [-to=ROW]
-//   terrain compare <project> [<original.png> <mask.png>] [-images=DIR] [-out=side.png] [-from=ROW] [-to=ROW] [-fit]
+//   terrain render  <project> <out> [-output=lit|albedo|normal|height|shadow|all] [-scale=N] [-quantise] [-from=ROW] [-to=ROW] [-smoothing=SIGMA]
+//   terrain compare <project> [<original.png> <mask.png>] [-images=DIR] [-out=side.png] [-from=ROW] [-to=ROW] [-fit] [-smoothing=SIGMA]
 //
 // render writes <out>.png, or <out>.<output>.png for each with -output=all.
 // compare finds the original map and mask by the level's image ids in
@@ -13,6 +13,8 @@ package terrain_tool
 // original as the findings did; it prints how well they overlap, how dark
 // each one's shadow is, and with -fit the sun azimuth whose shadows fit the
 // original's best, and writes original | render | overlap side by side.
+// -smoothing is the geometry's smoothing, a Gaussian's sigma in map pixels
+// (terrain.GEOMETRY_SMOOTHING when not given; 0 for none).
 
 import "core:fmt"
 import "core:os"
@@ -36,8 +38,8 @@ main :: proc() {
 		}
 	}
 	if len(plain) < 1 || (plain[0] == "render" && len(plain) != 3) || (plain[0] == "compare" && len(plain) != 2 && len(plain) != 4) {
-		fmt.eprintln("usage: terrain render <project> <out> [-output=lit|albedo|normal|height|shadow|all] [-scale=N] [-quantise] [-from=ROW] [-to=ROW]")
-		fmt.eprintln("       terrain compare <project> [<original.png> <mask.png>] [-images=DIR] [-out=side.png] [-from=ROW] [-to=ROW] [-fit]")
+		fmt.eprintln("usage: terrain render <project> <out> [-output=lit|albedo|normal|height|shadow|all] [-scale=N] [-quantise] [-from=ROW] [-to=ROW] [-smoothing=SIGMA]")
+		fmt.eprintln("       terrain compare <project> [<original.png> <mask.png>] [-images=DIR] [-out=side.png] [-from=ROW] [-to=ROW] [-fit] [-smoothing=SIGMA]")
 		os.exit(2)
 	}
 	p, ok := terrain.project_load(plain[1])
@@ -53,8 +55,17 @@ main :: proc() {
 		os.exit(1)
 	}
 	defer rl.CloseWindow()
+	smoothing := f32(terrain.GEOMETRY_SMOOTHING)
+	if v, given := flags["smoothing"]; given {
+		f, parsed := strconv.parse_f32(v)
+		if !parsed || f < 0 {
+			fmt.eprintfln("terrain: -smoothing=%s is not a sigma", v)
+			os.exit(2)
+		}
+		smoothing = f
+	}
 	r: terrain.Renderer
-	if !terrain.renderer_init(&r, &p) {
+	if !terrain.renderer_init(&r, &p, smoothing) {
 		fmt.eprintln("terrain: the shader did not compile")
 		os.exit(1)
 	}

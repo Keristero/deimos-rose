@@ -1291,9 +1291,15 @@ exports and for comparison with the original art.
   - Outputs: lit, albedo, normal, height (16-bit) and shadow, at any whole
     scale, each optionally through the originals' 15-bit colour.
   - Textures go through `DrawMesh`'s material maps, seven slots, since
-    rlgl's batch binds only four; the height texture is RGB32F (surface
-    with canopy, cover, bare ground). The editor's tilted view (Stage 7)
-    will feed the same shader a mesh.
+    rlgl's batch binds only four; the height texture is RGBA32F (surface
+    with canopy, cover, bare ground, then the surface unsmoothed). The
+    editor's tilted view (Stage 7) will feed the same shader a mesh.
+  - Geometry is drawn smoothed: a Gaussian of `GEOMETRY_SMOOTHING` (1 map
+    pixel) over the surface and ground on upload, so a heightmap's
+    per-pixel steps shade as a smooth surface, as smooth vertex normals
+    would. Done on the CPU, it keeps strips identical to the whole; the
+    height output is the project's own heights; `-smoothing=0` turns it
+    off.
 - **`terrain/analysis.odin`** finds shadows as the findings did (much
   darker than the 85th percentile of the 81-pixel square around, not
   water, opened by a 3x3 cross), for `tools/terrain compare`.
