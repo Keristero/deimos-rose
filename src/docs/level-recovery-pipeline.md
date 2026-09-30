@@ -14,6 +14,7 @@ mise run terrain:marigold-setup   # once: Marigold V2, pinned (~45 GB)
 mise run hd:setup                 # once: the Flux venv (hd:upscale and terrain:occlusion)
 mise run terrain:recover-all      # all 12 levels into work/recovered/, then the report
 LEVELS="le01 le07" mise run terrain:recover-all   # some of them
+mise run terrain:mod              # package them as the Recovered Levels plugin
 ```
 
 Every model is pinned by revision, and every slow step is cached by a hash
@@ -69,6 +70,7 @@ flowchart TD
     end
 
     render["terrain:render<br/>lit, albedo, normal, height, shadow, occlusion"]:::out
+    mod[("terrain:mod — tools/terrain_mod/package.py<br/>plugins/recovered_levels: each drawn lit as its map,<br/>the original's record otherwise")]:::out
 
     hdup["hd:upscale<br/>Flux detail transfer 4x of the art"]:::planned
     hdlayers["Colour and occlusion at 4x;<br/>heights stay at 1x"]:::planned
@@ -89,6 +91,8 @@ flowchart TD
     noao --> report
     withao --> report
     project --> render
+    project --> mod
+    rec --> mod
 
     art -.-> hdup -.-> hdlayers
     unlit -.-> hdlayers
@@ -187,6 +191,15 @@ Per level, in `work/recovered/leNN/`:
 | `manifest.json`, `leNN.occlusion.json` | settings, versions, fits, timings |
 | `compare.txt`, `compare-occlusion.txt`, `*.compare*.png` | the scores and side-by-sides |
 | `cache/` | depth windows, shadows, canopy, the renderer's light, occlusion tiles |
+
+`mise run terrain:mod` packages the levels in `work/recovered/` as a
+campaign plugin, `plugins/recovered_levels` (Recovered Levels, off by
+default). Each project is drawn lit, with its occlusion, as
+`images/im16/rlNN.png`. The original's level record is copied with only
+`background_image` changed, so the units, previews, masks and music are
+the originals'. Turned on in the Mods page, it is a campaign on Level
+Select; `deimos -campaign recovered_levels -level Leonidas` plays one
+straight away.
 
 `PROJECT=… mise run terrain:render` then draws any of the outputs (lit,
 albedo, normal, height, shadow, occlusion) at `SCALE=N`. The renderer

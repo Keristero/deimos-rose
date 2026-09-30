@@ -525,6 +525,19 @@ done
 cat "$REPORT"
 '''
 
+[tasks."terrain:mod"]
+description = "Package the levels recovered in work/recovered/ as the Recovered Levels campaign plugin (plugins/recovered_levels): each drawn lit with its occlusion as its map, the original's record otherwise; OUT=dir for elsewhere"
+depends = ["terrain:build"]
+run = '''
+set -e
+headless() {
+  if command -v xvfb-run >/dev/null; then set -- xvfb-run -a -s "-screen 0 1280x1024x24" "$@"; fi
+  env DISPLAY= WAYLAND_DISPLAY= "$@"
+}
+headless python3 tools/terrain_mod/package.py --recovered "$DR_SRC/../work/recovered" \
+  --classic "$DR_SRC/plugins/classic_levels" --renderer "$DR_BUILD/terrain$DR_EXT" --out "${OUT:-$DR_SRC/plugins/recovered_levels}"
+'''
+
 [tasks."terrain:occlusion"]
 description = "Bake a level project's occlusion layer, how open to the sky each pixel is, from its colour with Flux 2 [klein] (PROJECT=...; in the hd:setup venv)"
 depends = ["terrain:build"]

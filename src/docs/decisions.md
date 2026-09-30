@@ -1251,6 +1251,7 @@ button needs the game to start one without the menus.
   - `-level <identifier or id>` plays that level at once, and `-row <n>`
     from map row n (the view's top); either alone plays the campaign's
     first level. A name that is not installed exits with a message.
+    With `DR_SHOT` they pick the level the shots play (`launch_level`).
   - `-plugins <dir>` adds a plugins root searched before `$DR_PLUGINS`.
 - **`level_start_at_row`** is `level_skip_to_end` under a name for what it
   does: the view's top at the row, the entities cleared and the rows in

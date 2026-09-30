@@ -173,6 +173,12 @@ or next to it, so the heights cast their shadows where the art's fall.
 - The water is flat, the level's median water colour: the originals'
   translucent shallows, where the sand shows through, are the next step.
 
+`mise run terrain:mod` packages the twelve as a mod, Recovered Levels
+(`plugins/recovered_levels`, off by default): each project drawn lit, with
+its occlusion, as the level's map, and the original's level record
+otherwise. It is a campaign on Level Select beside Classic Levels. Its maps
+are these, with the water still flat.
+
 Each level's scores are in `work/recovered/leNN/compare.txt` and
 `compare-occlusion.txt`, with side-by-sides. `work/` is not committed: it
 holds the original art. The projects are a starting point for artists, not

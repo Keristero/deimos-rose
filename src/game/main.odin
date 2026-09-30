@@ -16,6 +16,7 @@ import "dr:prefs"
 import "dr:render"
 import "dr:sim"
 import "dr:sim/lifecycle"
+import "dr:sim/systems/level_system"
 import "dr:ui"
 
 // A stall (window drag, breakpoint, GC pause) must not make the simulation
@@ -150,7 +151,19 @@ main :: proc() {
 		// defer sim.init to the title screen -- preserved so existing
 		// DR_SHOT-only invocations keep seeing the same frames.
 		level := defs.levels[0].id // play order: Lucena is level 1
-		sim.init(state, sim.Session{seed = 0x1234_5678, level_id = level, game_type = .Single}, &defs)
+		campaign := sim.CORE
+		// -campaign, -level and -row pick another, as they would play it.
+		if settings.campaign != "" || settings_play_now(settings) {
+			c, index, ok := launch_level(&defs, settings)
+			if !ok {
+				os.exit(1)
+			}
+			campaign, level = c, sim.campaign_levels(&defs, c)[index].id
+		}
+		sim.init(state, sim.Session{seed = 0x1234_5678, level_id = level, game_type = .Single, campaign = campaign}, &defs)
+		if settings.row > 0 {
+			level_system.level_start_at_row(state, i32(settings.row))
+		}
 	}
 
 	// DR_SHOT=<path> renders DR_SHOT_AT steps (comma-separated) and writes a

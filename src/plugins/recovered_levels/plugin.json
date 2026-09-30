@@ -1,0 +1,20 @@
+{
+    "label": "Recovered Levels",
+    "description": "The original twelve sectors on maps redrawn from their recovered 3D terrain",
+    "version": "1",
+    "default_on": false,
+    "levels": [
+        "Lucena",
+        "Yippe",
+        "Vista",
+        "Swoop",
+        "Conrad",
+        "Delos",
+        "Sparta",
+        "Saratoga",
+        "Hannibal",
+        "Leonidas",
+        "Thebes",
+        "Yamato"
+    ]
+}
