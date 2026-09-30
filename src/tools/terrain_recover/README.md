@@ -1,7 +1,8 @@
 # Terrain recovery
 
 `recover.py` rebuilds a level project (`terrain/project.odin`) from one of the
-original maps: a heightmap, the water, and an unlit colour layer. The result is
+original maps: a heightmap, the water and its translucent layer, the canopy,
+and an unlit colour layer. The result is
 a starting point an artist opens in the level editor. It is not a finished
 level. Output goes to `work/terrain/<level>/`, which is gitignored, because it
 is made from the original art. See Stage 6 of `notes/level-editor-plan.md`.

@@ -28,6 +28,13 @@ point an artist can take into the editor:
      heights are split there into a smooth ground and the canopy's cover
      above it, losslessly (split_canopy()), so it can be edited as
      vegetation and the render is unchanged.
+  7. Water layer: the art's water is translucent, the sand showing
+     through at the shore. Its opacity is fitted per pixel against the
+     land carried in from the shore and the deep water's own colour
+     (water_opacity()); the layer holds that colour, the art's grain and
+     all, and the colour under the water becomes the unlit bed
+     (water_layer()). The renderer draws the layer over the bed, its
+     surface unshadowed as the originals' is.
 
 This is Stage 6 of notes/level-editor-plan.md; terrain:recover-all runs it
 on all 12 levels.
@@ -111,6 +118,11 @@ REFINE_GRIDS = (16, 8, 4)
 REFINE_STEPS = 120
 REFINE_CURVATURE = 1.0
 REFINE_SHADING = 0.0
+# The water, as translucent (water_opacity()): past WATER_DEEP map pixels
+# from the shore it is deep, and its own colour is the lit deep water's,
+# smoothed over WATER_REACH.
+WATER_DEEP = 12
+WATER_REACH = 48
 
 
 def luminance(rgb):
@@ -138,6 +150,54 @@ def shoreline(rgb8, water, cell):
     near = np.dstack([ndi.gaussian_filter(lab[..., c], 1.5) for c in range(3)])
     wet = np.linalg.norm(near - around(inside > cell), axis=2) < np.linalg.norm(near - around(outside > cell), axis=2)
     return np.where(band, ndi.gaussian_filter(wet.astype(np.float32), 2.0) > 0.5, water)
+
+
+def water_opacity(rgb, water):
+    """How opaque the art's water is, 0..1 per pixel. Each water pixel is
+    taken as s * ((1 - A) * bed + A * W): the bed is the land's colour at
+    the shore carried in, W the water's own colour (the lit deep water's,
+    slowly varying), A the opacity and s a brightness, which takes up the
+    art's grain and the bed's shadows. A and s are fitted per pixel (least
+    squares over A in steps of 0.02, s in closed form), and A smoothed a
+    little. The originals' water is mostly opaque, the sand showing through
+    only in a band at the shore, and its surface takes no cast shadow:
+    where the recovered heights shade 52% of le01's water, its s is 0.99."""
+    inside = ndi.distance_transform_edt(water)
+    shore = ~water & (ndi.distance_transform_edt(~water) <= 4)
+    bed = np.dstack([ndi.gaussian_filter(fill(rgb[..., c], shore), 3) for c in range(3)])
+    deep = water & (inside > WATER_DEEP)
+    L = ndi.gaussian_filter(luminance(rgb), 1.5)
+    lit = deep & (L > 0.8 * ndi.maximum_filter(np.where(deep, L, 0), 41))
+    wt = ndi.gaussian_filter(lit.astype(np.float32), WATER_REACH)
+    W = np.dstack([fill(ndi.gaussian_filter(np.where(lit, rgb[..., c], 0), WATER_REACH) / np.maximum(wt, 1e-6), wt > 0.02) for c in range(3)])
+    ys, xs = np.nonzero(water)
+    a, b, w = rgb[ys, xs], bed[ys, xs], W[ys, xs]
+    best = np.full(len(ys), np.inf, np.float32)
+    A = np.zeros(len(ys), np.float32)
+    for t in np.linspace(0, 1, 51, dtype=np.float32):
+        m = (1 - t) * b + t * w
+        s = np.clip((a * m).sum(1) / np.maximum((m * m).sum(1), 1e-9), 0, 1.5)
+        r = ((a - s[:, None] * m) ** 2).sum(1)
+        take = r < best
+        best[take], A[take] = r[take], t
+    Am = np.zeros(water.shape, np.float32)
+    Am[ys, xs] = A
+    wf = ndi.gaussian_filter(water.astype(np.float32), 1.0)
+    return np.where(water, ndi.gaussian_filter(Am, 1.0) / np.maximum(wf, 1e-6), 0)
+
+
+def water_layer(rgb, unlit_rgb, water, A):
+    """The water layer the renderer draws over the bed (terrain/render.odin),
+    and the bed. The layer's RGB is the water's own colour, grain and all,
+    and its A the opacity, so that (1 - A) * bed + A * RGB is the art again:
+    the bed there is the lit land at the shore carried in, as the water's
+    surface is lit alike everywhere. The bed returned, for the colour under
+    the water, is the unlit land carried in. All 0..1."""
+    shore = ~water & (ndi.distance_transform_edt(~water) <= 4)
+    carried = lambda c: np.dstack([ndi.gaussian_filter(fill(c[..., k], shore), 3) for k in range(3)])
+    bed = carried(unlit_rgb)
+    rgb = np.clip((rgb - (1 - A[..., None]) * carried(rgb)) / np.maximum(A, 0.05)[..., None], 0, 1)
+    return np.dstack([np.where(water[..., None], rgb, 0), np.where(water, A, 0)]), bed
 
 
 def detect_shadows(rgb, water, ratio=0.66):
@@ -494,13 +554,20 @@ def main():
     mask_water = water
     water = shoreline(rgb8, water, cell)
     land = ~water
-    shadows = out / "cache" / f"shadows-{hashlib.sha256(rgb8.tobytes() + water.tobytes()).hexdigest()[:16]}.npy"
+    key = hashlib.sha256(rgb8.tobytes() + water.tobytes()).hexdigest()[:16]
+    shadows = out / "cache" / f"shadows-{key}.npy"
     if shadows.exists():
         detected = np.load(shadows)
     else:
         detected = detect_shadows(rgb, water)
         shadows.parent.mkdir(parents=True, exist_ok=True)
         np.save(shadows, detected)
+    opacities = out / "cache" / f"water-opacity-{hashlib.sha256(key.encode() + repr((WATER_DEEP, WATER_REACH)).encode()).hexdigest()[:16]}.npy"
+    if opacities.exists():
+        opacity = np.load(opacities)
+    else:
+        opacity = water_opacity(rgb, water)
+        np.save(opacities, opacity)
 
     if args.seed == "marigold":
         seed = {"model": "marigold-v2 depth (Log-stage2)", **marigold_version(Path(args.marigold))}
@@ -583,7 +650,15 @@ def main():
     (out / f"{stem}.drproj.json").write_text(json.dumps(project, indent=2) + "\n")
     # The colour, divided by the light the renderer gives the project.
     normal, lit = render_layers(args.renderer, out / f"{stem}.drproj.json", out / "cache")
-    Image.fromarray((unlit(rgb, detected, normal, lit, args.azimuth, args.elevation) * 255 + 0.5).astype(np.uint8)).save(out / f"{stem}.albedo.png")
+    colour = unlit(rgb, detected, normal, lit, args.azimuth, args.elevation)
+    # The water as a layer over its bed, the bed in the colour under it.
+    if water.any():
+        layer, bed = water_layer(rgb, colour, water, opacity)
+        colour = np.where(water[..., None], bed, colour)
+        Image.fromarray((layer * 255 + 0.5).astype(np.uint8), "RGBA").save(out / f"{stem}.water.png")
+        project["water"] = f"{stem}.water.png"
+        (out / f"{stem}.drproj.json").write_text(json.dumps(project, indent=2) + "\n")
+    Image.fromarray((colour * 255 + 0.5).astype(np.uint8)).save(out / f"{stem}.albedo.png")
 
     import torch
     import transformers
@@ -601,6 +676,7 @@ def main():
         "height_range": best,
         "water_drift_removed": bool(water.any()),
         "shoreline_moved_share": float((water != mask_water).mean()),
+        "water_layer": {"deep": WATER_DEEP, "reach": WATER_REACH, "mean_opacity": float(opacity[water].mean()) if water.any() else None},
         "refinement": {"iters": args.iters, "lr": REFINE_LR, "grids": REFINE_GRIDS, "ray_steps": REFINE_STEPS, "curvature": args.curvature, "shading": args.shading, "history": history},
         "device": args.device,
         "water_height": level_h,

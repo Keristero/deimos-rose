@@ -37,8 +37,9 @@ MARCH_MAX :: 4096
 // The textures, by the material slot DrawMesh binds each to. The height
 // texture holds the surface (ground, then canopy) in R, the canopy's cover
 // in G and the bare ground in B, those two smoothed, and the surface as it
-// is in A. The albedo texture holds the occlusion in A: DrawMesh binds
-// slots 7-9 as cubemaps, so a texture of its own would need a gap.
+// is in A. The albedo texture holds the occlusion in A. DrawMesh binds
+// slots 7-9 as cubemaps, so the water, the eighth, is bound to slot 10
+// (map_slot()).
 @(private = "file")
 Slot :: enum {
 	Height,
@@ -48,6 +49,12 @@ Slot :: enum {
 	Material_1,
 	Material_2,
 	Material_3,
+	Water,
+}
+
+@(private = "file")
+map_slot :: proc(s: Slot) -> int {
+	return s == .Water ? int(rl.MaterialMapIndex.BRDF) : int(s)
 }
 
 @(private = "file")
@@ -59,6 +66,7 @@ SAMPLERS := [Slot]cstring {
 	.Material_1 = "material1",
 	.Material_2 = "material2",
 	.Material_3 = "material3",
+	.Water      = "waterLayer",
 }
 
 Renderer :: struct {
@@ -81,7 +89,7 @@ renderer_init :: proc(r: ^Renderer, p: ^Project, smoothing: f32 = GEOMETRY_SMOOT
 			return false
 		}
 		for name, slot in SAMPLERS {
-			r.shader.locs[int(rl.ShaderLocationIndex.MAP_ALBEDO) + int(slot)] = rl.GetShaderLocation(r.shader, name)
+			r.shader.locs[int(rl.ShaderLocationIndex.MAP_ALBEDO) + map_slot(slot)] = rl.GetShaderLocation(r.shader, name)
 		}
 		r.quad = quad_mesh()
 		white := rl.GenImageColor(1, 1, rl.WHITE)
@@ -125,6 +133,9 @@ renderer_init :: proc(r: ^Renderer, p: ^Project, smoothing: f32 = GEOMETRY_SMOOT
 	if p.splat != nil {
 		r.textures[.Splat] = upload(raw_data(p.splat), p.width, p.length, .UNCOMPRESSED_R8G8B8A8, .CLAMP)
 	}
+	if p.water != nil {
+		r.textures[.Water] = upload(raw_data(p.water), p.width, p.length, .UNCOMPRESSED_R8G8B8A8, .CLAMP)
+	}
 	for img, i in p.material_images {
 		if img.pixels == nil || img.depth != 8 {
 			continue
@@ -133,7 +144,7 @@ renderer_init :: proc(r: ^Renderer, p: ^Project, smoothing: f32 = GEOMETRY_SMOOT
 		r.textures[Slot(int(Slot.Material_0) + i)] = upload(raw_data(img.pixels), img.width, img.height, FORMATS[img.channels], .REPEAT)
 	}
 	for t, slot in r.textures {
-		r.maps[slot].texture = t.id != 0 ? t : r.white
+		r.maps[map_slot(slot)].texture = t.id != 0 ? t : r.white
 	}
 	return true
 }
@@ -289,6 +300,7 @@ uniforms :: proc(r: ^Renderer, p: ^Project, output: Output, scale: f32) {
 	set(r, "waterHeight", w.height)
 	set(r, "waterVisible", i32(w.visible))
 	set(r, "waterColour", colour(w.colour))
+	set(r, "hasWater", i32(p.water != nil))
 	set(r, "hasAlbedo", i32(p.albedo != nil))
 	set(r, "hasSplat", i32(p.splat != nil))
 	set(r, "materialCount", i32(min(len(p.materials), MAX_MATERIALS)))
@@ -414,6 +426,7 @@ uniform sampler2D material0;
 uniform sampler2D material1;
 uniform sampler2D material2;
 uniform sampler2D material3;
+uniform sampler2D waterLayer; // RGB the water's unlit colour, A how opaque it is
 
 uniform vec2 size;
 uniform vec2 origin;
@@ -432,6 +445,7 @@ uniform float heightUnit;
 uniform float waterHeight;
 uniform int waterVisible;
 uniform vec3 waterColour;
+uniform int hasWater;
 
 uniform int hasAlbedo;
 uniform int hasSplat;
@@ -536,9 +550,13 @@ void main() {
 		finalColor = vec4(vec3(open), 1.0);
 		return;
 	}
-	vec3 col = water ? waterColour : colourAt(map, h, slope);
+	// Under the water, the bed, and over it the water's own colour by how
+	// opaque it is: the layer's, or the level's colour, opaque.
+	vec3 col = colourAt(map, h, slope);
+	vec4 over = vec4(0.0);
+	if (water) over = hasWater != 0 ? texture(waterLayer, map / size) : vec4(waterColour, 1.0);
 	if (mode == 1) {
-		finalColor = vec4(col, 1.0);
+		finalColor = vec4(mix(col, over.rgb, over.a), 1.0);
 		return;
 	}
 
@@ -561,7 +579,11 @@ void main() {
 		return;
 	}
 	float direct = sun.z > 0.0 ? max(dot(n, sun), 0.0) / sun.z : 0.0;
-	vec3 light = ambient * open * ambientColour + (1.0 - ambient) * sunColour * direct * vis;
-	finalColor = vec4(col * light, 1.0);
+	vec3 sky = ambient * open * ambientColour;
+	vec3 light = sky + (1.0 - ambient) * sunColour * direct * vis;
+	// The water's surface takes no cast shadow, as in the originals: only
+	// the bed seen through it does.
+	vec3 surfaceLight = sky + (1.0 - ambient) * sunColour * direct;
+	finalColor = vec4(mix(col * light, over.rgb * surfaceLight, over.a), 1.0);
 }
 `

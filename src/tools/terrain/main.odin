@@ -19,6 +19,7 @@ package terrain_tool
 // originals had none, so it is how a recovery is scored against them.
 
 import "core:fmt"
+import "core:math"
 import "core:os"
 import "core:strconv"
 import "core:strings"
@@ -160,6 +161,9 @@ compare :: proc(r: ^terrain.Renderer, p: ^terrain.Project, o: terrain.Render_Opt
 	fmt.printfln("rows %d-%d, sun azimuth %.0f, elevation %.0f", from, to, p.level.lighting.sun_azimuth_degrees, p.level.lighting.sun_elevation_degrees)
 	fmt.printfln("shadow IoU %.3f (original %.1f%% of the land, render %.1f%%)", terrain.iou(theirs.shadow, ours.shadow, water), share(theirs.shadow, water), share(ours.shadow, water))
 	fmt.printfln("shadow light: original %.2f, render %.2f of the ground around", terrain.shadow_ratio(theirs), terrain.shadow_ratio(ours))
+	if difference, grain, any := water_likeness(orig, lit, water); any {
+		fmt.printfln("water: %.1f levels from the original, %.2f of its grain", difference, grain)
+	}
 
 	if fit {
 		lighting := p.level.lighting
@@ -212,6 +216,42 @@ compare :: proc(r: ^terrain.Renderer, p: ^terrain.Project, o: terrain.Render_Opt
 		fmt.println("wrote", out)
 	}
 	return true
+}
+
+// How like the original the render's water is: the mean difference of
+// their colours, in levels of 255, and the render's grain (each pixel's
+// light less its 3x3 neighbours', its spread) as a share of the
+// original's.
+water_likeness :: proc(orig, lit: terrain.Picture, water: []bool) -> (difference, grain: f32, any: bool) {
+	w, h := orig.width, orig.height
+	lo := terrain.luminance(orig, context.temp_allocator)
+	ll := terrain.luminance(lit, context.temp_allocator)
+	n, diff, go, gl := 0, f64(0), f64(0), f64(0)
+	for y in 1 ..< h - 1 {
+		for x in 1 ..< w - 1 {
+			i := y * w + x
+			if !water[i] {
+				continue
+			}
+			for c in 0 ..< 3 {
+				diff += f64(abs(int(orig.pixels[i * 3 + c]) - int(lit.pixels[i * 3 + c])))
+			}
+			mo, ml := f32(0), f32(0)
+			for dy in -1 ..= 1 {
+				for dx in -1 ..= 1 {
+					mo += lo[i + dy * w + dx]
+					ml += ll[i + dy * w + dx]
+				}
+			}
+			go += f64((lo[i] - mo / 9) * (lo[i] - mo / 9))
+			gl += f64((ll[i] - ml / 9) * (ll[i] - ml / 9))
+			n += 1
+		}
+	}
+	if n == 0 {
+		return
+	}
+	return f32(diff / f64(3 * n)), go > 0 ? f32(math.sqrt(gl / go)) : 0, true
 }
 
 share :: proc(m, water: []bool) -> f32 {

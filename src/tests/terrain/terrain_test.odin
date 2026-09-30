@@ -43,10 +43,12 @@ project_round_trips :: proc(t: ^testing.T) {
 	p.splat = make([]u8, 24 * 16 * 4, context.temp_allocator)
 	p.canopy = make([]u8, 24 * 16, context.temp_allocator)
 	p.occlusion = make([]u8, 24 * 16, context.temp_allocator)
+	p.water = make([]u8, 24 * 16 * 4, context.temp_allocator)
 	for i in 0 ..< 24 * 16 {
 		p.splat[i * 4 + i % 4] = 255
 		p.canopy[i] = u8(i * 7)
 		p.occlusion[i] = u8(255 - i * 3)
+		p.water[i * 4], p.water[i * 4 + 3] = u8(i * 5), u8(i * 11)
 	}
 	p.canopy_height, p.canopy_material = 4, 1
 	append(&p.materials, terrain.Material{name = "grass", colour = {60, 140, 50}, tile = 32})
@@ -81,6 +83,7 @@ project_round_trips :: proc(t: ^testing.T) {
 	testing.expect(t, string(q.splat) == string(p.splat))
 	testing.expect(t, string(q.canopy) == string(p.canopy))
 	testing.expect(t, string(q.occlusion) == string(p.occlusion))
+	testing.expect(t, string(q.water) == string(p.water))
 
 	testing.expect(t, terrain.project_save(&q, path))
 	second, _ := os.read_entire_file(path, context.temp_allocator)
@@ -118,6 +121,7 @@ terrain_renders :: proc(t: ^testing.T) {
 	block_shadow_is_as_long_as_the_sun_says(t)
 	smoothing_rounds_edges(t)
 	occlusion_darkens_the_ambient(t)
+	water_layer_over_the_bed(t)
 	strips_are_the_whole(t)
 	scales_agree(t)
 	heights_come_back(t)
@@ -197,6 +201,52 @@ occlusion_darkens_the_ambient :: proc(t: ^testing.T) {
 	testing.expect(t, abs(grey(lit, 90, 8, 3) - int(200 * a + 0.5)) <= 1, "open in shadow")
 	testing.expect_value(t, grey(open, 20, 8, 1), 0)
 	testing.expect_value(t, grey(open, 70, 8, 1), 255)
+}
+
+// Under the water its layer is drawn over the bed by its opacity: clear
+// shows the bed, opaque the layer's colour, half between; the bed takes
+// the cast shadows, the water's surface none. Without the layer the water
+// is the level's colour.
+@(private = "file")
+water_layer_over_the_bed :: proc(t: ^testing.T) {
+	W, L :: 64, 16
+	p := terrain.project_make(W, L, context.temp_allocator)
+	p.albedo = make([]u8, W * L * 3, context.temp_allocator)
+	p.water = make([]u8, W * L * 4, context.temp_allocator)
+	for x in 0 ..< W {
+		for y in 0 ..< L {
+			i := y * W + x
+			p.heights[i] = x < 48 ? 0 : 40
+			p.albedo[i * 3] = 200
+			p.water[i * 4 + 2] = 200
+			p.water[i * 4 + 3] = x < 16 ? 0 : x < 32 ? 128 : 255
+		}
+	}
+	p.level.water = {height = 10, colour = {0, 200, 0}, visible = true}
+	albedo := draw(t, &p, {output = .Albedo}, 0)
+	px :: proc(pic: terrain.Picture, x: int) -> [3]int {
+		c := pic.pixels[(8 * pic.width + x) * 3:]
+		return {int(c[0]), int(c[1]), int(c[2])}
+	}
+	near :: proc(a, b: [3]int) -> bool {
+		return abs(a.r - b.r) <= 2 && abs(a.g - b.g) <= 2 && abs(a.b - b.b) <= 2
+	}
+	testing.expectf(t, near(px(albedo, 8), {200, 0, 0}), "clear water: %v", px(albedo, 8))
+	testing.expectf(t, near(px(albedo, 24), {100, 0, 100}), "half: %v", px(albedo, 24))
+	testing.expectf(t, near(px(albedo, 40), {0, 0, 200}), "opaque: %v", px(albedo, 40))
+	testing.expectf(t, near(px(albedo, 56), {200, 0, 0}), "dry land: %v", px(albedo, 56))
+	// The sun low in the east: the bank at x 48 shades all the water. The
+	// clear water shows the bed in shadow, the opaque its colour lit.
+	p.level.lighting.sun_azimuth_degrees = 0
+	p.level.lighting.sun_elevation_degrees = 20
+	p.level.lighting.softness = 0
+	a := p.level.lighting.ambient
+	lit := draw(t, &p, {output = .Lit}, 0)
+	testing.expectf(t, near(px(lit, 8), {int(200 * a + 0.5), 0, 0}), "clear, in shadow: %v", px(lit, 8))
+	testing.expectf(t, near(px(lit, 40), {0, 0, 200}), "opaque, unshadowed: %v", px(lit, 40))
+	p.water = nil
+	flat := draw(t, &p, {output = .Albedo}, 0)
+	testing.expectf(t, near(px(flat, 24), {0, 200, 0}), "no layer: %v", px(flat, 24))
 }
 
 // A wall h high, with the sun due east at elevation e, shades h/tan(e)

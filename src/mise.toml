@@ -508,8 +508,8 @@ REPORT="$DIR/report.md"
   echo
   echo "terrain:compare on each project, whole map, $(date +%Y-%m-%d). The plan's bar: shadow IoU 0.75, drawn without the occlusion layer, as the originals were."
   echo
-  echo "| Level | Shadow IoU | Shadow light (render / original) | Fitted azimuth (cast IoU) | Shadow IoU with occlusion |"
-  echo "|---|---|---|---|---|"
+  echo "| Level | Shadow IoU | Shadow light (render / original) | Fitted azimuth (cast IoU) | Shadow IoU with occlusion | Water: levels from the original, share of its grain (with occlusion) |"
+  echo "|---|---|---|---|---|---|"
 } > "$REPORT"
 for L in $LEVELS; do
   echo "== $L"
@@ -520,7 +520,10 @@ for L in $LEVELS; do
   LIGHT=$(sed -n 's/^shadow light: original \([0-9.]*\), render \([0-9.]*\).*/\2 \/ \1/p' "$DIR/$L/compare.txt")
   AZ=$(sed -n 's/^fitted azimuth \([0-9]*\) (cast-shadow IoU \([0-9.]*\)).*/\1° (\2)/p' "$DIR/$L/compare.txt")
   AO=$(sed -n 's/^shadow IoU \([0-9.]*\).*/\1/p' "$DIR/$L/compare-occlusion.txt")
-  echo "| $L | $IOU | $LIGHT | $AZ | $AO |" >> "$REPORT"
+  W='s/^water: \([0-9.]*\) levels from the original, \([0-9.]*\) of its grain/\1, \2/p'
+  WATER=$(sed -n "$W" "$DIR/$L/compare.txt")
+  WATER_AO=$(sed -n "$W" "$DIR/$L/compare-occlusion.txt")
+  echo "| $L | $IOU | $LIGHT | $AZ | $AO | ${WATER:+$WATER ($WATER_AO)} |" >> "$REPORT"
 done
 cat "$REPORT"
 '''

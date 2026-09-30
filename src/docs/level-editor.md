@@ -142,24 +142,26 @@ nearest value.
 ### The twelve
 
 `mise run terrain:recover`, `terrain:occlusion` and `terrain:report` on
-all twelve, 2026-09-30, sun 36° and 40° up for each. The shadow IoU is
+all twelve, 2026-10-01, sun 36° and 40° up for each. The shadow IoU is
 drawn without the occlusion, as the originals were (the plan's bar: 0.75);
 with it, the added darkening reads as more shadow and the score falls.
+The water is scored by its mean colour difference from the art, in levels
+of 255, and its grain as a share of the art's (D57).
 
-| Level | Map | Shadow IoU | With occlusion | Shadow light, render / art | Fitted azimuth (cast IoU) |
-|---|---|---|---|---|---|
-| le01 | `cam1` | **0.920** | 0.819 | 0.43 / 0.43 | 36° (0.791) |
-| le02 | `cam2` | **0.798** | 0.712 | 0.42 / 0.41 | 38° (0.670) |
-| le03 | `ism1` | **0.961** | 0.881 | 0.38 / 0.37 | 36° (0.785) |
-| le04 | `cam3` | **0.916** | 0.830 | 0.44 / 0.44 | 36° (0.754) |
-| le05 | `jum3` | **0.831** | 0.773 | 0.44 / 0.43 | 36° (0.642) |
-| le06 | `inm3` | **0.963** | 0.842 | 0.46 / 0.46 | 36° (0.784) |
-| le07 | `jum2` | **0.937** | 0.890 | 0.39 / 0.38 | 36° (0.719) |
-| le08 | `ism3` | **0.946** | 0.890 | 0.34 / 0.33 | 36° (0.792) |
-| le09 | `ism2` | **0.945** | 0.865 | 0.38 / 0.38 | 36° (0.773) |
-| le10 | `inm2` | **0.924** | 0.816 | 0.48 / 0.48 | 36° (0.744) |
-| le11 | `jum1` | **0.894** | 0.826 | 0.44 / 0.43 | 38° (0.690) |
-| le12 | `inm1` | **0.936** | 0.825 | 0.46 / 0.46 | 36° (0.740) |
+| Level | Map | Shadow IoU | With occlusion | Shadow light, render / art | Fitted azimuth (cast IoU) | Water: levels off, grain (flat water) |
+|---|---|---|---|---|---|---|
+| le01 | `cam1` | **0.918** | 0.818 | 0.43 / 0.43 | 36° (0.791) | 1.7, 1.05 (5.3, 0.48) |
+| le02 | `cam2` | **0.800** | 0.714 | 0.42 / 0.41 | 38° (0.670) | 1.1, 0.99 (4.2, 0.56) |
+| le03 | `ism1` | **0.961** | 0.879 | 0.38 / 0.37 | 36° (0.785) | 1.1, 1.03 (4.7, 0.43) |
+| le04 | `cam3` | **0.917** | 0.832 | 0.44 / 0.44 | 36° (0.754) | 1.1, 1.02 (6.2, 0.48) |
+| le05 | `jum3` | **0.828** | 0.771 | 0.44 / 0.43 | 36° (0.642) | 1.5, 1.00 (2.0, 0.38) |
+| le06 | `inm3` | **0.964** | 0.840 | 0.46 / 0.46 | 36° (0.784) | 0.6, 0.99 (4.6, 0.17) |
+| le07 | `jum2` | **0.937** | 0.890 | 0.39 / 0.38 | 36° (0.718) | 0.3, 0.98 (2.8, 0.19) |
+| le08 | `ism3` | **0.946** | 0.889 | 0.34 / 0.33 | 36° (0.792) | 2.2, 1.04 (6.0, 0.44) |
+| le09 | `ism2` | **0.946** | 0.864 | 0.39 / 0.38 | 36° (0.773) | 1.1, 1.13 (4.8, 0.54) |
+| le10 | `inm2` | **0.923** | 0.817 | 0.48 / 0.48 | 36° (0.744) | 0.7, 0.98 (3.6, 0.48) |
+| le11 | `jum1` | **0.892** | 0.824 | 0.44 / 0.43 | 38° (0.690) | 1.1, 1.11 (2.4, 0.45) |
+| le12 | `inm1` | **0.936** | 0.823 | 0.47 / 0.46 | 36° (0.740) | 0.6, 0.98 (3.1, 0.42) |
 
 All twelve pass, and the shadow is as dark against the ground around as
 the art's to within 0.01. The fitted azimuth lands on the measured 36°
@@ -170,14 +172,18 @@ or next to it, so the heights cast their shadows where the art's fall.
   than cast by the heights.
 - **le09's range fit reached 960 px**, the most the fit tries, so its
   relief may be clipped short; its IoU is 0.945 all the same.
-- The water is flat, the level's median water colour: the originals'
-  translucent shallows, where the sand shows through, are the next step.
+- The water is a translucent layer over the bed (D57), as the originals'
+  shallows show the sand through, its surface unshadowed. It is within
+  2.2 levels of the art and its grain, where flat water was up to 6.2
+  levels off with a fifth to a half of the grain. le01's shallows under
+  the right-hand cliff read darker than the art.
 
 `mise run terrain:mod` packages the twelve as a mod, Recovered Levels
 (`plugins/recovered_levels`, off by default): each project drawn lit, with
 its occlusion, as the level's map, and the original's level record
 otherwise. It is a campaign on Level Select beside Classic Levels. Its maps
-are these, with the water still flat.
+were drawn before the water layer, with the water flat; `terrain:mod`
+draws them again with it.
 
 Each level's scores are in `work/recovered/leNN/compare.txt` and
 `compare-occlusion.txt`, with side-by-sides. `work/` is not committed: it

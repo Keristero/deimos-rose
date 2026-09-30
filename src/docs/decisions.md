@@ -1275,8 +1275,8 @@ exports and for comparison with the original art.
   its side files, each one PNG pixel per map pixel.
   - the heightmap, 16-bit grey in 1/32 map pixel (up to 2048 high);
   - optionally the unlit colour (RGB), four materials' weights (RGBA),
-    the canopy cover (grey), with the canopy's height and material, and
-    the occlusion (grey, D56);
+    the canopy cover (grey), with the canopy's height and material, the
+    occlusion (grey, D56) and the water (RGBA, D57);
   - up to four materials (a colour, or a tiling image tinted by it, and
     tags such as `original-derived`), and the cliff and shore rules that
     lay one automatically by slope or by height above the water;
@@ -1361,3 +1361,45 @@ the originals.
     layer is present.
   - It is an output of the renderer too, for the deferred layers of
     Stage 10.
+
+### D57 — Recovered water: a translucent layer over the bed, its surface unshadowed
+
+The originals' water is not flat colour. Their shallows show the sand
+through, and the surface has a fine grain. A level drawn with flat water,
+the median water colour (Stage 6 before this), was 2.0 to 6.2 levels of
+255 from the art under the water, with 0.17 to 0.56 of its grain. The
+recovery now bakes the water as a project layer, `water` (RGBA: the
+water's own unlit colour, and how opaque it is; optional).
+
+- **What the art shows.** Fitting art ≈ s × ((1 − A) × bed + A × W) per
+  pixel, with the bed the land within 4 px of the shore carried in and W
+  the deep water's colour, the water is mostly opaque (le01's A about
+  0.9, le03's 0.96). The see-through part is a band at the shore. A
+  follows the distance from the shore (correlation 0.56), not the depth
+  the heights give (0.08), so it is baked from the art and not computed
+  from the heights. The grain is white noise, so the layer's colour is
+  the art with the lit bed taken out and divided by A, and keeps it.
+- **The surface takes no cast shadow.** The heights put 52% of le01's
+  water in shadow, yet the fitted light on it, s, is 0.99. The renderer
+  mixes the bed, lit and shadowed as the land is, with the layer lit by
+  the same sun without the shadow:
+  mix(bed × light, layer × light unshadowed, A). The shadow shows only
+  through the shallows, as in the art.
+- **The colour under the water is the bed.** It was the art's water
+  colour divided by the light; it is now the unlit bed carried in from
+  the shore, so a painted level edits the bed and the water apart.
+- **Without the layer** the water is the level's water colour, opaque,
+  and now unshadowed too. That moved le01's shadow IoU from 0.920 to
+  0.918; the others moved by at most 0.003.
+- **Slot 10.** The layer is the renderer's eighth texture. `DrawMesh`
+  binds slots 7–9 as cubemaps, so it is bound to slot 10 (BRDF,
+  `map_slot()`).
+
+With it the twelve are 0.3 to 2.2 levels from the art under the water,
+with 0.98 to 1.13 of its grain (`terrain:compare` prints both, and
+`terrain:report` has them per level). The weak spot is le01's shallows
+under the right-hand cliff, which read darker than the art: the bed in
+the cliff's shadow shows through thin water there, where the art's
+shallows are lit. The layer is a still frame. An animated water shader
+(Stage 10, or the renderer's own with no wind) would take it as its
+colour and opacity.

@@ -127,7 +127,17 @@ class Flux:
             device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
         self.device = device
         dtype = torch.bfloat16 if device != "cpu" else torch.float32
-        self.pipe = Flux2KleinPipeline.from_pretrained(MODEL, revision=MODEL_REVISION, torch_dtype=dtype)
+        # From the cached snapshot of the pinned revision when it is there,
+        # so a run needs no network once it is downloaded (a download of the
+        # weights alone lacks the README and licence, which the Hub's own
+        # offline load counts as incomplete); else from the Hub.
+        from huggingface_hub.constants import HF_HUB_CACHE
+
+        snapshot = Path(HF_HUB_CACHE) / ("models--" + MODEL.replace("/", "--")) / "snapshots" / MODEL_REVISION
+        if (snapshot / "model_index.json").exists():
+            self.pipe = Flux2KleinPipeline.from_pretrained(snapshot, torch_dtype=dtype)
+        else:
+            self.pipe = Flux2KleinPipeline.from_pretrained(MODEL, revision=MODEL_REVISION, torch_dtype=dtype)
         if offload:
             self.pipe.enable_model_cpu_offload()
         else:

@@ -1,10 +1,11 @@
 # The level recovery pipeline
 
-How an original map becomes a level project: the heights, water, unlit
-colour, canopy and occlusion that the renderer draws, and the editor
+How an original map becomes a level project: the heights, the water and
+its translucent layer, the unlit colour, canopy and occlusion that the
+renderer draws, and the editor
 (Stage 7) will open. This is Stage 6 of
 [notes/level-editor-plan.md](../../notes/level-editor-plan.md). The
-decisions are D55 and D56 in [decisions.md](decisions.md), and the progress
+decisions are D55, D56 and D57 in [decisions.md](decisions.md), and the progress
 is in [level-editor.md](level-editor.md).
 
 Everything runs headless and through mise, from `src/`:
@@ -51,6 +52,7 @@ flowchart TD
         write["Project written<br/>heights, canopy, the art as a placeholder colour,<br/>sun 36° / 40° up, ambient 0.44"]
         layers["Renderer's normal and shadow<br/>terrain render -output=all"]
         unlit["Unlit colour<br/>art ÷ the renderer's light;<br/>cast shadow only where detected — unlit()"]
+        wlayer["Water layer<br/>art ≈ s((1 − A) bed + A W), A fitted per pixel;<br/>LE.water.png, the unlit bed under it — water_layer()"]
     end
 
     subgraph occl ["terrain:occlusion — tools/terrain_occlusion/occlusion.py"]
@@ -60,12 +62,12 @@ flowchart TD
         blend["Tiles feather-blended<br/>LE.occlusion.png"]
     end
 
-    project[("Level project<br/>work/recovered/LE/LE.drproj.json<br/>height, albedo, canopy, occlusion, level")]:::out
+    project[("Level project<br/>work/recovered/LE/LE.drproj.json<br/>height, albedo, canopy, water, occlusion, level")]:::out
 
     subgraph score ["terrain:report — terrain compare"]
         direction TB
-        noao["Drawn without occlusion, as the originals were<br/>shadow IoU, shadow light, fitted azimuth"]
-        withao["Drawn with occlusion<br/>shadow IoU"]
+        noao["Drawn without occlusion, as the originals were<br/>shadow IoU, shadow light, fitted azimuth,<br/>water: levels off, share of grain"]
+        withao["Drawn with occlusion<br/>shadow IoU, water"]
         report[/"work/recovered/report.md"/]:::out
     end
 
@@ -85,7 +87,8 @@ flowchart TD
     range --> drift --> refine --> split
     canopy --> split --> write
     rec --> write
-    write --> layers --> unlit --> project
+    write --> layers --> unlit --> wlayer --> project
+    water --> wlayer
     project --> albedo --> flux --> blend --> project
     project --> noao & withao
     noao --> report
@@ -131,6 +134,7 @@ docstring has the measurements behind each choice.
 | 9 | Project | `leNN.drproj.json` with `height.png` (16-bit, 1/32 px units), `canopy.png` and, as a placeholder, the art as the colour. The lighting is sun azimuth 36°, elevation 40°, ambient 0.44, softness 3; the water has its height and median colour | | |
 | 10 | The renderer's light | `terrain render -output=all` on that project, headless: its normal and shadow outputs (`render_layers()`) | | `cache/light.*` |
 | 11 | Unlit colour | The art divided by ambient + (1 − ambient) x max(n·sun, 0) / sun.z x visibility, where the visibility is the renderer's cast shadow inside the detected shadows and 1 elsewhere (`unlit()`). This overwrites the placeholder `albedo.png` | | |
+| 12 | Water layer | Each water pixel is taken as s x ((1 − A) x bed + A x W). The bed is the land within 4 px of the shore, carried in and blurred (σ 3). W is the lit water more than 12 px from the shore, smoothed over 48 px. A is fitted per pixel over 51 steps, s in closed form, and A smoothed by σ 1 (`water_opacity()`). The layer's colour is the art with the lit bed taken out, divided by A, so it keeps the art's grain. `water.png` holds it with A, and the colour under the water becomes the unlit bed (`water_layer()`) | | `cache/water-opacity-<hash>.npy` |
 
 Step 11 divides by the renderer's own light, so drawing the project at
 the original sun puts back the light the art had. Both the slope term and
@@ -172,7 +176,13 @@ the same way as in the art, and scores them on the land. It runs twice:
   shadow light (render and art) and, with `-fit`, the sun azimuth whose
   cast shadows fit best.
 - **with the occlusion**, for reference. The added darkening lowers the
-  IoU against art that never had it (le01: 0.920 → 0.820).
+  IoU against art that never had it (le01: 0.918 → 0.818).
+
+Both runs also score the water against the art's: the mean colour
+difference, in levels of 255, and the render's grain (each pixel less its
+3x3 neighbours) as a share of the art's. Across the twelve the water layer
+is 0.3 to 2.2 levels off with 0.98 to 1.13 of the grain; flat water, the
+median colour, was 2.0 to 6.2 levels off with 0.17 to 0.56 (D57).
 
 The table goes to `work/recovered/report.md`, and each level's
 side-by-side images to `work/recovered/leNN/`.
@@ -187,6 +197,7 @@ Per level, in `work/recovered/leNN/`:
 | `leNN.height.png` | the ground, 16-bit |
 | `leNN.canopy.png` | the canopy's cover, 0–255 of `canopy_height` |
 | `leNN.albedo.png` | the unlit colour |
+| `leNN.water.png` | the water layer: RGB the water's unlit colour, A how opaque it is |
 | `leNN.occlusion.png` | how open to the sky, 0–255 |
 | `manifest.json`, `leNN.occlusion.json` | settings, versions, fits, timings |
 | `compare.txt`, `compare-occlusion.txt`, `*.compare*.png` | the scores and side-by-sides |
@@ -206,7 +217,10 @@ albedo, normal, height, shadow, occlusion) at `SCALE=N`. The renderer
 draws the geometry smoothed by a Gaussian with σ 1 map pixel, so the
 height steps shade as a smooth surface. The light is
 ambient x occlusion x ambient colour + (1 − ambient) x sun colour x
-direct x visibility.
+direct x visibility. Under the water, the bed so lit is mixed by A with
+the water layer lit the same way but without the visibility: the
+originals' water surface takes no cast shadow, and only the bed seen
+through the shallows does (D57).
 
 ## Timing
 

@@ -3,7 +3,7 @@ package terrain
 // A level project: what the level editor saves, and what the renderer
 // draws. `<name>.drproj.json` beside its side files: the heightmap as a
 // 16-bit PNG, and optionally the unlit colour, the material weights, the
-// canopy and the occlusion, each one PNG pixel per map pixel. The level's own record (its
+// canopy, the occlusion and the water, each one PNG pixel per map pixel. The level's own record (its
 // placements, lighting, water and wind, D54) is inside, as the game reads
 // it. Maps, masks and previews are exports of a project, not part of it.
 
@@ -58,6 +58,11 @@ Project :: struct {
 	// open. It darkens only the ambient light. Baked, as the originals had
 	// none of it: tools/terrain_occlusion infers it from the colour.
 	occlusion:       []u8,
+	// The water over the bed, where the surface is under the water level
+	// (RGBA: the water's own unlit colour, and how opaque it is), or nil:
+	// opaque, the level's water colour. tools/terrain_recover bakes it from
+	// the originals, whose shallows show the sand through.
+	water:           []u8,
 	materials:       [dynamic]Material,
 	material_images: [MAX_MATERIALS]Picture,
 	cliff, shore:    Rule,
@@ -91,6 +96,7 @@ Json_Project :: struct {
 	canopy_height:   f32             `json:"canopy_height"`,
 	canopy_material: int             `json:"canopy_material"`,
 	occlusion:       string          `json:"occlusion"`,
+	water:           string          `json:"water"`,
 	materials:       []Material      `json:"materials"`,
 	cliff:           Rule            `json:"cliff"`,
 	shore:           Rule            `json:"shore"`,
@@ -133,7 +139,7 @@ project_save :: proc(p: ^Project, path: string) -> bool {
 		pixels:   []u8,
 		channels: int,
 		out:      ^string,
-	}{{"albedo", p.albedo, 3, &j.albedo}, {"splat", p.splat, 4, &j.splat}, {"canopy", p.canopy, 1, &j.canopy}, {"occlusion", p.occlusion, 1, &j.occlusion}}
+	}{{"albedo", p.albedo, 3, &j.albedo}, {"splat", p.splat, 4, &j.splat}, {"canopy", p.canopy, 1, &j.canopy}, {"occlusion", p.occlusion, 1, &j.occlusion}, {"water", p.water, 4, &j.water}}
 	for l in layers {
 		if l.pixels == nil {
 			continue
@@ -186,6 +192,7 @@ project_load :: proc(path: string, allocator := context.allocator) -> (p: Projec
 	p.splat = side(dir, j.splat, &p, 4, allocator) or_return
 	p.canopy = side(dir, j.canopy, &p, 1, allocator) or_return
 	p.occlusion = side(dir, j.occlusion, &p, 1, allocator) or_return
+	p.water = side(dir, j.water, &p, 4, allocator) or_return
 	p.canopy_height, p.canopy_material = j.canopy_height, j.canopy_material
 	append(&p.materials, ..j.materials)
 	for m, i in p.materials[:min(len(p.materials), MAX_MATERIALS)] {
