@@ -22,7 +22,7 @@ stage by stage. The decisions are D51–D55 in [decisions.md](decisions.md).
 (D55); `tools/terrain` drives them from the command line:
 
 ```
-mise run terrain:recover LEVEL=le07              # work/terrain/le07/le07.drproj.json
+LEVEL=le07 mise run terrain:recover              # work/terrain/le07/le07.drproj.json
 PROJECT=../work/terrain/le07/le07.drproj.json mise run terrain:render    # every output
 PROJECT=../work/terrain/le07/le07.drproj.json mise run terrain:compare   # numbers + side by side
 ```

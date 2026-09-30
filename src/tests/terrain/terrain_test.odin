@@ -173,6 +173,7 @@ block_shadow_is_as_long_as_the_sun_says :: proc(t: ^testing.T) {
 		}
 	}
 	p.level.lighting.sun_azimuth_degrees = 0
+	p.level.lighting.sun_elevation_degrees = 28
 	shadow := draw(t, &p, {output = .Shadow})
 	row := shadow.pixels[8 * W:][:W]
 	edge := -1

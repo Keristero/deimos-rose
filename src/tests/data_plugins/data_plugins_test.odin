@@ -129,7 +129,7 @@ campaign_level_look_loads :: proc(t: ^testing.T) {
 		return
 	}
 	testing.expect_value(t, omega.wind, data.Level_Wind{direction_degrees = 90, strength = 0.5})
-	testing.expect_value(t, omega.lighting.sun_elevation_degrees, f32(40))
+	testing.expect_value(t, omega.lighting.sun_elevation_degrees, f32(55))
 	testing.expect_value(t, omega.lighting.sun_azimuth_degrees, data.LIGHTING_MEASURED.sun_azimuth_degrees)
 	testing.expect_value(t, omega.lighting.ambient, data.LIGHTING_MEASURED.ambient)
 	alpha := data.assets_level_media(&a, campaign, sim.level_id("le01"))

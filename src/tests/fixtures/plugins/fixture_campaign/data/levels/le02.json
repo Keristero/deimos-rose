@@ -10,5 +10,5 @@
     "placements": [],
     "start_weapons": {"air": "aipb", "ground": "plbo"},
     "wind": {"direction_degrees": 90, "strength": 0.5},
-    "lighting": {"sun_elevation_degrees": 40}
+    "lighting": {"sun_elevation_degrees": 55}
 }

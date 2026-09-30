@@ -1,0 +1,13 @@
+diff --git a/evaluation/depth/evaluate_pipeline.py b/evaluation/depth/evaluate_pipeline.py
+index 7fcfb58..246c2cd 100644
+--- a/evaluation/depth/evaluate_pipeline.py
++++ b/evaluation/depth/evaluate_pipeline.py
+@@ -1,3 +1,8 @@
++# Deimos Rising: MIOpen's convolution search fails on gfx1151 (ROCm
++# nightlies), so on ROCm use torch's own convolution kernels. CUDA unchanged.
++import torch
++if torch.version.hip:
++    torch.backends.cudnn.enabled = False
+ import os
+ 
+ # Work around NCCL peer-to-peer issues on some systems during multi-GPU eval.

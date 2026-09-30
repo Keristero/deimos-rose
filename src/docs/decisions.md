@@ -1235,7 +1235,8 @@ button needs the game to start one without the menus.
     `data.Level_Media`. The sim still reads only the media mask. Light a
     level leaves out is `LIGHTING_MEASURED`, the originals' as measured on
     their maps (notes/headless-3d-to-2d-findings.md): a white sun at
-    azimuth 36°, 28° up, and neutral shadow at 0.44.
+    azimuth 36°, 40° up, and neutral shadow at 0.44 (the silos alone said
+    28° up; D55 fitted 40).
 - **Launch flags**, in `game/settings.odin` and the `run` task's usage:
   - `-campaign <plugin>` picks a campaign, and turns its plugin on for the
     run as `-highrefreshrate` does 30FPS Unlock. Alone it only picks what

@@ -123,11 +123,12 @@ Level_Lighting :: struct {
 
 // The originals' light, measured on their maps
 // (notes/headless-3d-to-2d-findings.md): a white sun at azimuth 36°,
-// about 28° up, and neutral shadow at 0.44 of full light, a few pixels
-// soft.
+// 40° up, and neutral shadow at 0.44 of full light, a few pixels soft.
+// The silos' shadows alone said about 28° up; le07's recovered terrain
+// matches the art's shadows as well at 40° and their darkness better (D55).
 LIGHTING_MEASURED :: Level_Lighting {
 	sun_azimuth_degrees   = 36,
-	sun_elevation_degrees = 28,
+	sun_elevation_degrees = 40,
 	sun_colour            = {255, 255, 255},
 	ambient_colour        = {255, 255, 255},
 	ambient               = 0.44,

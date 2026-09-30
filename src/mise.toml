@@ -42,6 +42,10 @@ DR_SYMS   = "{{config_root}}/../symbols/functions.csv"
 # Hugging Face cache it downloads FLUX.2 [klein] into (~16 GB) unless HF_HOME
 # is already set. Kept out of the repo like Ghidra.
 DR_HD_VENV = "{{ get_env(name='HOME', default=get_env(name='USERPROFILE', default='')) }}/.cache/deimos-rising/hd-venv"
+# Marigold V2 for terrain:recover's height seed: its checkout, its own
+# Python 3.10 venv and links to its weights (~45 GB, in the Hugging Face
+# cache). Made by terrain:marigold-setup.
+DR_MARIGOLD = "{{ get_env(name='HOME', default=get_env(name='USERPROFILE', default='')) }}/.cache/deimos-rising/marigold-v2"
 # Odin collection so packages import as "dr:sim", "dr:data", ...
 # Kept separate because `odin check` rejects linker flags.
 DR_COLL   = "-collection:dr={{config_root}}"
@@ -462,11 +466,11 @@ headless "$DR_BUILD/terrain$DR_EXT" compare "$PROJECT" $ORIGINAL $MASK -images="
 """
 
 [tasks."terrain:recover"]
-description = "Recover a level project from an original map (LEVEL=le07 into work/terrain/LEVEL/): depth-seeded heights, water from the mask, crude unlit colour; the Stage 5 proof of concept, in the hd:setup venv"
+description = "Recover a level project from an original map (LEVEL=le07 into work/terrain/LEVEL/): Marigold V2 heights (-- --seed depth-anything for the fallback), water from the mask, crude unlit colour; in the terrain:marigold-setup venv"
 run = """
 set -e
-PY="$DR_HD_VENV/bin/python"; [ -x "$PY" ] || PY="$DR_HD_VENV/Scripts/python.exe"
-[ -x "$PY" ] || { echo "no venv at $DR_HD_VENV: run 'mise run hd:setup' first"; exit 1; }
+PY="$DR_MARIGOLD/venv/bin/python"; [ -x "$PY" ] || PY="$DR_MARIGOLD/venv/Scripts/python.exe"
+[ -x "$PY" ] || { echo "no venv at $DR_MARIGOLD/venv: run 'mise run terrain:marigold-setup' first"; exit 1; }
 LEVEL="${LEVEL:-le07}"
 REC="$DR_PLUGINS/classic_levels/data/levels/$LEVEL.json"
 MAP=$("$PY" -c "import json,sys; print(json.load(open(sys.argv[1]))['background_image'])" "$REC")
@@ -474,6 +478,10 @@ MASK=$("$PY" -c "import json,sys; print(json.load(open(sys.argv[1]))['media_mask
 "$PY" tools/terrain_recover/recover.py "$MAP" --mask "$MASK" --level "$REC" \
   --images "$DR_PLUGINS/classic_levels/images/im16" --out "$DR_SRC/../work/terrain/$LEVEL" "$@"
 """
+
+[tasks."terrain:marigold-setup"]
+description = "Set up Marigold V2 for terrain:recover in DR_MARIGOLD: the pinned checkout and patch, a Python 3.10 venv (torch from TORCH_INDEX, default CUDA 12.8), the weights at pinned revisions (~45 GB)"
+run = "sh tools/terrain_recover/setup_marigold.sh"
 
 [tasks."hd:setup"]
 description = "Create the Python venv for hd:upscale (torch from TORCH_INDEX, default CUDA 12.8; see tools/hd_upscale/README.md for ROCm)"
