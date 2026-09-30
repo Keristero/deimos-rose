@@ -103,7 +103,7 @@ Json_Sprite_Index :: struct {
 // plate and draws sub-rectangles of it.
 Sprite_Plate :: struct {
 	id:     sim.Res_ID, // lower-case, as units name it
-	image:  string,     // path relative to the assets root
+	image:  string,     // the PNG's path: under the assets root, or a plugin's folder
 	width:  int,
 	height: int,
 	frames: []Json_Frame,
@@ -188,7 +188,13 @@ Assets :: struct {
 	// (assets/audio/mu03.wav is a 196s stereo track, not a one-shot effect --
 	// see Level_Media.music). The game loads each of these once as a short
 	// sound effect; music streams from disk instead, via Level_Media.music.
+	// A plugin's own sounds are listed too (assets_audio_path).
 	sounds: []string,
+	// The im16 images and sounds that plugins' content folders bring, by id:
+	// where each file is. Ids the core tree already has are not taken, so a
+	// plugin adds media and never replaces the original's (D51).
+	plugin_images: map[string]string,
+	plugin_audio:  map[string]string,
 }
 
 // --- loading ---------------------------------------------------------------
@@ -231,19 +237,27 @@ id_of :: proc(path: string) -> string {
 assets_open :: proc(root: string, allocator := context.allocator) -> (a: Assets) {
 	a.root = strings.clone(root, allocator)
 
-	// The game's plates, then each plugin's (extra_defs_load): every
-	// index gives image paths relative to the assets root.
+	// The game's plates, then each plugin's (extra_defs_load). The game's
+	// index gives image paths relative to the assets root, a plugin's
+	// relative to its own folder; the plates keep the joined path.
+	Index :: struct {
+		path, dir: string,
+	}
 	plates := make([dynamic]Sprite_Plate, 0, 400, allocator)
-	indexes := make([dynamic]string, 0, len(sim.registered_plugins()), context.temp_allocator)
-	append(&indexes, strings.concatenate({root, "/sprites/index.json"}, context.temp_allocator))
+	indexes := make([dynamic]Index, 0, len(sim.registered_plugins()), context.temp_allocator)
+	append(&indexes, Index{strings.concatenate({root, "/sprites/index.json"}, context.temp_allocator), root})
+	a.plugin_images = make(map[string]string, allocator)
+	a.plugin_audio = make(map[string]string, allocator)
 	for i in 1 ..< len(sim.registered_plugins()) {
-		if dir, found := plugin_content_dir(root, sim.Plugin_ID(i)); found {
-			append(&indexes, strings.concatenate({dir, "/sprites/index.json"}, context.temp_allocator))
+		if dir, found := plugin_content_dir(sim.Plugin_ID(i)); found {
+			append(&indexes, Index{strings.concatenate({dir, "/sprites/index.json"}, context.temp_allocator), dir})
+			plugin_media_add(&a.plugin_images, root, "/images/im16/", dir, ".png", allocator)
+			plugin_media_add(&a.plugin_audio, root, "/audio/", dir, ".wav", allocator)
 		}
 	}
 	for index in indexes {
 		idx: Json_Sprite_Index
-		if !read_json(index, &idx, context.temp_allocator) {
+		if !read_json(index.path, &idx, context.temp_allocator) {
 			continue
 		}
 		for s in idx.sprites {
@@ -251,7 +265,7 @@ assets_open :: proc(root: string, allocator := context.allocator) -> (a: Assets)
 			copy(frames, s.frames)
 			append(&plates, Sprite_Plate {
 				id     = sim.res_id_lower(sim.res_id(s.fourcc)),
-				image  = strings.clone(s.image, allocator),
+				image  = strings.concatenate({index.dir, "/", s.image}, allocator),
 				width  = s.width,
 				height = s.height,
 				frames = frames,
@@ -299,6 +313,13 @@ assets_open :: proc(root: string, allocator := context.allocator) -> (a: Assets)
 			}
 		}
 	}
+	core_sounds := len(sounds)
+	for id in a.plugin_audio {
+		if !exclude[id] {
+			append(&sounds, id)
+		}
+	}
+	slice.sort(sounds[core_sounds:]) // map order is not stable
 	a.sounds = sounds[:]
 
 	// G_Res_GetPermGameString: stli "pgsl", one line per index.
@@ -550,15 +571,15 @@ weapon_keys_fill :: proc(w: ^sim.Weapon, header: []Tag) {
 }
 
 // The plugins' own content (docs/new-weapons.md): units, weapons and
-// sprites under `<root>/extra/<plugin name>`, each laid out as the game's
-// own tree is, for every plugin in the build. Added to `defs` after the
-// game's own so no original index moves, and ordered by id rather than by
-// plugin, so moving content from one plugin to another renumbers nothing.
-// Each weapon records the plugin it came from (Weapon.plugin), and
+// sprites in each plugin's content folder (plugin_content_dir), laid out as
+// the game's own tree is, for every plugin in the build. Added to `defs`
+// after the game's own so no original index moves, and ordered by id rather
+// than by plugin, so moving content from one plugin to another renumbers
+// nothing. Each weapon records the plugin it came from (Weapon.plugin), and
 // `defs.content` the plugins that brought any. Kept out of
 // assets_defs_load, which has to match the original exactly. Returns false
-// when no plugin has content here; the game then plays without it.
-extra_defs_load :: proc(root: string, defs: ^sim.Defs, allocator := context.allocator) -> (report: Defs_Report, ok: bool) {
+// when no plugin has content; the game then plays without it.
+extra_defs_load :: proc(defs: ^sim.Defs, allocator := context.allocator) -> (report: Defs_Report, ok: bool) {
 	units := make([dynamic]sim.Unit, 0, len(defs.units) + 16, allocator)
 	append(&units, ..defs.units)
 	weapons := make([dynamic]sim.Weapon, 0, len(defs.weapons) + 4, allocator)
@@ -566,7 +587,7 @@ extra_defs_load :: proc(root: string, defs: ^sim.Defs, allocator := context.allo
 	sprites := make([dynamic]sim.Sprite, 0, len(defs.sprites) + 4, allocator)
 	append(&sprites, ..defs.sprites)
 	for i in 1 ..< len(sim.registered_plugins()) {
-		dir, found := plugin_content_dir(root, sim.Plugin_ID(i))
+		dir, found := plugin_content_dir(sim.Plugin_ID(i))
 		if !found {
 			continue
 		}
@@ -587,11 +608,63 @@ extra_defs_load :: proc(root: string, defs: ^sim.Defs, allocator := context.allo
 	return report, defs.content != {}
 }
 
-// `<root>/extra/<plugin name>`, where a plugin's own content is, if it has
-// any.
-plugin_content_dir :: proc(root: string, id: sim.Plugin_ID) -> (dir: string, found: bool) {
-	dir = strings.concatenate({root, "/extra/", sim.registered_plugins()[id].name}, context.temp_allocator)
-	return dir, os.exists(dir)
+// Where plugins' content folders are (D51): $DR_PLUGINS, or `plugins` in
+// the working directory. That is src/plugins when run from src/, as mise
+// tasks and tests are, and deimos/plugins in a release, where each folder
+// holds only a plugin's content.
+plugins_root :: proc() -> string {
+	if dir := os.get_env("DR_PLUGINS", context.temp_allocator); dir != "" {
+		return dir
+	}
+	return "plugins"
+}
+
+// `<plugins root>/<plugin name>`, where a plugin's own content is, if it has
+// any: data/, sprites/, images/im16/ and audio/, each laid out as the game's
+// own tree is. A plugin whose folder holds only code has none.
+plugin_content_dir :: proc(id: sim.Plugin_ID) -> (dir: string, found: bool) {
+	dir = strings.concatenate({plugins_root(), "/", sim.registered_plugins()[id].name}, context.temp_allocator)
+	for sub in ([]string{"data", "sprites", "images", "audio"}) {
+		if os.exists(strings.concatenate({dir, "/", sub}, context.temp_allocator)) {
+			return dir, true
+		}
+	}
+	return dir, false
+}
+
+// Every `<dir><sub>*<ext>` whose id the core tree (`root`) has no file
+// for, into `media` by id. The first plugin with an id keeps it.
+plugin_media_add :: proc(media: ^map[string]string, root, sub, dir, ext: string, allocator := context.allocator) {
+	paths, err := filepath.glob(strings.concatenate({dir, sub, "*", ext}, context.temp_allocator), context.temp_allocator)
+	if err != nil {
+		return
+	}
+	slice.sort(paths)
+	for path in paths {
+		base := filepath.base(path)
+		id := base[:len(base) - len(ext)]
+		if id in media || os.exists(strings.concatenate({root, sub, base}, context.temp_allocator)) {
+			continue
+		}
+		media[strings.clone(id, allocator)] = strings.clone(path, allocator)
+	}
+}
+
+// Where an im16 image is: a plugin's, if one brought it, else the core
+// tree's.
+assets_image_path :: proc(a: ^Assets, id: string) -> string {
+	if path, ok := a.plugin_images[id]; ok {
+		return path
+	}
+	return strings.concatenate({a.root, "/images/im16/", id, ".png"}, context.temp_allocator)
+}
+
+// Where a sound or music track is, as assets_image_path.
+assets_audio_path :: proc(a: ^Assets, id: string) -> string {
+	if path, ok := a.plugin_audio[id]; ok {
+		return path
+	}
+	return strings.concatenate({a.root, "/audio/", id, ".wav"}, context.temp_allocator)
 }
 
 @(private = "file")

@@ -39,7 +39,7 @@ loadout_shot :: proc(s: ^sim.State, name: string) -> string {
 		_ = sim.session_step(s, {})
 	}
 	if !loadout.loadout_open(s) {
-		return "the screen never opened (is assets/extra there?)"
+		return "the screen never opened (are the plugins' content folders there?)"
 	}
 	if !placed {
 		loadout.loadout_of(s).boards[0].col = 1
@@ -59,7 +59,7 @@ loadout_shot :: proc(s: ^sim.State, name: string) -> string {
 discharge_shot :: proc(s: ^sim.State, name: string) -> string {
 	loadout.loadout_of(s).shown = sim.single(s, sim.Level_Info).played
 	if !loadout.loadout_give(s, 0, sim.res_id("aidb")) {
-		return "no Discharge Beam (is assets/extra/new_weapons there?)"
+		return "no Discharge Beam (is plugins/new_weapons/data there?)"
 	}
 	for _ in 0 ..< (name == "discharge" || name == "discharge_windup" ? 180 : 120) {
 		_ = sim.session_step(s, {})

@@ -13,6 +13,10 @@ java = "temurin-21"
 DR_SRC    = "{{config_root}}"
 DR_ORIG   = "{{config_root}}/../game"
 DR_ASSETS = "{{config_root}}/assets"
+# Plugins' content folders (D51): each plugin's data, sprites, images and
+# audio beside its code. The game falls back to plugins/ in its working
+# directory, which is how a release is laid out.
+DR_PLUGINS = "{{config_root}}/plugins"
 DR_BUILD  = "{{config_root}}/build"
 DR_DEPS   = "{{config_root}}/.deps"
 # Ghidra itself is ~900 MB of tooling, so it lives in the user cache.
@@ -56,6 +60,22 @@ run = "odin build game -out:$DR_BUILD/deimos$DR_EXT $DR_COLL $DR_LINK -o:speed -
 [tasks."build:linux"]
 description = "Build the game binary for Linux (x86-64) -- alias for `build`, named explicitly for symmetry with build:windows"
 depends = ["build"]
+
+[tasks.dist]
+description = "Lay out the release folder, dist/deimos: the built binary (build or build:windows first), assets/ and each plugin's content in plugins/<name>/ (every file of src/plugins that is not Odin source; D51). CI zips it"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+rm -rf dist/deimos
+mkdir -p dist/deimos/plugins
+cp "$DR_BUILD/deimos$DR_EXT" dist/deimos/
+cp -r assets dist/deimos/
+# Plugin folders that hold only code (and view/ subpackages) copy nothing.
+(cd plugins && find . -type f ! -name '*.odin' | sort) | while read -r f; do
+  mkdir -p "dist/deimos/plugins/$(dirname "$f")"
+  cp "plugins/$f" "dist/deimos/plugins/$f"
+done
+'''
 
 [tasks."build:windows"]
 description = "Build the game binary for Windows (x86-64). Native on a Windows host (mise/Odin there just do an ordinary same-target build). Cross-compiling from Linux additionally needs vendor:raylib's windows/*.lib (absent from this Odin install's vendor tree) and currently fails outright regardless: this Odin toolchain's own linker refuses windows_amd64 cross-links from a linux_amd64 host ('Linking for cross compilation for this platform is not yet supported'), confirmed directly against it -- see docs/decisions.md D27. Does not depend on `setup` (that task materialises Linux-only X11/GL symlinks) or use $DR_LINK (Linux-only linker search path), neither of which apply to a Windows link."
@@ -432,13 +452,13 @@ odin run tools/icons $DR_COLL $DR_LINK -out:$DR_BUILD/icons$DR_EXT -- \
 """
 
 [tasks."assets:extra"]
-description = "Recolour extracted sprite plates into the plugins' own, one recipe per plugin (RECIPE=tools/recolour/new_weapons.json for one; every tools/recolour/*.json by default). Each writes assets/extra/<plugin>/sprites/, which the game loads beside its own sprites while that plugin is in the build; the records in assets/extra/<plugin>/data are written by hand"
+description = "Recolour extracted sprite plates into the plugins' own, one recipe per plugin (RECIPE=tools/recolour/new_weapons.json for one; every tools/recolour/*.json by default). Each writes plugins/<plugin>/sprites/, which the game loads beside its own sprites while that plugin is in the build; the records in plugins/<plugin>/data are written by hand"
 depends = ["setup"]
 # CPU-side raylib image calls only: no window and no audio device are opened.
 run = """
 odin build tools/recolour $DR_COLL $DR_LINK -out:$DR_BUILD/recolour$DR_EXT
 for recipe in ${RECIPE:-tools/recolour/*.json}; do
-  $DR_BUILD/recolour$DR_EXT "$recipe" "$DR_ASSETS" || exit 1
+  $DR_BUILD/recolour$DR_EXT "$recipe" "$DR_ASSETS" "$DR_PLUGINS" || exit 1
 done
 """
 

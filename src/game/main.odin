@@ -38,9 +38,9 @@ main :: proc() {
 		root = "assets"
 	}
 	defs, report := data.assets_defs_load(root)
-	// New content (assets/extra) rides after the originals; only a New
+	// New content (plugins/<name>/data) rides after the originals; only a New
 	// Weapons session reaches it (docs/new-weapons.md).
-	data.extra_defs_load(root, &defs)
+	data.extra_defs_load(&defs)
 	if len(defs.levels) == 0 {
 		fmt.eprintfln("no level definitions under %v -- run `mise run assets:all`", root)
 		os.exit(1)

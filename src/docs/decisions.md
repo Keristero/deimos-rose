@@ -646,8 +646,9 @@ netplay `Start` packet's new flags byte.
 ### D37 — New content lives in its own tree, appended after the originals
 
 New Weapons (docs/new-weapons.md) adds records and sprites the original
-never had. They live in `assets/extra`, laid out like `assets/`, rather
-than beside the extracted records. `data.extra_defs_load` appends them after
+never had. They live in `assets/extra` (since D51, in each plugin's own
+folder), laid out like `assets/`, rather than beside the extracted
+records. `data.extra_defs_load` appends them after
 the original definitions, and `assets_open` reads the extra sprite index
 beside the game's own.
 
@@ -990,8 +991,9 @@ scenarios, like every plugin's, were cases in `game/main.odin`, which
 imported the plugins to write them. Three extension points now make a
 weapon, or any content, one plugin:
 
-- **Content trees.** A plugin's content is `assets/extra/<plugin name>`,
-  laid out as `assets/` is. `data.extra_defs_load` reads the tree of each
+- **Content trees.** A plugin's content is `assets/extra/<plugin name>`
+  (since D51, `plugins/<plugin name>/` beside its code), laid out as
+  `assets/` is. `data.extra_defs_load` reads the tree of each
   plugin in the build, and orders what it loads by id rather than by
   plugin, so moving a record between plugins renumbers nothing. Each
   weapon records its plugin (`Weapon.plugin`), and `weapon_allowed` lets
@@ -1086,3 +1088,39 @@ runs one side on another build: v166 as the host is refused by the new
 guest, and v166 as the guest by the new host. A Windows build is not
 linked locally (D27), so the fix is unproven on Windows itself until a
 release's Windows build joins a Linux host.
+
+### D51 — A plugin's content sits beside its code
+
+The level editor (notes/level-editor-plan.md) exports levels as plugins,
+and a plugin with levels brings maps, masks, previews and perhaps music.
+Under D49 content lived apart from its plugin, in `assets/extra/<name>`,
+and could only be records and sprites. Now:
+
+- **Where.** A plugin's content is in `plugins/<name>/`, beside its
+  `.odin` files: `data/` and `sprites/` as before, and now `images/im16/`
+  and `audio/`. Odin compiles only the folders something imports, so
+  content subfolders are ignored by the build. A plugin folder with none
+  of these four has no content (`data.plugin_content_dir`).
+- **The plugins root** is `$DR_PLUGINS`, or `plugins` in the working
+  directory. mise sets it to `src/plugins`. A release has
+  `deimos/plugins/<name>/` holding only each plugin's content: `mise run
+  dist` copies every file of `src/plugins` that is not Odin source, and
+  CI zips that folder.
+- **Sprite paths** in a plugin's `sprites/index.json` are relative to the
+  plugin's folder (`sprites/im08/PL1K.png`). `data.Sprite_Plate.image` now
+  holds the joined path, which the renderer and `tools/icons` load as it
+  is.
+- **Images and sounds add, never replace.** `assets_open` lists each
+  plugin's `images/im16/*.png` and `audio/*.wav` by id, and
+  `assets_image_path` and `assets_audio_path` find a plugin's file before
+  the core tree's. An id the core tree already has is not taken from a
+  plugin. Content is loaded in every session, classic included (D37), so
+  a plugin able to replace an original image would change classic mode.
+  A plugin that wants another look for an original ships it under a new
+  id and points its own records at that.
+
+`assets/extra` is gone. The recoloured plates, rebuilt with `mise run
+assets:extra` into the new folders, are byte-identical to the moved ones.
+The golden fingerprints, `oracle:diff:saved` and the Chaingun and
+Discharge Beam `dps:report` pages are unchanged. The two weapons load in
+a laid-out release run with neither `DR_ASSETS` nor `DR_PLUGINS` set.

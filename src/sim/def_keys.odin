@@ -1,7 +1,7 @@
 package sim
 
 // Definition keys a plugin adds to the original's weapon definitions: new
-// content's own settings (`x_...` in assets/extra, docs/new-weapons.md),
+// content's own settings (`x_...` in plugins/<name>/data, docs/new-weapons.md),
 // which the original never reads. The plugin that gives a key its meaning
 // registers it, and the loader (data/assets.odin) fills every registered
 // key of every weapon without knowing what any of them is for, so a new

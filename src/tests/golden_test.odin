@@ -391,7 +391,7 @@ golden_runs_match_the_recorded_fingerprints :: proc(t: ^testing.T) {
 	context.allocator = alloc // film_parse's frames, among others
 
 	defs, _ := data.assets_defs_load("assets", alloc)
-	data.extra_defs_load("assets", &defs, alloc)
+	data.extra_defs_load(&defs, alloc)
 	if !testing.expect(t, len(defs.levels) > 9, "the level list must load") {
 		return
 	}
@@ -466,7 +466,7 @@ golden_players_films_match_the_recorded_fingerprints :: proc(t: ^testing.T) {
 	context.allocator = alloc
 
 	defs, _ := data.assets_defs_load("assets", alloc)
-	data.extra_defs_load("assets", &defs, alloc)
+	data.extra_defs_load(&defs, alloc)
 	runs := make([dynamic]Golden_Run, alloc)
 	for e in PLAYERS_FILMS {
 		run_arena: vmem.Arena
@@ -522,7 +522,7 @@ golden_wide_runs_match_the_recorded_fingerprints :: proc(t: ^testing.T) {
 	context.allocator = alloc
 
 	defs, _ := data.assets_defs_load("assets", alloc)
-	data.extra_defs_load("assets", &defs, alloc)
+	data.extra_defs_load(&defs, alloc)
 	if !testing.expect(t, len(defs.levels) == 12, "the level list must load") {
 		return
 	}

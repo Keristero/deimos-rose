@@ -273,13 +273,13 @@ aimed_shots_lead_the_target :: proc(t: ^testing.T) {
 	testing.expect_value(t, chaingun.aimed_intercept({0, -100}, {20, 0}, 10), sim.Vec{0, -100})
 }
 
-// Against the shipped content (src/assets and src/assets/extra): the
+// Against the shipped content (src/assets and the plugins' content folders): the
 // Chaingun loads as new content, and a New Weapons session from stage 7
 // opens the loadout once the stage's title has gone. Skipped without the
 // assets tree.
 @(test)
 chaingun_loads_as_new_content :: proc(t: ^testing.T) {
-	if !os.exists("assets/data/index.json") || !os.exists("assets/extra") {
+	if !os.exists("assets/data/index.json") || !os.exists("plugins/chaingun/data") {
 		log.info("skipped: needs the extracted assets tree")
 		return
 	}
@@ -289,7 +289,7 @@ chaingun_loads_as_new_content :: proc(t: ^testing.T) {
 	alloc := vmem.arena_allocator(&arena)
 	defs, _ := data.assets_defs_load("assets", alloc)
 	originals := len(defs.weapons)
-	_, ok := data.extra_defs_load("assets", &defs, alloc)
+	_, ok := data.extra_defs_load(&defs, alloc)
 	if !testing.expect(t, ok && len(defs.levels) >= 7, "the extra content must load") {
 		return
 	}
@@ -300,7 +300,7 @@ chaingun_loads_as_new_content :: proc(t: ^testing.T) {
 		}
 		testing.expect(t, w.extra == (i >= originals), "only the appended weapons are new content")
 	}
-	if !testing.expect(t, cg >= 0, "no Chaingun in assets/extra") {
+	if !testing.expect(t, cg >= 0, "no Chaingun in plugins/chaingun") {
 		return
 	}
 	w := &defs.weapons[cg]
@@ -341,7 +341,7 @@ chaingun_loads_as_new_content :: proc(t: ^testing.T) {
 // tree.
 @(test)
 aimed_volley_turns_towards_an_air_enemy :: proc(t: ^testing.T) {
-	if !os.exists("assets/data/index.json") || !os.exists("assets/extra") {
+	if !os.exists("assets/data/index.json") || !os.exists("plugins/chaingun/data") {
 		log.info("skipped: needs the extracted assets tree")
 		return
 	}
@@ -350,7 +350,7 @@ aimed_volley_turns_towards_an_air_enemy :: proc(t: ^testing.T) {
 	defer vmem.arena_destroy(&arena)
 	alloc := vmem.arena_allocator(&arena)
 	defs, _ := data.assets_defs_load("assets", alloc)
-	if _, ok := data.extra_defs_load("assets", &defs, alloc); !testing.expect(t, ok) {
+	if _, ok := data.extra_defs_load(&defs, alloc); !testing.expect(t, ok) {
 		return
 	}
 	cg := i32(-1)

@@ -34,7 +34,7 @@ Plugin :: struct {
 	session:     bool,
 	// On for a player who has never visited the Mods page.
 	default_on:  bool,
-	// Needs its own content, under assets/extra/<name>: off when that did
+	// Needs its own content, in plugins/<name>/ (D51): off when that did
 	// not load (Defs.content, mods_with_content).
 	content:     bool,
 }

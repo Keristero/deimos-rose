@@ -598,7 +598,7 @@ flow_random_seed :: proc() -> u32 {
 }
 
 // The session plugins this player has on, as Start carries them: none in
-// classic mode, nor any whose own content is not there (assets/extra).
+// classic mode, nor any whose own content is not there (plugins/<name>/).
 // Netplay's own is left to session_from_mods, which knows whether the
 // session is online.
 flow_session_mods :: proc(fl: ^Flow) -> sim.Mods {

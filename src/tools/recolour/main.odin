@@ -3,7 +3,7 @@
 // ships are the Bacta Gun's green ones, the Discharge Beam's red ones the
 // Ion Cannon's yellow (docs/new-weapons.md).
 //
-//   recolour <recipe.json> <assets root>
+//   recolour <recipe.json> <assets root> <plugins root>
 //
 // A recipe names the plugin whose content the plates are, and lists them.
 // Each takes a plate of sprites/index.json,
@@ -17,10 +17,11 @@
 //     {"from": "PL1G", "to": "PL1K", "hue_min": 70, "hue_max": 170,
 //      "saturation": 0.1, "value": 0.6}]}
 //
-// Each plate is written to <assets root>/extra/<plugin>/sprites/im08/<to>.png,
+// Each plate is written to <plugins root>/<plugin>/sprites/im08/<to>.png,
 // with the source's frames, and all of them are listed in
-// <assets root>/extra/<plugin>/sprites/index.json, which data.assets_open
-// and data.extra_defs_load read beside the game's own index.
+// <plugins root>/<plugin>/sprites/index.json, with paths relative to the
+// plugin's folder, which data.assets_open and data.extra_defs_load read
+// beside the game's own index (D51).
 //
 // Only raylib's CPU-side image functions are used: no window, no audio
 // device, so it is safe to run headless. The output is derived entirely from
@@ -53,11 +54,11 @@ Recipe :: struct {
 }
 
 main :: proc() {
-	if len(os.args) != 3 {
-		fmt.eprintln("usage: recolour <recipe.json> <assets root>")
+	if len(os.args) != 4 {
+		fmt.eprintln("usage: recolour <recipe.json> <assets root> <plugins root>")
 		os.exit(2)
 	}
-	recipe_path, root := os.args[1], os.args[2]
+	recipe_path, root, plugins := os.args[1], os.args[2], os.args[3]
 	rl.SetTraceLogLevel(.WARNING)
 
 	text, read_err := os.read_entire_file(recipe_path, context.allocator)
@@ -74,14 +75,14 @@ main :: proc() {
 		fmt.eprintfln("recolour: %s names no plugin", recipe_path)
 		os.exit(1)
 	}
-	dir := fmt.tprintf("extra/%s/sprites", recipe.plugin)
+	dir := fmt.tprintf("%s/%s", plugins, recipe.plugin)
 	index_text, index_err := os.read_entire_file(fmt.tprintf("%s/sprites/index.json", root), context.allocator)
 	index: data.Json_Sprite_Index
 	if index_err != nil || json.unmarshal(index_text, &index) != nil {
 		fmt.eprintfln("recolour: no sprites under %s (run mise run assets:all first)", root)
 		os.exit(1)
 	}
-	out_dir := fmt.tprintf("%s/%s/im08", root, dir)
+	out_dir := fmt.tprintf("%s/sprites/im08", dir)
 	if err := os.make_directory_all(out_dir); err != nil && err != .Exist {
 		fmt.eprintfln("recolour: cannot create %s: %v", out_dir, err)
 		os.exit(1)
@@ -110,12 +111,13 @@ main :: proc() {
 		for &c in px {
 			c = recolour(c, &p)
 		}
-		image := fmt.aprintf("%s/im08/%s.png", dir, p.to)
-		if !rl.ExportImage(im, fmt.ctprintf("%s/%s", root, image)) {
-			fmt.eprintfln("recolour: cannot write %s", image)
+		image := fmt.aprintf("sprites/im08/%s.png", p.to)
+		out_path := fmt.tprintf("%s/%s", dir, image)
+		if !rl.ExportImage(im, strings.clone_to_cstring(out_path, context.temp_allocator)) {
+			fmt.eprintfln("recolour: cannot write %s", out_path)
 			os.exit(1)
 		}
-		fmt.println("wrote", image)
+		fmt.println("wrote", out_path)
 		out := src^
 		out.fourcc = p.to
 		out.image = image
@@ -128,7 +130,7 @@ main :: proc() {
 		fmt.eprintfln("recolour: %v", err)
 		os.exit(1)
 	}
-	path := fmt.tprintf("%s/%s/index.json", root, dir)
+	path := fmt.tprintf("%s/sprites/index.json", dir)
 	if write_err := os.write_entire_file(path, blob); write_err != nil {
 		fmt.eprintfln("recolour: cannot write %s: %v", path, write_err)
 		os.exit(1)

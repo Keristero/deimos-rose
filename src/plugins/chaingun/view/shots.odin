@@ -19,7 +19,7 @@ import "dr:ui"
 chaingun_shot :: proc(s: ^sim.State, name: string) -> string {
 	loadout.loadout_of(s).shown = sim.single(s, sim.Level_Info).played
 	if !loadout.loadout_give(s, 0, sim.res_id("aicg")) {
-		return "no Chaingun (is assets/extra/chaingun there?)"
+		return "no Chaingun (is plugins/chaingun/data there?)"
 	}
 	// An idle ship is shot down about 220 steps in.
 	for _ in 0 ..< (name == "chaingun" ? 180 : 120) {

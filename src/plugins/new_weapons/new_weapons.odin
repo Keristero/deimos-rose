@@ -5,10 +5,10 @@ import _ "dr:plugins/extra_prefs"
 import _ "dr:plugins/loadout"
 import "dr:sim"
 
-// The new weapons (assets/extra/new_weapons; docs/new-weapons.md): the
-// original's rules never choose them (Weapon.extra), and they are in play
-// while this is on. They are handed over the way every other weapon is
-// under plugins/loadout.
+// The new weapons (their content in data/ and sprites/ here;
+// docs/new-weapons.md): the original's rules never choose them
+// (Weapon.extra), and they are in play while this is on. They are handed
+// over the way every other weapon is under plugins/loadout.
 //
 // What they do that no original weapon does is here too: the Discharge
 // Beam's instant shot (beam.odin), fired through the core's Weapon_Fire

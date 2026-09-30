@@ -39,7 +39,7 @@ main :: proc() {
 	_ = vmem.arena_init_growing(&arena)
 	context.allocator = vmem.arena_allocator(&arena)
 	defs, _ := data.assets_defs_load("assets")
-	data.extra_defs_load("assets", &defs)
+	data.extra_defs_load(&defs)
 	REPS :: 5
 
 	// 1. The four demos, replayed from their films.

@@ -30,7 +30,7 @@ Where it can be changed:
 
 A session only turns it on when its content has loaded: the plugin is
 marked `content`, and `sim.mods_with_content` drops it when
-`assets/extra/new_weapons` is missing (D49).
+`plugins/new_weapons/data` is missing (D49, D51).
 
 ### Carrying the setting
 
@@ -73,7 +73,7 @@ The presentation effects freeze too, through `sim.session_frozen`.
 
 The Chaingun is a plugin of its own, `plugins/chaingun`, which needs New
 Weapons and lists under it on the Mods page, on by default (D49). All of
-it is there: its content in `assets/extra/chaingun`, its recolour recipe
+it is there: its content in `data/` and `sprites/`, its recolour recipe
 `tools/recolour/chaingun.json`, its definition key, its firing hook and
 its screenshot scenarios (`MENU=chaingun`, `chaingun_charge`,
 `chaingun_release`).
@@ -120,7 +120,7 @@ is loaded in every session. `oracle:diff` stays exact.
 ### The Discharge Beam
 
 The Discharge Beam is `aidb`, with its units in
-`assets/extra/new_weapons/data`. It is air weapon number six and unlocks at stage 10. Its ship is red:
+`plugins/new_weapons/data`. It is air weapon number six and unlocks at stage 10. Its ship is red:
 `pl1d`/`pl2d`, turned from the Ion Cannon's yellow by `tools/recolour`
 (see Content).
 
@@ -358,8 +358,9 @@ Balance), but its feel is untested by hand:
 
 ## Content
 
-`assets/extra/<plugin>` holds each plugin's own content: records in
-`data/` and sprites in `sprites/`, laid out like `assets/` (D49).
+`plugins/<plugin>/` holds each plugin's own content beside its code:
+records in `data/` and sprites in `sprites/`, laid out like `assets/`
+(D49, D51). A release carries it in `deimos/plugins/<plugin>/`.
 `data.extra_defs_load` appends it after the original definitions, ordered
 by id whichever plugin it came from. Each weapon it loads is marked
 `extra`, and records its plugin, which lets it into play while on. Its

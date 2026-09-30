@@ -93,7 +93,7 @@ Weapon :: struct {
 	using def: Wep_Def,
 	spawns:    []Wep_Spawn_Def, // +0x1c0
 	// Not the original's: set only on a plugin's own weapons
-	// (assets/extra/<plugin name>, docs/new-weapons.md), which exist only
+	// (plugins/<plugin name>/data, docs/new-weapons.md), which exist only
 	// in a session with that plugin on (weapon_allowed).
 	extra:  bool,
 	plugin: Plugin_ID, // whose they are, when extra

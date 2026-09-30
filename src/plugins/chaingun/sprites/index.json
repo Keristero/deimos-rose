@@ -3,7 +3,7 @@
         {
             "fourcc": "PL1K",
             "dir": "im08",
-            "image": "extra/chaingun/sprites/im08/PL1K.png",
+            "image": "sprites/im08/PL1K.png",
             "width": 394,
             "height": 48,
             "frames": [
@@ -54,7 +54,7 @@
         {
             "fourcc": "PL2K",
             "dir": "im08",
-            "image": "extra/chaingun/sprites/im08/PL2K.png",
+            "image": "sprites/im08/PL2K.png",
             "width": 394,
             "height": 48,
             "frames": [
@@ -105,7 +105,7 @@
         {
             "fourcc": "CGBU",
             "dir": "im08",
-            "image": "extra/chaingun/sprites/im08/CGBU.png",
+            "image": "sprites/im08/CGBU.png",
             "width": 866,
             "height": 26,
             "frames": [

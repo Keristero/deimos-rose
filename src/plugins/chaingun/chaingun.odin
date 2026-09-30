@@ -7,7 +7,7 @@ import "dr:sim"
 // The Chaingun (docs/new-weapons.md): a new air weapon from stage 7 whose
 // charge fires volleys aimed at the nearest enemy (aimed.odin). New
 // content, not the original's. Everything that is the Chaingun's is here:
-// its content under assets/extra/chaingun (records by hand, sprites from
+// its content in data/ and sprites/ here (records by hand, sprites from
 // tools/recolour/chaingun.json), the definition key that marks its charge,
 // the firing hook that reads it, and its screenshot scenarios (view/).
 //

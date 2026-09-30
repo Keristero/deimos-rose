@@ -241,7 +241,7 @@ main :: proc() {
 		fmt.eprintfln("dps: no game data under %s (run mise run assets:all)", root)
 		os.exit(1)
 	}
-	if _, ok := data.extra_defs_load(root, &defs, alloc); !ok {
+	if _, ok := data.extra_defs_load(&defs, alloc); !ok {
 		fmt.eprintfln("dps: cannot load the new content under %s/extra", root)
 		os.exit(1)
 	}

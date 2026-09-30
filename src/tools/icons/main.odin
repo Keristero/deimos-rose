@@ -5,7 +5,7 @@
 //
 // A recipe is a canvas size and a list of icons, each a stack of layers drawn
 // bottom first. A layer is one frame of a sprite plate (sprites/index.json,
-// or a plugin's own under assets/extra, for the plugins imported below),
+// or a plugin's own in plugins/<name>/sprites, for those imported below),
 // scaled so its longer side is `fit` pixels (its own size when fit is left
 // out), centred on (x, y) (the canvas centre when left out), optionally
 // flipped, and faded to `alpha`:
@@ -133,7 +133,7 @@ draw_layer :: proc(canvas: ^rl.Image, assets: ^data.Assets, plates: ^map[sim.Res
 	}
 	sheet, loaded := plates[id]
 	if !loaded {
-		sheet = rl.LoadImage(fmt.ctprintf("%s/%s", root, plate.image))
+		sheet = rl.LoadImage(strings.clone_to_cstring(plate.image, context.temp_allocator))
 		if sheet.data == nil {
 			return false
 		}

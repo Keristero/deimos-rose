@@ -67,8 +67,7 @@ textures_load :: proc(t: ^Textures, root: string, audio: bool = true) {
 	t.terrain = make(map[string]rl.Texture2D)
 	t.images = make(map[string]rl.Texture2D)
 	for &p in t.assets.sprites {
-		path := fmt.ctprintf("%s/%s", root, p.image)
-		tex := rl.LoadTexture(path)
+		tex := rl.LoadTexture(strings.clone_to_cstring(p.image, context.temp_allocator))
 		if tex.id == 0 {
 			continue
 		}
@@ -78,8 +77,7 @@ textures_load :: proc(t: ^Textures, root: string, audio: bool = true) {
 	t.sounds = make(map[sim.Res_ID]Sound_Clip, audio ? len(t.assets.sounds) : 0)
 	if audio {
 		for id in t.assets.sounds {
-			path := fmt.ctprintf("%s/audio/%s.wav", root, id)
-			snd := rl.LoadSound(path)
+			snd := rl.LoadSound(strings.clone_to_cstring(data.assets_audio_path(&t.assets, id), context.temp_allocator))
 			if snd.frameCount == 0 {
 				continue
 			}
@@ -142,7 +140,7 @@ music_load :: proc(t: ^Textures, id: string) -> (rl.Music, bool) {
 		rl.SetMusicVolume(m, t.music_volume)
 		return m, true
 	}
-	m := rl.LoadMusicStream(fmt.ctprintf("%s/audio/%s.wav", t.root, id))
+	m := rl.LoadMusicStream(strings.clone_to_cstring(data.assets_audio_path(&t.assets, id), context.temp_allocator))
 	if m.frameCount == 0 {
 		return {}, false
 	}
@@ -192,7 +190,7 @@ im16_texture :: proc(t: ^Textures, cache: ^map[string]rl.Texture2D, id: string) 
 	if tex, ok := cache[key]; ok {
 		return tex, tex.id != 0
 	}
-	img := rl.LoadImage(fmt.ctprintf("%s/images/im16/%s.png", t.root, id))
+	img := rl.LoadImage(strings.clone_to_cstring(data.assets_image_path(&t.assets, id), context.temp_allocator))
 	if img.data == nil {
 		return {}, false
 	}
@@ -228,7 +226,7 @@ menu_image_rose :: proc(t: ^Textures, id: string) -> (rl.Texture2D, bool) {
 	if tex, ok := t.images[key]; ok {
 		return tex, true
 	}
-	img := rl.LoadImage(fmt.ctprintf("%s/images/im16/%s.png", t.root, id))
+	img := rl.LoadImage(strings.clone_to_cstring(data.assets_image_path(&t.assets, id), context.temp_allocator))
 	if img.data == nil {
 		return {}, false
 	}
@@ -327,7 +325,7 @@ ship_trim_build :: proc(t: ^Textures, silver, gold: sim.Res_ID, icon: bool) -> r
 	path :: proc(t: ^Textures, id: sim.Res_ID) -> cstring {
 		for &p in t.assets.sprites {
 			if p.id == id {
-				return fmt.ctprintf("%s/%s", t.root, p.image)
+				return strings.clone_to_cstring(p.image, context.temp_allocator)
 			}
 		}
 		return ""

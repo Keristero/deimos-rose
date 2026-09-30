@@ -416,7 +416,7 @@ weapon_passives_shape_the_real_weapons :: proc(t: ^testing.T) {
 		return
 	}
 	// The plugins' weapons too, for Weapon 5 and 6.
-	if _, ok := data.extra_defs_load("assets", &defs, vmem.arena_allocator(&arena)); !testing.expect(t, ok) {
+	if _, ok := data.extra_defs_load(&defs, vmem.arena_allocator(&arena)); !testing.expect(t, ok) {
 		return
 	}
 	s := new(sim.State, context.temp_allocator)
@@ -537,7 +537,7 @@ chaingun_passive_offered_with_its_plugin :: proc(t: ^testing.T) {
 	if !testing.expect(t, len(defs.levels) > 0, "the level list must load") {
 		return
 	}
-	if _, ok := data.extra_defs_load("assets", &defs, vmem.arena_allocator(&arena)); !testing.expect(t, ok) {
+	if _, ok := data.extra_defs_load(&defs, vmem.arena_allocator(&arena)); !testing.expect(t, ok) {
 		return
 	}
 	s := new(sim.State, context.temp_allocator)

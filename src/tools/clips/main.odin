@@ -54,7 +54,7 @@ main :: proc() {
 	}
 	root, out_dir := os.args[1], os.args[2]
 	defs, _ := data.assets_defs_load(root)
-	data.extra_defs_load(root, &defs)
+	data.extra_defs_load(&defs)
 	if len(defs.levels) == 0 {
 		fmt.eprintfln("clips: no game data under %s (run mise run assets:all)", root)
 		os.exit(1)

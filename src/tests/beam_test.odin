@@ -31,14 +31,14 @@ Beam_Fixture :: struct {
 // mode's passives too if `easy`.
 @(private = "file")
 beam_fixture :: proc(t: ^testing.T, f: ^Beam_Fixture, easy := false) -> bool {
-	if !os.exists("assets/data/index.json") || !os.exists("assets/extra") {
+	if !os.exists("assets/data/index.json") || !os.exists("plugins/new_weapons/data") {
 		log.info("skipped: needs the extracted assets tree")
 		return false
 	}
 	testing.expect(t, vmem.arena_init_growing(&f.arena) == nil)
 	alloc := vmem.arena_allocator(&f.arena)
 	f.defs, _ = data.assets_defs_load("assets", alloc)
-	if _, ok := data.extra_defs_load("assets", &f.defs, alloc); !testing.expect(t, ok) {
+	if _, ok := data.extra_defs_load(&f.defs, alloc); !testing.expect(t, ok) {
 		return false
 	}
 	f.db = -1
@@ -47,7 +47,7 @@ beam_fixture :: proc(t: ^testing.T, f: ^Beam_Fixture, easy := false) -> bool {
 			f.db = i32(i)
 		}
 	}
-	if !testing.expect(t, f.db >= 0, "no Discharge Beam in assets/extra") {
+	if !testing.expect(t, f.db >= 0, "no Discharge Beam in plugins/new_weapons") {
 		return false
 	}
 	f.s = new(sim.State, alloc)

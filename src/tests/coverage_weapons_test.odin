@@ -674,7 +674,7 @@ Assets_Fixture :: struct {
 // once the ship is in play. The caller sets context.allocator to the arena.
 @(private = "file")
 cw_assets_fixture :: proc(t: ^testing.T, f: ^Assets_Fixture, easy: bool) -> bool {
-	if !os.exists("assets/data/index.json") || !os.exists("assets/extra") {
+	if !os.exists("assets/data/index.json") || !os.exists("plugins/new_weapons/data") {
 		log.info("skipped: needs the extracted assets tree")
 		return false
 	}
@@ -682,7 +682,7 @@ cw_assets_fixture :: proc(t: ^testing.T, f: ^Assets_Fixture, easy: bool) -> bool
 	alloc := vmem.arena_allocator(&f.arena)
 	context.allocator = alloc
 	f.defs, _ = data.assets_defs_load("assets", alloc)
-	if _, ok := data.extra_defs_load("assets", &f.defs, alloc); !testing.expect(t, ok) {
+	if _, ok := data.extra_defs_load(&f.defs, alloc); !testing.expect(t, ok) {
 		return false
 	}
 	f.s = new(sim.State)

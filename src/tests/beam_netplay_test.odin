@@ -20,7 +20,7 @@ import "dr:sim"
 // assets tree.
 @(test)
 netplay_peer_keeps_the_other_players_beams :: proc(t: ^testing.T) {
-	if !os.exists("assets/data/index.json") || !os.exists("assets/extra") {
+	if !os.exists("assets/data/index.json") || !os.exists("plugins/new_weapons/data") {
 		log.info("skipped: needs the extracted assets tree")
 		return
 	}
@@ -30,7 +30,7 @@ netplay_peer_keeps_the_other_players_beams :: proc(t: ^testing.T) {
 	alloc := vmem.arena_allocator(&arena)
 	context.allocator = alloc // the states' worlds go in the arena too
 	defs, _ := data.assets_defs_load("assets", alloc)
-	if _, ok := data.extra_defs_load("assets", &defs, alloc); !testing.expect(t, ok) {
+	if _, ok := data.extra_defs_load(&defs, alloc); !testing.expect(t, ok) {
 		return
 	}
 	db := -1
@@ -39,7 +39,7 @@ netplay_peer_keeps_the_other_players_beams :: proc(t: ^testing.T) {
 			db = i
 		}
 	}
-	if !testing.expect(t, db >= 0, "no Discharge Beam in assets/extra") {
+	if !testing.expect(t, db >= 0, "no Discharge Beam in plugins/new_weapons") {
 		return
 	}
 
