@@ -20,12 +20,36 @@ point an artist can take into the editor:
      so the heights' shadows match the detected ones (refine()).
   4. Water from the shipped media mask, which is exact: one water height
      just above the terrain under it.
-  5. Unlit colour: the art with its detected shadows divided by the
-     measured ambient light, 0.44. Crude; it leaves halos at shadow edges.
+  5. Unlit colour: the art divided by the light, where the art is in
+     shadow and the recovered heights cast it (unlit()).
 
-This is Stage 6 of notes/level-editor-plan.md, in progress: canopy and a
-better unlit colour are to come. The depth is
-cached in OUT/cache/, keyed by model revisions, so a rerun only refits.
+This is Stage 6 of notes/level-editor-plan.md, in progress: the canopy is
+to come.
+
+The unlit colour matters only for relighting the originals faithfully: a
+new level's colour is painted unlit. Tried on le07 (and on a shadowed
+256 px tile of each of cam1, jum2, ism1 and inm2), scored by the share of
+the detected shadow still detected afterwards and by its light against
+the lit ground's (the art: 1.0 and 0.30):
+
+  the detected shadows divided by 0.44        0.40, 0.68: canopy gaps
+                                               turn to bright speckle
+  the art divided by the rendered light        0.59, 0.50: brightens lit
+                                               ground (12%) where the
+                                               heights cast false shadows
+  both: the rendered light, in the detected    0.50, 0.53: lit ground as
+  shadows only (this)                          it was, no speckle
+  Marigold IID's shading                       0.83, 0.37 over the whole
+                                               map (good on the tiles
+                                               only, at 3x its scale)
+  Flux 2 [klein] 4B edits, 12 prompts          keep the scene only where
+                                               they keep the shadows
+
+What stays dark is mostly canopy, dark in its own colour, and the shadows
+the heights do not cast.
+
+The depth is cached in OUT/cache/, keyed by model revisions, so a rerun
+only refits.
 OUT/manifest.json records the settings, the versions and the fit.
 
     python recover.py jum2 --mask jut2 --level .../le07.json --images DIR --out DIR
@@ -109,8 +133,8 @@ def refine(H, detected, land, rgb, device, az, el, floor, iters=REFINE_ITERS, cu
     the shadows wanted, so the change is only smooth offsets, on grids of
     1/16, 1/8 and 1/4 of the half-size map, and its curvature along the sun
     direction is penalised. The water's bed is left as it is, and the land
-    kept at or above `floor`. Returns the new heights at full size and each
-    step's scores."""
+    kept at or above `floor`. Returns the new heights at full size, each
+    step's scores, and their soft shadow (0 lit, 1 shadowed) at full size."""
     import torch
     import torch.nn.functional as F
 
@@ -175,7 +199,17 @@ def refine(H, detected, land, rgb, device, az, el, floor, iters=REFINE_ITERS, cu
     with torch.no_grad():
         d = sum(up(o) for o in offsets)[None, None] * 2  # full-size pixels
         d = F.interpolate(d, size=H.shape, mode="bicubic", align_corners=True)[0, 0].cpu().numpy()
-    return np.where(land, np.maximum(H + d, floor), H), history
+        shadow = F.interpolate(shadow[None, None], size=H.shape, mode="bilinear", align_corners=True)[0, 0].cpu().numpy()
+    return np.where(land, np.maximum(H + d, floor), H), history, shadow
+
+
+def unlit(rgb, detected, shadow):
+    """The art without its shadows: where it is in shadow (detected) it is
+    divided by the light the heights give it (the ambient where they cast a
+    shadow, full light where they do not). Everywhere else it is left as it
+    is. 0..1 RGB."""
+    light = np.where(detected, AMBIENT + (1 - AMBIENT) * (1 - shadow), 1)
+    return np.clip(rgb / light[..., None], 0, 1)
 
 
 def model_input(tile: Image.Image):
@@ -348,6 +382,10 @@ def main():
         under = np.array([np.percentile(H[y][water[y]], 90) if rows[y] else 0 for y in range(h)], np.float32)
         wsum = ndi.gaussian_filter1d(rows.astype(np.float32), 150, mode="nearest")
         trend = ndi.gaussian_filter1d(under * rows, 150, mode="nearest") / np.maximum(wsum, 1e-6)
+        # Far from any water the weight vanishes and the trend with it, a
+        # cliff (le07's, 141 px, at row 2794): hold it at its nearest value.
+        known = np.flatnonzero(wsum > 1e-3 * wsum.max())
+        trend = np.interp(np.arange(h), known, trend[known])
         H = H - trend[:, None]
         H -= H.min()
 
@@ -359,13 +397,11 @@ def main():
     if water.any():
         H = np.where(water, np.minimum(H, level_h - 0.5), np.maximum(H, floor))
 
-    history = []
-    if args.iters > 0:
-        H, history = refine(H, detected, land, rgb, args.device, args.azimuth, args.elevation, floor, args.iters, args.curvature, args.shading)
+    # With no steps this is only the seed's soft shadow, for unlit().
+    H, history, shadow = refine(H, detected, land, rgb, args.device, args.azimuth, args.elevation, floor, args.iters, args.curvature, args.shading)
     water_colour = [int(v) for v in np.median(rgb8[water], 0)] if water.any() else [0, 0, 0]
 
-    albedo = np.where(detected[..., None], rgb / AMBIENT, rgb)
-    albedo = (np.clip(albedo, 0, 1) * 255 + 0.5).astype(np.uint8)
+    albedo = (unlit(rgb, detected, shadow) * 255 + 0.5).astype(np.uint8)
 
     level = json.loads(Path(args.level).read_text())
     level["lighting"] = {
@@ -406,6 +442,7 @@ def main():
         "map": args.map,
         "mask": args.mask,
         "seed": seed,
+        "unlit": "the detected shadows divided by the refined heights' light",
         "window": WINDOW,
         "stride": STRIDE,
         "sun": {"azimuth": args.azimuth, "elevation": args.elevation, "ambient": AMBIENT},

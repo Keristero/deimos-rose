@@ -10,7 +10,7 @@ stage by stage. The decisions are D51–D55 in [decisions.md](decisions.md).
 | 3 — Campaigns; the originals become Classic Levels | **complete** | D53 |
 | 4 — Optional level fields, launch flags | **complete** | D54 |
 | 5 — Terrain renderer, le07 proof of concept | **complete** | D55, below |
-| 6 — Recovering the 12 originals' heightmaps | not started | |
+| 6 — Recovering the 12 originals' heightmaps | in progress | below |
 | 7 — The editor | not started | |
 | 8 — Materials, structures, placement | not started | |
 | 9 — Export and Play | not started | |
@@ -87,7 +87,55 @@ What the numbers say:
   cast shadow, and the depth model turns the canopy into bumpy ground.
   Stage 6 masks canopy and rebuilds it as vegetation.
 - **The unlit colour still holds the art's shading**, so slopes are shaded
-  twice. Stage 6 replaces it with the art divided by Marigold IID shading.
+  twice. Stage 6 divides the shadows by the recovered heights' own light
+  instead (below).
 - The fitted azimuth, 30°, sits below the measured 36° because the depth
   model's shapes, not the sun, set where their shadows fall; it is a
   check on the geometry more than on the light.
+
+## Stage 6: recovering the originals
+
+`tools/terrain_recover/` (its README says how to run and set it up)
+seeds the heights with Marigold V2, fits their range, removes the water's
+drift, refines them against the detected shadows and divides the shadows
+out of the colour. The recipe is in `recover.py`'s docstring.
+
+### The unlit colour
+
+It is needed only to relight the originals faithfully: a level made in the
+editor is painted unlit. Tried on le07, scored by the share of the art's
+detected shadow still detected in the colour, and by the shadow's light
+against the lit ground's (the art: 100%, 0.30):
+
+| Method | Still shadow | Shadow / lit | Notes |
+|---|---|---|---|
+| Detected shadows ÷ 0.44 (Stage 5) | 40% | 0.68 | canopy gaps turn to bright speckle |
+| ÷ the rendered light everywhere | 59% | 0.50 | brightens 12% of the lit ground, under false shadows |
+| **÷ the rendered light, in the detected shadows** | **50%** | **0.53** | lit ground unchanged; no speckle |
+| ÷ Marigold IID shading (`marigold-iid-lighting-v1-1`) | 83% | 0.37 | removes them on 256 px tiles only |
+| Flux 2 [klein] 4B, 12 prompts, 512 and 1024 px | | | keeps the scene only where it keeps the shadows |
+
+The third is used: no parameters beyond the ambient, and the light it
+divides by is the one the renderer will put back. What stays dark is
+mostly canopy, which is dark in its own colour, and shadows the heights
+do not cast.
+
+### le07
+
+`terrain:compare`, whole map, 2026-09-30 (sun 36°, 40° up):
+
+| Measure | Stage 5 | Stage 6 |
+|---|---|---|
+| Rendered shadow IoU (the plan's bar: 0.75) | 0.500 | **0.770** |
+| Shadow light, of the ground around (the art: 0.38) | 0.39 | 0.37 |
+| Cast-shadow IoU of the heights alone | 0.499 | 0.704 |
+| Fitted sun azimuth (measured 36°) | 30° | 36° |
+
+The rendered IoU is above the cast one partly because the colour keeps
+the shadows the heights miss. No ridge streaks show in the height image.
+A water-drift bug found on the way: far from the water the smoothed trend
+fell to zero, a 141 px cliff across le07 at row 2794; it is now held at its
+nearest value.
+
+Still to come: the canopy split (palms and canopy still come out as
+bumps), the other 11 levels into `work/recovered/`, and their report.

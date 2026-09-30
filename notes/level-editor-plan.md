@@ -359,8 +359,12 @@ It turns the findings' recipe into a tool:
 4. **Canopy** is masked with k-means, or the vision model where the
    clusters fail (findings: jungle canopy became bumpy terrain). It becomes
    vegetation, not height.
-5. **Unlit colour** is the original divided by the Marigold IID shading. It
-   is the exemplar source for materials (Stage 7).
+5. **Unlit colour** is the original with its shadows divided out: where
+   the art is in shadow, divided by the light the refined heights give it.
+   It is the exemplar source for materials (Stage 7). *Corrected in Stage
+   6:* dividing by the Marigold IID shading removed the shadows on small
+   tiles but left 83% of le07's over the whole map, and Flux edits kept the
+   scene only where they kept the shadows (docs/level-editor.md).
 6. **Output** is an editor project (Stage 7's format) per level.
 
 **Verification**, as the pipeline task's update asks: the tool renders each
