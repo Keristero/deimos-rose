@@ -166,8 +166,9 @@ Netplay :: struct {
 	// The session's mods, host-authoritative the same way: the host's,
 	// mirrored to the guest in every Level_Choice and fixed by Start.
 	mods:        sim.Mods,
-	// Whose levels level_index counts in: the host's Level Select's
-	// (Flow.campaign), mirrored the same way (D53).
+	// Whose levels level_index counts in: the host's (Flow.campaign, which
+	// Level Select and the lobby's own campaign arrows both set), mirrored
+	// the same way (D53).
 	campaign:    sim.Plugin_ID,
 
 	menu_host:  ui.Text_Button,
@@ -175,6 +176,8 @@ Netplay :: struct {
 	menu_back:  ui.Text_Button,
 	level_prev: ui.Text_Button,
 	level_next: ui.Text_Button,
+	campaign_prev: ui.Text_Button,
+	campaign_next: ui.Text_Button,
 	ready_btn:  ui.Text_Button,
 	easy_btn:   ui.Text_Button,
 	weapons_btn: ui.Text_Button,
@@ -260,6 +263,24 @@ netplay_build_buttons :: proc(nl: ^Netplay, r: ^render.Renderer) {
 // Below the accent slider, clear of everything else on the connected
 // screen: easy mode on the left, new weapons on the right.
 @(private = "file") EASY_Y :: 440
+// The campaign's row, between the title and CONNECTED: shown while the
+// host is offered more than one, or plays another than the originals.
+@(private = "file") CAMPAIGN_Y :: 175
+@(private = "file") CAMPAIGN_ARROW_DX :: 110 // at the least; clear of a longer name
+
+@(private = "file")
+netplay_campaign_text :: proc(nl: ^Netplay) -> string {
+	campaign := flow_campaign_label(nl.campaign)
+	return nl.role == .Host ? fmt.tprintf("CAMPAIGN: %s", campaign) : fmt.tprintf("HOST HAS CHOSEN: %s", campaign)
+}
+
+// The host's campaign arrows either side of its name.
+@(private = "file")
+netplay_campaign_layout :: proc(r: ^render.Renderer, nl: ^Netplay) {
+	dx := max(f32(CAMPAIGN_ARROW_DX), f32(render.text_width(r, netplay_campaign_text(nl))) / 2 + 40)
+	ui.text_button_relabel(r, &nl.campaign_prev, "<", render.SCREEN_W / 2 - dx, CAMPAIGN_Y)
+	ui.text_button_relabel(r, &nl.campaign_next, ">", render.SCREEN_W / 2 + dx, CAMPAIGN_Y)
+}
 @(private = "file") EASY_X :: render.SCREEN_W / 2 - 110
 @(private = "file") WEAPONS_X :: render.SCREEN_W / 2 + 110
 
@@ -609,9 +630,25 @@ netplay_update_connected :: proc(fl: ^Flow, nl: ^Netplay, r: ^render.Renderer) {
 	// local_ready is set, the nav buttons stop responding.
 	if nl.role == .Host {
 		nl.mods = flow_session_mods(fl)
+		if c := flow_campaign_step(fl, fl.campaign, 0); c != fl.campaign {
+			flow_campaign_set(fl, c) // one since turned off
+			nl.level_index = 0
+		}
 		nl.campaign = fl.campaign
 	}
 	if nl.role == .Host && !nl.local_ready {
+		netplay_campaign_layout(r, nl)
+		step := 0
+		if ui.text_button_update(r, &nl.campaign_prev, mouse, dt) {
+			step = -1
+		}
+		if ui.text_button_update(r, &nl.campaign_next, mouse, dt) {
+			step = 1
+		}
+		if step != 0 && len(flow_campaigns(fl)) > 1 {
+			flow_campaign_set(fl, flow_campaign_step(fl, fl.campaign, step))
+			nl.campaign, nl.level_index = fl.campaign, 0
+		}
 		n := len(sim.campaign_levels(fl.defs, nl.campaign))
 		if ui.text_button_update(r, &nl.level_prev, mouse, dt) {
 			nl.level_index = (nl.level_index - 1 + n) % n
@@ -1336,6 +1373,15 @@ netplay_lobby_draw :: proc(fl: ^Flow, r: ^render.Renderer, nl: ^Netplay) {
 			level_label = fmt.tprintf("HOST HAS CHOSEN: %s", level_name)
 		}
 		ui.menu_draw_text(r, level_label, render.SCREEN_W / 2, 262, host_locked ? bad : white, .Centre)
+		choosing := nl.role == .Host && !nl.local_ready && len(flow_campaigns(fl)) > 1
+		if choosing || nl.campaign != sim.CORE {
+			ui.menu_draw_text(r, netplay_campaign_text(nl), render.SCREEN_W / 2, CAMPAIGN_Y, white, .Centre)
+		}
+		if choosing {
+			netplay_campaign_layout(r, nl)
+			ui.text_button_draw(r, &nl.campaign_prev)
+			ui.text_button_draw(r, &nl.campaign_next)
+		}
 		if nl.role == .Host && !nl.local_ready {
 			ui.text_button_draw(r, &nl.level_prev)
 			ui.text_button_draw(r, &nl.level_next)

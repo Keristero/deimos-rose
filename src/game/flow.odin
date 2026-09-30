@@ -8,6 +8,7 @@ package game
 
 import "core:fmt"
 import "core:os"
+import "core:slice"
 import "core:strings"
 import "core:time"
 
@@ -289,6 +290,28 @@ flow_campaigns :: proc(fl: ^Flow) -> []sim.Plugin_ID {
 		n = 1
 	}
 	return list[:n]
+}
+
+// A campaign's name as the menus show it: Classic Levels for the
+// originals, else its plugin's label.
+flow_campaign_label :: proc(campaign: sim.Plugin_ID) -> string {
+	plugins := sim.registered_plugins()
+	if campaign == sim.CORE || int(campaign) >= len(plugins) {
+		return "CLASSIC LEVELS"
+	}
+	return strings.to_upper(plugins[campaign].label, context.temp_allocator)
+}
+
+// The campaign `step` places from `campaign` among those offered, round
+// either end; the first offered when `campaign` is not.
+flow_campaign_step :: proc(fl: ^Flow, campaign: sim.Plugin_ID, step: int) -> sim.Plugin_ID {
+	offered := flow_campaigns(fl)
+	i, found := slice.linear_search(offered, campaign)
+	if !found {
+		return offered[0]
+	}
+	n := len(offered)
+	return offered[((i + step) % n + n) % n]
 }
 
 // Switches Level Select, and the next session, to `campaign`'s levels.

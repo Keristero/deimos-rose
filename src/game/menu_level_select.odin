@@ -21,7 +21,6 @@ package game
 
 import "core:fmt"
 import "core:slice"
-import "core:strings"
 
 import rl "vendor:raylib"
 
@@ -90,12 +89,16 @@ Level_Select :: struct {
 	// name, and only outside classic mode.
 	easy:    ui.Text_Button,
 	// Not the original's either: which campaign's levels, above the level
-	// number, while more than one is offered (D53).
-	campaign: ui.Text_Button,
+	// number, while more than one is offered (D53). The name steps to the
+	// next, and the arrows either side of it step either way.
+	campaign:      ui.Text_Button,
+	campaign_prev: ui.Text_Button,
+	campaign_next: ui.Text_Button,
 }
 
 @(private = "file") LS_EASY_Y :: 440
 @(private = "file") LS_CAMPAIGN_Y :: 10
+@(private = "file") LS_CAMPAIGN_GAP :: 6 // between the name and each arrow
 
 @(private = "file")
 level_select_easy_layout :: proc(fl: ^Flow, r: ^render.Renderer, ls: ^Level_Select) {
@@ -105,11 +108,11 @@ level_select_easy_layout :: proc(fl: ^Flow, r: ^render.Renderer, ls: ^Level_Sele
 
 @(private = "file")
 level_select_campaign_layout :: proc(fl: ^Flow, r: ^render.Renderer, ls: ^Level_Select) {
-	label := "CLASSIC LEVELS"
-	if fl.campaign != sim.CORE {
-		label = strings.to_upper(sim.registered_plugins()[fl.campaign].label, context.temp_allocator)
-	}
-	ui.text_button_relabel(r, &ls.campaign, label, render.SCREEN_W / 2, LS_CAMPAIGN_Y)
+	ui.text_button_relabel(r, &ls.campaign, flow_campaign_label(fl.campaign), render.SCREEN_W / 2, LS_CAMPAIGN_Y)
+	ui.text_button_relabel(r, &ls.campaign_prev, "<", 0, LS_CAMPAIGN_Y)
+	ui.text_button_relabel(r, &ls.campaign_next, ">", 0, LS_CAMPAIGN_Y)
+	ls.campaign_prev.rect.x = ls.campaign.rect.x - LS_CAMPAIGN_GAP - ls.campaign_prev.rect.width
+	ls.campaign_next.rect.x = ls.campaign.rect.x + ls.campaign.rect.width + LS_CAMPAIGN_GAP
 }
 
 // Always opens on the first level: G_LevelSelect_GetStartingLevelIDFromUser's
@@ -156,9 +159,18 @@ level_select_update :: proc(fl: ^Flow, r: ^render.Renderer, ls: ^Level_Select) {
 	}
 	if offered := flow_campaigns(fl); len(offered) > 1 {
 		level_select_campaign_layout(fl, r, ls)
+		step := 0
+		if ui.text_button_update(r, &ls.campaign_prev, mouse, dt) {
+			step = -1
+		}
 		if ui.text_button_update(r, &ls.campaign, mouse, dt) {
-			i, _ := slice.linear_search(offered, fl.campaign)
-			flow_campaign_set(fl, offered[(i + 1) % len(offered)])
+			step = 1
+		}
+		if ui.text_button_update(r, &ls.campaign_next, mouse, dt) {
+			step = 1
+		}
+		if step != 0 {
+			flow_campaign_set(fl, flow_campaign_step(fl, fl.campaign, step))
 			ls.center = 0
 			return
 		}
@@ -285,6 +297,8 @@ level_select_draw :: proc(r: ^render.Renderer, fl: ^Flow, ls: ^Level_Select) {
 	if len(flow_campaigns(fl)) > 1 {
 		level_select_campaign_layout(fl, r, ls)
 		ui.text_button_draw(r, &ls.campaign)
+		ui.text_button_draw(r, &ls.campaign_prev)
+		ui.text_button_draw(r, &ls.campaign_next)
 	}
 }
 

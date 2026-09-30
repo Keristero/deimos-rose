@@ -12,7 +12,9 @@ import "core:testing"
 import vmem "core:mem/virtual"
 
 import "dr:data"
+import "dr:game"
 import "dr:plugins/accent"
+import "dr:prefs"
 import "dr:sim"
 import _ "dr:sim/core"
 import "dr:sim/systems/level_system"
@@ -229,4 +231,41 @@ campaign_plays_its_levels_in_order :: proc(t: ^testing.T) {
 		testing.expect_value(t, seen[0], "Omega")
 		testing.expect_value(t, seen[1], "Alpha")
 	}
+}
+
+// Level Select and the lobby step through the campaigns on offer, round
+// either end, and fall back to the first when the one shown is no longer
+// offered; classic mode offers only the originals (D53). Classic Levels is
+// not among the fixtures, so the fixture campaign is the only one on.
+@(test)
+campaigns_step_round_those_offered :: proc(t: ^testing.T) {
+	if !os.exists("assets/data/idli/gaob.json") {
+		return
+	}
+	campaign, ok := find(t, "fixture_campaign")
+	if !ok {
+		return
+	}
+	arena: vmem.Arena
+	testing.expect(t, vmem.arena_init_growing(&arena) == nil)
+	defer vmem.arena_destroy(&arena)
+	alloc := vmem.arena_allocator(&arena)
+	defs, _ := data.assets_defs_load("assets", alloc)
+	data.extra_defs_load(&defs, alloc)
+
+	ps := game.Prefs_State{saved = prefs.defaults()}
+	ps.saved.classic = false
+	ps.saved.mods = {int(campaign)}
+	fl := game.Flow{defs = &defs, prefs = &ps}
+	offered := game.flow_campaigns(&fl)
+	testing.expect_value(t, len(offered), 1)
+	testing.expect_value(t, game.flow_campaign_step(&fl, campaign, 1), campaign)
+	testing.expect_value(t, game.flow_campaign_step(&fl, campaign, -1), campaign)
+	testing.expect_value(t, game.flow_campaign_step(&fl, sim.CORE, 0), campaign)
+	testing.expect_value(t, game.flow_campaign_label(campaign), "FIXTURE CAMPAIGN")
+	testing.expect_value(t, game.flow_campaign_label(sim.CORE), "CLASSIC LEVELS")
+
+	ps.saved.classic = true
+	testing.expect_value(t, len(game.flow_campaigns(&fl)), 1)
+	testing.expect_value(t, game.flow_campaign_step(&fl, campaign, 0), sim.CORE)
 }

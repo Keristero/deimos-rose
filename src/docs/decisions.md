@@ -1198,7 +1198,13 @@ taking the place of the original twelve.
   campaign plugin that is on, in the Mods page's order. Classic mode
   offers only the originals, and with nothing else installed the screen
   is as before. A level without a preview shows an empty slot under its
-  identifier.
+  identifier. The campaign's name steps to the next, and the `<` and `>`
+  either side of it step either way, round either end.
+- **The netplay lobby** shows the campaign above CONNECTED while the host
+  is offered more than one, or plays another than the originals: the host
+  steps it with `<` and `>` as on Level Select (which starts the level
+  choice over), and the guest reads the host's choice. A pack may reuse
+  the originals' level names, so the level alone does not say which.
 - **Progress is per campaign**: `progress` for the originals, as before,
   and `progress-<plugin>` for each other. High scores are one table, as
   in the original.
@@ -1211,7 +1217,8 @@ the goldens unchanged, and Level Select, with and without Easy Mode, and
 the main menu are pixel-identical to before. `tests/fixtures/plugins/
 fixture_campaign` is a two-level campaign whose manifest order is the
 reverse of its file names; `tests/data_plugins` plays it through to the
-end, and `MENU=level_select_campaigns` shows it on Level Select.
+end, and `MENU=level_select_campaigns` shows it on Level Select and
+`MENU=netplay_lobby_campaigns` in the host's lobby.
 
 ### D54 — Optional level fields, and launching straight into a level
 

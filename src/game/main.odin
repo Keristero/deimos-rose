@@ -535,6 +535,24 @@ run_menu_shot :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, r
 		flow.netplay.ping_ms = 17
 		flow.highest_reached = 1
 		flow.netplay.level_index = 3
+	case "netplay_lobby_campaigns":
+		// The host's view with every campaign plugin on (D53), on the last
+		// one: the campaign row and its arrows over the level's.
+		ps.saved.classic, ps.launch.classic, r.classic = false, false, false
+		for i in 1 ..< len(sim.registered_plugins()) {
+			if len(sim.campaign_levels(defs, sim.Plugin_ID(i))) > 0 {
+				ps.saved.mods += {i}
+			}
+		}
+		offered := flow_campaigns(&flow)
+		flow_campaign_set(&flow, offered[len(offered) - 1])
+		flow.mode = .Netplay_Lobby
+		netplay_lobby_init(&flow.netplay, r)
+		flow.netplay.role = .Host
+		flow.netplay.phase = .Connected
+		flow.netplay.campaign = flow.campaign // netplay_lobby_update's mirror
+		flow.netplay.ping_ms = 17
+		flow.highest_reached = 12
 	case "diagnostics":
 		flow.mode = .Netplay_Lobby
 		netplay_lobby_init(&flow.netplay, r)
