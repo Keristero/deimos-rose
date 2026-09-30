@@ -115,7 +115,7 @@ session_setup_system :: proc(s: ^sim.State, step: ^sim.Step) {
 // The first level's number, and both players. An unknown level is as far
 // as the port goes: nothing else is set up.
 players_setup_system :: proc(s: ^sim.State, step: ^sim.Step) {
-	level := sim.level_by_id(s.defs, s.session.level_id)
+	level := sim.level_by_id(s.defs, s.session.campaign, s.session.level_id)
 	if level == nil {
 		sim.unported(s, 1) // unknown level id
 		step.done = true

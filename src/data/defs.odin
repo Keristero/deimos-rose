@@ -27,7 +27,9 @@ Defs_Report :: struct {
 // Level play order: the twelve identifiers G_Level_BuildInfoList compares
 // against, stored encrypted (tagged-text transform) at 0x4e7ba9 in the
 // executable, 64 bytes apart. Level n is the level whose identifier is the
-// n-th name.
+// n-th name. defs_load reads the originals with it; the game reads the same
+// list from plugins/classic_levels/plugin.json (D53), which
+// tests/assets_test.odin holds to this one.
 LEVEL_ORDER := [12]string {
 	"Lucena", "Yippe", "Vista", "Swoop", "Conrad", "Delos",
 	"Sparta", "Saratoga", "Hannibal", "Leonidas", "Thebes", "Yamato",

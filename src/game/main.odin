@@ -346,14 +346,30 @@ run_menu_shot :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, r
 	case "level_select":
 		flow.pending_game_type = .Single
 		flow.mode = .Level_Select
-		level_select_init(&flow.level_select)
+		level_select_init(&flow, &flow.level_select)
 	case "level_select_easy":
 		// Outside classic mode, with the Easy Mode toggle on.
 		ps.saved.classic, ps.launch.classic, r.classic = false, false, false
 		ps.saved.mods = sim.mods_with_deps(ps.saved.mods + {int(easy_mode.ID)})
 		flow.pending_game_type = .Single
 		flow.mode = .Level_Select
-		level_select_init(&flow.level_select)
+		level_select_init(&flow, &flow.level_select)
+	case "level_select_campaigns":
+		// Outside classic mode, with every campaign plugin on (D53): the
+		// campaign switch above the level number, on the last campaign
+		// offered. With none but Classic Levels installed it is the plain
+		// screen; see the menu-shot task.
+		ps.saved.classic, ps.launch.classic, r.classic = false, false, false
+		for i in 1 ..< len(sim.registered_plugins()) {
+			if len(sim.campaign_levels(defs, sim.Plugin_ID(i))) > 0 {
+				ps.saved.mods += {i}
+			}
+		}
+		flow.pending_game_type = .Single
+		flow.mode = .Level_Select
+		offered := flow_campaigns(&flow)
+		flow_campaign_set(&flow, offered[len(offered) - 1])
+		level_select_init(&flow, &flow.level_select)
 	case "main_netplay":
 		// The main menu once its first update has built the links and the
 		// Netplay item -- "main" above is kept exactly as the oracle

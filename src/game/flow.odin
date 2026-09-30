@@ -79,9 +79,12 @@ Flow :: struct {
 	// loops both player slots regardless of Game_Type). Persisted across runs
 	// via progress_load/progress_save (game/progress.odin), the reimplementation's
 	// stand-in for the original's U_Prefs slot 3 (Win32 registry-backed).
+	// Not the original's: `campaign` is whose levels Level Select shows and
+	// the next session plays (D53), and highest_reached is that campaign's.
 	pending_game_type: sim.Game_Type,
 	session_start_pos: int,
 	highest_reached:   int,
+	campaign:          sim.Plugin_ID,
 	level_select:      Level_Select,
 
 	// Phase 7 stage 3: Credits (game/menu_credits.odin), reached from Main
@@ -258,8 +261,45 @@ flow_init :: proc(fl: ^Flow, root: string, defs: ^sim.Defs, state: ^sim.State, r
 	fl.defs = defs
 	fl.state = state
 	fl.mode = .Title
-	fl.highest_reached = progress_load()
+	flow_campaign_set(fl, flow_campaigns(fl)[0])
 	main_menu_init(&fl.main_menu, &r.textures)
+}
+
+// The campaigns Level Select offers, first first: the original's (CORE)
+// while Classic Levels is on, then each other campaign plugin that is on
+// and has levels, in the Mods page's order; the original's alone when
+// none is. Classic mode offers only the original's.
+flow_campaigns :: proc(fl: ^Flow) -> []sim.Plugin_ID {
+	@(static) list: [sim.MAX_PLUGINS + 1]sim.Plugin_ID
+	n := 0
+	if !prefs_classic(fl.prefs) {
+		if id, ok := sim.plugin_find(data.CLASSIC_LEVELS); ok && prefs_mod_on(fl.prefs, id) {
+			list[n] = sim.CORE
+			n += 1
+		}
+		for id in mods_order() {
+			if prefs_mod_on(fl.prefs, id) && len(sim.campaign_levels(fl.defs, id)) > 0 {
+				list[n] = id
+				n += 1
+			}
+		}
+	}
+	if n == 0 {
+		list[0] = sim.CORE
+		n = 1
+	}
+	return list[:n]
+}
+
+// Switches Level Select, and the next session, to `campaign`'s levels.
+flow_campaign_set :: proc(fl: ^Flow, campaign: sim.Plugin_ID) {
+	fl.campaign = campaign
+	fl.highest_reached = progress_load(campaign)
+}
+
+// The levels of the campaign Level Select shows.
+flow_levels :: proc(fl: ^Flow) -> []sim.Level_Def {
+	return sim.campaign_levels(fl.defs, fl.campaign)
 }
 
 flow_destroy :: proc(fl: ^Flow) {
@@ -396,15 +436,15 @@ flow_finish_session :: proc(fl: ^Flow) {
 		// type -- each qualifying score goes straight into the table, which
 		// is then shown.
 		fl.session_named = false
-		if high_scores_record(fl.defs.levels, scores, active, fl.session_names, sector) {
-			high_scores_view_init(&fl.high_scores, fl.defs.levels)
+		if high_scores_record(sim.campaign_levels(fl.defs, sim.CORE), scores, active, fl.session_names, sector) {
+			high_scores_view_init(&fl.high_scores, sim.campaign_levels(fl.defs, sim.CORE))
 			fl.mode = .High_Scores
 		} else {
 			fl.mode = .Title
 		}
 		return
 	}
-	if score_entry_start(&fl.score_entry, fl.defs.levels, scores, active, sector) {
+	if score_entry_start(&fl.score_entry, sim.campaign_levels(fl.defs, sim.CORE), scores, active, sector) {
 		fl.mode = .Score_Entry
 	} else {
 		fl.mode = .Title
@@ -467,7 +507,7 @@ flow_step :: proc(fl: ^Flow, r: ^render.Renderer, particles: ^render.Particles, 
 		// along the way.
 		if fl.session_start_pos == 1 && int(sim.single(fl.state, sim.Level_Info).number) > fl.highest_reached {
 			fl.highest_reached = int(sim.single(fl.state, sim.Level_Info).number)
-			progress_save(fl.highest_reached)
+			progress_save(fl.campaign, fl.highest_reached)
 		}
 	case .Attract:
 		// Plain sim.step: a demo that finishes its level moves on to the
@@ -503,9 +543,9 @@ flow_music_update :: proc(fl: ^Flow, r: ^render.Renderer) {
 		key = MENU_MUSIC_KEY
 		want, ok = render.music_load(&r.textures, render.MENU_MUSIC)
 	case .Playing, .Paused, .Game_Over, .Complete, .Attract:
-		if sim.level_def(fl.state) != nil {
-			key = sim.level_def(fl.state).id
-			want, ok = render.music_track(&r.textures, key)
+		if level := sim.level_def(fl.state); level != nil {
+			key = level.id
+			want, ok = render.music_track(&r.textures, level)
 		}
 	}
 	if key != fl.music_key {
@@ -609,8 +649,8 @@ flow_session_mods :: proc(fl: ^Flow) -> sim.Mods {
 }
 
 // The session, with netplay's plugin exactly when it is online.
-session_from_mods :: proc(seed: u32, level: sim.Level_ID, game_type: sim.Game_Type, mods: sim.Mods, online := false) -> sim.Session {
-	session := sim.Session{seed = seed, level_id = level, game_type = game_type, mods = mods - {int(netplay_plugin.ID)}}
+session_from_mods :: proc(seed: u32, level: sim.Level_ID, game_type: sim.Game_Type, mods: sim.Mods, online := false, campaign := sim.CORE) -> sim.Session {
+	session := sim.Session{seed = seed, level_id = level, game_type = game_type, mods = mods - {int(netplay_plugin.ID)}, campaign = campaign}
 	if online {
 		session.mods += {int(netplay_plugin.ID)}
 	}
@@ -642,13 +682,13 @@ mods_from_flags :: proc(flags: u8) -> sim.Mods {
 }
 
 // Called once Level Select's accept pulse finishes (game/menu_level_select.odin).
-// `level_index` is 0-based into fl.defs.levels (play order), matching
+// `level_index` is 0-based into the campaign's levels (play order), matching
 // Level_Select.center.
 flow_start_session :: proc(fl: ^Flow, seed: u32, game_type: sim.Game_Type, level_index: int) {
 	fl.session_start_pos = level_index + 1
 	fl.session_named = false // a local game asks for names at the end
-	level := fl.defs.levels[level_index].id
-	sim.init(fl.state, session_from_mods(seed, level, game_type, flow_session_mods(fl)), fl.defs)
+	level := flow_levels(fl)[level_index].id
+	sim.init(fl.state, session_from_mods(seed, level, game_type, flow_session_mods(fl), campaign = fl.campaign), fl.defs)
 	flow_session_began(fl)
 	fl.mode = .Playing
 }

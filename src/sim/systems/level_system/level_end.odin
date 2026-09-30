@@ -59,7 +59,7 @@ level_end_step :: proc(s: ^sim.State, time: i32) {
 @(private = "file")
 level_end_begin :: proc(s: ^sim.State, time: i32) {
 	l := sim.single(s, sim.Level_End)
-	n := i32(len(s.defs.levels))
+	n := i32(len(sim.session_levels(s)))
 	if info := sim.single(s, sim.Level_Info); info.number == n && info.played == n {
 		l.all_done = true
 	}
@@ -197,7 +197,7 @@ level_end_process :: proc(s: ^sim.State, time: i32) -> bool {
 		if time <= l.state_time + pf(s, 0xca) {
 			return false
 		}
-		if l.perfect_levels == i32(len(s.defs.levels)) {
+		if l.perfect_levels == i32(len(sim.session_levels(s))) {
 			// Every level finished at 100%: the perfect-game bonus.
 			l.perfect = true
 			l.perfect_count = 0

@@ -20,6 +20,8 @@ package game
 // only the "Sector Not Reached" locked case is real for a registered install.
 
 import "core:fmt"
+import "core:slice"
+import "core:strings"
 
 import rl "vendor:raylib"
 
@@ -79,7 +81,7 @@ Level_Select_Pulse :: enum {
 }
 
 Level_Select :: struct {
-	center:  int, // 0-based index into Flow.defs.levels -- the "current" slot
+	center:  int, // 0-based index into the campaign's levels (flow_levels) -- the "current" slot
 	hover:   [3]f32,
 	pulse:   Level_Select_Pulse,
 	scale:   f32, // 1.0..MaxScale; only the centre preview is ever drawn scaled
@@ -87,9 +89,13 @@ Level_Select :: struct {
 	// Not the original's: the Easy_Mode extra's toggle, under the level
 	// name, and only outside classic mode.
 	easy:    ui.Text_Button,
+	// Not the original's either: which campaign's levels, above the level
+	// number, while more than one is offered (D53).
+	campaign: ui.Text_Button,
 }
 
 @(private = "file") LS_EASY_Y :: 440
+@(private = "file") LS_CAMPAIGN_Y :: 10
 
 @(private = "file")
 level_select_easy_layout :: proc(fl: ^Flow, r: ^render.Renderer, ls: ^Level_Select) {
@@ -97,16 +103,29 @@ level_select_easy_layout :: proc(fl: ^Flow, r: ^render.Renderer, ls: ^Level_Sele
 	ui.text_button_relabel(r, &ls.easy, label, render.SCREEN_W / 2, LS_EASY_Y)
 }
 
+@(private = "file")
+level_select_campaign_layout :: proc(fl: ^Flow, r: ^render.Renderer, ls: ^Level_Select) {
+	label := "CLASSIC LEVELS"
+	if fl.campaign != sim.CORE {
+		label = strings.to_upper(sim.registered_plugins()[fl.campaign].label, context.temp_allocator)
+	}
+	ui.text_button_relabel(r, &ls.campaign, label, render.SCREEN_W / 2, LS_CAMPAIGN_Y)
+}
+
 // Always opens on the first level: G_LevelSelect_GetStartingLevelIDFromUser's
 // own carousel index starts at 0 every time the screen is entered, it does
-// not remember where a previous visit left off.
-level_select_init :: proc(ls: ^Level_Select) {
+// not remember where a previous visit left off. The campaign stays as it
+// was, while it is still offered.
+level_select_init :: proc(fl: ^Flow, ls: ^Level_Select) {
 	ls^ = Level_Select{}
+	if offered := flow_campaigns(fl); !slice.contains(offered, fl.campaign) {
+		flow_campaign_set(fl, offered[0])
+	}
 }
 
 level_select_update :: proc(fl: ^Flow, r: ^render.Renderer, ls: ^Level_Select) {
 	dt := rl.GetFrameTime()
-	n := len(fl.defs.levels)
+	n := len(flow_levels(fl))
 
 	if ls.pulse != .None {
 		finished, accepted := level_select_step_pulse(ls, dt)
@@ -133,6 +152,15 @@ level_select_update :: proc(fl: ^Flow, r: ^render.Renderer, ls: ^Level_Select) {
 		level_select_easy_layout(fl, r, ls)
 		if ui.text_button_update(r, &ls.easy, mouse, dt) {
 			prefs_mod_toggle(fl.prefs, easy_mode.ID)
+		}
+	}
+	if offered := flow_campaigns(fl); len(offered) > 1 {
+		level_select_campaign_layout(fl, r, ls)
+		if ui.text_button_update(r, &ls.campaign, mouse, dt) {
+			i, _ := slice.linear_search(offered, fl.campaign)
+			flow_campaign_set(fl, offered[(i + 1) % len(offered)])
+			ls.center = 0
+			return
 		}
 	}
 	for i in 0 ..< 3 {
@@ -195,24 +223,25 @@ level_select_step_pulse :: proc(ls: ^Level_Select, dt: f32) -> (finished, accept
 level_select_draw :: proc(r: ^render.Renderer, fl: ^Flow, ls: ^Level_Select) {
 	ui.menu_draw_background(r, LESE)
 
-	n := len(fl.defs.levels)
+	levels := flow_levels(fl)
+	n := len(levels)
 	unlocked := ls.center < fl.highest_reached
 	for i in 0 ..< 3 {
 		idx := ((ls.center + i - 1) % n + n) % n
-		level := &fl.defs.levels[idx]
-		media := data.assets_level_media(&r.textures.assets, level.id)
-		if media == nil {
-			continue
-		}
-		tex, ok := render.menu_image(&r.textures, media.preview)
-		if !ok {
-			continue
+		level := &levels[idx]
+		// Every original level has its preview and name; a campaign
+		// plugin's may have neither, and shows its slot empty under its
+		// identifier (D53).
+		media := data.assets_level_media(&r.textures.assets, level.campaign, level.id)
+		tex, ok := rl.Texture2D{}, false
+		if media != nil {
+			tex, ok = render.menu_image(&r.textures, media.preview)
 		}
 		rect := LS_RECTS[i]
-		if i == 1 && ls.pulse != .None {
+		if ok && i == 1 && ls.pulse != .None {
 			tint := ls.pulse == .Accept ? rl.Color{140, 255, 140, 255} : rl.Color{255, 140, 140, 255}
 			level_select_draw_scaled(tex, rect, ls.scale, tint)
-		} else {
+		} else if ok {
 			dst := rl.Rectangle {
 				rect.x * render.WINDOW_SCALE, rect.y * render.WINDOW_SCALE,
 				rect.width * render.WINDOW_SCALE, rect.height * render.WINDOW_SCALE,
@@ -234,7 +263,8 @@ level_select_draw :: proc(r: ^render.Renderer, fl: ^Flow, ls: ^Level_Select) {
 			// Text_Link already uses for non-plate text.
 			color := unlocked ? rl.Color{99, 197, 214, 255} : rl.Color{255, 0, 0, 255}
 			ui.menu_draw_text(r, fmt.tprintf("%02d", level.number), render.SCREEN_W / 2, 38, color, .Centre)
-			label := unlocked ? media.name : "NO ACCESS"
+			name := media != nil && media.name != "" ? media.name : level.identifier
+			label := unlocked ? name : "NO ACCESS"
 			ui.menu_draw_text(r, label, render.SCREEN_W / 2, 407, color, .Centre)
 		}
 		// The hover border stops once an accept pulse has latched (matching
@@ -251,6 +281,10 @@ level_select_draw :: proc(r: ^render.Renderer, fl: ^Flow, ls: ^Level_Select) {
 	if !r.classic {
 		level_select_easy_layout(fl, r, ls)
 		ui.text_button_draw(r, &ls.easy)
+	}
+	if len(flow_campaigns(fl)) > 1 {
+		level_select_campaign_layout(fl, r, ls)
+		ui.text_button_draw(r, &ls.campaign)
 	}
 }
 

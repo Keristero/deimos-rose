@@ -179,21 +179,25 @@ decode_ack :: proc(buf: []byte) -> (seq: u8, ok: bool) {
 // widened Mods (D52). A build from before the mods sends eight bytes, and
 // one from before the flags seven, which decode as no flags: the game makes what mods it can of the flags (game/flow.odin
 // mods_from_flags). The flags are still sent for the builds that read
-// only them.
+// only them. The seventeenth byte is the campaign (sim.Session.campaign,
+// D53), which the level index counts in; without it, CORE's.
 START_EASY :: 0x01
 START_LOADOUT :: 0x02
 
-encode_start :: proc(buf: []byte, seq: u8, seed: u32, level: u8, flags: u8 = 0, mods: sim.Mods = {}) -> int {
+START_SIZE :: 17
+
+encode_start :: proc(buf: []byte, seq: u8, seed: u32, level: u8, flags: u8 = 0, mods: sim.Mods = {}, campaign := sim.CORE) -> int {
 	buf[0] = u8(Packet_Kind.Start)
 	buf[1] = seq
 	put_u32(buf[2:], seed)
 	buf[6] = level
 	buf[7] = flags
 	put_u64(buf[8:], transmute(u64)mods)
-	return 16
+	buf[16] = u8(campaign)
+	return START_SIZE
 }
 
-decode_start :: proc(buf: []byte) -> (seq: u8, seed: u32, level: u8, flags: u8, mods: Maybe(sim.Mods), ok: bool) {
+decode_start :: proc(buf: []byte) -> (seq: u8, seed: u32, level: u8, flags: u8, mods: Maybe(sim.Mods), campaign: sim.Plugin_ID, ok: bool) {
 	if len(buf) < 7 || Packet_Kind(buf[0]) != .Start {
 		return
 	}
@@ -202,10 +206,13 @@ decode_start :: proc(buf: []byte) -> (seq: u8, seed: u32, level: u8, flags: u8, 
 	} else if len(buf) >= 12 {
 		mods = transmute(sim.Mods)u64(get_u32(buf[8:]))
 	}
-	return buf[1], get_u32(buf[2:]), buf[6], len(buf) >= 8 ? buf[7] : 0, mods, true
+	if len(buf) >= START_SIZE {
+		campaign = sim.Plugin_ID(buf[16])
+	}
+	return buf[1], get_u32(buf[2:]), buf[6], len(buf) >= 8 ? buf[7] : 0, mods, campaign, true
 }
 
-// Level_Choice carries a 0-based index into Flow.defs.levels, not a
+// Level_Choice carries a 0-based index into the campaign's levels, not a
 // Level_Def id -- the guest mirrors it purely for display (Phase 8 stage 2's
 // read-only "HOST HAS CHOSEN..." line) and never looks it up itself, so no
 // resolution is needed on the wire. Unreliable and sent every lobby frame
@@ -213,17 +220,19 @@ decode_start :: proc(buf: []byte) -> (seq: u8, seed: u32, level: u8, flags: u8, 
 // Input: a dropped one is invisible since the next one due (a frame later)
 // repeats the same value. The host's choice of flags and mods (Start's)
 // rides along the same way, for the guest's display; Start is what counts.
-LEVEL_CHOICE_SIZE :: 11
+// So does the campaign, in the twelfth byte (CORE's without it).
+LEVEL_CHOICE_SIZE :: 12
 
-encode_level_choice :: proc(buf: []byte, level_index: u8, flags: u8 = 0, mods: sim.Mods = {}) -> int {
+encode_level_choice :: proc(buf: []byte, level_index: u8, flags: u8 = 0, mods: sim.Mods = {}, campaign := sim.CORE) -> int {
 	buf[0] = u8(Packet_Kind.Level_Choice)
 	buf[1] = level_index
 	buf[2] = flags
 	put_u64(buf[3:], transmute(u64)mods)
+	buf[11] = u8(campaign)
 	return LEVEL_CHOICE_SIZE
 }
 
-decode_level_choice :: proc(buf: []byte) -> (level_index: u8, flags: u8, mods: Maybe(sim.Mods), ok: bool) {
+decode_level_choice :: proc(buf: []byte) -> (level_index: u8, flags: u8, mods: Maybe(sim.Mods), campaign: sim.Plugin_ID, ok: bool) {
 	if len(buf) < 2 || Packet_Kind(buf[0]) != .Level_Choice {
 		return
 	}
@@ -232,7 +241,10 @@ decode_level_choice :: proc(buf: []byte) -> (level_index: u8, flags: u8, mods: M
 	} else if len(buf) >= 7 {
 		mods = transmute(sim.Mods)u64(get_u32(buf[3:]))
 	}
-	return buf[1], len(buf) >= 3 ? buf[2] : 0, mods, true
+	if len(buf) >= LEVEL_CHOICE_SIZE {
+		campaign = sim.Plugin_ID(buf[11])
+	}
+	return buf[1], len(buf) >= 3 ? buf[2] : 0, mods, campaign, true
 }
 
 // Resync_Start (Phase 8 stage 3/4: pause on disconnect + reconnect) carries

@@ -121,8 +121,8 @@ textures_unload :: proc(t: ^Textures) {
 // The level's music track (Level_Media.music), loaded on first use and
 // looped -- raylib's LoadMusicStream defaults Music.looping to true, which
 // matches a level's track outlasting the level (mu03 alone runs ~196s).
-music_track :: proc(t: ^Textures, level: sim.Res_ID) -> (rl.Music, bool) {
-	media := data.assets_level_media(&t.assets, level)
+music_track :: proc(t: ^Textures, level: ^sim.Level_Def) -> (rl.Music, bool) {
+	media := data.assets_level_media(&t.assets, level.campaign, level.id)
 	if media == nil || media.music == "" || media.music == "none" {
 		return {}, false
 	}
@@ -151,8 +151,8 @@ music_load :: proc(t: ^Textures, id: string) -> (rl.Music, bool) {
 
 // The terrain map for a level, loaded on first use: one 480-wide image as tall
 // as the level is long.
-terrain_texture :: proc(t: ^Textures, level: sim.Res_ID) -> (rl.Texture2D, bool) {
-	media := data.assets_level_media(&t.assets, level)
+terrain_texture :: proc(t: ^Textures, level: ^sim.Level_Def) -> (rl.Texture2D, bool) {
+	media := data.assets_level_media(&t.assets, level.campaign, level.id)
 	if media == nil || media.background == "" || media.background == "none" {
 		return {}, false
 	}

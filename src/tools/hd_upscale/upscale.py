@@ -49,8 +49,8 @@ PROMPT = "A sharper, higher-resolution version of this exact image. Do not add, 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("map", help="map name, e.g. jum2 (level 1); read from IMAGES/<map>.png")
-    p.add_argument("--images", default=os.environ.get("DR_ASSETS", "assets") + "/images/im16",
-                   help="folder of the extracted 480x3600 maps (default: $DR_ASSETS/images/im16)")
+    p.add_argument("--images", default=os.environ.get("DR_PLUGINS", "plugins") + "/classic_levels/images/im16",
+                   help="folder of the extracted 480x3600 maps (default: $DR_PLUGINS/classic_levels/images/im16)")
     p.add_argument("--out", default=None, help="output folder (default: ../work/hd/<map>)")
     p.add_argument("--scale", type=int, default=4)
     p.add_argument("--tile", type=int, default=256, help="tile size in source pixels")

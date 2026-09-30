@@ -64,8 +64,9 @@ background `lese.png`, left/right arrows rotate it, the center slot is
 `G_Level_GetNumLevelsInDemo` in a shareware build: pulse animation,
 `LevSel_Failure_MaxScale` 2.0 / `ScalingRate` 0.25, sound `LevelSelectFailure`
 — perm sound 0xe) the level. Each level record already carries its own
-`preview_image` (`src/assets/data/levels/le0N.json`), resolving directly to
-`src/assets/images/im16/{cap,isp,jup,inp}{1,2,3}.png`. Positioning:
+`preview_image` (`src/plugins/classic_levels/data/levels/le0N.json`, D53),
+resolving directly to
+`src/plugins/classic_levels/images/im16/{cap,isp,jup,inp}{1,2,3}.png`. Positioning:
 `LevSel_FirstPreviewXLoc/YLoc` (55, 76), `PreviewXSpacing/YSpacing` (191, 0).
 Selection feedback text reuses the in-game `G_Notice` popup mechanism
 (`LevelSelect_Notice_*` perm floats), not a separate widget.

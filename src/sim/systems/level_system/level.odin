@@ -37,7 +37,12 @@ level_start :: proc(s: ^sim.State) {
 	// The level's title notice unit, centred in the play area.
 	info := sim.single(s, sim.Level_Info)
 	info.title = sim.NO_REF
-	notice := s.defs.perm_objects[sim.level_number_of(s) + 9]
+	// Perm objects 10-21 are Notice_Level_01..12, the level titles; a campaign's
+	// levels past the twelfth have none.
+	notice := sim.NONE
+	if n := sim.level_number_of(s); n <= 12 {
+		notice = s.defs.perm_objects[n + 9]
+	}
 	if notice != sim.NONE {
 		info.title = lifecycle.spawn_at(s, notice, lifecycle.screen_centre(s))
 	}
@@ -49,15 +54,16 @@ level_start :: proc(s: ^sim.State) {
 // -FromUser only ever picks the *first* level of a new session
 // (G_LevelSelect_IsRunning has one caller, the title flow) -- levels within a
 // session always play in list order, so there is nothing to choose here.
-// `defs.levels` is ordered by number and level_number is 1-based, so the next
-// entry is simply the array index at the current number.
+// The campaign's levels are ordered by number and level_number is 1-based,
+// so the next entry is simply the array index at the current number.
 level_advance :: proc(s: ^sim.State) -> bool {
 	info := sim.single(s, sim.Level_Info)
 	next := int(info.number)
-	if next >= len(s.defs.levels) {
+	levels := sim.session_levels(s)
+	if next >= len(levels) {
 		return false
 	}
-	info.number = s.defs.levels[next].number
+	info.number = levels[next].number
 	// level_start leaves `complete` alone (FUN_004208d0 does not touch it),
 	// so it has to be consumed here: left set, flow_step saw the next level
 	// as already complete on its very first step and chained through every

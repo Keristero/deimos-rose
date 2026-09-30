@@ -156,3 +156,35 @@ assets_defs_match_the_original :: proc(t: ^testing.T) {
 	log.infof("assets: %d units, %d sprites, %d levels match the original",
 		len(got.units), len(got.sprites), len(got.levels))
 }
+
+// The Classic Levels plugin lists the original's play order (D53): the
+// twelve names built into the executable, which defs_load numbers by. And
+// every level it lists is there, numbered by that list, as campaign CORE.
+@(test)
+classic_levels_play_in_the_original_order :: proc(t: ^testing.T) {
+	dir, found := data.classic_levels_dir()
+	if !testing.expect(t, found, "no plugins/classic_levels") {
+		return
+	}
+	order := data.manifest_levels(dir)
+	testing.expect_value(t, len(order), len(data.LEVEL_ORDER))
+	for name, i in data.LEVEL_ORDER {
+		if i < len(order) {
+			testing.expect_value(t, order[i], name)
+		}
+	}
+	if !os.exists("assets/data/idli/gaob.json") {
+		return
+	}
+	arena: vmem.Arena
+	testing.expect(t, vmem.arena_init_growing(&arena) == nil)
+	defer vmem.arena_destroy(&arena)
+	defs, _ := data.assets_defs_load("assets", vmem.arena_allocator(&arena))
+	levels := sim.campaign_levels(&defs, sim.CORE)
+	testing.expect_value(t, len(levels), 12)
+	for &l, i in levels {
+		testing.expect_value(t, l.identifier, data.LEVEL_ORDER[i])
+		testing.expect_value(t, l.number, i32(i + 1))
+	}
+	testing.expect(t, sim.level_by_id(&defs, sim.CORE, sim.level_id("le07")).number == 1, "Lucena is not level 1")
+}

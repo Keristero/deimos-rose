@@ -1,0 +1,10 @@
+{
+    "label": "Classic Levels",
+    "description": "The original twelve sectors",
+    "version": "1",
+    "default_on": true,
+    "levels": [
+        "Lucena", "Yippe", "Vista", "Swoop", "Conrad", "Delos",
+        "Sparta", "Saratoga", "Hannibal", "Leonidas", "Thebes", "Yamato"
+    ]
+}

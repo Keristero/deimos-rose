@@ -237,6 +237,8 @@ level_cross_resource_references_resolve :: proc(t: ^testing.T) {
 	art := make(map[string]bool, 256, context.temp_allocator)
 	ids_in(ASSETS + "/images/im16", ".png", &art)
 	ids_in(ASSETS + "/sprites/im08", ".png", &art)
+	// The levels' own images are Classic Levels' (D53).
+	ids_in("plugins/classic_levels/images/im16", ".png", &art)
 
 	audio := make(map[string]bool, 128, context.temp_allocator)
 	ids_in(ASSETS + "/audio", ".wav", &audio)

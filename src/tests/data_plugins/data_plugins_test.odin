@@ -9,10 +9,13 @@ import "base:runtime"
 import "core:os"
 import "core:strings"
 import "core:testing"
+import vmem "core:mem/virtual"
 
 import "dr:data"
 import "dr:plugins/accent"
 import "dr:sim"
+import _ "dr:sim/core"
+import "dr:sim/systems/level_system"
 
 FIXTURES :: "tests/fixtures/plugins"
 
@@ -140,4 +143,60 @@ content_digest_follows_every_byte :: proc(t: ^testing.T) {
 	sim.plugin_digest_set(units, changed)
 	testing.expect(t, sim.registration_hash() != before)
 	sim.plugin_digest_set(units, 0)
+}
+
+// A campaign plugin's levels play in its manifest's order, each after the
+// last, and are found only in it: its le01 is not the original's (D53).
+@(test)
+campaign_plays_its_levels_in_order :: proc(t: ^testing.T) {
+	if !os.exists("assets/data/idli/gaob.json") {
+		return
+	}
+	campaign, ok := find(t, "fixture_campaign")
+	if !ok {
+		return
+	}
+	arena: vmem.Arena
+	testing.expect(t, vmem.arena_init_growing(&arena) == nil)
+	defer vmem.arena_destroy(&arena)
+	alloc := vmem.arena_allocator(&arena)
+	defs, _ := data.assets_defs_load("assets", alloc)
+	data.extra_defs_load(&defs, alloc)
+
+	levels := sim.campaign_levels(&defs, campaign)
+	if !testing.expect_value(t, len(levels), 2) {
+		return
+	}
+	testing.expect_value(t, levels[0].identifier, "Omega")
+	testing.expect_value(t, levels[1].identifier, "Alpha")
+	testing.expect_value(t, levels[1].number, i32(2))
+	testing.expect_value(t, sim.level_by_id(&defs, campaign, sim.level_id("le01")).identifier, "Alpha")
+	testing.expect_value(t, sim.level_by_id(&defs, sim.CORE, sim.level_id("le01")).identifier, "Leonidas")
+	testing.expect_value(t, len(sim.campaign_levels(&defs, sim.CORE)), 12)
+
+	s := new(sim.State, alloc)
+	sim.init(s, sim.Session{seed = 7, level_id = levels[0].id, game_type = .Single, campaign = campaign}, &defs)
+	defer sim.destroy(s)
+	seen := make([dynamic]string, 0, 2, alloc)
+	append(&seen, sim.level_def(s).identifier)
+	outcome := sim.Level_Transition.None
+	for _ in 0 ..< 20_000 {
+		for p in sim.players_of(s) {
+			p.invulnerable_always = true
+			p.invulnerable = true
+		}
+		sim.step(s, {})
+		outcome = level_system.level_transition(s)
+		if outcome == .Advanced {
+			append(&seen, sim.level_def(s).identifier)
+		} else if outcome != .None {
+			break
+		}
+	}
+	testing.expect_value(t, outcome, sim.Level_Transition.All_Complete)
+	testing.expect_value(t, len(seen), 2)
+	if len(seen) == 2 {
+		testing.expect_value(t, seen[0], "Omega")
+		testing.expect_value(t, seen[1], "Alpha")
+	}
 }

@@ -11,6 +11,11 @@
 //   records/<dir>/<FOURCC>.bin   definition records, copied verbatim
 //   manifest.json                every entry, with type, size and CRC32
 //
+// The im16 images the levels name (terrain map, preview, media mask) go to
+// the Classic Levels plugin instead, <plugins>/classic_levels/images/im16
+// (D53); their manifest entries name the plugin, and the output is relative
+// to its folder.
+//
 // Definition records (unde/wede/plde/leve/...) are passed through byte-exact
 // rather than decoded: their field layouts are Phase 3 work. The manifest still
 // catalogues them so Phase 3 has an index to work from.
@@ -42,6 +47,7 @@ Manifest_Entry :: struct {
 	dir:      string `json:"dir"`,
 	source:   string `json:"source"`,
 	output:   string `json:"output"`,
+	plugin:   string `json:"plugin,omitempty"`, // `output` is under this plugin's folder
 	bytes:    u32    `json:"bytes"`,
 	crc32:    string `json:"crc32"`,
 	width:    int    `json:"width,omitempty"`,
@@ -88,18 +94,25 @@ Sprite_Index :: struct {
 g_entries: [dynamic]Manifest_Entry
 g_sprites: [dynamic]Sprite_Index_Entry
 g_stats: Stats
+// The images a level names, and where the plugin that holds them goes.
+g_level_images: map[string]bool
+g_levels_out: string
 
 main :: proc() {
 	args := os.args
-	if len(args) < 3 {
-		fmt.eprintln("usage: extract <original-install-dir> <assets-out-dir>")
+	if len(args) < 4 {
+		fmt.eprintln("usage: extract <original-install-dir> <assets-out-dir> <plugins-out-dir>")
 		os.exit(2)
 	}
 	orig, out := args[1], args[2]
+	g_levels_out = strings.concatenate({args[3], "/", data.CLASSIC_LEVELS})
 
 	rl.SetTraceLogLevel(.WARNING)
 
 	paks := []string{"Audio.pak", "Game.pak", "Interface.pak", "Music.pak"}
+	for p in paks {
+		level_images_collect(strings.concatenate({orig, "/ Data/Paks/", p}, context.temp_allocator))
+	}
 	for p in paks {
 		path := strings.concatenate({orig, "/ Data/Paks/", p}, context.temp_allocator)
 		process_pak(path, p, out)
@@ -182,6 +195,36 @@ process_pak :: proc(path, label, out: string) {
 	}
 }
 
+// Every level record's background, preview and media mask image, into
+// g_level_images: the images that belong to Classic Levels.
+level_images_collect :: proc(path: string) {
+	z, err := data.zip_open(path)
+	if err != .None {
+		return
+	}
+	defer data.zip_close(&z)
+	files := data.zip_files(&z)
+	defer delete(files)
+	for e in files {
+		rn, ok := data.parse_res_name(e.name)
+		if !ok || rn.dir != "leve" {
+			continue
+		}
+		bytes, rerr := data.zip_read(&z, e)
+		if rerr != .None {
+			continue
+		}
+		lv, lerr := data.level_parse(bytes, context.temp_allocator)
+		if lerr != .None {
+			continue
+		}
+		for f in ([]data.FourCC{lv.background_image, lv.preview_image, lv.media_mask}) {
+			f := f
+			g_level_images[strings.clone(data.fourcc_string(&f))] = true
+		}
+	}
+}
+
 emit_single :: proc(rn: data.Res_Name, e: data.Zip_Entry, bytes: []byte, label, out: string) {
 	crc := fmt.tprintf("%08x", hash.crc32(bytes))
 	switch strings.to_lower(rn.ext, context.temp_allocator) {
@@ -193,6 +236,13 @@ emit_single :: proc(rn: data.Res_Name, e: data.Zip_Entry, bytes: []byte, label, 
 		}
 		defer delete(px)
 		rel := fmt.tprintf("images/%v/%v.png", rn.dir, rn.fourcc)
+		if g_level_images[rn.fourcc] {
+			if write_png(g_levels_out, rel, px, w, h) {
+				record(rn, "image", label, e, rel, crc, w, h, 0, 0, 0)
+				g_entries[len(g_entries) - 1].plugin = data.CLASSIC_LEVELS
+			}
+			return
+		}
 		if write_png(out, rel, px, w, h) {
 			record(rn, "image", label, e, rel, crc, w, h, 0, 0, 0)
 		}

@@ -9,7 +9,7 @@ exactly, and takes only fine texture from an image model. Output goes to
 
 ```sh
 cd src
-mise run assets:extract              # once: puts the maps in assets/images/im16/
+mise run assets:extract              # once: puts the maps in plugins/classic_levels/images/im16/
 mise run hd:setup                    # once: venv at ~/.cache/deimos-rising/hd-venv
 MAP=jum2 mise run hd:upscale         # all 32 tiles, then assemble
 ```

@@ -53,7 +53,7 @@ reward_open :: proc "contextless" (s: ^sim.State) -> bool {
 // counted, and another level to come.
 reward_due :: proc "contextless" (s: ^sim.State) -> bool {
 	return sim.single(s, sim.Level_End).complete && !sim.single(s, sim.Game_Status).game_over && !reward_of(s).active &&
-		int(sim.single(s, sim.Level_Info).number) < len(s.defs.levels)
+		int(sim.single(s, sim.Level_Info).number) < len(sim.session_levels(s))
 }
 
 // Opens the reward screen: one option per chooser plus one, drawn without
@@ -70,7 +70,7 @@ reward_begin :: proc(s: ^sim.State, input: sim.Frame_Input) -> bool {
 	if choosers == 0 {
 		return false
 	}
-	next := s.defs.levels[sim.single(s, sim.Level_Info).number].number
+	next := sim.session_levels(s)[sim.single(s, sim.Level_Info).number].number
 	pool: [len(Passive)]Passive
 	n: i32
 	for pa in Passive {

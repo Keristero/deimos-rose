@@ -72,11 +72,15 @@ Level_Def :: struct {
 	// The level's name_STR, as Level Select shows it: "Mariner Valley".
 	name:       string,
 	identifier: string,
-	// 1-based play order. G_Level_BuildInfoList numbers levels by matching
-	// each level's identifier against twelve encrypted names built into the
-	// executable (0x4e7ba9): Lucena (le07) is 1, Yippe (le06) 2, Vista (le02)
-	// 3, Swoop (le08) 4, ... The four demos play levels 1-4 in order.
+	// 1-based play order within its campaign. G_Level_BuildInfoList numbers
+	// the original's levels by matching each level's identifier against
+	// twelve encrypted names built into the executable (0x4e7ba9): Lucena
+	// (le07) is 1, Yippe (le06) 2, Vista (le02) 3, Swoop (le08) 4, ... The
+	// four demos play levels 1-4 in order. A campaign plugin lists its own.
 	number:     i32,
+	// Not the original's: whose level this is (D53). CORE for the
+	// original's twelve, which the Classic Levels plugin holds.
+	campaign:   Plugin_ID,
 	background: Rect,
 	placements: []Placement_Def,
 	// The media mask (im16 TGA named by the level's mediaMask_ID): raw 16-bit
@@ -140,7 +144,7 @@ Sprite :: struct {
 
 Defs :: struct {
 	units:        []Unit,
-	levels:       []Level_Def, // ordered by number
+	levels:       []Level_Def, // by campaign, CORE's first, then by number (campaign_levels)
 	weapons:      []Weapon,    // master list, in resource order
 	players:      []Player_Entry,
 	sprites:      []Sprite,
@@ -161,8 +165,23 @@ unit_find :: proc "contextless" (d: ^Defs, id: Res_ID) -> ^Unit {
 	return nil
 }
 
-level_by_id :: proc "contextless" (d: ^Defs, id: Res_ID) -> ^Level_Def {
-	for &l in d.levels {
+// A campaign's levels, in play order: the run of `d.levels` it holds.
+// Empty for a campaign with none.
+campaign_levels :: proc "contextless" (d: ^Defs, campaign: Plugin_ID) -> []Level_Def {
+	first, end := -1, len(d.levels)
+	for l, i in d.levels {
+		if l.campaign == campaign && first < 0 {
+			first = i
+		} else if l.campaign != campaign && first >= 0 {
+			end = i
+			break
+		}
+	}
+	return first < 0 ? nil : d.levels[first:end]
+}
+
+level_by_id :: proc "contextless" (d: ^Defs, campaign: Plugin_ID, id: Res_ID) -> ^Level_Def {
+	for &l in campaign_levels(d, campaign) {
 		if l.id == id {
 			return &l
 		}

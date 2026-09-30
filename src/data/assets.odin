@@ -113,6 +113,7 @@ Sprite_Plate :: struct {
 // the music track. The simulation knows none of this.
 Level_Media :: struct {
 	id:         sim.Res_ID,
+	campaign:   sim.Plugin_ID, // as the level's sim.Level_Def
 	name:       string,
 	background: string, // im16 image id
 	preview:    string,
@@ -276,19 +277,20 @@ assets_open :: proc(root: string, allocator := context.allocator) -> (a: Assets)
 		a.sprites = plates[:]
 	}
 
+	// Each level's media: the original's, from Classic Levels, then each
+	// campaign plugin's. Classic Levels' images are found as a plugin's are.
 	media := make([dynamic]Level_Media, 0, 12, allocator)
-	for path in record_paths(root, "levels", context.temp_allocator) {
-		lv: Json_Level
-		if !read_json(path, &lv, context.temp_allocator) {
+	if dir, found := classic_levels_dir(); found {
+		level_media_append(&media, dir, sim.CORE, allocator)
+		plugin_media_add(&a.plugin_images, root, "/images/im16/", dir, ".png", allocator)
+	}
+	for i in 1 ..< len(sim.registered_plugins()) {
+		if sim.registered_plugins()[i].name == CLASSIC_LEVELS {
 			continue
 		}
-		append(&media, Level_Media {
-			id         = sim.res_id(lv.id),
-			name       = strings.clone(lv.name, allocator),
-			background = strings.clone(lv.background_image, allocator),
-			preview    = strings.clone(lv.preview_image, allocator),
-			music      = strings.clone(lv.music, allocator),
-		})
+		if dir, found := plugin_content_dir(sim.Plugin_ID(i)); found {
+			level_media_append(&media, dir, sim.Plugin_ID(i), allocator)
+		}
 	}
 	a.levels = media[:]
 
@@ -425,13 +427,32 @@ assets_plate :: proc(a: ^Assets, id: sim.Res_ID) -> ^Sprite_Plate {
 	return nil
 }
 
-assets_level_media :: proc(a: ^Assets, id: sim.Res_ID) -> ^Level_Media {
+// A level's media, by its campaign and id.
+assets_level_media :: proc(a: ^Assets, campaign: sim.Plugin_ID, id: sim.Res_ID) -> ^Level_Media {
 	for &l in a.levels {
-		if l.id == id {
+		if l.campaign == campaign && l.id == id {
 			return &l
 		}
 	}
 	return nil
+}
+
+@(private = "file")
+level_media_append :: proc(media: ^[dynamic]Level_Media, dir: string, campaign: sim.Plugin_ID, allocator := context.allocator) {
+	for path in record_paths(dir, "levels", context.temp_allocator) {
+		lv: Json_Level
+		if !read_json(path, &lv, context.temp_allocator) {
+			continue
+		}
+		append(media, Level_Media {
+			id         = sim.res_id(lv.id),
+			campaign   = campaign,
+			name       = strings.clone(lv.name, allocator),
+			background = strings.clone(lv.background_image, allocator),
+			preview    = strings.clone(lv.preview_image, allocator),
+			music      = strings.clone(lv.music, allocator),
+		})
+	}
 }
 
 // Builds the same `sim.Defs` as `defs_load`, from the extracted tree.
@@ -586,10 +607,18 @@ extra_defs_load :: proc(defs: ^sim.Defs, allocator := context.allocator) -> (rep
 	append(&weapons, ..defs.weapons)
 	sprites := make([dynamic]sim.Sprite, 0, len(defs.sprites) + 4, allocator)
 	append(&sprites, ..defs.sprites)
+	levels := make([dynamic]sim.Level_Def, 0, len(defs.levels), allocator)
+	append(&levels, ..defs.levels)
 	for i in 1 ..< len(sim.registered_plugins()) {
 		dir, found := plugin_content_dir(sim.Plugin_ID(i))
 		if !found {
 			continue
+		}
+		// A campaign's levels follow the original's, each campaign's
+		// together, as sim.campaign_levels needs (D53). Classic Levels'
+		// are the original's, which assets_defs_load read as CORE's.
+		if sim.registered_plugins()[i].name != CLASSIC_LEVELS {
+			levels_append(&levels, dir, manifest_levels(dir), sim.Plugin_ID(i), allocator)
 		}
 		units_append(&units, dir, &report, allocator)
 		first := len(weapons)
@@ -604,7 +633,8 @@ extra_defs_load :: proc(defs: ^sim.Defs, allocator := context.allocator) -> (rep
 	slice.sort_by(weapons[len(defs.weapons):], proc(a, b: sim.Weapon) -> bool {return res_id_less(a.id, b.id)})
 	report.units = len(units) - len(defs.units)
 	report.sprites = len(sprites) - len(defs.sprites)
-	defs.units, defs.weapons, defs.sprites = units[:], weapons[:], sprites[:]
+	report.levels = len(levels) - len(defs.levels)
+	defs.units, defs.weapons, defs.sprites, defs.levels = units[:], weapons[:], sprites[:], levels[:]
 	return report, defs.content != {}
 }
 
@@ -653,14 +683,13 @@ res_id_less :: proc(a, b: sim.Res_ID) -> bool {
 	return false
 }
 
-// Levels, the permanent tables: the rest of assets_defs_load.
+// A campaign's levels, from `dir`/data/levels, numbered in the order
+// `order` names their identifiers. An identifier with no level is skipped.
 @(private = "file")
-assets_defs_load_rest :: proc(root: string, defs: ^sim.Defs, report: ^Defs_Report, allocator := context.allocator) {
-
-	// Levels, in play order.
-	levels := make([dynamic]sim.Level_Def, 0, 12, allocator)
-	paths := record_paths(root, "levels", context.temp_allocator)
-	for name, i in LEVEL_ORDER {
+levels_append :: proc(levels: ^[dynamic]sim.Level_Def, dir: string, order: []string, campaign: sim.Plugin_ID, allocator := context.allocator) {
+	paths := record_paths(dir, "levels", context.temp_allocator)
+	number: i32
+	for name in order {
 		for path in paths {
 			lv: Json_Level
 			if !read_json(path, &lv, context.temp_allocator) {
@@ -669,11 +698,13 @@ assets_defs_load_rest :: proc(root: string, defs: ^sim.Defs, report: ^Defs_Repor
 			if lv.identifier != name {
 				continue
 			}
+			number += 1
 			l := sim.Level_Def {
 				id         = sim.res_id(lv.id),
 				name       = strings.clone(lv.name, allocator),
 				identifier = strings.clone(lv.identifier, allocator),
-				number     = i32(i + 1),
+				number     = number,
+				campaign   = campaign,
 				background = rect_from(Rect{
 					left   = lv.background[0],
 					top    = lv.background[1],
@@ -692,15 +723,26 @@ assets_defs_load_rest :: proc(root: string, defs: ^sim.Defs, report: ^Defs_Repor
 					terrain_effects = pl.terrain_effects,
 				}
 			}
-			mask := strings.concatenate({root, "/images/im16/", lv.media_mask, ".png"},
+			mask := strings.concatenate({dir, "/images/im16/", lv.media_mask, ".png"},
 				context.temp_allocator)
 			if px, mw, mh, ok := media_mask_from_png(mask, allocator); ok {
 				l.media, l.media_w, l.media_h = px, i32(mw), i32(mh)
 				l.media_scale = (l.background.right - l.background.left) / i32(mw)
 			}
-			append(&levels, l)
+			append(levels, l)
 			break
 		}
+	}
+}
+
+// Levels, the permanent tables: the rest of assets_defs_load.
+@(private = "file")
+assets_defs_load_rest :: proc(root: string, defs: ^sim.Defs, report: ^Defs_Report, allocator := context.allocator) {
+
+	// Levels, in play order: the original's, from the Classic Levels plugin.
+	levels := make([dynamic]sim.Level_Def, 0, 12, allocator)
+	if dir, found := classic_levels_dir(); found {
+		levels_append(&levels, dir, manifest_levels(dir), sim.CORE, allocator)
 	}
 	defs.levels = levels[:]
 	report.levels = len(levels)

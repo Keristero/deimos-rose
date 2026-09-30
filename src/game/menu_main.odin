@@ -145,11 +145,11 @@ main_menu_activate :: proc(fl: ^Flow, r: ^render.Renderer, slot: Main_Menu_Slot)
 	case .One_Player:
 		fl.pending_game_type = .Single
 		fl.mode = .Level_Select
-		level_select_init(&fl.level_select)
+		level_select_init(fl, &fl.level_select)
 	case .Two_Player:
 		fl.pending_game_type = .Co_Op
 		fl.mode = .Level_Select
-		level_select_init(&fl.level_select)
+		level_select_init(fl, &fl.level_select)
 	case .Play_Demo:
 		flow_load_demo(fl, 0)
 	case .High_Scores:

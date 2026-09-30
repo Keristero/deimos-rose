@@ -20,6 +20,7 @@ Entry :: struct {
 	dir:      string `json:"dir"`,
 	source:   string `json:"source"`,
 	output:   string `json:"output"`,
+	plugin:   string `json:"plugin"`, // `output` is under this plugin's folder (D53)
 	bytes:    u32    `json:"bytes"`,
 	crc32:    string `json:"crc32"`,
 	width:    int    `json:"width"`,
@@ -65,11 +66,11 @@ fail :: proc(format: string, args: ..any) {
 
 main :: proc() {
 	args := os.args
-	if len(args) < 3 {
-		fmt.eprintln("usage: verify <original-install-dir> <assets-dir>")
+	if len(args) < 4 {
+		fmt.eprintln("usage: verify <original-install-dir> <assets-dir> <plugins-dir>")
 		os.exit(2)
 	}
-	orig, assets := args[1], args[2]
+	orig, assets, plugins := args[1], args[2], args[3]
 	rl.SetTraceLogLevel(.ERROR)
 
 	// 1. Every shipped PAK entry still CRC-validates.
@@ -116,6 +117,9 @@ main :: proc() {
 	counted := 0
 	for e in m.entries {
 		full := strings.concatenate({assets, "/", e.output}, context.temp_allocator)
+		if e.plugin != "" {
+			full = strings.concatenate({plugins, "/", e.plugin, "/", e.output}, context.temp_allocator)
+		}
 		fi, serr := os.stat(full, context.temp_allocator)
 		if serr != nil {
 			fail("missing output %v", e.output)

@@ -152,7 +152,8 @@ run = [
   "odin check render $DR_COLL -vet -strict-style -no-entry-point",
   "odin check ui $DR_COLL -vet -strict-style -no-entry-point",
   "odin check oracle $DR_COLL -vet -strict-style -no-entry-point",
-  "for p in plugins/*/ plugins/*/view/; do [ -d $p ] || continue; odin check $p $DR_COLL -vet -strict-style -no-entry-point || exit 1; done",
+  # A data plugin's folder holds no code (D52).
+  "for p in plugins/*/ plugins/*/view/; do ls $p*.odin >/dev/null 2>&1 || continue; odin check $p $DR_COLL -vet -strict-style -no-entry-point || exit 1; done",
   "odin check tools/extract $DR_COLL -vet -strict-style",
   "odin check tools/verify  $DR_COLL -vet -strict-style",
   "odin check tools/records $DR_COLL -vet -strict-style",
@@ -269,7 +270,7 @@ depends = ["build"]
 run = "bash tools/oracle/menu_compare.sh"
 
 [tasks."menu-shot"]
-description = "Render one of our own menu screens headlessly, no comparison (MENU=main [OUT=path]; MENU=restarted checks a new game starts with none of the last one's particles; DR_SHOT_HUE=63 sets the accent on preferences_extras; MENU=preferences_mods shows the Mods page, and preferences_mods_end its last rows (DR_PLUGINS=$PWD/tests/fixtures/plugins adds the data plugin fixtures); MENU=reward, reward_2p and level_select_easy show easy mode; MENU=loadout, loadout_2p, loadout_placed, chaingun, chaingun_charge, chaingun_release, discharge_windup, discharge, discharge_charge, discharge_motes and discharge_burst show New Weapons; MENU=rear_gun_side shows the Rear Gun's side volleys) -- for a quick look, or debug MENU cases from run_menu_shot"
+description = "Render one of our own menu screens headlessly, no comparison (MENU=main [OUT=path]; MENU=restarted checks a new game starts with none of the last one's particles; DR_SHOT_HUE=63 sets the accent on preferences_extras; MENU=preferences_mods shows the Mods page, and preferences_mods_end its last rows (DR_PLUGINS=$PWD/tests/fixtures/plugins:$PWD/plugins adds the data plugin fixtures; MENU=level_select_campaigns shows Level Select on the fixture campaign); MENU=reward, reward_2p and level_select_easy show easy mode; MENU=loadout, loadout_2p, loadout_placed, chaingun, chaingun_charge, chaingun_release, discharge_windup, discharge, discharge_charge, discharge_motes and discharge_burst show New Weapons; MENU=rear_gun_side shows the Rear Gun's side volleys) -- for a quick look, or debug MENU cases from run_menu_shot"
 depends = ["build"]
 # Wrapped in xvfb-run/DISPLAY= exactly like the shots and menu-shots:compare
 # tasks -- running $DR_BUILD/deimos directly (without this) opens a real
@@ -406,9 +407,9 @@ done
 '''
 
 [tasks."assets:extract"]
-description = "Extract original PAKs into modern formats (PNG/WAV/JSON)"
+description = "Extract original PAKs into modern formats (PNG/WAV/JSON) under assets/, and the levels' own images under plugins/classic_levels/"
 depends = ["setup"]
-run = "odin run tools/extract $DR_COLL $DR_LINK -out:$DR_BUILD/extract$DR_EXT -- $DR_ORIG $DR_ASSETS"
+run = "odin run tools/extract $DR_COLL $DR_LINK -out:$DR_BUILD/extract$DR_EXT -- $DR_ORIG $DR_ASSETS \"$DR_PLUGINS\""
 
 [tasks."addons:extract"]
 description = "Unpack orig/deimos_addons.sit (fan mods, demo films, the Mac 1.0.6 bundle update) into work/addons/ for study; needs unar and hfsutils"
@@ -433,13 +434,13 @@ run = """
 set -e
 PY="$DR_HD_VENV/bin/python"; [ -x "$PY" ] || PY="$DR_HD_VENV/Scripts/python.exe"
 [ -x "$PY" ] || { echo "no venv at $DR_HD_VENV: run 'mise run hd:setup' first"; exit 1; }
-"$PY" tools/hd_upscale/upscale.py "${MAP:-jum2}" --images "$DR_ASSETS/images/im16" --out "$DR_SRC/../work/hd/${MAP:-jum2}" "$@"
+"$PY" tools/hd_upscale/upscale.py "${MAP:-jum2}" --images "$DR_PLUGINS/classic_levels/images/im16" --out "$DR_SRC/../work/hd/${MAP:-jum2}" "$@"
 """
 
 [tasks."assets:records"]
-description = "Decode the tagged-text resources into JSON under assets/data/"
+description = "Decode the tagged-text resources into JSON under assets/data/, and the levels under plugins/classic_levels/data/levels/"
 depends = ["setup"]
-run = "odin run tools/records $DR_COLL $DR_LINK -out:$DR_BUILD/records$DR_EXT -- $DR_ASSETS"
+run = "odin run tools/records $DR_COLL $DR_LINK -out:$DR_BUILD/records$DR_EXT -- $DR_ASSETS \"$DR_PLUGINS\""
 
 [tasks."assets:all"]
 description = "Extract media, decode records and composite the icons made from them"
@@ -484,7 +485,7 @@ run = "bash tools/films/fetch.sh"
 [tasks."assets:verify"]
 description = "Verify extracted assets against the manifest and the original PAKs"
 depends = ["setup"]
-run = "odin run tools/verify $DR_COLL $DR_LINK -out:$DR_BUILD/verify$DR_EXT -- $DR_ORIG $DR_ASSETS"
+run = "odin run tools/verify $DR_COLL $DR_LINK -out:$DR_BUILD/verify$DR_EXT -- $DR_ORIG $DR_ASSETS \"$DR_PLUGINS\""
 
 [tasks.ci]
 description = "Everything CI runs"

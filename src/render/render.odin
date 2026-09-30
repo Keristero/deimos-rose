@@ -212,7 +212,7 @@ Renderer :: struct {
 	// The original keeps one scrolling buffer and draws craters, tank tracks
 	// and wrecks straight into it; this is the same buffer.
 	terrain:       rl.RenderTexture2D,
-	terrain_level: sim.Res_ID,
+	terrain_level: ^sim.Level_Def,
 	terrain_qt:    bool, // built with QuickTime's gamma (classic mode)
 	// The step whose marks the map holds, and whether this frame is the
 	// first drawn of a new one: marks go in once a step, however many
@@ -650,10 +650,10 @@ present :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, scale: f32) 
 // The map buffer for a level: the image, plus every mark burned into it
 // since the level started. Rebuilt when the level changes.
 terrain_prepare :: proc(r: ^Renderer, s: ^sim.State) {
-	if r.terrain_level == sim.level_def(s).id && r.terrain.id != 0 && r.terrain_qt == r.textures.quicktime_gamma {
+	if r.terrain_level == sim.level_def(s) && r.terrain.id != 0 && r.terrain_qt == r.textures.quicktime_gamma {
 		return
 	}
-	tex, ok := terrain_texture(&r.textures, sim.level_def(s).id)
+	tex, ok := terrain_texture(&r.textures, sim.level_def(s))
 	if !ok {
 		return
 	}
@@ -661,7 +661,7 @@ terrain_prepare :: proc(r: ^Renderer, s: ^sim.State) {
 		rl.UnloadRenderTexture(r.terrain)
 	}
 	r.terrain = rl.LoadRenderTexture(tex.width, tex.height)
-	r.terrain_level = sim.level_def(s).id
+	r.terrain_level = sim.level_def(s)
 	r.terrain_qt = r.textures.quicktime_gamma
 	rl.BeginTextureMode(r.terrain)
 	rl.ClearBackground(rl.BLACK)

@@ -156,6 +156,7 @@ Netplay :: struct {
 	start_seed:    u32,
 	start_level:   u8,
 	start_mods:    sim.Mods,
+	start_campaign: sim.Plugin_ID,
 
 	// Phase 8 stage 2: level_index is host-authoritative (the host's own
 	// nav buttons change it; the guest only ever receives it via inbound
@@ -165,6 +166,9 @@ Netplay :: struct {
 	// The session's mods, host-authoritative the same way: the host's,
 	// mirrored to the guest in every Level_Choice and fixed by Start.
 	mods:        sim.Mods,
+	// Whose levels level_index counts in: the host's Level Select's
+	// (Flow.campaign), mirrored the same way (D53).
+	campaign:    sim.Plugin_ID,
 
 	menu_host:  ui.Text_Button,
 	menu_join:  ui.Text_Button,
@@ -295,7 +299,7 @@ netplay_lobby_update :: proc(fl: ^Flow, r: ^render.Renderer, nl: ^Netplay) {
 	// host sends it -- possibly the same frame this side reaches Connected.
 	if nl.pending_start {
 		nl.pending_start = false
-		netplay_begin_session(fl, nl, nl.start_seed, int(nl.start_level), nl.start_mods)
+		netplay_begin_session(fl, nl, nl.start_seed, int(nl.start_level), nl.start_mods, nl.start_campaign)
 	}
 	// Same reasoning as pending_start above, for a reconnecting client's
 	// inbound Resync_Start (Phase 8 stage 4).
@@ -605,9 +609,10 @@ netplay_update_connected :: proc(fl: ^Flow, nl: ^Netplay, r: ^render.Renderer) {
 	// local_ready is set, the nav buttons stop responding.
 	if nl.role == .Host {
 		nl.mods = flow_session_mods(fl)
+		nl.campaign = fl.campaign
 	}
 	if nl.role == .Host && !nl.local_ready {
-		n := len(fl.defs.levels)
+		n := len(sim.campaign_levels(fl.defs, nl.campaign))
 		if ui.text_button_update(r, &nl.level_prev, mouse, dt) {
 			nl.level_index = (nl.level_index - 1 + n) % n
 		}
@@ -625,7 +630,7 @@ netplay_update_connected :: proc(fl: ^Flow, nl: ^Netplay, r: ^render.Renderer) {
 	}
 	if nl.role == .Host {
 		buf: [net.LEVEL_CHOICE_SIZE]byte
-		lcn := net.encode_level_choice(buf[:], u8(nl.level_index), flags_from_mods(nl.mods), nl.mods)
+		lcn := net.encode_level_choice(buf[:], u8(nl.level_index), flags_from_mods(nl.mods), nl.mods, nl.campaign)
 		net.send(&nl.sock, nl.peer, buf[:lcn])
 	}
 
@@ -665,8 +670,8 @@ netplay_update_connected :: proc(fl: ^Flow, nl: ^Netplay, r: ^render.Renderer) {
 
 	if nl.role == .Host && nl.local_ready && !nl.ready_unsent && nl.remote_ready && !nl.rc.pending {
 		seed := flow_random_seed()
-		nl.start_seed, nl.start_level, nl.start_mods = seed, u8(nl.level_index), nl.mods
-		net.send_start(&nl.rc, &nl.sock, seed, nl.start_level, flags_from_mods(nl.mods), nl.mods)
+		nl.start_seed, nl.start_level, nl.start_mods, nl.start_campaign = seed, u8(nl.level_index), nl.mods, nl.campaign
+		net.send_start(&nl.rc, &nl.sock, seed, nl.start_level, flags_from_mods(nl.mods), nl.mods, nl.campaign)
 		nl.phase = .Starting
 	}
 }
@@ -804,13 +809,13 @@ netplay_poll :: proc(fl: ^Flow, r: ^render.Renderer, nl: ^Netplay) {
 				nl.remote_ready = true
 			}
 		case .Start:
-			seq, seed, level, flags, mods, sok := net.decode_start(buf[:n])
+			seq, seed, level, flags, mods, campaign, sok := net.decode_start(buf[:n])
 			if !sok || !nl.have_peer {
 				continue
 			}
 			if net.reliable_accept(&nl.rc, &nl.sock, nl.peer, seq) {
 				nl.pending_start = true
-				nl.start_seed, nl.start_level = seed, level
+				nl.start_seed, nl.start_level, nl.start_campaign = seed, level, campaign
 				nl.start_mods = mods.? or_else mods_from_flags(flags)
 			}
 		case .Goodbye:
@@ -835,8 +840,8 @@ netplay_poll :: proc(fl: ^Flow, r: ^render.Renderer, nl: ^Netplay) {
 			netplay_build_buttons(nl, r)
 			return
 		case .Level_Choice:
-			if idx, flags, mods, lok := net.decode_level_choice(buf[:n]); lok {
-				nl.level_index = int(idx)
+			if idx, flags, mods, campaign, lok := net.decode_level_choice(buf[:n]); lok {
+				nl.level_index, nl.campaign = int(idx), campaign
 				nl.mods = mods.? or_else mods_from_flags(flags)
 			}
 		case .Resync_Start:
@@ -932,13 +937,22 @@ netplay_poll :: proc(fl: ^Flow, r: ^render.Renderer, nl: ^Netplay) {
 }
 
 @(private = "file")
-netplay_begin_session :: proc(fl: ^Flow, nl: ^Netplay, seed: u32, level_index: int, mods: sim.Mods) {
+netplay_begin_session :: proc(fl: ^Flow, nl: ^Netplay, seed: u32, level_index: int, mods: sim.Mods, campaign: sim.Plugin_ID) {
 	level_index := level_index
-	if level_index < 0 || level_index >= len(fl.defs.levels) {
+	// Peers agree on plugin ids and content (the registration hash), so a
+	// campaign one has, the other has; CORE's is the fallback all the same.
+	campaign := campaign
+	if len(sim.campaign_levels(fl.defs, campaign)) == 0 {
+		campaign = sim.CORE
+	}
+	levels := sim.campaign_levels(fl.defs, campaign)
+	if level_index < 0 || level_index >= len(levels) {
 		level_index = 0
 	}
-	level := fl.defs.levels[level_index].id
-	sim.init(fl.state, session_from_mods(seed, level, .Co_Op, mods, online = true), fl.defs)
+	// Progress is kept for the campaign played, as for a local session.
+	flow_campaign_set(fl, campaign)
+	level := levels[level_index].id
+	sim.init(fl.state, session_from_mods(seed, level, .Co_Op, mods, online = true, campaign = campaign), fl.defs)
 	if netplay_test_end > 0 {
 		level_system.level_skip_to_end(fl.state, netplay_test_end)
 		fmt.eprintfln("netplay: test starts %d steps before the level's end, mods %v", netplay_test_end, mods)
@@ -1305,9 +1319,13 @@ netplay_lobby_draw :: proc(fl: ^Flow, r: ^render.Renderer, nl: ^Netplay) {
 		}
 
 		host_locked := nl.role == .Host && nl.level_index >= fl.highest_reached
-		level := fl.defs.levels[nl.level_index]
-		media := data.assets_level_media(&r.textures.assets, level.id)
-		level_name := media != nil ? media.name : "?"
+		level_name := "?"
+		if levels := sim.campaign_levels(fl.defs, nl.campaign); nl.level_index < len(levels) {
+			level := levels[nl.level_index]
+			if media := data.assets_level_media(&r.textures.assets, level.campaign, level.id); media != nil {
+				level_name = media.name
+			}
+		}
 		level_label: string
 		switch {
 		case host_locked:

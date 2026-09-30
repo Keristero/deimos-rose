@@ -23,13 +23,17 @@ level_id :: proc "contextless" (s: string) -> Level_ID {
 }
 
 // Session parameters fixed at start and never mutated. A film stores exactly
-// the first three plus the per-frame inputs; `mods` is not the original's,
-// and no film sets it.
+// the first three plus the per-frame inputs; `mods` and `campaign` are not
+// the original's, and no film sets them.
 Session :: struct {
 	seed:      u32,
 	level_id:  Level_ID,
 	game_type: Game_Type,
 	mods:      Mods, // the session plugins that run (plugins.odin), dependencies included
+	// Whose levels are played, and so which list `level_id` is found in and
+	// which level follows which (D53): CORE for the original's twelve, else
+	// a campaign plugin.
+	campaign:  Plugin_ID,
 }
 
 // The complete simulation state. Everything that affects future frames lives

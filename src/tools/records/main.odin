@@ -8,7 +8,7 @@
 // nine families are emitted as ordered key/value lists, which is lossless and
 // lets later phases add typed loaders without re-deriving the encoding.
 //
-//   assets/data/levels/<id>.json     typed
+//   plugins/classic_levels/data/levels/<id>.json   typed (D53)
 //   assets/data/<type>/<id>.json     ordered fields
 //   assets/data/index.json           what was produced
 package records
@@ -109,11 +109,12 @@ Index :: struct {
 fails := 0
 
 main :: proc() {
-	if len(os.args) < 2 {
-		fmt.eprintln("usage: records <assets-dir>")
+	if len(os.args) < 3 {
+		fmt.eprintln("usage: records <assets-dir> <plugins-dir>")
 		os.exit(2)
 	}
 	assets := os.args[1]
+	levels_out := strings.concatenate({os.args[2], "/", data.CLASSIC_LEVELS})
 
 	counts := make(map[string]int)
 	defer delete(counts)
@@ -152,7 +153,7 @@ main :: proc() {
 					continue
 				}
 			} else if type == "leve" {
-				n := emit_level(assets, id, raw)
+				n := emit_level(levels_out, id, raw)
 				if n < 0 {
 					fails += 1
 					continue
@@ -185,13 +186,14 @@ main :: proc() {
 	}
 }
 
-emit_level :: proc(assets, id: string, raw: []byte) -> int {
+// Into the Classic Levels plugin's folder, `out`.
+emit_level :: proc(out, id: string, raw: []byte) -> int {
 	lv, err := data.level_parse(raw, context.temp_allocator)
 	if err != .None {
 		fmt.eprintfln("  level %v: %v", id, err)
 		return -1
 	}
-	out := Json_Level {
+	level := Json_Level {
 		id               = id,
 		name             = lv.name,
 		identifier       = lv.identifier,
@@ -217,8 +219,8 @@ emit_level :: proc(assets, id: string, raw: []byte) -> int {
 			terrain_effects = p.terrain_effects,
 		}
 	}
-	out.placements = ps
-	write_json(fmt.tprintf("%s/data/levels/%s.json", assets, id), out)
+	level.placements = ps
+	write_json(fmt.tprintf("%s/data/levels/%s.json", out, id), level)
 	return len(lv.placements)
 }
 

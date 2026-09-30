@@ -1158,10 +1158,57 @@ plugin the game finds at run time.
   one depending on it, one with a missing dependency, a relabel of Accent
   and a badly named folder. `tests/data_plugins` is a test package of its
   own, which declares them before registering, so the main suite still
-  sees the ids a game sees. `DR_PLUGINS=$PWD/tests/fixtures/plugins mise
-  run menu-shot MENU=preferences_mods_end` shows them on the Mods page.
+  sees the ids a game sees. `DR_PLUGINS=$PWD/tests/fixtures/plugins:$PWD/plugins
+  mise run menu-shot MENU=preferences_mods_end` shows them on the Mods
+  page. `DR_PLUGINS` may list several roots, split by `:` (`;` on
+  Windows), searched in order; since D53 the original levels are in
+  `plugins/`, so a run needs that root too.
 
 The Session is not part of the hashed world, so widening `Mods` moved no
 golden fingerprint. The Mods page as a new player finds it is
 pixel-identical.
 
+### D53 — Campaigns, and the original levels as the Classic Levels plugin
+
+A level pack the editor exports has to play as its own campaign, without
+taking the place of the original twelve.
+
+- **The move.** The twelve level records and their maps, masks and
+  previews are in `plugins/classic_levels/` (`data/levels/`,
+  `images/im16/`), a data plugin that is on by default. Its
+  `plugin.json` lists the levels in play order; `LEVEL_ORDER` keeps its
+  provenance and is what `defs_load` (the PAK loader the oracle uses)
+  still reads, and a test holds the two lists equal. `assets:extract`,
+  `assets:records` and `assets:verify` take the plugins root, and the
+  asset manifest names the plugin each level image belongs to. Music
+  `mu03` is shared, so it stays in the core.
+- **A campaign is a plugin with `levels`**, its manifest's list of
+  identifiers in play order. `Level_Def.campaign` names it (CORE for the
+  originals) and `number` counts within it. `defs.levels` holds the
+  originals first, then each campaign's, each run contiguous:
+  `sim.campaign_levels` returns one, `level_by_id` looks only within one,
+  and a campaign's `le01` is not the original's.
+- **The session carries it.** `sim.Session.campaign` picks the levels a
+  game plays; `sim.session_levels` returns them, and level advance, the
+  last-level check and Easy Mode's reward use it. Start (17 bytes) and
+  Level_Choice (12) carry it in their last byte, and the shorter forms
+  read as CORE.
+- **Level Select** shows a switch above the level number when more than
+  one campaign is offered: Classic Levels while it is on, then each other
+  campaign plugin that is on, in the Mods page's order. Classic mode
+  offers only the originals, and with nothing else installed the screen
+  is as before. A level without a preview shows an empty slot under its
+  identifier.
+- **Progress is per campaign**: `progress` for the originals, as before,
+  and `progress-<plugin>` for each other. High scores are one table, as
+  in the original.
+- **The level title** (`Notice_Level_01`..`12`) is only shown for level
+  numbers the original has.
+
+Films, `DR_SHOT` and the oracle play the originals, whose ids, order and
+numbers are unchanged. `oracle:diff` and `oracle:diff:saved` are exact,
+the goldens unchanged, and Level Select, with and without Easy Mode, and
+the main menu are pixel-identical to before. `tests/fixtures/plugins/
+fixture_campaign` is a two-level campaign whose manifest order is the
+reverse of its file names; `tests/data_plugins` plays it through to the
+end, and `MENU=level_select_campaigns` shows it on Level Select.

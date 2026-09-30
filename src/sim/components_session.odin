@@ -115,12 +115,17 @@ level_def :: proc "contextless" (s: ^State) -> ^Level_Def {
 		return nil
 	}
 	n := single(s, Level_Info).number
-	for &l in s.defs.levels {
+	for &l in session_levels(s) {
 		if l.number == n {
 			return &l
 		}
 	}
 	return nil
+}
+
+// The session's campaign's levels, in play order.
+session_levels :: #force_inline proc "contextless" (s: ^State) -> []Level_Def {
+	return campaign_levels(s.defs, s.session.campaign)
 }
 
 Bgnd :: struct {

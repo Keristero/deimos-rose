@@ -69,23 +69,29 @@ packet_level_choice_round_trips :: proc(t: ^testing.T) {
 	// declared there, and every host crashed on its first lobby frame.
 	buf: [net.LEVEL_CHOICE_SIZE]byte
 	mods := sim.Mods{1, 3, 31, 40, sim.MAX_PLUGINS}
-	n := net.encode_level_choice(buf[:], 7, net.START_EASY, mods)
+	n := net.encode_level_choice(buf[:], 7, net.START_EASY, mods, sim.Plugin_ID(44))
 	kind, kok := net.peek_kind(buf[:n])
 	testing.expect(t, kok)
 	testing.expect_value(t, kind, net.Packet_Kind.Level_Choice)
-	level_index, flags, got, ok := net.decode_level_choice(buf[:n])
+	level_index, flags, got, campaign, ok := net.decode_level_choice(buf[:n])
 	testing.expect(t, ok)
 	testing.expect_value(t, level_index, u8(7))
 	testing.expect_value(t, flags, u8(net.START_EASY))
 	testing.expect_value(t, got.? or_else {}, mods)
+	testing.expect_value(t, campaign, sim.Plugin_ID(44))
+	// A build from before campaigns sends eleven bytes: the original's (D53).
+	_, _, wide_mods, no_campaign, wide_ok := net.decode_level_choice(buf[:11])
+	testing.expect(t, wide_ok)
+	testing.expect_value(t, wide_mods.? or_else {}, mods)
+	testing.expect_value(t, no_campaign, sim.CORE)
 	// A build from before the mods sends three bytes: flags, no mods.
-	_, old_flags, old_mods, old_ok := net.decode_level_choice(buf[:3])
+	_, old_flags, old_mods, _, old_ok := net.decode_level_choice(buf[:3])
 	testing.expect(t, old_ok)
 	testing.expect_value(t, old_flags, u8(net.START_EASY))
 	_, has := old_mods.?
 	testing.expect(t, !has)
 	// And one from before the flags, two: neither.
-	_, older_flags, _, older_ok := net.decode_level_choice(buf[:2])
+	_, older_flags, _, _, older_ok := net.decode_level_choice(buf[:2])
 	testing.expect(t, older_ok)
 	testing.expect_value(t, older_flags, u8(0))
 }
@@ -94,25 +100,31 @@ packet_level_choice_round_trips :: proc(t: ^testing.T) {
 packet_start_round_trips_with_flags_and_mods :: proc(t: ^testing.T) {
 	buf: [64]byte
 	mods := sim.Mods{2, 5, 47}
-	n := net.encode_start(buf[:], 5, 0xCAFE_F00D, 3, net.START_EASY, mods)
-	seq, seed, level, flags, got, ok := net.decode_start(buf[:n])
+	n := net.encode_start(buf[:], 5, 0xCAFE_F00D, 3, net.START_EASY, mods, sim.Plugin_ID(47))
+	seq, seed, level, flags, got, campaign, ok := net.decode_start(buf[:n])
 	testing.expect(t, ok)
 	testing.expect_value(t, seq, u8(5))
 	testing.expect_value(t, seed, u32(0xCAFE_F00D))
 	testing.expect_value(t, level, u8(3))
 	testing.expect_value(t, flags, u8(net.START_EASY))
 	testing.expect_value(t, got.? or_else {}, mods)
+	testing.expect_value(t, campaign, sim.Plugin_ID(47))
+	// A build from before campaigns sends sixteen bytes: the original's (D53).
+	_, _, _, _, wide, no_campaign, wide_ok := net.decode_start(buf[:16])
+	testing.expect(t, wide_ok)
+	testing.expect_value(t, wide.? or_else {}, mods)
+	testing.expect_value(t, no_campaign, sim.CORE)
 	// A build from before data plugins sends four bytes of mods (D52).
-	_, _, _, _, narrow, narrow_ok := net.decode_start(buf[:12])
+	_, _, _, _, narrow, _, narrow_ok := net.decode_start(buf[:12])
 	testing.expect(t, narrow_ok)
 	testing.expect_value(t, narrow.? or_else {}, sim.Mods{2, 5})
 	// One from before the mods sends eight bytes.
-	_, _, _, old_flags, old_mods, old_ok := net.decode_start(buf[:8])
+	_, _, _, old_flags, old_mods, _, old_ok := net.decode_start(buf[:8])
 	testing.expect(t, old_ok)
 	testing.expect_value(t, old_flags, u8(net.START_EASY))
 	_, has := old_mods.?
 	testing.expect(t, !has)
-	_, _, _, older_flags, _, older_ok := net.decode_start(buf[:7])
+	_, _, _, older_flags, _, _, older_ok := net.decode_start(buf[:7])
 	testing.expect(t, older_ok)
 	testing.expect_value(t, older_flags, u8(0))
 }

@@ -1,0 +1,6 @@
+{
+    "label": "Fixture Campaign",
+    "description": "Two short levels, for tests/data_plugins.",
+    "version": "1",
+    "levels": ["Omega", "Alpha"]
+}

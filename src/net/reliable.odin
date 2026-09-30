@@ -63,9 +63,9 @@ send_goodbye :: proc(rc: ^Reliable_Channel, sock: ^Socket) {
 	send(sock, rc.to, rc.buf[:rc.length])
 }
 
-send_start :: proc(rc: ^Reliable_Channel, sock: ^Socket, seed: u32, level: u8, flags: u8 = 0, mods: sim.Mods = {}) {
+send_start :: proc(rc: ^Reliable_Channel, sock: ^Socket, seed: u32, level: u8, flags: u8 = 0, mods: sim.Mods = {}, campaign := sim.CORE) {
 	seq := reliable_begin(rc)
-	rc.length = encode_start(rc.buf[:], seq, seed, level, flags, mods)
+	rc.length = encode_start(rc.buf[:], seq, seed, level, flags, mods, campaign)
 	send(sock, rc.to, rc.buf[:rc.length])
 }
 

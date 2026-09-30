@@ -27,9 +27,17 @@ Json_Plugin :: struct {
 	deps:        []string `json:"deps"`,
 	default_on:  bool     `json:"default_on"`,
 	session:     bool     `json:"session"`,
+	// A campaign's levels, by identifier, in play order (D53). Each is a
+	// data/levels/*.json in the plugin's folder.
+	levels:      []string `json:"levels"`,
 }
 
 PLUGIN_MANIFEST :: "plugin.json"
+
+// The plugin that holds the original's twelve levels: campaign CORE, which
+// films, the oracle and classic mode play (D53). Found by name under the
+// plugins roots even when nothing declared it, as in tests and tools.
+CLASSIC_LEVELS :: "classic_levels"
 
 // The subfolders that make a plugin folder hold content.
 @(private = "file")
@@ -49,7 +57,8 @@ plugins_root_add :: proc(dir: string) {
 
 // $DR_PLUGINS, or `plugins` in the working directory. That is src/plugins
 // when run from src/, as mise tasks and tests are, and deimos/plugins in a
-// release, where each folder holds only a plugin's content.
+// release, where each folder holds only a plugin's content. $DR_PLUGINS
+// may list several, as PATH does (':', ';' on Windows), first first.
 plugins_root :: proc() -> string {
 	if dir := os.get_env("DR_PLUGINS", context.temp_allocator); dir != "" {
 		return dir
@@ -61,9 +70,16 @@ plugins_root :: proc() -> string {
 plugins_roots :: proc(allocator := context.temp_allocator) -> []string {
 	roots := make([dynamic]string, 0, len(extra_roots) + 1, allocator)
 	append(&roots, ..extra_roots[:])
-	append(&roots, plugins_root())
+	for dir in strings.split(plugins_root(), LIST_SEPARATOR, allocator) {
+		if dir != "" {
+			append(&roots, dir)
+		}
+	}
 	return roots[:]
 }
+
+@(private = "file")
+LIST_SEPARATOR :: ";" when ODIN_OS == .Windows else ":"
 
 // Where a plugin's own content is, if it has any: the folder found for it
 // by plugins_discover, else `<root>/<plugin name>` under the first root
@@ -92,6 +108,31 @@ has_content :: proc(dir: string) -> bool {
 		}
 	}
 	return false
+}
+
+// Where the Classic Levels plugin is: the folder plugins_discover found, else
+// the first root that has one.
+classic_levels_dir :: proc() -> (dir: string, found: bool) {
+	if d, ok := discovered[CLASSIC_LEVELS]; ok {
+		return d, true
+	}
+	for root in plugins_roots() {
+		dir = strings.concatenate({root, "/", CLASSIC_LEVELS}, context.temp_allocator)
+		if os.exists(strings.concatenate({dir, "/", PLUGIN_MANIFEST}, context.temp_allocator)) {
+			return dir, true
+		}
+	}
+	return dir, false
+}
+
+// The levels a plugin folder's manifest lists, in play order: none for a
+// plugin that is not a campaign.
+manifest_levels :: proc(dir: string, allocator := context.temp_allocator) -> []string {
+	m: Json_Plugin
+	if !read_manifest(strings.concatenate({dir, "/", PLUGIN_MANIFEST}, context.temp_allocator), &m, allocator) {
+		return nil
+	}
+	return m.levels
 }
 
 // A plugin folder that could not be read, and why.
