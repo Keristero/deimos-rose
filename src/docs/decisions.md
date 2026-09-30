@@ -1437,3 +1437,69 @@ simulation, and its UI is raygui, which the game does not use.
   Open and New discard only on a second press.
 - **`sim.register_all()` is not called yet** (D50): the editor reads no
   unit definitions until Stage 8 places units, which will call it first.
+
+### D59 — Recovered colour relit to its occlusion; water on the unsmoothed ground
+
+Recovered levels drew darker than the art in the shadows under cliffs,
+their shallows read wrong at the shore, and le03's open water showed
+rocks the art does not have. Diffs of every level against its original
+(the renders with the occlusion layer, as the game draws them) traced
+each to a cause.
+
+- **The colour is relit to the occlusion it is drawn with.**
+  `terrain:recover` divides the art by the light the renderer will give
+  it, but the occlusion is baked afterwards (by Flux, from that colour),
+  so it was never in the division, and the game then darkened the art's
+  shadows twice. The new `terrain:relight` step (`recover.py --relight`,
+  CPU, no model) runs after `terrain:occlusion`. It fits the baked layer
+  and divides the art again with it in the light. The fit: Flux reads
+  the art's shadows as occluded (0.53–0.78, against 0.82–0.90 just
+  beside them), so inside the detected shadows the layer is divided by
+  its mean there over its mean within 24 px outside. Outside the water,
+  it is floored where the art is brighter than the light would allow.
+  The baked layer is kept as `cache/occlusion-baked.png` and a relight
+  starts from it again, so it can be rerun. A new bake is needed only
+  after `terrain:recover`, not after a relight.
+- **The division keeps the hue.** Where the light is below the art, the
+  colour is scaled by its brightest channel, not clipped per channel,
+  which had turned bright land teal or grey.
+- **The shadow's weight is soft and as wide as the shadow.** The penumbra
+  the detector misses now counts in proportion to its ratio (0.66
+  detected to 0.9 lit), which removes the dashed dark line at shadow
+  rims. The ratio is the lower one of an 81 px and a 241 px window,
+  because a shadow as wide as the small window darkens its own
+  reference (0.83–1.03 on le01's cliff foot). Detection itself is
+  unchanged.
+- **The water layer lies over the bed as the renderer lights it**, with
+  the shadow and occlusion, instead of the bed unlit. The first water
+  pixel at the shore was 5–21 levels off and is now 1.5–5.
+- **The water surface takes no occlusion.** Flux bakes occlusion onto
+  the water too, from whatever texture it reads there, and le03's open
+  water drew those rocks (deep water 2.9 levels off, now 0.07). The
+  surface is lit by the sky and sun alone. Only the bed under it is
+  occluded. This beats skipping the occlusion away from shores, because
+  it needs no distance and no threshold, and a shore bed keeps its
+  shading.
+- **Water is decided on the unsmoothed ground.** The smoothed ground put
+  the waterline up to the smoothing's radius into the bank, so a bank
+  read as water, or the water as land, and only 44.5% of le01's
+  shoreline matched the layer's mask. It now matches 100%, and agrees
+  with the editor's water brush, which compares the raw heights. The
+  land's normal comes from its visible surface, the water's height
+  where the water is higher, so a bank's slope stops at the waterline.
+  tests/terrain `water_follows_the_ground`.
+- **No soft edge on the water mask.** With the layer over the lit bed
+  and the waterline on the raw ground, the shore is already within a few
+  levels of the art, and the layer's own opacity is the soft edge.
+
+On all twelve, the share of land more than 20% darker than the art went
+from 15–39% to 0.1–3.5%, and the land's error from 3.1–8.8 levels to
+0.3–2.1. The art's old shadows, relit under an overhead sun, went from
+0.45–0.90 of the ground beside them to 0.65–1.07. `terrain:report` now
+scores the draw with the occlusion layer (shadow IoU 0.844–0.977,
+before 0.714–0.890). The draw without it is kept as a reference column
+(0.741–0.887): the colour now expects the layer. Weak spots: le02, le05
+and le08's banks (about 9–10 levels off within 2 px of the water);
+le07's jungle, whose shadows still read darker in the colour (0.74 of
+the ground beside them); and le06 and le10, a little brighter
+(1.2).

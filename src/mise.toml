@@ -508,8 +508,23 @@ MASK=$("$PY" -c "import json,sys; print(json.load(open(sys.argv[1]))['media_mask
   --images "$DR_PLUGINS/classic_levels/images/im16" --out "${OUT:-$DR_SRC/../work/terrain/$LEVEL}" "$@"
 """
 
+[tasks."terrain:relight"]
+description = "Refit a recovered level's colour to its occlusion layer (LEVEL=le07 in work/terrain/LEVEL/, or OUT=dir): the layer fitted to the original's shadows and divided out with the rest of the light, the water refitted over its lit bed; no model runs, after terrain:occlusion"
+depends = ["terrain:build"]
+run = """
+set -e
+PY="$DR_MARIGOLD/venv/bin/python"; [ -x "$PY" ] || PY="$DR_MARIGOLD/venv/Scripts/python.exe"
+[ -x "$PY" ] || { echo "no venv at $DR_MARIGOLD/venv: run 'mise run terrain:marigold-setup' first"; exit 1; }
+LEVEL="${LEVEL:-le07}"
+REC="$DR_PLUGINS/classic_levels/data/levels/$LEVEL.json"
+MAP=$("$PY" -c "import json,sys; print(json.load(open(sys.argv[1]))['background_image'])" "$REC")
+MASK=$("$PY" -c "import json,sys; print(json.load(open(sys.argv[1]))['media_mask'])" "$REC")
+"$PY" tools/terrain_recover/recover.py "$MAP" --mask "$MASK" --level "$REC" --renderer "$DR_BUILD/terrain$DR_EXT" \
+  --images "$DR_PLUGINS/classic_levels/images/im16" --out "${OUT:-$DR_SRC/../work/terrain/$LEVEL}" --relight "$@"
+"""
+
 [tasks."terrain:recover-all"]
-description = "Recover every Classic Levels map into work/recovered/LEVEL/, bake its occlusion, and score them all (terrain:report); LEVELS='le01 le07' for some"
+description = "Recover every Classic Levels map into work/recovered/LEVEL/, bake its occlusion, refit its colour to it (terrain:relight), and score them all (terrain:report); LEVELS='le01 le07' for some"
 depends = ["terrain:build"]
 run = '''
 set -e
@@ -519,12 +534,13 @@ for L in $LEVELS; do
   echo "== $L"
   LEVEL="$L" OUT="$DIR/$L" mise run terrain:recover
   PROJECT="$DIR/$L/$L.drproj.json" mise run terrain:occlusion
+  LEVEL="$L" OUT="$DIR/$L" mise run terrain:relight
 done
 LEVELS="$LEVELS" mise run terrain:report
 '''
 
 [tasks."terrain:report"]
-description = "Score each recovered level in work/recovered/ against its original (terrain:compare, without the occlusion the originals lacked, and with it) into work/recovered/report.md; LEVELS='le01 le07' for some"
+description = "Score each recovered level in work/recovered/ against its original (terrain:compare, drawn with its occlusion layer as the game draws it, and without it for reference) into work/recovered/report.md; LEVELS='le01 le07' for some"
 depends = ["terrain:build"]
 run = '''
 set -e
@@ -534,9 +550,9 @@ REPORT="$DIR/report.md"
 {
   echo "# Recovered Classic Levels"
   echo
-  echo "terrain:compare on each project, whole map, $(date +%Y-%m-%d). The plan's bar: shadow IoU 0.75, drawn without the occlusion layer, as the originals were."
+  echo "terrain:compare on each project, whole map, $(date +%Y-%m-%d), drawn with its occlusion layer as the game draws it. terrain:relight fits the colour to that layer (D59), so the draw without it is darker in the art's shadows than the original and is kept only for reference. The plan's bar: shadow IoU 0.75."
   echo
-  echo "| Level | Shadow IoU | Shadow light (render / original) | Fitted azimuth (cast IoU) | Shadow IoU with occlusion | Water: levels from the original, share of its grain (with occlusion) |"
+  echo "| Level | Shadow IoU | Shadow light (render / original) | Fitted azimuth (cast IoU) | Water: levels from the original, share of its grain | Shadow IoU without occlusion |"
   echo "|---|---|---|---|---|---|"
 } > "$REPORT"
 for L in $LEVELS; do
@@ -544,14 +560,13 @@ for L in $LEVELS; do
   P="$DIR/$L/$L.drproj.json"
   PROJECT="$P" mise run terrain:compare -- -no-occlusion | tee "$DIR/$L/compare.txt"
   PROJECT="$P" OUT="$DIR/$L/$L.compare-occlusion.png" mise run terrain:compare | tee "$DIR/$L/compare-occlusion.txt"
-  IOU=$(sed -n 's/^shadow IoU \([0-9.]*\).*/\1/p' "$DIR/$L/compare.txt")
-  LIGHT=$(sed -n 's/^shadow light: original \([0-9.]*\), render \([0-9.]*\).*/\2 \/ \1/p' "$DIR/$L/compare.txt")
-  AZ=$(sed -n 's/^fitted azimuth \([0-9]*\) (cast-shadow IoU \([0-9.]*\)).*/\1° (\2)/p' "$DIR/$L/compare.txt")
-  AO=$(sed -n 's/^shadow IoU \([0-9.]*\).*/\1/p' "$DIR/$L/compare-occlusion.txt")
-  W='s/^water: \([0-9.]*\) levels from the original, \([0-9.]*\) of its grain/\1, \2/p'
-  WATER=$(sed -n "$W" "$DIR/$L/compare.txt")
-  WATER_AO=$(sed -n "$W" "$DIR/$L/compare-occlusion.txt")
-  echo "| $L | $IOU | $LIGHT | $AZ | $AO | ${WATER:+$WATER ($WATER_AO)} |" >> "$REPORT"
+  C="$DIR/$L/compare-occlusion.txt"
+  IOU=$(sed -n 's/^shadow IoU \([0-9.]*\).*/\1/p' "$C")
+  LIGHT=$(sed -n 's/^shadow light: original \([0-9.]*\), render \([0-9.]*\).*/\2 \/ \1/p' "$C")
+  AZ=$(sed -n 's/^fitted azimuth \([0-9]*\) (cast-shadow IoU \([0-9.]*\)).*/\1° (\2)/p' "$C")
+  WATER=$(sed -n 's/^water: \([0-9.]*\) levels from the original, \([0-9.]*\) of its grain/\1, \2/p' "$C")
+  BARE=$(sed -n 's/^shadow IoU \([0-9.]*\).*/\1/p' "$DIR/$L/compare.txt")
+  echo "| $L | $IOU | $LIGHT | $AZ | $WATER | $BARE |" >> "$REPORT"
 done
 cat "$REPORT"
 '''

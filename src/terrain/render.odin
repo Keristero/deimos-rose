@@ -601,12 +601,20 @@ vec3 colourAt(vec2 map, vec3 h, vec2 slope) {
 void main() {
 	vec2 map = origin + gl_FragCoord.xy / scale;
 	vec3 h = at(map);
-	bool water = waterVisible != 0 && h.r < waterHeight;
-	float h0 = water ? waterHeight : h.r;
+	// Water where the ground itself is under it, not the smoothed ground:
+	// smoothing pulls a bank beside a deep bed under the water line, and a
+	// tall bank lifts the water beside it out (on le01, a third of the land
+	// by the shore was drawn as water, and half the water as land, D59).
+	bool water = waterVisible != 0 && unsmoothed(map) < waterHeight;
+	float h0 = surface(map);
 
 	vec2 slope = vec2(at(map + vec2(1.0, 0.0)).r - at(map - vec2(1.0, 0.0)).r,
 	                  at(map + vec2(0.0, 1.0)).r - at(map - vec2(0.0, 1.0)).r) * 0.5;
-	vec3 n = water ? vec3(0.0, 0.0, 1.0) : normalize(vec3(-slope, 1.0));
+	// The land's normal is its visible surface's: a bank stops at the water
+	// line, not at the bed beside it that the water hides.
+	vec2 rise = vec2(surface(map + vec2(1.0, 0.0)) - surface(map - vec2(1.0, 0.0)),
+	                 surface(map + vec2(0.0, 1.0)) - surface(map - vec2(0.0, 1.0))) * 0.5;
+	vec3 n = water ? vec3(0.0, 0.0, 1.0) : normalize(vec3(-rise, 1.0));
 
 	if (mode == 3) {
 		float v = clamp(floor((water ? waterHeight : unsmoothed(map)) / heightUnit + 0.5), 0.0, 65535.0);
@@ -654,9 +662,11 @@ void main() {
 	float direct = sun.z > 0.0 ? max(dot(n, sun), 0.0) / sun.z : 0.0;
 	vec3 sky = ambient * open * ambientColour;
 	vec3 light = sky + (1.0 - ambient) * sunColour * direct * vis;
-	// The water's surface takes no cast shadow, as in the originals: only
-	// the bed seen through it does.
-	vec3 surfaceLight = sky + (1.0 - ambient) * sunColour * direct;
+	// The water's surface takes no cast shadow, as in the originals, and
+	// is open to the whole sky: only the bed seen through it is shaded and
+	// occluded. The occlusion under open water is the ground's, which the
+	// surface hides (le03's invented rocks, D59).
+	vec3 surfaceLight = ambient * ambientColour + (1.0 - ambient) * sunColour * direct;
 	finalColor = vec4(mix(col * light, over.rgb * surfaceLight, over.a), 1.0);
 }
 `

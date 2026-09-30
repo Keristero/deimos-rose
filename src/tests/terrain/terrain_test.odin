@@ -123,6 +123,7 @@ terrain_renders :: proc(t: ^testing.T) {
 	smoothing_rounds_edges(t)
 	occlusion_darkens_the_ambient(t)
 	water_layer_over_the_bed(t)
+	water_follows_the_ground(t)
 	strips_are_the_whole(t)
 	an_update_is_a_new_upload(t)
 	scales_agree(t)
@@ -246,9 +247,45 @@ water_layer_over_the_bed :: proc(t: ^testing.T) {
 	lit := draw(t, &p, {output = .Lit}, 0)
 	testing.expectf(t, near(px(lit, 8), {int(200 * a + 0.5), 0, 0}), "clear, in shadow: %v", px(lit, 8))
 	testing.expectf(t, near(px(lit, 40), {0, 0, 200}), "opaque, unshadowed: %v", px(lit, 40))
+	// Fully occluded: the bed seen through clear water is black in the
+	// shadow, the opaque water's surface is lit as before.
+	p.occlusion = make([]u8, W * L, context.temp_allocator)
+	occluded := draw(t, &p, {output = .Lit}, 0)
+	testing.expectf(t, near(px(occluded, 8), {0, 0, 0}), "clear, occluded: %v", px(occluded, 8))
+	testing.expectf(t, near(px(occluded, 40), {0, 0, 200}), "opaque, occluded: %v", px(occluded, 40))
+	p.occlusion = nil
 	p.water = nil
 	flat := draw(t, &p, {output = .Albedo}, 0)
 	testing.expectf(t, near(px(flat, 24), {0, 200, 0}), "no layer: %v", px(flat, 24))
+}
+
+// Water is drawn where the ground itself is under it, the smoothed ground
+// notwithstanding: a tall bank's smoothing lifts the bed beside it out of
+// the water (row 3), and a low bank's pulls it under (row 12).
+@(private = "file")
+water_follows_the_ground :: proc(t: ^testing.T) {
+	W, L :: 64, 16
+	p := terrain.project_make(W, L, context.temp_allocator)
+	p.albedo = make([]u8, W * L * 3, context.temp_allocator)
+	p.water = make([]u8, W * L * 4, context.temp_allocator)
+	for x in 0 ..< W {
+		for y in 0 ..< L {
+			i := y * W + x
+			p.heights[i] = x < 48 ? 0 : y < 8 ? 40 : 11
+			p.albedo[i * 3] = 200
+			p.water[i * 4 + 2], p.water[i * 4 + 3] = 200, 255
+		}
+	}
+	p.level.water = {height = 10, colour = {0, 200, 0}, visible = true}
+	albedo := draw(t, &p, {output = .Albedo})
+	px :: proc(pic: terrain.Picture, x, y: int) -> [3]u8 {
+		c := pic.pixels[(y * pic.width + x) * 3:]
+		return {c[0], c[1], c[2]}
+	}
+	for y in ([?]int{3, 12}) {
+		testing.expectf(t, px(albedo, 47, y) == {0, 0, 200}, "row %d: the water's last pixel is %v", y, px(albedo, 47, y))
+		testing.expectf(t, px(albedo, 48, y) == {200, 0, 0}, "row %d: the bank's first pixel is %v", y, px(albedo, 48, y))
+	}
 }
 
 // A wall h high, with the sun due east at elevation e, shades h/tan(e)

@@ -19,3 +19,9 @@ a tile on the Strix Halo, and a 480 x 3600 map is 9 tiles. The tiles are
 cached in the project's `cache/` folder, keyed by the colour and the
 settings, so a rerun after an unrelated change only reassembles them.
 `<stem>.occlusion.json` records the model, the prompt and the versions.
+
+On a recovered level, bake from the colour `terrain:recover` wrote, and
+then run `terrain:relight`, which fits the layer to the original art and
+divides it out of the colour (decisions.md D59). A bake after a relight
+starts from the relit colour: it misses the tile cache and runs Flux
+again.

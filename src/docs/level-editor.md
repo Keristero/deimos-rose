@@ -141,27 +141,28 @@ nearest value.
 
 ### The twelve
 
-`mise run terrain:recover`, `terrain:occlusion` and `terrain:report` on
-all twelve, 2026-10-01, sun 36° and 40° up for each. The shadow IoU is
-drawn without the occlusion, as the originals were (the plan's bar: 0.75);
-with it, the added darkening reads as more shadow and the score falls.
-The water is scored by its mean colour difference from the art, in levels
-of 255, and its grain as a share of the art's (D57).
+`mise run terrain:recover`, `terrain:occlusion`, `terrain:relight` and
+`terrain:report` on all twelve, 2026-10-01, sun 36° and 40° up for each.
+The shadow IoU is drawn with the occlusion layer, as the game draws it (the
+plan's bar: 0.75). `terrain:relight` fits the colour to that layer (D59),
+so the draw without it is darker in the art's shadows than the art and is
+kept for reference. The water is scored by its mean colour difference from
+the art, in levels of 255, and its grain as a share of the art's (D57).
 
-| Level | Map | Shadow IoU | With occlusion | Shadow light, render / art | Fitted azimuth (cast IoU) | Water: levels off, grain (flat water) |
+| Level | Map | Shadow IoU | Without occlusion | Shadow light, render / art | Fitted azimuth (cast IoU) | Water: levels off, grain |
 |---|---|---|---|---|---|---|
-| le01 | `cam1` | **0.918** | 0.818 | 0.43 / 0.43 | 36° (0.791) | 1.7, 1.05 (5.3, 0.48) |
-| le02 | `cam2` | **0.800** | 0.714 | 0.42 / 0.41 | 38° (0.670) | 1.1, 0.99 (4.2, 0.56) |
-| le03 | `ism1` | **0.961** | 0.879 | 0.38 / 0.37 | 36° (0.785) | 1.1, 1.03 (4.7, 0.43) |
-| le04 | `cam3` | **0.917** | 0.832 | 0.44 / 0.44 | 36° (0.754) | 1.1, 1.02 (6.2, 0.48) |
-| le05 | `jum3` | **0.828** | 0.771 | 0.44 / 0.43 | 36° (0.642) | 1.5, 1.00 (2.0, 0.38) |
-| le06 | `inm3` | **0.964** | 0.840 | 0.46 / 0.46 | 36° (0.784) | 0.6, 0.99 (4.6, 0.17) |
-| le07 | `jum2` | **0.937** | 0.890 | 0.39 / 0.38 | 36° (0.718) | 0.3, 0.98 (2.8, 0.19) |
-| le08 | `ism3` | **0.946** | 0.889 | 0.34 / 0.33 | 36° (0.792) | 2.2, 1.04 (6.0, 0.44) |
-| le09 | `ism2` | **0.946** | 0.864 | 0.39 / 0.38 | 36° (0.773) | 1.1, 1.13 (4.8, 0.54) |
-| le10 | `inm2` | **0.923** | 0.817 | 0.48 / 0.48 | 36° (0.744) | 0.7, 0.98 (3.6, 0.48) |
-| le11 | `jum1` | **0.892** | 0.824 | 0.44 / 0.43 | 38° (0.690) | 1.1, 1.11 (2.4, 0.45) |
-| le12 | `inm1` | **0.936** | 0.823 | 0.47 / 0.46 | 36° (0.740) | 0.6, 0.98 (3.1, 0.42) |
+| le01 | `cam1` | **0.973** | 0.833 | 0.43 / 0.43 | 36° (0.791) | 0.2, 1.02 |
+| le02 | `cam2` | **0.844** | 0.758 | 0.42 / 0.41 | 38° (0.670) | 0.3, 0.95 |
+| le03 | `ism1` | **0.977** | 0.841 | 0.38 / 0.37 | 36° (0.785) | 0.1, 1.00 |
+| le04 | `cam3` | **0.974** | 0.778 | 0.44 / 0.44 | 36° (0.754) | 0.1, 1.00 |
+| le05 | `jum3` | **0.897** | 0.741 | 0.44 / 0.43 | 36° (0.642) | 0.3, 1.02 |
+| le06 | `inm3` | **0.977** | 0.815 | 0.46 / 0.46 | 36° (0.784) | 0.2, 0.98 |
+| le07 | `jum2` | **0.968** | 0.880 | 0.38 / 0.38 | 36° (0.718) | 0.2, 0.98 |
+| le08 | `ism3` | **0.957** | 0.887 | 0.34 / 0.33 | 36° (0.792) | 0.3, 0.98 |
+| le09 | `ism2` | **0.976** | 0.831 | 0.38 / 0.38 | 36° (0.773) | 0.1, 1.00 |
+| le10 | `inm2` | **0.951** | 0.804 | 0.48 / 0.48 | 36° (0.744) | 0.2, 0.92 |
+| le11 | `jum1` | **0.929** | 0.805 | 0.44 / 0.43 | 38° (0.690) | 0.2, 0.99 |
+| le12 | `inm1` | **0.949** | 0.811 | 0.47 / 0.46 | 36° (0.740) | 0.4, 0.96 |
 
 All twelve pass, and the shadow is as dark against the ground around as
 the art's to within 0.01. The fitted azimuth lands on the measured 36°
@@ -171,19 +172,24 @@ or next to it, so the heights cast their shadows where the art's fall.
   lowest too (0.670, 0.642): more of their shadow is kept by the colour
   than cast by the heights.
 - **le09's range fit reached 960 px**, the most the fit tries, so its
-  relief may be clipped short; its IoU is 0.945 all the same.
+  relief may be clipped short; its IoU is 0.976 all the same.
 - The water is a translucent layer over the bed (D57), as the originals'
   shallows show the sand through, its surface unshadowed. It is within
-  2.2 levels of the art and its grain, where flat water was up to 6.2
-  levels off with a fifth to a half of the grain. le01's shallows under
-  the right-hand cliff read darker than the art.
+  0.4 levels of the art and 0.92 to 1.02 of its grain, where flat water
+  was up to 6.2 levels off with a fifth to a half of the grain. Its edge
+  follows the ground under it, not the smoothed ground, so the shore
+  matches the art's (D59).
+- **Before the relight (D59)** the colour was divided without the
+  occlusion, which the game then added, so the shadows under cliffs drew
+  darker than the art: 15–39% of the land was more than 20% darker, now
+  0.1–3.5%. The IoU without occlusion was then 0.800–0.964, and with it
+  0.714–0.890.
 
 `mise run terrain:mod` packages the twelve as a mod, Recovered Levels
 (`plugins/recovered_levels`, off by default): each project drawn lit, with
 its occlusion, as the level's map, and the original's level record
-otherwise. It is a campaign on Level Select beside Classic Levels. Its maps
-were drawn before the water layer, with the water flat; `terrain:mod`
-draws them again with it.
+otherwise. It is a campaign on Level Select beside Classic Levels.
+`terrain:mod` draws the maps again after a relight.
 
 Each level's scores are in `work/recovered/leNN/compare.txt` and
 `compare-occlusion.txt`, with side-by-sides. `work/` is not committed: it

@@ -22,8 +22,8 @@ point an artist can take into the editor:
      moved to the art's shoreline by colour within a cell of their edge
      (shoreline()): one water height just above the terrain under it.
   5. Unlit colour: the art divided by the renderer's light at the art's
-     sun, slope term and all, with the heights' cast shadow counted only
-     where the art is in shadow (unlit()).
+     sun, slope term and all, with the heights' cast shadow counted as far
+     as the art is in shadow (sunlight(), unlit()).
   6. Canopy: CLIPSeg's "trees" says where it is (canopy_mask()); the
      heights are split there into a smooth ground and the canopy's cover
      above it, losslessly (split_canopy()), so it can be edited as
@@ -32,9 +32,13 @@ point an artist can take into the editor:
      through at the shore. Its opacity is fitted per pixel against the
      land carried in from the shore and the deep water's own colour
      (water_opacity()); the layer holds that colour, the art's grain and
-     all, and the colour under the water becomes the unlit bed
-     (water_layer()). The renderer draws the layer over the bed, its
-     surface unshadowed as the originals' is.
+     all, over the bed as the renderer lights it, and the colour under the
+     water becomes the unlit bed (water_layer()). The renderer draws the
+     layer over the bed, its surface unshadowed as the originals' is.
+  8. Relight (--relight, terrain:relight), after terrain:occlusion has
+     baked the occlusion from this colour: the layer fitted to the art
+     (fit_occlusion(), occlusion_floor()), and steps 5 and 7 again with it
+     in the light. No model runs.
 
 This is Stage 6 of notes/level-editor-plan.md; terrain:recover-all runs it
 on all 12 levels.
@@ -123,6 +127,17 @@ REFINE_SHADING = 0.0
 # smoothed over WATER_REACH.
 WATER_DEEP = 12
 WATER_REACH = 48
+# The art's shadows, by their light against the lit ground's (shadow_ratio()):
+# detected below SHADOW_DETECTED (the findings'), lit above SHADOW_LIT, the
+# lit ground's taken over SHADOW_WINDOW px and, for shadow_weight(), also
+# over SHADOW_WIDE.
+SHADOW_DETECTED = 0.66
+SHADOW_LIT = 0.9
+SHADOW_WINDOW = 81
+SHADOW_WIDE = 241
+# fit_occlusion(): the reach, in map pixels, of the occlusion's mean inside
+# and beside the art's shadows.
+OCCLUSION_REACH = 24
 
 
 def luminance(rgb):
@@ -186,26 +201,56 @@ def water_opacity(rgb, water):
     return np.where(water, ndi.gaussian_filter(Am, 1.0) / np.maximum(wf, 1e-6), 0)
 
 
-def water_layer(rgb, unlit_rgb, water, A):
+def water_layer(rgb, unlit_rgb, water, A, bed_light):
     """The water layer the renderer draws over the bed (terrain/render.odin),
-    and the bed. The layer's RGB is the water's own colour, grain and all,
-    and its A the opacity, so that (1 - A) * bed + A * RGB is the art again:
-    the bed there is the lit land at the shore carried in, as the water's
-    surface is lit alike everywhere. The bed returned, for the colour under
-    the water, is the unlit land carried in. All 0..1."""
+    and the bed. The bed, for the colour under the water, is the unlit land
+    at the shore carried in. The layer's RGB is the water's own colour,
+    grain and all, and its A the opacity, so that (1 - A) * bed * bed_light
+    + A * RGB is the art again: its surface is lit alike everywhere, and
+    bed_light is the light the renderer gives the bed (bed_light()). Fitted
+    against the carried lit land instead, the shallows showed a tan band
+    where the renderer shades the bed and the art did not: the error in
+    the first water pixel was 14-20 (of 255) on le01, le03 and le11, and is
+    now 1-3.5 (D59). All 0..1."""
     shore = ~water & (ndi.distance_transform_edt(~water) <= 4)
-    carried = lambda c: np.dstack([ndi.gaussian_filter(fill(c[..., k], shore), 3) for k in range(3)])
-    bed = carried(unlit_rgb)
-    rgb = np.clip((rgb - (1 - A[..., None]) * carried(rgb)) / np.maximum(A, 0.05)[..., None], 0, 1)
+    bed = np.dstack([ndi.gaussian_filter(fill(unlit_rgb[..., k], shore), 3) for k in range(3)])
+    rgb = np.clip((rgb - (1 - A[..., None]) * bed * bed_light[..., None]) / np.maximum(A, 0.05)[..., None], 0, 1)
     return np.dstack([np.where(water[..., None], rgb, 0), np.where(water, A, 0)]), bed
 
 
-def detect_shadows(rgb, water, ratio=0.66):
-    """As the findings (and terrain/analysis.odin): much darker than the lit
-    ground around, and not water."""
+def shadow_ratio(rgb, size=SHADOW_WINDOW):
+    """Each pixel's light against the lit ground's around it: the 85th
+    percentile over `size` px, as the findings (and terrain/analysis.odin)
+    at 81. A wider window is taken at a quarter of the size, as the filter
+    is slow."""
     Ls = ndi.uniform_filter(luminance(rgb), 3)
-    ref = ndi.percentile_filter(Ls, 85, size=81)
-    return ndi.binary_opening((Ls / np.maximum(ref, 1e-3) < ratio) & ~water, iterations=1)
+    if size <= SHADOW_WINDOW:
+        ref = ndi.percentile_filter(Ls, 85, size=size)
+    else:
+        ref = ndi.zoom(ndi.percentile_filter(Ls[::4, ::4], 85, size=size // 4), 4, order=1)[: Ls.shape[0], : Ls.shape[1]]
+    return Ls / np.maximum(ref, 1e-3)
+
+
+def detect_shadows(ratio, water):
+    """As the findings: much darker than the lit ground around (below
+    SHADOW_DETECTED of it), and not water."""
+    return ndi.binary_opening((ratio < SHADOW_DETECTED) & ~water, iterations=1)
+
+
+def shadow_weight(ratio, wide, detected):
+    """How far the art is in shadow, 0..1: all of it where detected, none
+    where it is as light as the lit ground's SHADOW_LIT, and between the
+    two in proportion. unlit() counts the renderer's cast shadow by this.
+    A shadow's edge in the art is soft, and the detection's cut misses it;
+    counted as lit there, the rendered shadow drew it dark, a line along
+    most shadows. And a shadow as wide as the detection's window darkens
+    the lit ground it is measured against: at the foot of le01's cliffs
+    the art reads 0.83-1.03 of it, in shadow. So the light is the lower of
+    the ratio over the window and over SHADOW_WIDE (`wide`). Only where
+    the renderer casts a shadow does this count: dark ground in the sun is
+    lit whatever it reads (D59)."""
+    soft = np.clip((SHADOW_LIT - np.minimum(ratio, wide)) / (SHADOW_LIT - SHADOW_DETECTED), 0, 1)
+    return np.where(detected, 1.0, soft).astype(np.float32)
 
 
 def cast_shadows(H, az, el, steps=240):
@@ -306,19 +351,67 @@ def refine(H, detected, land, rgb, device, az, el, floor, iters=REFINE_ITERS, cu
     return np.where(land, np.maximum(H + d, floor), H), history
 
 
-def unlit(rgb, detected, normal, shadow, azimuth, elevation):
-    """The art without its light: divided by the light the renderer gives
-    it at the art's own sun, from the renderer's own normals and shadow.
-    That is the ambient plus the slope term times the cast shadow, the
-    shadow counted only where the art is in shadow (detected): where the
-    heights cast a shadow the art does not have, the art is taken as lit.
-    A render at the original sun then gives back the art, and a relight
-    does not shade the slopes twice. 0..1 RGB."""
+def sunlight(normal, shadow, weight, azimuth, elevation):
+    """The sun's part of the light the renderer gives the art at the art's
+    own sun, from the renderer's own normals and shadow: the slope term
+    times the cast shadow, the shadow counted as far as the art is in
+    shadow (shadow_weight()). Where the heights cast a shadow the art does
+    not have, the art is taken as lit."""
     a, e = np.radians(azimuth), np.radians(elevation)
     sun = np.array([np.cos(a) * np.cos(e), -np.sin(a) * np.cos(e), np.sin(e)], np.float32)
     direct = np.clip(normal @ sun, 0, None) / sun[2]
-    light = AMBIENT + (1 - AMBIENT) * direct * np.where(detected, shadow, 1)
-    return np.clip(rgb / light[..., None], 0, 1)
+    return (1 - AMBIENT) * direct * (1 - weight * (1 - shadow))
+
+
+def unlit(rgb, sun, occlusion=1.0):
+    """The art without its light: divided by the light the renderer gives
+    it, the ambient times the occlusion plus the sun's part (sunlight()).
+    A render at the original sun then gives back the art, and a relight
+    does not shade the slopes twice. 0..1 RGB.
+
+    The occlusion is fit_occlusion()'s, no darker than occlusion_floor().
+    Left out of the division, the renderer darkened the occluded ground a
+    second time: with it, 15-39% of the land drew more than 20% darker
+    than the art, mostly in the shadows under cliffs, the occlusion's
+    darkest (D59). Where the light is still too little for the art, the
+    colour is scaled, not clipped, to 1: clipped a channel at a time, a
+    brown under too little light turned grey or teal."""
+    light = AMBIENT * occlusion + sun
+    return rgb / np.maximum(np.maximum(light, rgb.max(2)), 1e-3)[..., None]
+
+
+def occlusion_floor(rgb, sun):
+    """The least occlusion the art allows: the ambient under it and the sun
+    must light the colour, at most 1, to the art's brightest channel. The
+    originals had no occlusion, and Flux's darkest (50 of 255 on le01's lit
+    banks) would ask the colour to be brighter than white."""
+    return np.clip((rgb.max(2) - sun) / AMBIENT, 0, 1)
+
+
+def bed_light(shadow, occlusion=1.0):
+    """The light the renderer gives the bed under the water: its normal is
+    straight up, its shadow cast on the water's surface."""
+    return AMBIENT * occlusion + (1 - AMBIENT) * shadow
+
+
+def fit_occlusion(occlusion, detected, land):
+    """The occlusion layer (terrain:occlusion) made to agree with the art.
+    The originals had none: the art's light across a shadow's edge is the
+    ambient alone (0.37-0.47 of the lit ground's; AMBIENT is 0.44). But
+    Flux reads the cast shadows still faint in the colour as occlusion: its
+    layer is 0.53-0.78 in the art's shadows, 0.82-0.90 on the lit ground
+    beside them. Divided out as it is, a relight shows every shadow as a
+    bright ghost (le03's colour 1.46 times as bright inside its shadows'
+    edges as outside). So inside the shadows the occlusion is divided by
+    that offset, the local mean inside over the local mean beside, over
+    OCCLUSION_REACH: the crevices within a shadow keep their contrast, its
+    whole area does not. On le03 the edge is then 1.04 (8, 24 and 64 px
+    were alike). 0..1."""
+    inside = (detected & land).astype(np.float32)
+    beside = (~detected & land).astype(np.float32)
+    mean = lambda w: ndi.gaussian_filter(occlusion * w, OCCLUSION_REACH) / np.maximum(ndi.gaussian_filter(w, OCCLUSION_REACH), 1e-6)
+    offset = np.clip(mean(inside) / np.maximum(mean(beside), 1e-3), 0.05, 1)
+    return np.where(detected, np.clip(occlusion / offset, 0, 1), occlusion)
 
 
 def render_layers(renderer: str, project: Path, cache: Path):
@@ -534,7 +627,10 @@ def main():
     ap.add_argument("--iters", type=int, default=REFINE_ITERS, help="refinement steps (0: the seed as it is)")
     ap.add_argument("--curvature", type=float, default=REFINE_CURVATURE, help="weight of the change's curvature along the sun")
     ap.add_argument("--shading", type=float, default=REFINE_SHADING, help="weight of the Lambert shading's fit to the art's light")
+    ap.add_argument("--relight", action="store_true", help="only the colour, of the project already in --out, divided by its light with its occlusion layer (terrain:occlusion) fitted to the art; no model runs")
     args = ap.parse_args()
+    if args.relight:
+        return relight(args)
     if args.seed == "marigold" and not (args.marigold and (Path(args.marigold) / "src").is_dir()):
         ap.error("no Marigold V2 setup: run 'mise run terrain:marigold-setup', or pass --seed depth-anything")
     if args.device is None:
@@ -545,29 +641,10 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
 
-    rgb8 = np.asarray(Image.open(Path(args.images) / f"{args.map}.png").convert("RGB"))
+    rgb8, water, mask_water, detected, weight, opacity = art(args, out)
     rgb = rgb8.astype(np.float32) / 255
     h, w = rgb.shape[:2]
-    m = np.asarray(Image.open(Path(args.images) / f"{args.mask}.png").convert("RGB"))
-    cell = w // m.shape[1]
-    water = np.kron((m[..., 2] == 255) & (m[..., 0] == 0), np.ones((cell, cell), bool))[:h, :w]
-    mask_water = water
-    water = shoreline(rgb8, water, cell)
     land = ~water
-    key = hashlib.sha256(rgb8.tobytes() + water.tobytes()).hexdigest()[:16]
-    shadows = out / "cache" / f"shadows-{key}.npy"
-    if shadows.exists():
-        detected = np.load(shadows)
-    else:
-        detected = detect_shadows(rgb, water)
-        shadows.parent.mkdir(parents=True, exist_ok=True)
-        np.save(shadows, detected)
-    opacities = out / "cache" / f"water-opacity-{hashlib.sha256(key.encode() + repr((WATER_DEEP, WATER_REACH)).encode()).hexdigest()[:16]}.npy"
-    if opacities.exists():
-        opacity = np.load(opacities)
-    else:
-        opacity = water_opacity(rgb, water)
-        np.save(opacities, opacity)
 
     if args.seed == "marigold":
         seed = {"model": "marigold-v2 depth (Log-stage2)", **marigold_version(Path(args.marigold))}
@@ -648,17 +725,9 @@ def main():
         "level": level,
     }
     (out / f"{stem}.drproj.json").write_text(json.dumps(project, indent=2) + "\n")
-    # The colour, divided by the light the renderer gives the project.
-    normal, lit = render_layers(args.renderer, out / f"{stem}.drproj.json", out / "cache")
-    colour = unlit(rgb, detected, normal, lit, args.azimuth, args.elevation)
-    # The water as a layer over its bed, the bed in the colour under it.
-    if water.any():
-        layer, bed = water_layer(rgb, colour, water, opacity)
-        colour = np.where(water[..., None], bed, colour)
-        Image.fromarray((layer * 255 + 0.5).astype(np.uint8), "RGBA").save(out / f"{stem}.water.png")
-        project["water"] = f"{stem}.water.png"
-        (out / f"{stem}.drproj.json").write_text(json.dumps(project, indent=2) + "\n")
-    Image.fromarray((colour * 255 + 0.5).astype(np.uint8)).save(out / f"{stem}.albedo.png")
+    # No occlusion yet: terrain:occlusion bakes it from this colour, and
+    # --relight then divides it out.
+    colour_layers(args.renderer, out, stem, project, rgb, water, weight, opacity)
 
     import torch
     import transformers
@@ -667,7 +736,7 @@ def main():
         "map": args.map,
         "mask": args.mask,
         "seed": seed,
-        "unlit": "divided by the renderer's light at the original sun, its cast shadow only where detected",
+        "unlit": "divided by the renderer's light at the original sun, its cast shadow as far as the art is in shadow, no occlusion (--relight adds it)",
         "canopy": {"model": CANOPY_MODEL, "revision": CANOPY_REVISION, "prompt": CANOPY_PROMPT, "share_of_land": float((canopy > 0.5)[land].mean()), "height": canopy_height},
         "window": WINDOW,
         "stride": STRIDE,
@@ -691,6 +760,107 @@ def main():
     }
     (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     print(f"wrote {out / (stem + '.drproj.json')} (height range {best} px, water at {level_h:.1f})")
+
+
+def art(args, out: Path):
+    """The map (8-bit RGB), its water moved to the art's shoreline and the
+    media mask's as it is, the detected shadows, how far it is in shadow
+    (shadow_weight()) and the water's opacity. The light against the lit
+    ground's and the opacity are slow, so cached in OUT/cache/ by the art,
+    the water and their settings."""
+    rgb8 = np.asarray(Image.open(Path(args.images) / f"{args.map}.png").convert("RGB"))
+    h, w = rgb8.shape[:2]
+    m = np.asarray(Image.open(Path(args.images) / f"{args.mask}.png").convert("RGB"))
+    cell = w // m.shape[1]
+    mask_water = np.kron((m[..., 2] == 255) & (m[..., 0] == 0), np.ones((cell, cell), bool))[:h, :w]
+    water = shoreline(rgb8, mask_water, cell)
+    rgb = rgb8.astype(np.float32) / 255
+
+    def cached(name, make):
+        path = out / "cache" / f"{name}.npy"
+        if path.exists():
+            return np.load(path)
+        a = make()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        np.save(path, a)
+        return a
+
+    key = hashlib.sha256(rgb8.tobytes() + water.tobytes()).hexdigest()[:16]
+    ratio = {size: cached(f"shadow-ratio-{hashlib.sha256(rgb8.tobytes() + repr(size).encode()).hexdigest()[:16]}", lambda: shadow_ratio(rgb, size)) for size in (SHADOW_WINDOW, SHADOW_WIDE)}
+    detected = detect_shadows(ratio[SHADOW_WINDOW], water)
+    weight = shadow_weight(ratio[SHADOW_WINDOW], ratio[SHADOW_WIDE], detected)
+    opacity = cached(f"water-opacity-{hashlib.sha256(key.encode() + repr((WATER_DEEP, WATER_REACH)).encode()).hexdigest()[:16]}", lambda: water_opacity(rgb, water))
+    return rgb8, water, mask_water, detected, weight, opacity
+
+
+def colour_layers(renderer: str, out: Path, stem: str, project: dict, rgb, water, weight, opacity, occlusion=None):
+    """The project's colour, divided by the light the renderer gives it
+    (unlit()), and its water as a layer over its bed, the bed in the colour
+    under it (water_layer()): written beside the project, and the project
+    with them. With an occlusion layer, that too, raised on the land to
+    occlusion_floor(); returned as written, 0..1."""
+    lighting = project["level"]["lighting"]
+    normal, shadow = render_layers(renderer, out / f"{stem}.drproj.json", out / "cache")
+    sun = sunlight(normal, shadow, weight, lighting["sun_azimuth_degrees"], lighting["sun_elevation_degrees"])
+    if occlusion is not None:
+        occlusion = np.where(water, occlusion, np.maximum(occlusion, occlusion_floor(rgb, sun)))
+        # Rounded up to the 8 bits the renderer reads, so still enough.
+        occlusion = np.ceil(np.clip(occlusion, 0, 1) * 255 - 1e-3).astype(np.uint8)
+        Image.fromarray(occlusion).save(out / project["occlusion"])
+        occlusion = occlusion.astype(np.float32) / 255
+    colour = unlit(rgb, sun, 1.0 if occlusion is None else occlusion)
+    if water.any():
+        layer, bed = water_layer(rgb, colour, water, opacity, bed_light(shadow, 1.0 if occlusion is None else occlusion))
+        colour = np.where(water[..., None], bed, colour)
+        Image.fromarray((layer * 255 + 0.5).astype(np.uint8), "RGBA").save(out / f"{stem}.water.png")
+        project["water"] = f"{stem}.water.png"
+    Image.fromarray((colour * 255 + 0.5).astype(np.uint8)).save(out / f"{stem}.albedo.png")
+    (out / f"{stem}.drproj.json").write_text(json.dumps(project, indent=2) + "\n")
+    return occlusion
+
+
+def relight(args):
+    """--relight: the colour of the project recovered in --out, again, now
+    with its occlusion layer divided out as well, the layer fitted to the
+    art (fit_occlusion()). The heights, canopy and water stay as they are.
+    The fitted layer replaces the project's, and the layer as it was is
+    kept in OUT/cache/occlusion-baked.png: a rerun fits that again rather
+    than its own last fit, unless the project's layer has changed since
+    (a new bake, or an edit), which is then the one fitted. Nothing here
+    runs a model."""
+    out = Path(args.out)
+    t0 = time.time()
+    rgb8, water, _, detected, weight, opacity = art(args, out)
+    rgb = rgb8.astype(np.float32) / 255
+    stem = json.loads(Path(args.level).read_text()).get("id", args.map)
+    project = json.loads((out / f"{stem}.drproj.json").read_text())
+    manifest_path = out / "manifest.json"
+    manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
+    occlusion = None
+    if project.get("occlusion"):
+        layer = np.asarray(Image.open(out / project["occlusion"]).convert("L"))
+        digest = lambda a: hashlib.sha256(a.tobytes()).hexdigest()
+        baked = out / "cache" / "occlusion-baked.png"
+        last = (manifest.get("relight") or {}).get("occlusion") or {}
+        if baked.exists() and last.get("fitted_pixels") == digest(layer):
+            layer = np.asarray(Image.open(baked).convert("L"))
+        else:
+            Image.fromarray(layer).save(baked)
+        raw = layer.astype(np.float32) / 255
+        occlusion = fit_occlusion(raw, detected, ~water)
+    occlusion = colour_layers(args.renderer, out, stem, project, rgb, water, weight, opacity, occlusion)
+    fit = None
+    if occlusion is not None:
+        shade, lit = detected & ~water, ~detected & ~water
+        fit = {
+            "reach": OCCLUSION_REACH,
+            "fitted_pixels": digest((occlusion * 255 + 0.5).astype(np.uint8)),
+            "baked": {"in_shadow": float(raw[shade].mean()), "lit": float(raw[lit].mean())},
+            "fitted": {"in_shadow": float(occlusion[shade].mean()), "lit": float(occlusion[lit].mean())},
+        }
+    manifest["relight"] = {"occlusion": fit, "seconds": round(time.time() - t0, 1)}
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    print(f"relit {out / (stem + '.drproj.json')}" + (f" (occlusion in the art's shadows {fit['baked']['in_shadow']:.2f} -> {fit['fitted']['in_shadow']:.2f})" if fit else " (no occlusion layer)"))
 
 
 if __name__ == "__main__":

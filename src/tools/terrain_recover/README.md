@@ -23,12 +23,20 @@ heights from Depth Anything V2 Large instead of Marigold V2. That model is
 
 `mise run terrain:recover-all` recovers all 12 levels into
 `work/recovered/<level>/`, bakes each one's occlusion layer
-(`tools/terrain_occlusion/`, which needs `mise run hd:setup`), and then
-runs `terrain:report`, which writes each one's `terrain:compare` scores to
-`work/recovered/report.md` (`LEVELS='le01 le07'` for some). The scores are
-taken without the occlusion layer, because the originals had none, and
-the report also gives the IoU with it. The canopy mask comes from CLIPSeg
+(`tools/terrain_occlusion/`, which needs `mise run hd:setup`), refits the
+colour to it (`terrain:relight`), and then runs `terrain:report`, which
+writes each one's `terrain:compare` scores to `work/recovered/report.md`
+(`LEVELS='le01 le07'` for some). The scores are taken with the occlusion
+layer, as the game draws it and as the relit colour expects, and the
+report also gives the IoU without it. The canopy mask comes from CLIPSeg
 (`CIDAS/clipseg-rd64-refined`, 0.6 GB), which also downloads on first use.
+
+`LEVEL=le07 mise run terrain:relight` (or `-- --relight`) redoes only
+the colour of a project already recovered: the occlusion layer is fitted
+to the art and divided out of the colour, and the water layer fitted
+again over its lit bed. It runs no model, and takes about 45 s on the
+CPU. The occlusion as baked is kept in `OUT/cache/occlusion-baked.png`, so
+a rerun fits it again rather than its own last fit.
 
 The recovery draws the project with `tools/terrain` (built by the task) to
 divide the renderer's own light out of the colour, headless under
