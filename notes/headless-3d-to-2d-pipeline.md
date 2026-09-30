@@ -17,6 +17,7 @@ We can use raylib to render 3d scenes, but we dont appear to have access to the 
 - After the findings of the investigation and task 2 attempt recreation, it seems like we should be able to produce a fairly accurate heightmap for each level that we can use to recreate the original level geometries, we can verify the accuracy of these recreations by exporting new reproductions and comparing the shadow overlaps
 
 ### Level Editor Specs
+- Plan 2026-09-30: see [level-editor-plan.md](level-editor-plan.md), which covers Task 2, Task 3 and the New Features below.
 - The level edtior will be compiled to its own binary with its own workflow, it will come with the game files
 - The plugin system will be improved so that plugins with their own assets store the assets in the plugin folder too.
     - All of the original levels should be bundled in a classic levels plugin, in future we will disable this plugin and enable the remastered levels plugin once that is ready, but classic mode will reenable them instead - this also gives us the oppertunity to create a new fully custom set of levels that dont use the original asssets for an original deimos rose campaign in future.
