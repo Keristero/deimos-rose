@@ -115,19 +115,7 @@ entity_reset :: proc "contextless" (e: sim.Entity, pool_index: i32) {
 
 // G_Entity::GetFrameForAngle.
 frame_for_angle :: proc "contextless" (s: ^sim.State, e: sim.Entity, angle: i32) -> i32 {
-	st := sim.state_of(s, e)
-	dirs := max(st.num_directions, 1)
-	f := f32(angle) / f32(360 / dirs)
-	i := sim.trunc_i32(f)
-	if f - f32(i) >= 0.5 {
-		i += 1
-	}
-	if i < 0 {
-		i = dirs - 1
-	} else if i > dirs - 1 {
-		i = 0
-	}
-	return i * st.frames_per_direction
+	return sim.state_frame_for_angle(sim.state_of(s, e), angle)
 }
 
 // G_Entity::Priv_CheckSpawningAbilityAtStateChange.

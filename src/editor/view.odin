@@ -173,7 +173,10 @@ view_draw :: proc(e: ^Editor, l: Layout) {
 		o := view_origin(v, p, area)
 		t := v.target.texture
 		rl.DrawTextureRec(t, {0, 0, f32(t.width), f32(t.height)}, {o.x, o.y + f32(v.drawn_from * v.zoom)}, rl.WHITE)
-		if v.over_map {
+		if e.show_units {
+			units_draw(e, o, area)
+		}
+		if v.over_map && Tab(e.tab) != .Units {
 			brush_outline(e, o)
 		}
 	}
@@ -186,6 +189,9 @@ view_draw :: proc(e: ^Editor, l: Layout) {
 		s, r := overview_fit(p, ov)
 		t := v.overview.texture
 		rl.DrawTexturePro(t, {0, 0, f32(t.width), f32(t.height)}, r, {}, 0, rl.WHITE)
+		if e.show_units {
+			units_overview(e, s, r)
+		}
 		rows := view_rows(v, area)
 		rl.DrawRectangleLinesEx({r.x - 1, r.y + v.row * s - 1, r.width + 2, rows * s + 2}, 1, {255, 220, 90, 255})
 	}

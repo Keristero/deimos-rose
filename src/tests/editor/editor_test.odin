@@ -1,7 +1,7 @@
 package editor_tests
 
-// The level editor (Stage 7 of notes/level-editor-plan.md). The brush,
-// undo and the light's JSON run anywhere; the editor itself draws, so its
+// The level editor (Stages 7 and 8 of notes/level-editor-plan.md). The
+// brush, undo, the light's JSON and placing units run anywhere; the editor itself draws, so its
 // cases share one hidden window and skip when there is no display (mise
 // run test runs them under xvfb-run), as tests/terrain's do. The le07 case
 // needs a recovered project (mise run terrain:recover) and skips without.
@@ -9,6 +9,8 @@ package editor_tests
 import "core:fmt"
 import "core:math"
 import "core:os"
+import "core:slice"
+import "core:strings"
 import "core:testing"
 
 import rl "vendor:raylib"
@@ -21,7 +23,6 @@ OUT :: "build/editor_test"
 LE07 :: "../work/recovered/le07/le07.drproj.json"
 
 // Rolling ground with water at 9 over a layer that holds none yet.
-@(private = "file")
 hills :: proc(w, l: int, allocator := context.allocator) -> terrain.Project {
 	p := terrain.project_make(w, l, allocator)
 	p.albedo = make([]u8, w * l * 3, allocator)
@@ -223,6 +224,7 @@ editor_draws :: proc(t: ^testing.T) {
 	os.make_directory_all(OUT)
 	shot_shows_the_project(t)
 	stroke_and_undo_redraw(t)
+	units_draw_on_the_map(t)
 	le07_sculpt_relight_save_reopen(t)
 }
 
@@ -353,6 +355,12 @@ le07_sculpt_relight_save_reopen :: proc(t: ^testing.T) {
 	water := make([]u8, len(e.project.water), context.temp_allocator)
 	copy(water, e.project.water)
 	level := e.project.level
+	// Deep: the strings are the project's, freed when it is opened again.
+	placements := slice.clone(e.project.placements[:], context.temp_allocator)
+	for &pl in placements {
+		pl.unit, pl.layer = strings.clone(pl.unit, context.temp_allocator), strings.clone(pl.layer, context.temp_allocator)
+	}
+	testing.expect_value(t, len(placements), 38)
 
 	if !testing.expect(t, editor.editor_open(&e, path)) {
 		return
@@ -360,6 +368,7 @@ le07_sculpt_relight_save_reopen :: proc(t: ^testing.T) {
 	testing.expect_value(t, e.project.level.lighting, level.lighting)
 	testing.expect_value(t, e.project.level.wind, level.wind)
 	testing.expect_value(t, e.project.level.water, level.water)
+	testing.expect(t, slice.equal(e.project.placements[:], placements), "the units came back otherwise")
 	testing.expect(t, string(e.project.water) == string(water), "the water layer came back otherwise")
 	for v, i in heights {
 		if f32(terrain.height_quantise(v)) * terrain.HEIGHT_UNIT != e.project.heights[i] {

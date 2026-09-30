@@ -1,14 +1,16 @@
 package editor
 
-// The level editor (Stage 7 of notes/level-editor-plan.md): sculpt a level
-// project's terrain, light it, set its water and wind, and save it.
+// The level editor (Stages 7 and 8 of notes/level-editor-plan.md): sculpt
+// a level project's terrain, light it, set its water and wind, place its
+// units, and save it.
 //
-//   deimos-editor [<project>] [-new=ROWS] [-shot=OUT.png] [-size=WxH] [-row=N] [-zoom=1|2] [-tilt=DEGREES] [-tab=terrain|light|water|view] [-unlit]
+//   deimos-editor [<project>] [-new=ROWS] [-shot=OUT.png] [-size=WxH] [-row=N] [-zoom=1|2] [-tilt=DEGREES] [-tab=terrain|light|water|view|units] [-select=N] [-unlit]
 //
 // With no project it starts a new level, 480 wide and -new rows long
 // (3600 by default). -shot draws one frame in a hidden window, writes it
 // and exits: `mise run editor:shot`. The other flags set up the view, for
-// shots above all.
+// shots above all. The units come from the assets tree, $DR_ASSETS or
+// ./assets, and the data plugins beside it.
 
 import "core:fmt"
 import "core:os"
@@ -17,6 +19,8 @@ import "core:strings"
 
 import rl "vendor:raylib"
 
+import "dr:data"
+import "dr:sim"
 import "dr:terrain"
 
 // The build's version, as the game's (game/menu_main.odin): set by the
@@ -26,7 +30,7 @@ EDITOR_VERSION :: #config(DR_VERSION, "dev")
 WINDOW_WIDTH :: 1280
 WINDOW_HEIGHT :: 900
 
-USAGE :: "usage: deimos-editor [<project>] [-new=ROWS] [-shot=OUT.png] [-size=WxH] [-row=N] [-zoom=1|2] [-tilt=DEGREES] [-tab=terrain|light|water|view] [-unlit]"
+USAGE :: "usage: deimos-editor [<project>] [-new=ROWS] [-shot=OUT.png] [-size=WxH] [-row=N] [-zoom=1|2] [-tilt=DEGREES] [-tab=terrain|light|water|view|units] [-select=N] [-unlit]"
 
 main :: proc() {
 	flags := make(map[string]string, context.temp_allocator)
@@ -68,6 +72,20 @@ main :: proc() {
 	}
 	shot := flags["shot"] or_else ""
 
+	// The units a level can place: the originals' and the data plugins'
+	// (D52). No compiled plugin is in the editor, so none of theirs.
+	declared, problems := data.plugins_discover(data.plugins_roots())
+	for p in problems {
+		fmt.eprintfln("plugins: %s: %s", p.dir, p.reason)
+	}
+	sim.plugins_declare(declared)
+	// Every registry filled, as every main that touches the simulation does.
+	sim.register_all()
+	root := os.get_env("DR_ASSETS", context.temp_allocator)
+	if root == "" {
+		root = "assets"
+	}
+
 	rl.SetTraceLogLevel(.WARNING)
 	rl.SetConfigFlags(shot != "" ? {.WINDOW_HIDDEN} : {.WINDOW_RESIZABLE})
 	rl.InitWindow(i32(width), i32(height), "Deimos Rising level editor")
@@ -83,6 +101,10 @@ main :: proc() {
 	e: Editor
 	editor_init(&e)
 	defer editor_destroy(&e)
+	catalogue_load(&e.units, root)
+	if len(e.units.palette) == 0 {
+		fmt.eprintfln("deimos-editor: no units under %s: placing them needs `mise run assets:all`", root)
+	}
 	if len(plain) == 1 {
 		if !editor_open(&e, plain[0]) {
 			fmt.eprintfln("deimos-editor: cannot open %s", plain[0])
@@ -101,6 +123,19 @@ main :: proc() {
 		e.tilted, e.tilt = true, f32(number(flags, "tilt", 45))
 	}
 	e.live_light = !("unlit" in flags)
+	// The level's Nth unit selected, and the view on it.
+	if "select" in flags {
+		n := number(flags, "select", 0)
+		if n < 0 || n >= len(e.project.placements) {
+			fmt.eprintfln("deimos-editor: -select=%d: the level has %d units", n, len(e.project.placements))
+			os.exit(2)
+		}
+		e.selected = n
+		at := placement_point(&e.units, e.project.placements[n])
+		area := layout(f32(width), f32(height)).view
+		e.row = at.y - view_rows(&e.view, area) / 2
+		e.left = at.x - area.width / f32(2 * e.zoom)
+	}
 	if tab, given := flags["tab"]; given {
 		found := false
 		for t in Tab {

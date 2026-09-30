@@ -1503,3 +1503,49 @@ and le08's banks (about 9–10 levels off within 2 px of the water);
 le07's jungle, whose shadows still read darker in the colour (0.74 of
 the ground beside them); and le06 and le10, a little brighter
 (1.2).
+
+### D60 — Unit placement: the level's own list, undone whole, shown by the unit's flags
+
+Stage 8's placement is the editor's Units tab (docs/level-editor.md).
+
+- **The project holds the units as a list of its own.**
+  `terrain.Project.placements` is lifted out of `level.placements` on open
+  and written back on save, so the file format is unchanged. The record's
+  slice is fixed and in the project's arena; the editor's list grows and
+  shrinks.
+- **Undo keeps the whole list, not a diff.** The list is a few hundred
+  records at most (le07's 38 are 2 KB), and a copy cannot go wrong the
+  way a diff of moves, deletions and insertions can. It uses the
+  sliders' settle pattern: the list is kept once when a change starts,
+  and recorded when the mouse is let go, if it differs. So a drag, a
+  slide, a placement or a deletion is one undo, and a change back to the
+  start is none. The history counts its bytes as the lists swap.
+- **A placement's point is the one the spawn reads.** Ground x is the
+  map's column; air x is the play field's, 32 columns into the map
+  (`DAT_004e34b8`, named `sim.GROUND_PLACEMENT_SHIFT` for this). Whether
+  a unit is on the ground is its unit's `is_ground_based`, which is what
+  `spawn.odin` reads, not the record's layer. The layer is written from
+  that on placing, and read only for a unit this build lacks.
+- **The palette is the units with a preview face**: 134 of the 386,
+  among them all 114 the twelve levels place. The chaingun's and New
+  Weapons' units have none, and the editor imports no compiled plugin.
+  The core names neither.
+- **The look is a reading, not a recovery.** The original editor is not
+  in the release. The preview face is used where
+  `use_preview_appearance_in_placement_editor` asks for it or the first
+  state draws nothing; otherwise the first state's sprite. That sprite
+  faces the heading where `initial_heading_set_in_editor` is set, and
+  shows its least frame elsewhere (the game rolls one). The heading's
+  frame is the game's own: `sim.state_frame_for_angle` holds
+  `G_Entity::GetFrameForAngle`'s rounding, and `lifecycle.frame_for_angle`
+  calls it.
+- **Only a heading that counts is editable.** The spawn takes the
+  placement's heading only for `initial_heading_set_in_editor` units, so
+  only they get the slider and the Q and E keys.
+- **`sim.register_all()` arrives** (D50). The editor's `main` discovers
+  and declares the data plugins and registers, then loads the definitions
+  and sprite plates from `$DR_ASSETS`. Without them the palette is empty
+  and the tab says so.
+
+The two changes to `sim/` move code and name a constant. `oracle:diff`
+is exact, and tests/golden is unchanged.

@@ -58,6 +58,28 @@ Unit :: struct {
 	states:    []Unit_State,
 }
 
+// G_Entity::GetFrameForAngle: the first frame of the direction nearest a
+// heading (degrees). A def-only question, so the level editor can show a
+// placement facing the way it will spawn.
+state_frame_for_angle :: proc "contextless" (st: ^Unit_State, angle: i32) -> i32 {
+	dirs := max(st.num_directions, 1)
+	f := f32(angle) / f32(360 / dirs)
+	i := trunc_i32(f)
+	if f - f32(i) >= 0.5 {
+		i += 1
+	}
+	if i < 0 {
+		i = dirs - 1
+	} else if i > dirs - 1 {
+		i = 0
+	}
+	return i * st.frames_per_direction
+}
+
+// A ground placement's x is in map columns, 32 more than the play field's
+// (DAT_004e34b8); an air placement's is already in play-field columns.
+GROUND_PLACEMENT_SHIFT :: 32
+
 // A level placement (G_Level object record).
 Placement_Def :: struct {
 	unit:            Res_ID,

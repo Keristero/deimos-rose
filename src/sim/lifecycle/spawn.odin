@@ -57,7 +57,7 @@ eg_reset :: proc(s: ^sim.State, level: ^sim.Level_Def) {
 		r.terrain_effects = p.terrain_effects
 		r.loc = {f32(p.x), f32(p.y)}
 		if u.is_ground_based {
-			r.loc.x -= 32 // DAT_004e34b8
+			r.loc.x -= sim.GROUND_PLACEMENT_SHIFT
 		}
 	}
 }

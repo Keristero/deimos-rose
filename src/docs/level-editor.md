@@ -1,7 +1,7 @@
 # Level editor and remastered levels
 
 Progress on [notes/level-editor-plan.md](../../notes/level-editor-plan.md),
-stage by stage. The decisions are D51–D58 in [decisions.md](decisions.md).
+stage by stage. The decisions are D51–D60 in [decisions.md](decisions.md).
 
 | Stage | Status | Where |
 |---|---|---|
@@ -12,7 +12,7 @@ stage by stage. The decisions are D51–D58 in [decisions.md](decisions.md).
 | 5 — Terrain renderer, le07 proof of concept | **complete** | D55, below |
 | 6 — Recovering the 12 originals' heightmaps | **complete** | D56, D57, below |
 | 7 — The editor | **complete** | D58, below |
-| 8 — Materials, structures, placement | not started | |
+| 8 — Materials, structures, placement | placement **complete**; materials and structures not started | D60, below |
 | 9 — Export and Play | not started | |
 | 10 — HD layers, Remastered Levels | not started | |
 
@@ -207,7 +207,7 @@ game, and `dist` puts it in the release zip.
 
 The window is the panel on the left, the level in the middle, the whole
 level on the right with the part in view outlined, and a status line. The
-panel has Open, Save, Undo, Redo and New, then four tabs:
+panel has Open, Save, Undo, Redo and New, then five tabs:
 
 - **Terrain:** the brush. Raise, Lower, Flatten toward a target height, or
   Smooth, in a round, square or rough shape, with a size, a strength and a
@@ -219,6 +219,7 @@ panel has Open, Save, Undo, Redo and New, then four tabs:
 - **Water:** its height, shown or hidden, its colour; and the wind's
   direction and strength.
 - **View:** 1x or 2x, and a tilted view to look at the relief.
+- **Units** (Stage 8, below): the level's units.
 
 The wheel scrolls up and down the level, Shift+wheel across it at 2x,
 middle-drag pans, and clicking the overview goes there. Ctrl+Z, Ctrl+Y and
@@ -308,3 +309,131 @@ before they discard it.
 - Brushing on the tilted view.
 - The frame time with a large brush is not measured: only software GL
   under xvfb was at hand, and a dab redraws the rows in view.
+
+## Stage 8: placement
+
+The Units tab places the level's units. The rest of Stage 8 (materials,
+structure footprints and the helpers) is still to come.
+
+- **The palette** lists every unit with a preview face
+  (`editorPreviewSpriteFace_ID` not `none`), by name: 134 of the
+  originals' 386, among them all 114 types the twelve levels place, and
+  any data plugin's. Both, Ground and Air filter the palette and the map.
+  The chosen unit is shown as it will look.
+- **On the map:** a click on a unit selects it, and a drag moves it. A
+  click elsewhere puts down the palette's unit and selects it, and the
+  same drag positions it. Right-click a unit to make its kind the
+  palette's. Delete removes the selected one, Q and E turn it by 15°
+  (Shift: 1°), Esc selects none, and U shows or hides the units in every
+  tab. Outside the Units tab they are drawn fainter, and the brush works
+  as before.
+- **The selected unit:** its id, name, point and layer. It has a heading
+  slider when the level sets its heading. Its Stationary checkbox shows
+  where its unit allows one (papu, pasc, tala, tapu) or the level already
+  sets it. It has a Terrain effects checkbox and a Delete button. Under
+  them is what follows from the record: the row the screen's top reaches
+  when it spawns (the unit's row + 64, which is also drawn across the
+  map), its group size and chance where the unit has them, and the units
+  its first state spawns.
+- **The overview** shows a dot per unit: amber on the ground, blue in the
+  air.
+
+`mise run editor:shot -- -tab=units -select=N` draws the level's Nth unit
+selected, with the view on it.
+
+### Where a unit is
+
+A ground placement's x is the map's column. An air placement's x is the
+play field's, which starts 32 columns into the map (`DAT_004e34b8`, now
+`sim.GROUND_PLACEMENT_SHIFT`). y is the map row for both. Whether a
+placement is on the ground is decided by its unit's `isGroundBased_BOOL`,
+as the spawn decides it. The record's layer (`grnd` or `air `) is written
+from that when a unit is placed, and is used only for a unit this build
+does not have. A sprite is drawn centred on its point, as `U_Sprite_Draw`
+draws it. On le07, the recovered map's baked pads sit under their bases.
+
+### How a unit looks
+
+The original editor is not in the release, so what its preview flags mean
+is our reading:
+
+- the preview face and frame, when `usePreviewAppearanceInPlacementEditor`
+  is set or the unit's first state draws nothing (pause markers and
+  detectors: the paw and scroll icons of `EDPR`, and `grob`'s red square);
+- otherwise the first state's sprite. Where
+  `initialHeadingSetInEditor` is set it faces the heading, by the game's
+  own rounding (`sim.state_frame_for_angle`, which
+  `G_Entity::GetFrameForAngle` now calls too). Otherwise it shows its
+  least frame: the game rolls a frame between the least and the most.
+
+Only units with `initialHeadingSetInEditor` take the level's heading: the
+spawn gives the others their own. So only they get the slider and the
+keys. A heading another unit's record already has is kept as it is.
+
+The units a unit spawns (a platform's turrets, for one) are not drawn:
+they come from its states, not from the level.
+
+### Undo
+
+A change to the units keeps the whole list before it, a few hundred
+records at most (le07 has 38). An undo swaps the list back, as the tiles
+are swapped. A drag, a heading slide, a placement and a deletion each
+record once, when the mouse is let go. A change that ends where it began
+records nothing.
+
+### Loading the units
+
+`main` now calls `sim.register_all()` first (D50). It discovers the data
+plugins, declares them and registers every registry, then loads the
+definitions and sprite plates from `$DR_ASSETS` (or `./assets`) and the
+plugins. A plate's texture loads when it is first drawn. Without the
+assets tree the palette is empty and the tab says so. The editor imports
+no compiled plugin, so the chaingun's and New Weapons' units, which have
+no preview faces anyway, are not in it.
+
+The project keeps the units as a list of their own, which the editor
+grows and shrinks. It is lifted out of the level record on open and
+written back on save, so the file format is unchanged.
+
+### Verified
+
+`tests/editor`, on fixture units, without the original data:
+- the palette is the units with a preview face, sorted by name, and the
+  layer filter keeps the ground's or the air's;
+- ground and air placements map to the map and back, and a unit this
+  build lacks goes by its layer;
+- the look follows the flags: least frame, heading frame (8 directions:
+  90° is frame 2, 350° wraps to 0), preview when asked for or when the
+  state draws nothing;
+- placing, a ten-step drag, a turn and a deletion each undo to the list
+  before and redo to the list after; a change back to the start records
+  nothing;
+- the history's byte count follows the lists as they swap;
+- picking takes air over ground and the later over the earlier, and
+  obeys the filter and the frame's size (at least 6 px);
+- placements save into the level record and open as they were;
+- a unit placed in view is drawn there, its frame centred on its point;
+- in Stage 7's le07 case, le07's 38 placements come back from save and
+  reopen unchanged.
+
+`oracle:diff` is exact after the two changes to `sim/`, and tests/golden
+is unchanged.
+
+### Not as planned
+
+- **The palette is the editor build's units:** the originals' and every
+  data plugin's. A compiled plugin's units appear only if the editor
+  imports that plugin, and none does. Export recording a plugin
+  dependency waits for Stage 9, which writes the plugin.
+- **The stationary checkbox also shows where the level already sets
+  it**, so that a stationary unit can be seen and cleared.
+
+### Still to come in Stage 8
+
+- Materials: images dropped on the window, the paint brush, sampling that
+  breaks up tiling, the quilted starting library. Undo will add the splat
+  weights to its tiles.
+- Structure footprints: the `levels:bases` measurement, the footprint
+  shown live under its unit, and baked on export.
+- The helpers: the obstacle tool (`grob`), the vent group (`geys` with its
+  detector) and the level properties.

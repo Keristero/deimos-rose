@@ -1,7 +1,7 @@
 package editor
 
 // The level editor's state, and what it does to a project apart from the
-// window: open, make, save, stroke, undo, relight. The window and its
+// window: open, make, save, stroke, undo, relight, place units. The window and its
 // panels are in view.odin and panel.odin; tests/editor drives these
 // directly.
 
@@ -46,8 +46,11 @@ Editor :: struct {
 	brush:       Brush,
 	stroke:      bool,
 	last_dab:    [2]f32,
-	using view:  View,
-	using panel: Panel,
+	// What can be placed: catalogue_load's, or a test's own.
+	units:         Catalogue,
+	using placing: Placing,
+	using view:    View,
+	using panel:   Panel,
 }
 
 editor_init :: proc(e: ^Editor) {
@@ -56,6 +59,7 @@ editor_init :: proc(e: ^Editor) {
 	e.live_light = true
 	e.tilt = 45
 	e.new_length = NEW_LENGTH
+	placing_init(&e.placing)
 	style_dark()
 }
 
@@ -63,6 +67,8 @@ editor_destroy :: proc(e: ^Editor) {
 	view_destroy(&e.view)
 	terrain.renderer_destroy(&e.renderer)
 	history_destroy(&e.history)
+	catalogue_destroy(&e.units)
+	placing_destroy(&e.placing)
 	arena_free(e.arena)
 	e.arena, e.has_project = nil, false
 }
@@ -115,6 +121,8 @@ editor_take :: proc(e: ^Editor, p: terrain.Project, arena: ^virtual.Arena) {
 	history_clear(&e.history)
 	e.settings = settings_of(&e.project)
 	e.dirty, e.stroke = false, false
+	e.selected, e.hovered = -1, -1
+	e.dragging_unit, e.placements_changing = false, false
 	terrain.renderer_init(&e.renderer, &e.project)
 	view_reset(&e.view, &e.project)
 }
@@ -193,6 +201,7 @@ editor_dab :: proc(e: ^Editor, at: [2]f32, amount: f32) {
 
 editor_undo :: proc(e: ^Editor) -> bool {
 	editor_stroke_end(e)
+	placements_settle(e, false)
 	c, ok := history_undo(&e.history, &e.project)
 	editor_changed(e, c)
 	return ok
@@ -200,6 +209,7 @@ editor_undo :: proc(e: ^Editor) -> bool {
 
 editor_redo :: proc(e: ^Editor) -> bool {
 	editor_stroke_end(e)
+	placements_settle(e, false)
 	c, ok := history_redo(&e.history, &e.project)
 	editor_changed(e, c)
 	return ok
@@ -214,6 +224,12 @@ editor_changed :: proc(e: ^Editor, c: Change) {
 		e.settings = settings_of(&e.project)
 		e.dirty = true
 		e.view_stale, e.overview_stale = true, true
+	}
+	// The units are drawn over the views each frame: nothing to redraw.
+	if c.placements {
+		// The list is another; what was selected may not be in it.
+		e.selected, e.hovered, e.dragging_unit = -1, -1, false
+		e.dirty = true
 	}
 }
 

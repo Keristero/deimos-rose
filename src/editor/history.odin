@@ -5,9 +5,12 @@ package editor
 // A brush stroke keeps only the TILE x TILE tiles of the heights and the
 // water layer it touched, as they were before its first dab: changed
 // regions, not copies of the map (notes/level-editor-plan.md, Stage 7). A
-// change to the light, water or wind keeps the settings before it.
+// change to the light, water or wind keeps the settings before it, and a
+// change to the units the list of them before it: a few hundred records,
+// so a copy is cheaper to reason about than a diff.
 
 import "core:mem"
+import "core:slice"
 
 import "dr:data"
 import "dr:terrain"
@@ -42,8 +45,11 @@ Tile :: struct {
 }
 
 Edit :: struct {
-	tiles:    [dynamic]Tile,
-	settings: Maybe(Settings),
+	tiles:      [dynamic]Tile,
+	settings:   Maybe(Settings),
+	// On the heap. The records' strings are the project's, or the
+	// catalogue's: history is cleared before the project goes.
+	placements: Maybe([]data.Json_Placement),
 }
 
 History :: struct {
@@ -127,23 +133,32 @@ history_settings :: proc(h: ^History, before: Settings) {
 	history_push(h, {settings = before})
 }
 
-// What an undo or redo changed: the region of the map, and the settings.
+// Records a change of the units from `before`.
+history_placements :: proc(h: ^History, before: []data.Json_Placement) {
+	e := Edit{placements = slice.clone(before)}
+	h.bytes += edit_bytes(e)
+	history_push(h, e)
+}
+
+// What an undo or redo changed: the region of the map, the settings, the
+// units.
 Change :: struct {
-	area:     terrain.Rect,
-	map_:     bool,
-	settings: bool,
+	area:       terrain.Rect,
+	map_:       bool,
+	settings:   bool,
+	placements: bool,
 }
 
 history_undo :: proc(h: ^History, p: ^terrain.Project) -> (c: Change, ok: bool) {
-	return history_move(p, &h.done, &h.undone)
+	return history_move(h, p, &h.done, &h.undone)
 }
 
 history_redo :: proc(h: ^History, p: ^terrain.Project) -> (c: Change, ok: bool) {
-	return history_move(p, &h.undone, &h.done)
+	return history_move(h, p, &h.undone, &h.done)
 }
 
 @(private = "file")
-history_move :: proc(p: ^terrain.Project, from, to: ^[dynamic]Edit) -> (c: Change, ok: bool) {
+history_move :: proc(h: ^History, p: ^terrain.Project, from, to: ^[dynamic]Edit) -> (c: Change, ok: bool) {
 	if len(from) == 0 {
 		return
 	}
@@ -162,6 +177,15 @@ history_move :: proc(p: ^terrain.Project, from, to: ^[dynamic]Edit) -> (c: Chang
 		e.settings = settings_of(p)
 		settings_set(p, s)
 		c.settings = true
+	}
+	if ps, has := e.placements.?; has {
+		// The list swapped in may be longer or shorter than the one kept.
+		h.bytes += (len(p.placements) - len(ps)) * size_of(data.Json_Placement)
+		e.placements = slice.clone(p.placements[:])
+		clear(&p.placements)
+		append(&p.placements, ..ps)
+		delete(ps)
+		c.placements = true
 	}
 	append(to, e)
 	return c, true
@@ -195,6 +219,9 @@ edit_bytes :: proc(e: Edit) -> (n: int) {
 	for t in e.tiles {
 		n += tile_bytes(t)
 	}
+	if ps, has := e.placements.?; has {
+		n += len(ps) * size_of(data.Json_Placement)
+	}
 	return
 }
 
@@ -210,6 +237,9 @@ edit_destroy :: proc(e: ^Edit) {
 		delete(t.water)
 	}
 	delete(e.tiles)
+	if ps, has := e.placements.?; has {
+		delete(ps)
+	}
 }
 
 @(private = "file")

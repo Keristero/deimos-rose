@@ -70,6 +70,9 @@ Project :: struct {
 	material_images: [MAX_MATERIALS]Picture,
 	cliff, shore:    Rule,
 	level:           data.Json_Level,
+	// The level's units, lifted out of level.placements so the editor can
+	// add and remove them; saved back into the level record.
+	placements:      [dynamic]data.Json_Placement,
 }
 
 // A new project: flat ground, the originals' light, no water.
@@ -79,6 +82,7 @@ project_make :: proc(width, length: int, allocator := context.allocator) -> (p: 
 	p.canopy_material = -1
 	p.cliff.material, p.shore.material = -1, -1
 	p.materials = make([dynamic]Material, allocator)
+	p.placements = make([dynamic]data.Json_Placement, allocator)
 	p.level.background = {0, 0, width, length}
 	p.level.lighting = data.LIGHTING_MEASURED
 	return
@@ -127,6 +131,7 @@ project_save :: proc(p: ^Project, path: string) -> bool {
 		shore           = p.shore,
 		level           = p.level,
 	}
+	j.level.placements = p.placements[:]
 	full: string
 	j.height, full = side(dir, stem, "height")
 	h := picture_make(p.width, p.length, 1, 16, context.temp_allocator)
@@ -204,6 +209,8 @@ project_load :: proc(path: string, allocator := context.allocator) -> (p: Projec
 		}
 	}
 	p.cliff, p.shore, p.level = j.cliff, j.shore, j.level
+	append(&p.placements, ..p.level.placements)
+	p.level.placements = nil
 	return p, true
 }
 

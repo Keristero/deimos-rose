@@ -17,6 +17,7 @@ Tab :: enum c.int {
 	Light,
 	Water,
 	View,
+	Units,
 }
 
 // An action that would lose unsaved changes, asked for once already.
@@ -73,6 +74,10 @@ style_dark :: proc() {
 	rl.GuiSetStyle(.CHECKBOX, c.int(rl.GuiControlProperty.TEXT_COLOR_NORMAL), cast(c.int)rl.ColorToInt({200, 146, 56, 255}))
 	rl.GuiSetStyle(.CHECKBOX, c.int(rl.GuiControlProperty.TEXT_COLOR_FOCUSED), cast(c.int)rl.ColorToInt({240, 196, 100, 255}))
 	rl.GuiSetStyle(.CHECKBOX, c.int(rl.GuiCheckBoxProperty.CHECK_PADDING), 4)
+	// The palette: a long list of names, read down the left.
+	rl.GuiSetStyle(.LISTVIEW, c.int(rl.GuiListViewProperty.LIST_ITEMS_HEIGHT), 18)
+	rl.GuiSetStyle(.LISTVIEW, c.int(rl.GuiControlProperty.TEXT_ALIGNMENT), c.int(rl.GuiTextAlignment.TEXT_ALIGN_LEFT))
+	rl.GuiSetStyle(.LISTVIEW, c.int(rl.GuiControlProperty.TEXT_PADDING), 6)
 }
 
 // True when the action can go ahead: nothing unsaved, or asked twice.
@@ -119,6 +124,7 @@ editor_draw :: proc(e: ^Editor, l: Layout) {
 	panel_draw(e, l.panel)
 	status_draw(e, l.status)
 	editor_settings_settle(e, rl.IsMouseButtonDown(.LEFT))
+	placements_settle(e, rl.IsMouseButtonDown(.LEFT))
 }
 
 @(private = "file")
@@ -146,8 +152,10 @@ editor_input :: proc(e: ^Editor, l: Layout) {
 		v.left -= d.x / f32(v.zoom)
 	}
 
-	// The brush.
-	if rl.IsMouseButtonPressed(.LEFT) && v.over_map {
+	// The brush, or in the Units tab the units.
+	if Tab(e.tab) == .Units {
+		units_input(e)
+	} else if rl.IsMouseButtonPressed(.LEFT) && v.over_map {
 		editor_stroke_begin(e, v.cursor)
 	} else if rl.IsMouseButtonDown(.LEFT) && e.stroke {
 		editor_stroke_to(e, v.cursor, rl.GetFrameTime() * DABS_PER_SECOND)
@@ -155,7 +163,7 @@ editor_input :: proc(e: ^Editor, l: Layout) {
 	if rl.IsMouseButtonReleased(.LEFT) {
 		editor_stroke_end(e)
 	}
-	if rl.IsMouseButtonPressed(.RIGHT) && v.over_map {
+	if rl.IsMouseButtonPressed(.RIGHT) && v.over_map && Tab(e.tab) != .Units {
 		e.brush.target = height_at(p, int(v.cursor.x), int(v.cursor.y))
 		editor_message(e, "Target height %.1f", e.brush.target)
 	}
@@ -212,6 +220,10 @@ editor_input :: proc(e: ^Editor, l: Layout) {
 		v.view_stale, v.overview_stale = true, true
 	case rl.IsKeyPressed(.T):
 		v.tilted = !v.tilted
+	case rl.IsKeyPressed(.U):
+		e.show_units = !e.show_units
+	case Tab(e.tab) == .Units:
+		units_keys(e, shift)
 	}
 	for key, i in ([4]rl.KeyboardKey{.ONE, .TWO, .THREE, .FOUR}) {
 		if rl.IsKeyPressed(key) && !ctrl {
@@ -286,8 +298,8 @@ panel_draw :: proc(e: ^Editor, area: rl.Rectangle) {
 	}
 	y += ROW + 8
 
-	tw := (w - 3 * 2) / 4
-	rl.GuiToggleGroup({x, y, tw, 20}, "Terrain;Light;Water;View", &e.tab)
+	tw := (w - 4 * 2) / 5
+	rl.GuiToggleGroup({x, y, tw, 20}, "Terrain;Light;Water;View;Units", &e.tab)
 	y += ROW + 8
 
 	lighting := p.level.lighting
@@ -296,7 +308,7 @@ panel_draw :: proc(e: ^Editor, area: rl.Rectangle) {
 	case .Terrain:
 		heading(x, &y, w, "Brush")
 		mode := c.int(e.brush.mode)
-		rl.GuiToggleGroup({x, y, tw, 20}, "Raise;Lower;Flatten;Smooth", &mode)
+		rl.GuiToggleGroup({x, y, (w - 3 * 2) / 4, 20}, "Raise;Lower;Flatten;Smooth", &mode)
 		e.brush.mode = Brush_Mode(mode)
 		y += ROW
 		shape := c.int(e.brush.shape)
@@ -361,10 +373,14 @@ panel_draw :: proc(e: ^Editor, area: rl.Rectangle) {
 		y += ROW
 		rl.GuiCheckBox({x, y, 20, 20}, "Tilted (T)", &v.tilted)
 		y += ROW
+		rl.GuiCheckBox({x, y, 20, 20}, "Show the units (U)", &e.show_units)
+		y += ROW
 		slider(x, &y, w, "Tilt", &v.tilt, 5, 85, "%.0f deg")
 		slider(x, &y, w, "Turn", &v.turn, -180, 180, "%.0f deg")
 		y += 4
 		help(x, &y, w, {"Wheel: scroll.  Shift+wheel: across.", "Middle-drag: pan.  Page Up, Page Down,", "Home, End: along the level.", "Click the strip on the right to go there.", "The tilted view is to look at; sculpt", "from above."})
+	case .Units:
+		units_panel(e, x, &y, w, area.y + area.height)
 	}
 	if p.level.lighting != lighting || v.zoom != zoom || v.live_light != live {
 		v.view_stale = true
@@ -380,13 +396,11 @@ height_range :: proc(e: ^Editor) -> f32 {
 	return f32(int(max(e.renderer.surface_max, 64) / 64) + 1) * 64
 }
 
-@(private = "file")
 heading :: proc(x: f32, y: ^f32, w: f32, text: cstring) {
 	rl.GuiLine({x, y^, w, 16}, text)
 	y^ += 20
 }
 
-@(private = "file")
 slider :: proc(x: f32, y: ^f32, w: f32, label: cstring, value: ^f32, lo, hi: f32, format := "%.2f") {
 	rl.GuiLabel({x, y^, 96, 20}, label)
 	rl.GuiSlider({x + 96, y^, w - 96 - 56, 20}, nil, fmt.ctprintf(format, value^), value, lo, hi)
@@ -406,7 +420,6 @@ colour :: proc(x: f32, y: ^f32, w: f32, label: cstring, c: ^[3]u8) {
 	y^ += ROW
 }
 
-@(private = "file")
 help :: proc(x: f32, y: ^f32, w: f32, lines: []cstring) {
 	for line in lines {
 		rl.GuiLabel({x, y^, w, 14}, line)
@@ -430,6 +443,9 @@ status_draw :: proc(e: ^Editor, area: rl.Rectangle) {
 		if p.level.water.visible && height_at(p, x, y) < p.level.water.height {
 			fmt.sbprintf(&sb, ", under water")
 		}
+	}
+	if Tab(e.tab) == .Units {
+		units_status(e, &sb)
 	}
 	if rl.GetTime() < e.message_until {
 		fmt.sbprintf(&sb, "   |   %s", string(cstring(raw_data(e.message[:]))))

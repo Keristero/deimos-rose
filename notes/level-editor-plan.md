@@ -393,7 +393,9 @@ report. They are a starting point for artists, not finished levels.
 - Add `editor/` to `check`.
 - Its `main` calls `sim.register_all()` first (D50), since it reads unit
   definitions. *Corrected in Stage 7:* it reads none until Stage 8 places
-  units, so the call arrives with placement.
+  units, so the call arrives with placement. *Done in Stage 8:* `main`
+  discovers and declares the data plugins, calls it, then loads the
+  definitions.
 - The UI uses raygui panels. The viewport is Stage 5's renderer, with an
   optional tilted camera for inspecting relief. *As built:* the tilted view
   is the lit top-down render on a mesh of the heights, for looking at; the
@@ -464,19 +466,29 @@ Exported plugins include it, so they can be reopened.
   sprites only baked on export".
 
 **Placement:**
-- A unit palette drawn from every enabled plugin's definitions.
+- A unit palette drawn from every enabled plugin's definitions. *Corrected
+  in Stage 8:* from the units with a preview face (134 of the originals'
+  386, all 114 the levels place) in the editor's build: the originals' and
+  the data plugins'. A compiled plugin's units appear only if the editor
+  imports it; none does, and the chaingun's and New Weapons' units have no
+  preview faces.
 - Previews use the original editor's own unit fields:
   - `use_preview_appearance_in_placement_editor` and
     `editor_preview_sprite_face/frame`, which are parsed and unused today;
   - `initial_heading_set_in_editor` decides whether heading is editable.
+    *As built:* it also turns the preview to the heading, by the game's
+    rounding; other units show their first state's least frame. The spawn
+    takes the level's heading only for these units.
 - The layer is set from `is_ground_based`.
 - The stationary checkbox appears only where
   `allow_stationary_option_in_placement_editor` is set (papu, pasc, tala and
-  tapu).
+  tapu). *Corrected in Stage 8:* and where the level already sets it, so it
+  can be cleared.
 - A `terrain_effects` checkbox.
 
 **The spawner panel** has no wave options to show, because the record holds
-only the 7 placement fields. It shows what follows from them:
+only the 7 placement fields. It shows what follows from them (*as built:*
+under the selected unit, with the spawn row drawn across the map):
 - the row at which the unit spawns (64 rows ahead of the view);
 - group size and chance, from the unit definition;
 - its spawn sets.
