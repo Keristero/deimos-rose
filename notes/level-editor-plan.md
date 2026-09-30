@@ -472,6 +472,12 @@ Exported plugins include it, so they can be reopened.
   unit. On export it is baked in with the scene's lighting, as a decal plus
   a height block so it casts its shadow. That covers the spec's "ground unit
   sprites only baked on export".
+- *As built:* crops at x and x − 32 settled nothing new (D60 had: ground x
+  is the map's column). The crops are compared by correlation, since a
+  base takes each map's light and tint. 12 types have one base, in
+  `assets/bases`. The laser base's, laser platform's and twin gun's pads
+  are baked at angles that are not their headings, so they have none yet
+  (D62).
 
 **Placement:**
 - A unit palette drawn from every enabled plugin's definitions. *Corrected
@@ -503,9 +509,12 @@ under the selected unit, with the spawn row drawn across the map):
 
 **Helpers:**
 - **Obstacle tool:** places the invisible `grob` units that give scenery
-  collision (33 in the originals).
+  collision (33 in the originals). *As built:* a button that picks it in
+  the palette.
 - **Vent group:** places `geys` vents with the matching bonus detector
   (`gebd`, `05gb` or `gbd2`, which fire at 2, 3 or 4 destroyed vents).
+  *As built:* a Vent button; the detector follows the vents, one for
+  their number on the northmost, as in every original.
 - **Level properties:** name, identifier, description, music, briefing,
   `start_weapons`, wind, skybox. *As built:* the Level tab, with the
   copyright too; the wind stays in the Water tab. The game's level record

@@ -205,6 +205,7 @@ run = [
   "odin check terrain $DR_COLL -vet -strict-style -no-entry-point",
   "odin check tools/terrain $DR_COLL -vet -strict-style",
   "odin check tools/materials $DR_COLL -vet -strict-style",
+  "odin check tools/bases $DR_COLL -vet -strict-style",
   "odin check tests/terrain $DR_COLL -vet -strict-style -no-entry-point",
   "odin check editor $DR_COLL -vet -strict-style",
   "odin check tests/editor $DR_COLL -vet -strict-style -no-entry-point",
@@ -584,6 +585,14 @@ headless() {
 headless python3 tools/terrain_mod/package.py --recovered "$DR_SRC/../work/recovered" \
   --classic "$DR_SRC/plugins/classic_levels" --renderer "$DR_BUILD/terrain$DR_EXT" --out "${OUT:-$DR_SRC/plugins/recovered_levels}"
 '''
+
+[tasks."levels:bases"]
+description = "Measure which units' bases the original maps have baked in: crops the map under every ground placement of the twelve levels, at x and x-32, groups them by unit, prints how well each type's crops agree against the ground beside them, and writes each baked base (the crops' median where they agree) into assets/bases for the level editor (OUT=dir for elsewhere)"
+depends = ["setup"]
+run = """
+odin build tools/bases $DR_COLL $DR_LINK -o:speed -out:$DR_BUILD/bases$DR_EXT
+"$DR_BUILD/bases$DR_EXT" "${OUT:-$DR_ASSETS/bases}"
+"""
 
 [tasks."materials:library"]
 description = "Quilt the level editor's material library from the recovered levels' unlit colour (work/recovered, terrain:recover-all) into assets/materials, tagged original-derived: tools/materials/library.json says which ground from where (OUT=dir for elsewhere)"

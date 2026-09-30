@@ -6,6 +6,7 @@ package editor_tests
 import "core:c"
 import "core:os"
 import "core:slice"
+import "core:strings"
 import "core:testing"
 
 import rl "vendor:raylib"
@@ -211,6 +212,61 @@ placing_undoes_as_one :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(e.history.done), done)
 }
 
+// When the vents change, the level has the one detector for their number
+// on the northmost vent, as the originals have; a change of other units
+// leaves the detectors as they are; and the detector undoes with the vents.
+@(test)
+vents_keep_their_detector :: proc(t: ^testing.T) {
+	e: editor.Editor
+	fixture_editor(&e)
+	defer fixture_destroy(&e)
+	vent :: proc(e: ^editor.Editor, x, y: int) {
+		editor.placements_changing(e)
+		append(&e.project.placements, data.Json_Placement{unit = editor.VENT, layer = editor.LAYER_GROUND, x = x, y = y})
+		editor.placements_settle(e, false)
+	}
+	detectors :: proc(e: ^editor.Editor) -> (found: [dynamic]data.Json_Placement) {
+		found.allocator = context.temp_allocator
+		for pl in e.project.placements {
+			if pl.unit == "gebd" || pl.unit == "05gb" || pl.unit == "gbd2" {
+				append(&found, pl)
+			}
+		}
+		return
+	}
+	vent(&e, 100, 300)
+	testing.expect_value(t, len(detectors(&e)), 0)
+	vent(&e, 200, 120)
+	if d := detectors(&e); testing.expect_value(t, len(d), 1) {
+		testing.expect(t, d[0].unit == "gebd" && d[0].x == 200 && d[0].y == 120, "not gebd on the northmost vent")
+	}
+	vent(&e, 50, 250)
+	vent(&e, 60, 90)
+	if d := detectors(&e); testing.expect_value(t, len(d), 1) {
+		testing.expect(t, d[0].unit == "gbd2" && d[0].x == 60 && d[0].y == 90, "not gbd2 on the northmost vent")
+	}
+	vent(&e, 70, 400)
+	testing.expect_value(t, len(detectors(&e)), 0)
+
+	testing.expect(t, editor.editor_undo(&e))
+	if d := detectors(&e); testing.expect_value(t, len(d), 1) {
+		testing.expect(t, d[0].unit == "gbd2", "the undo did not bring back the detector")
+	}
+	// A detector moved by hand stays where it is while the vents do not change.
+	for &pl in e.project.placements {
+		if pl.unit == "gbd2" {
+			editor.placements_changing(&e)
+			pl.x = 10
+		}
+	}
+	editor.editor_place(&e, unit_index(&e, "tgnd"), {300, 300})
+	editor.placements_settle(&e, false)
+	testing.expect_value(t, detectors(&e)[0].x, 10)
+	n, north := editor.vents_count(e.project.placements[:])
+	testing.expect_value(t, n, 4)
+	testing.expect_value(t, e.project.placements[north].y, 90)
+}
+
 // The history keeps count of the lists it holds as they swap.
 @(test)
 placement_history_counts_its_bytes :: proc(t: ^testing.T) {
@@ -268,7 +324,8 @@ placements_save_and_reopen :: proc(t: ^testing.T) {
 	testing.expect(t, q.level.placements == nil, "the level record keeps a second copy")
 }
 
-// A unit placed in view is drawn there, its frame centred on its point.
+// A unit placed in view is drawn there, its frame centred on its point,
+// over the base the maps bake under it, which moves with it.
 units_draw_on_the_map :: proc(t: ^testing.T) {
 	L :: 1000
 	p := hills(120, L, context.temp_allocator)
@@ -286,6 +343,9 @@ units_draw_on_the_map :: proc(t: ^testing.T) {
 	red := rl.GenImageColor(12, 6, {255, 0, 0, 255})
 	defer rl.UnloadImage(red)
 	e.units.plates[sim.res_id("tfix")] = {frames = FIXTURE_FRAMES[:], texture = rl.LoadTextureFromImage(red), loaded = true}
+	blue := rl.GenImageColor(10, 10, {0, 0, 255, 255})
+	defer rl.UnloadImage(blue)
+	e.units.bases[strings.clone("tgnd")] = {texture = rl.LoadTextureFromImage(blue), loaded = true}
 	e.tab = c.int(editor.Tab.Units)
 
 	W, H :: 800, 600
@@ -308,4 +368,17 @@ units_draw_on_the_map :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, red_at(px, cx - 2, cy - 2) && red_at(px, cx + 1, cy + 1), "the unit's frame is not at its point")
 	testing.expect(t, !red_at(px, cx + 3, cy) && !red_at(px, cx - 3, cy), "the unit's frame is wider than its frame")
+	// The base is 10 x 10, from 5 left and 5 up of the point, under the frame.
+	blue_at :: proc(px: []u8, x, y: int) -> bool {
+		c := px[(y * W + x) * 3:][:3]
+		return c[0] == 0 && c[1] == 0 && c[2] == 255
+	}
+	testing.expect(t, blue_at(px, cx - 5, cy - 5) && blue_at(px, cx + 4, cy + 4), "the unit's base is not under its point")
+	testing.expect(t, !blue_at(px, cx - 6, cy) && !blue_at(px, cx + 5, cy), "the unit's base is wider than its image")
+
+	e.project.placements[0].x += 20
+	moved := editor.editor_shot(&e, W, H)
+	defer rl.UnloadImage(moved)
+	px = ([^]u8)(moved.data)[:W * H * 3]
+	testing.expect(t, blue_at(px, cx + 15, cy - 5) && !blue_at(px, cx - 5, cy - 5), "the base did not move with its unit")
 }

@@ -7,6 +7,8 @@ package editor
 // editor is not in the release -- so unit_look is a reading of them, not a
 // recovered rule (docs/level-editor.md, Stage 8).
 
+import "core:encoding/json"
+import "core:os"
 import "core:slice"
 import "core:strings"
 
@@ -22,7 +24,23 @@ Catalogue :: struct {
 	palette: [dynamic]int,
 	// Each sprite plate's texture, loaded when first drawn.
 	plates:  map[sim.Res_ID]Plate,
+	// The bases the original maps have baked under these units, by unit
+	// id: `mise run levels:bases` measures them (docs/level-editor.md).
+	bases:   map[string]Plate,
 }
+
+// assets/bases/index.json, as tools/bases writes it.
+@(private = "file")
+Json_Bases :: struct {
+	format: string,
+	bases:  []struct {
+		unit:  string,
+		image: string,
+	},
+}
+
+BASES_DIR :: "bases"
+BASES_FORMAT :: "deimos-rising.bases"
 
 Plate :: struct {
 	frames:  []data.Json_Frame, // nil: no such plate
@@ -38,6 +56,34 @@ catalogue_load :: proc(c: ^Catalogue, root: string) {
 	data.extra_defs_load(&c.defs)
 	c.assets = data.assets_open(root)
 	catalogue_index(c)
+	bases_load(c, root)
+}
+
+// The baked bases, from root/bases; none when they have not been measured.
+@(private = "file")
+bases_load :: proc(c: ^Catalogue, root: string) {
+	dir := strings.concatenate({root, "/", BASES_DIR}, context.temp_allocator)
+	blob, err := os.read_entire_file(strings.concatenate({dir, "/index.json"}, context.temp_allocator), context.temp_allocator)
+	index: Json_Bases
+	if err != nil || json.unmarshal(blob, &index, allocator = context.temp_allocator) != nil || index.format != BASES_FORMAT {
+		return
+	}
+	for b in index.bases {
+		c.bases[strings.clone(b.unit)] = {image = strings.concatenate({dir, "/", b.image})}
+	}
+}
+
+// The base baked under `unit`'s structures, when it has one.
+catalogue_base :: proc(c: ^Catalogue, unit: string) -> (t: rl.Texture2D, ok: bool) {
+	p, have := &c.bases[unit]
+	if !have {
+		return
+	}
+	if !p.loaded {
+		p.loaded = true
+		p.texture = rl.LoadTexture(strings.clone_to_cstring(p.image, context.temp_allocator))
+	}
+	return p.texture, p.texture.id != 0
 }
 
 // Fills the palette from defs.units.
@@ -69,6 +115,14 @@ catalogue_destroy :: proc(c: ^Catalogue) {
 		}
 	}
 	delete(c.plates)
+	for id, b in c.bases {
+		if b.texture.id != 0 {
+			rl.UnloadTexture(b.texture)
+		}
+		delete(id)
+		delete(b.image)
+	}
+	delete(c.bases)
 	delete(c.palette)
 }
 

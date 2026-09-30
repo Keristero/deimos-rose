@@ -1586,3 +1586,31 @@ Stage 8's materials are the editor's Paint tab (docs/level-editor.md).
 
 The game's code is unchanged but for the three fields it reads and does
 not use. `oracle:diff` is exact, and tests/golden is unchanged.
+
+### D62 — Structure bases measured from the maps by correlation; the vents' detector kept by rule
+
+Stage 8's structure footprints and helpers (docs/level-editor.md).
+
+- **A base is found by how its crops correlate, not by their colours.**
+  The same base is drawn in each map's light and tint, so crops of it on
+  desert and on grass differ in colour, and a colour test missed 7 of
+  the 10 bases a montage showed. Each crop's brightness is taken
+  relative to its own mean and spread. A type is baked when its crops
+  score 0.5 or more and 0.25 over the ground beside them. Provisional:
+  the bar is set from the one table there is, where the single-image
+  bases score 0.71–0.94 and the rest 0.49 or less.
+- **The bases are committed assets**, in `assets/bases`, made by `mise
+  run levels:bases` from the Classic Levels maps, which are themselves
+  extracted (D29). They are regenerable from an installer copy.
+- **A base is drawn unturned**, whatever its unit's heading: the maps
+  show no base turning with its heading (the hospital's agree unturned;
+  turning crops by heading lowers every score).
+- **The vents' detector is the editor's to keep.** In every original,
+  the one detector counts all the level's vents and sits on the
+  northmost. When the vents change, the editor puts it back on that rule
+  in the same edit, and leaves it alone otherwise, so an original opens
+  and saves unchanged. The detectors' counts are hardcoded
+  (`editor/helpers.odin`), from their rules' ranges.
+
+The game is unchanged. `oracle:diff` is exact, and tests/golden is
+unchanged.

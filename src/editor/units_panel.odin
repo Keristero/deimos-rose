@@ -87,6 +87,8 @@ units_panel :: proc(e: ^Editor, x: f32, y: ^f32, w: f32, bottom: f32) {
 		y^ += 44
 	}
 
+	helpers_panel(e, x, y, w)
+
 	if e.selected < 0 || e.selected >= len(e.project.placements) {
 		y^ += 4
 		help(x, y, w, {"Pick a unit, then click the map to place it.", "Click a unit to select it; drag to move it.", "Right-click a unit to pick its kind.", "Q, E: turn it, where the level sets its heading", "(Shift: by 1 degree).", "Delete: remove it.  Esc: select none.", "U: show or hide the units."})
@@ -243,6 +245,12 @@ units_draw :: proc(e: ^Editor, o: [2]f32, area: rl.Rectangle) {
 			at := o + placement_point(&e.units, pl) * z
 			if at.y < area.y - 128 || at.y > area.y + area.height + 128 {
 				continue
+			}
+			// Its base, which the original baked into the map, moving with
+			// it; drawn over itself where the map already has it.
+			if base, ok := catalogue_base(&e.units, pl.unit); ok && ground {
+				size := [2]f32{f32(base.width), f32(base.height)}
+				rl.DrawTextureEx(base, at - {math.floor(size.x / 2), math.floor(size.y / 2)} * z, 0, z, tint)
 			}
 			drawn := false
 			if u := catalogue_unit(&e.units, pl.unit); u != nil {

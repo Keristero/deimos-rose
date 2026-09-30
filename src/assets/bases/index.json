@@ -1,0 +1,137 @@
+{
+  "format": "deimos-rising.bases",
+  "bases": [
+    {
+      "unit": "cair",
+      "image": "cair.png",
+      "size": [
+        42,
+        42
+      ],
+      "placements": 3,
+      "agreement": 0.91792935,
+      "beside": 0.02659496
+    },
+    {
+      "unit": "came",
+      "image": "came.png",
+      "size": [
+        42,
+        42
+      ],
+      "placements": 2,
+      "agreement": 0.91561174,
+      "beside": -0.09371790
+    },
+    {
+      "unit": "car2",
+      "image": "car2.png",
+      "size": [
+        43,
+        43
+      ],
+      "placements": 10,
+      "agreement": 0.85899359,
+      "beside": -0.01686162
+    },
+    {
+      "unit": "cara",
+      "image": "cara.png",
+      "size": [
+        43,
+        43
+      ],
+      "placements": 2,
+      "agreement": 0.70855105,
+      "beside": 0.18450703
+    },
+    {
+      "unit": "csht",
+      "image": "csht.png",
+      "size": [
+        42,
+        42
+      ],
+      "placements": 2,
+      "agreement": 0.82664204,
+      "beside": 0.43693987
+    },
+    {
+      "unit": "fgnu",
+      "image": "fgnu.png",
+      "size": [
+        61,
+        61
+      ],
+      "placements": 3,
+      "agreement": 0.85403234,
+      "beside": -0.02981685
+    },
+    {
+      "unit": "hosp",
+      "image": "hosp.png",
+      "size": [
+        74,
+        75
+      ],
+      "placements": 2,
+      "agreement": 0.81902438,
+      "beside": 0.00977206
+    },
+    {
+      "unit": "irm2",
+      "image": "irm2.png",
+      "size": [
+        42,
+        42
+      ],
+      "placements": 2,
+      "agreement": 0.93695527,
+      "beside": 0.09911288
+    },
+    {
+      "unit": "jg02",
+      "image": "jg02.png",
+      "size": [
+        46,
+        46
+      ],
+      "placements": 3,
+      "agreement": 0.92946106,
+      "beside": 0.11386886
+    },
+    {
+      "unit": "ns02",
+      "image": "ns02.png",
+      "size": [
+        50,
+        50
+      ],
+      "placements": 7,
+      "agreement": 0.79866534,
+      "beside": -0.02204710
+    },
+    {
+      "unit": "nust",
+      "image": "nust.png",
+      "size": [
+        50,
+        50
+      ],
+      "placements": 3,
+      "agreement": 0.72933882,
+      "beside": 0.01552477
+    },
+    {
+      "unit": "popu",
+      "image": "popu.png",
+      "size": [
+        45,
+        45
+      ],
+      "placements": 8,
+      "agreement": 0.88680458,
+      "beside": 0.01240347
+    }
+  ]
+}

@@ -12,7 +12,7 @@ stage by stage. The decisions are D51–D60 in [decisions.md](decisions.md).
 | 5 — Terrain renderer, le07 proof of concept | **complete** | D55, below |
 | 6 — Recovering the 12 originals' heightmaps | **complete** | D56, D57, below |
 | 7 — The editor | **complete** | D58, below |
-| 8 — Materials, structures, placement | placement, materials and level properties **complete**; structures and helpers not started | D60, D61, below |
+| 8 — Materials, structures, placement | **complete** but for the exit, which is Stage 9's | D60, D61, D62, below |
 | 9 — Export and Play | not started | |
 | 10 — HD layers, Remastered Levels | not started | |
 
@@ -316,9 +316,9 @@ before they discard it.
 
 ## Stage 8: placement
 
-The Units tab places the level's units. The Paint tab's materials and the
-Level tab's properties follow, below. Structure footprints and the
-placing helpers are still to come.
+The Units tab places the level's units. The Paint tab's materials, the
+Level tab's properties, the structures' baked bases and the placing
+helpers follow, below.
 
 - **The palette** lists every unit with a preview face
   (`editorPreviewSpriteFace_ID` not `none`), by name: 134 of the
@@ -581,9 +581,133 @@ The game does not show them yet.
   needs the recovered projects, which need the recovery's models, not
   only the installer. It is committed, so it is there without them.
 
-### Still to come in Stage 8
+## Stage 8: structure footprints
 
-- Structure footprints: the `levels:bases` measurement, the footprint
-  shown live under its unit, and baked on export (Stage 9).
-- The helpers: the obstacle tool (`grob`) and the vent group (`geys` with
-  its detector).
+The original baked each structure's base into the map's render, and the
+game draws the unit's sprite on top of it (making-of; findings). The
+editor draws that base under its unit, where the unit is. So a structure
+moved, or placed on a new level, shows its pad as it will look once
+Stage 9 bakes it in.
+
+`mise run levels:bases` (`tools/bases`) measures which units have one:
+1. For every ground placement of the twelve levels, it crops the map
+   under the unit: the unit's frame and 8 px around.
+2. It groups the crops by unit type, taking each crop's brightness
+   relative to its own mean and spread. A base is drawn in each map's
+   light and tint, so its colours differ from desert to grass where its
+   shapes do not.
+3. The score is the crops' mean correlation over the frame, pair by pair:
+   1 when they are alike, 0 when unrelated. It is compared with the same
+   score for crops of the ground a crop's width beside them.
+4. A type is baked when its crops score 0.5 or more, and 0.25 over the
+   ground beside them. Its base is the crops' median colour where the
+   pairs agree, smoothed and filled in. Each base is written to
+   `assets/bases/<unit>.png`, centred on the unit's point, and listed in
+   `index.json`.
+
+Types placed once agree with nothing, and are undecided. Of the 38 types
+placed twice or more, 12 have one base:
+
+| Unit | Name | Placed | At x | At x − 32 | Beside |
+|---|---|---|---|---|---|
+| `cair` | Cap - Iris | 3 | 0.92 | 0.59 | 0.03 |
+| `came` | Cap - Metal | 2 | 0.92 | 0.28 | −0.09 |
+| `car2` | Cap - Radar Mk 2 | 10 | 0.86 | 0.71 | −0.02 |
+| `cara` | Cap - Radar | 2 | 0.71 | 0.64 | 0.18 |
+| `csht` | Cap - Shield Station | 2 | 0.83 | 0.55 | 0.44 |
+| `fgnu` | Flare Gun Nuke | 3 | 0.85 | 0.70 | −0.03 |
+| `hosp` | Hospital | 2 | 0.82 | 0.88 | 0.01 |
+| `irm2` | Iris - Mine 2 | 2 | 0.94 | 0.81 | 0.10 |
+| `jg02` | Juno Gun 2 | 3 | 0.93 | 0.74 | 0.11 |
+| `ns02` | Nuke Station Mk 2 | 7 | 0.80 | 0.58 | −0.02 |
+| `nust` | Nuke Station | 3 | 0.73 | 0.48 | 0.02 |
+| `popu` | Popup | 8 | 0.89 | 0.69 | 0.01 |
+
+And some that do not:
+
+| Unit | Name | Placed | At x | At x − 32 | Beside | By eye |
+|---|---|---|---|---|---|---|
+| `bala` | Base - Laser | 9 | 0.30 | 0.52 | 0.04 | baked pads, at angles of their own |
+| `plla` | Platform - Laser | 6 | 0.24 | 0.38 | 0.01 | baked pads, at angles of their own |
+| `twgu` | Twin Gun | 5 | 0.30 | 0.24 | −0.04 | baked pads, at angles of their own |
+| `pola` | Popup - Large | 7 | 0.49 | 0.44 | −0.05 | baked, in two looks |
+| `geys` | Geyser | 9 | 0.43 | −0.03 | 0.01 | a vent, drawn into different ground |
+| `swgu` | Swivel Gun | 2 | 0.12 | 0.59 | 0.16 | no base: the same kind of rock slope |
+| `bsde` | Bonus Station - Desert | 31 | 0.01 | 0.19 | 0.03 | no base: on dune edges |
+
+What it settled:
+- **A ground placement's x is the map's column**, as `spawn.odin` reads
+  it. Crops at x − 32 score less for 11 of the 12. The hospital's pad is
+  so wide that a crop 32 px along still holds most of it. The x − 32
+  scores that come out higher are the laser base's and the platform's
+  pads, whose edge and shadow fill half such a crop, and units always
+  put on the same kind of slope. By eye, every pad is centred on x.
+- **A base does not turn with its unit's heading.** The hospital's two
+  agree unturned at different headings. Turning each crop back by its
+  heading, either way, makes every type agree less: the laser base
+  drops from 0.30 to 0.05. The laser base's, platform's and twin gun's
+  pads are baked at angles that are not their headings, so no one image
+  is theirs, and they are left out.
+
+The editor reads `assets/bases` with the units and draws a base under its
+unit, unturned, at the unit's point, in every tab. On a recovered level
+the map already has the base there, so it draws over its own image. A
+base moved away also leaves the recovered map's copy behind, until
+Stage 9's export bakes the level afresh.
+
+## Stage 8: the placing helpers
+
+Under the palette, **Obstacle** and **Vent** pick the invisible obstacle
+(`grob`, 33 in the originals) and the vent (`geys`).
+
+**The vents' detector** follows the originals' rule:
+- A destroyed vent leaves a flag, `gedf`.
+- A detector waits until exactly its number of flags have appeared,
+  anywhere in the level: `gebd` 2, `05gb` 3, `gbd2` 4, by their rules'
+  ranges. Then it pays out.
+- The three levels with vents each have one detector, for all their
+  vents, on the northmost vent, the last the player reaches:
+  - le05's `gbd2` is on its vent at (122, 165);
+  - le07's `gebd` is 2 px from its vent at (264, 443);
+  - le11's `05gb` is 1 px from its vent at (158, 1410).
+
+So when a change to the units changes the vents, the editor removes the
+detectors, then puts the one for their number on the northmost vent, as
+part of the same undo. With one vent, or more than four, there is none,
+and the tab says so. A level whose vents are not touched keeps its
+detectors where they are, so an original opens and saves as it was.
+
+**Enemies from other plugins** are in the palette: every data plugin's
+units with a preview face, as the placement section says.
+
+### Verified
+
+- `mise run levels:bases`: the table above. Each base was checked by eye
+  against montages of its crops, and on le09 in the editor, under its
+  units.
+- `tests/editor`: a unit's base is drawn under its frame, its own size,
+  and moves with it. The vents' detector is gebd for two and gbd2 for
+  four, each on the northmost vent, and none for five. It comes back
+  with an undo, and is left where it was moved while the vents do not
+  change.
+
+### Not as planned
+
+- **Only 12 structures have one base.** Three more (the laser base, the
+  laser platform, the twin gun) have baked pads, but not one image. Their
+  pads could be turned to match, once what sets their angle is known.
+- **The bases are measured from the maps, not the plan's crops "at both
+  x and x − 32" to decide the shift.** The shift was already settled
+  (D60). The tool reports x − 32 as a check, and it agrees.
+- **The obstacle and vent tools are buttons that pick the unit**: placing,
+  moving and deleting them is the palette's. What the vent group adds is
+  the detector, kept by the originals' rule.
+
+### Still open
+
+- Baking a base, and the structure's height, into the map on export
+  (Stage 9).
+- The turned pads of the laser base, laser platform and twin gun, and
+  the large popup's two looks.
+- A recovered level keeps its baked bases in its unlit colour; a moved
+  structure leaves its old one there.

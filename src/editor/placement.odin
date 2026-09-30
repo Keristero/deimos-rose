@@ -153,6 +153,7 @@ placements_settle :: proc(e: ^Editor, dragging: bool) {
 		return
 	}
 	e.placements_changing = false
+	vents_settle(e)
 	if slice.equal(e.placements_before[:], e.project.placements[:]) {
 		return
 	}
