@@ -23,6 +23,10 @@ import "dr:ui"
 MAX_STEPS_PER_FRAME :: 4
 
 main :: proc() {
+	settings := settings_parse(os.args)
+	if settings.plugins != "" {
+		data.plugins_root_add(settings.plugins)
+	}
 	// Plugin folders with a plugin.json and no code in this build (D52):
 	// registered after the compiled plugins, by name.
 	declared, problems := data.plugins_discover(data.plugins_roots())
@@ -32,7 +36,6 @@ main :: proc() {
 	sim.plugins_declare(declared)
 	// Every registry filled, in the same order on every platform.
 	sim.register_all()
-	settings := settings_parse(os.args)
 	// Saved preferences, with this run's launch flags layered on top.
 	// Headless captures use the defaults instead, so a player's own
 	// settings can never change what a comparison shot shows.
@@ -174,6 +177,9 @@ main :: proc() {
 	flow: Flow
 	flow_init(&flow, root, &defs, state, &renderer, &ps)
 	defer flow_destroy(&flow)
+	if !flow_launch(&flow, settings) {
+		os.exit(1)
+	}
 
 	// Every frame is drawn into this fixed 1280x960 canvas, then scaled to
 	// fit the window, letterboxed -- which is what lets fullscreen (and a

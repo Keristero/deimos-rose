@@ -81,6 +81,11 @@ Level_Def :: struct {
 	// Not the original's: whose level this is (D53). CORE for the
 	// original's twelve, which the Classic Levels plugin holds.
 	campaign:   Plugin_ID,
+	// Not the original's: the weapons a player starts this level with, in
+	// place of the ones its number brings (D54). Zero when the level names
+	// none, as every original does.
+	start_air:    Res_ID,
+	start_ground: Res_ID,
 	background: Rect,
 	placements: []Placement_Def,
 	// The media mask (im16 TGA named by the level's mediaMask_ID): raw 16-bit

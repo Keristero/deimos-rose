@@ -74,6 +74,25 @@ next_weapon_of_type :: proc "contextless" (d: ^sim.Defs, type: sim.Res_ID, curre
 	return first
 }
 
+// The weapon a level starts players with, of `type`, when it names one and
+// no weapon chooser is on (D54).
+level_start_weapon :: proc "contextless" (s: ^sim.State, type: sim.Res_ID) -> (i32, bool) {
+	level := sim.level_def(s)
+	if level == nil || sim.weapons_kept(s) {
+		return sim.NO_WEAPON, false
+	}
+	id := type == sim.WEP_AIR ? level.start_air : level.start_ground
+	if id == (sim.Res_ID{}) {
+		return sim.NO_WEAPON, false
+	}
+	for &w, i in s.defs.weapons {
+		if w.id == id && w.type == type && sim.weapon_allowed(s, &w) {
+			return i32(i), true
+		}
+	}
+	return sim.NO_WEAPON, false
+}
+
 // G_WeaponHandler::SetUpAtNewGameStart.
 weapons_new_game :: proc(s: ^sim.State, h: sim.Weapons, player: i32, time, level: i32) {
 	h.queued_air = sim.NO_WEAPON
@@ -86,12 +105,18 @@ weapons_new_game :: proc(s: ^sim.State, h: sim.Weapons, player: i32, time, level
 	sim.object_defaults(h.crosshair)
 	h.crosshair.draw_layer = {'p', 'l', 'u', 'i'}
 	h.aux_count = 0
-	if g := default_weapon(s.defs, true); g != sim.NO_WEAPON {
+	g := default_weapon(s.defs, true)
+	if w, ok := level_start_weapon(s, sim.WEP_GROUND); ok {
+		g = w
+	}
+	if g != sim.NO_WEAPON {
 		slot_reset(&h.ground, g, time)
 	}
 	a := best_air_weapon(s.defs, level)
 	if c, ok := sim.weapon_chooser(s); ok {
 		a = c.new_game(s, h, level)
+	} else if w, named := level_start_weapon(s, sim.WEP_AIR); named {
+		a = w
 	}
 	if a != sim.NO_WEAPON {
 		slot_reset(&h.air, a, time)
@@ -117,12 +142,18 @@ weapons_appear :: proc(s: ^sim.State, h: sim.Weapons, level_start: bool) {
 	h.ground_held = 0
 	h.air_idle, h.volleys_left, h.volley_pace, h.ground_pace = 0, 0, 0, 0
 	h.air_windup = 0
+	if w, ok := level_start_weapon(s, sim.WEP_GROUND); ok && level_start {
+		h.queued_ground = w
+	}
 	if h.queued_ground != sim.NO_WEAPON {
 		change_weapon(s, h, sim.WEP_GROUND, h.queued_ground)
 		h.queued_ground = sim.NO_WEAPON
 	}
 	// A weapon chooser keeps the weapon chosen.
 	next := level_start && !sim.weapons_kept(s) ? level_air_weapon(s.defs, sim.single(s, sim.Level_Info).number) : h.queued_air
+	if w, ok := level_start_weapon(s, sim.WEP_AIR); ok && level_start {
+		next = w
+	}
 	if next != sim.NO_WEAPON {
 		change_weapon(s, h, sim.WEP_AIR, next)
 		h.queued_air = sim.NO_WEAPON

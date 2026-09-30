@@ -110,7 +110,7 @@ configuration UI; the label strings were not found in a first pass.
 ## JSON output
 
 ```
-plugins/classic_levels/data/levels/le01.json   typed: header plus placements (D53)
+plugins/classic_levels/data/levels/le01.json   typed: header plus placements (D53); optional fields D54
 assets/data/<type>/<id>.json   ordered {key, value} fields
 assets/data/index.json         counts and total placements
 ```

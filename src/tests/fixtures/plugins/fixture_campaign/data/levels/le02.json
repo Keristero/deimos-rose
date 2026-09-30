@@ -7,5 +7,8 @@
     "preview_image": "none",
     "music": "none",
     "media_mask": "none",
-    "placements": []
+    "placements": [],
+    "start_weapons": {"air": "aipb", "ground": "plbo"},
+    "wind": {"direction_degrees": 90, "strength": 0.5},
+    "lighting": {"sun_elevation_degrees": 40}
 }

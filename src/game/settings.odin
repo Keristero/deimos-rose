@@ -1,5 +1,7 @@
 package game
 
+import "core:strconv"
+
 // Command-line switches for how the game presents itself, as opposed to what
 // the simulation does -- the simulation takes no settings at all. See
 // notes/user-guidance-mid-phase5.md and docs/decisions.md D16/D17.
@@ -27,11 +29,25 @@ Settings :: struct {
 	// -fullscreen: start in a borderless window covering the monitor, the
 	// game scaled to fit (main.odin's canvas). Also in Preferences.
 	fullscreen: bool,
+	// -campaign <plugin>, -level <identifier> and -row <n>: play a level
+	// straight away, from map row n (level_start_at_row), for testing one
+	// (D54). -campaign names a campaign plugin, which is on for the run;
+	// alone it only picks the campaign Level Select shows. -level takes an
+	// identifier ("Lucena") or an id ("le07"), and defaults to the
+	// campaign's first.
+	campaign: string,
+	level:    string,
+	row:      int,
+	// -plugins <dir>: one more plugins root, searched before $DR_PLUGINS
+	// (D52). The level editor plays what it exports from one.
+	plugins:  string,
 }
 
 settings_parse :: proc(args: []string) -> (s: Settings) {
-	for a in args[1:] {
-		switch a {
+	for i := 1; i < len(args); i += 1 {
+		// A flag's value, if it has one.
+		value := i + 1 < len(args) ? args[i + 1] : ""
+		switch args[i] {
 		case "-classic":
 			s.classic = true
 		case "-highrefreshrate":
@@ -40,7 +56,24 @@ settings_parse :: proc(args: []string) -> (s: Settings) {
 			s.diagnostics = true
 		case "-fullscreen":
 			s.fullscreen = true
+		case "-campaign":
+			s.campaign = value
+			i += 1
+		case "-level":
+			s.level = value
+			i += 1
+		case "-row":
+			s.row = max(strconv.parse_int(value) or_else 0, 0)
+			i += 1
+		case "-plugins":
+			s.plugins = value
+			i += 1
 		}
 	}
 	return
+}
+
+// Whether the launch flags start play without the menus.
+settings_play_now :: proc(s: Settings) -> bool {
+	return s.level != "" || s.row > 0
 }

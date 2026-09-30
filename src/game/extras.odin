@@ -21,7 +21,7 @@ import "dr:ui"
 
 // The mods in effect: the saved ones whose dependencies are all on, and
 // none in classic mode. -highrefreshrate turns on 30FPS Unlock for the
-// run.
+// run, and -campaign its campaign (launch.odin).
 prefs_mods :: proc(ps: ^Prefs_State) -> sim.Mods {
 	if prefs_classic(ps) {
 		return {}
@@ -29,6 +29,9 @@ prefs_mods :: proc(ps: ^Prefs_State) -> sim.Mods {
 	mods := ps.saved.mods
 	if ps.launch.high_refresh_rate {
 		mods = sim.mods_with_deps(mods + {int(fps_unlock.ID)})
+	}
+	if id, ok := launch_campaign(ps.launch); ok && id != sim.CORE {
+		mods = sim.mods_with_deps(mods + {int(id)})
 	}
 	return sim.mods_resolve(mods)
 }

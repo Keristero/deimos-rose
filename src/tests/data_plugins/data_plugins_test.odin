@@ -112,6 +112,32 @@ data_plugin_with_a_missing_dependency_stays_off :: proc(t: ^testing.T) {
 	testing.expect(t, int(needs) in on && int(units) in on)
 }
 
+// A level's look is read as it is written, and light it leaves out is
+// the originals' (D54).
+@(test)
+campaign_level_look_loads :: proc(t: ^testing.T) {
+	if !os.exists("assets/data/idli/gaob.json") {
+		return
+	}
+	campaign, ok := find(t, "fixture_campaign")
+	if !ok {
+		return
+	}
+	a := data.assets_open("assets", context.temp_allocator)
+	omega := data.assets_level_media(&a, campaign, sim.level_id("le02"))
+	if !testing.expect(t, omega != nil) {
+		return
+	}
+	testing.expect_value(t, omega.wind, data.Level_Wind{direction_degrees = 90, strength = 0.5})
+	testing.expect_value(t, omega.lighting.sun_elevation_degrees, f32(40))
+	testing.expect_value(t, omega.lighting.sun_azimuth_degrees, data.LIGHTING_MEASURED.sun_azimuth_degrees)
+	testing.expect_value(t, omega.lighting.ambient, data.LIGHTING_MEASURED.ambient)
+	alpha := data.assets_level_media(&a, campaign, sim.level_id("le01"))
+	testing.expect(t, alpha != nil && alpha.lighting == data.LIGHTING_MEASURED)
+	lucena := data.assets_level_media(&a, sim.CORE, sim.level_id("le07"))
+	testing.expect(t, lucena != nil && lucena.lighting == data.LIGHTING_MEASURED && lucena.wind == {})
+}
+
 // One byte of content changes the digest, and so the registration hash:
 // peers with different level packs refuse each other.
 @(test)
@@ -146,7 +172,8 @@ content_digest_follows_every_byte :: proc(t: ^testing.T) {
 }
 
 // A campaign plugin's levels play in its manifest's order, each after the
-// last, and are found only in it: its le01 is not the original's (D53).
+// last, and are found only in it: its le01 is not the original's (D53). Its
+// first starts players with the weapons it names (D54).
 @(test)
 campaign_plays_its_levels_in_order :: proc(t: ^testing.T) {
 	if !os.exists("assets/data/idli/gaob.json") {
@@ -177,6 +204,9 @@ campaign_plays_its_levels_in_order :: proc(t: ^testing.T) {
 	s := new(sim.State, alloc)
 	sim.init(s, sim.Session{seed = 7, level_id = levels[0].id, game_type = .Single, campaign = campaign}, &defs)
 	defer sim.destroy(s)
+	p := sim.player_at(s, 0)
+	testing.expect_value(t, defs.weapons[p.weapons.air.weapon].id, sim.res_id("aipb"))
+	testing.expect_value(t, defs.weapons[p.weapons.ground.weapon].id, sim.res_id("plbo"))
 	seen := make([dynamic]string, 0, 2, alloc)
 	append(&seen, sim.level_def(s).identifier)
 	outcome := sim.Level_Transition.None

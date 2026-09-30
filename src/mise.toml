@@ -114,6 +114,10 @@ flag "--classic" help="Reproduce -classic mode: hide the new (non-original) menu
 flag "--highrefreshrate" help="Reproduce -highrefreshrate mode: uncap the frame rate above the original's fixed step"
 flag "--diagnostics" help="Show a rolling FPS/ping/rollback-rate overlay in the bottom-right corner"
 flag "--fullscreen" help="Start fullscreen (a borderless window covering the monitor), the game scaled to fit"
+flag "--campaign <plugin>" help="Pick a campaign plugin, on for the run; with --level or --row, play it straight away"
+flag "--level <identifier>" help="Play this level (Lucena, or le07) straight away; the campaign's first by default"
+flag "--row <n>" help="Play from map row n, the view's top, instead of the map's bottom"
+flag "--plugins <dir>" help="One more plugins root, searched before DR_PLUGINS"
 '''
 run = '''
 #!/usr/bin/env bash
@@ -123,6 +127,10 @@ args=()
 [ "${usage_highrefreshrate:-false}" = "true" ] && args+=(-highrefreshrate)
 [ "${usage_diagnostics:-false}" = "true" ] && args+=(-diagnostics)
 [ "${usage_fullscreen:-false}" = "true" ] && args+=(-fullscreen)
+[ -n "${usage_campaign:-}" ] && args+=(-campaign "$usage_campaign")
+[ -n "${usage_level:-}" ] && args+=(-level "$usage_level")
+[ -n "${usage_row:-}" ] && args+=(-row "$usage_row")
+[ -n "${usage_plugins:-}" ] && args+=(-plugins "$usage_plugins")
 exec "$DR_BUILD/deimos$DR_EXT" "${args[@]}"
 '''
 

@@ -1212,3 +1212,46 @@ the main menu are pixel-identical to before. `tests/fixtures/plugins/
 fixture_campaign` is a two-level campaign whose manifest order is the
 reverse of its file names; `tests/data_plugins` plays it through to the
 end, and `MENU=level_select_campaigns` shows it on Level Select.
+
+### D54 — Optional level fields, and launching straight into a level
+
+The editor's levels carry what the originals never did, and its Play
+button needs the game to start one without the menus.
+
+- **Level fields**, each optional; no original level has any, so the
+  twelve load exactly as before.
+  - `start_weapons` (`air`, `ground`: weapon ids) sets what players start
+    the level with, at a new game and at the level's start, in place of
+    the weapon its number brings. It changes play, so it is in the sim
+    (`Level_Def.start_air`, `start_ground`, zero for none). A plugin's
+    weapon chooser still chooses when it is on: the loadout is the
+    player's.
+  - `wind` (`direction_degrees`, as placements' headings, `strength`),
+    `water` (`height`, `colour`, `visible`), `lighting`
+    (`sun_azimuth_degrees`, `sun_elevation_degrees`, `sun_colour`,
+    `ambient_colour`, `ambient`, `softness` in map pixels), `skybox` (an
+    im16 id) and `layers` (`albedo`, `normal`, `height`, `shadow_mask`,
+    `hd_map`: im16 ids) are the presentation's and the editor's, on
+    `data.Level_Media`. The sim still reads only the media mask. Light a
+    level leaves out is `LIGHTING_MEASURED`, the originals' as measured on
+    their maps (notes/headless-3d-to-2d-findings.md): a white sun at
+    azimuth 36°, 28° up, and neutral shadow at 0.44.
+- **Launch flags**, in `game/settings.odin` and the `run` task's usage:
+  - `-campaign <plugin>` picks a campaign, and turns its plugin on for the
+    run as `-highrefreshrate` does 30FPS Unlock. Alone it only picks what
+    Level Select shows. Classic mode refuses any but the originals.
+  - `-level <identifier or id>` plays that level at once, and `-row <n>`
+    from map row n (the view's top); either alone plays the campaign's
+    first level. A name that is not installed exits with a message.
+  - `-plugins <dir>` adds a plugins root searched before `$DR_PLUGINS`.
+- **`level_start_at_row`** is `level_skip_to_end` under a name for what it
+  does: the view's top at the row, the entities cleared and the rows in
+  and 64 above the view spawned, as at a level's start. What lies below is
+  never met, which is fine for testing a level. Netplay's
+  `DR_NETPLAY_END` still uses it.
+
+`tests/level_start_test.odin` starts le07 at row 1500 and finds exactly
+its placements from rows 1436 to 1980 spawned, and checks the start
+weapons rule on the synthetic fixture. The fixture campaign's first level
+names start weapons and a wind, and `tests/data_plugins` plays it with
+them. Goldens, `oracle:diff` and `oracle:diff:saved` are unchanged.

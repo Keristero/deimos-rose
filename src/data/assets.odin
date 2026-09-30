@@ -78,6 +78,70 @@ Json_Level :: struct {
 	music:            string           `json:"music"`,
 	media_mask:       string           `json:"media_mask"`,
 	placements:       []Json_Placement `json:"placements"`,
+	// Not the original's, and all optional (D54): no original level has
+	// any of them.
+	start_weapons:    Json_Start_Weapons `json:"start_weapons"`,
+	wind:             Level_Wind         `json:"wind"`,
+	water:            Level_Water        `json:"water"`,
+	lighting:         Level_Lighting     `json:"lighting"`,
+	skybox:           string             `json:"skybox"`,
+	layers:           Level_Layers       `json:"layers"`,
+}
+
+// Weapon ids ("aipb"): what a player starts the level with, in place of
+// what its number brings.
+Json_Start_Weapons :: struct {
+	air:    string `json:"air"`,
+	ground: string `json:"ground"`,
+}
+
+// The wind over a level, for the presentation: particles and water. A
+// direction as placements' headings are.
+Level_Wind :: struct {
+	direction_degrees: f32 `json:"direction_degrees"`,
+	strength:          f32 `json:"strength"`, // 0 for still air
+}
+
+// The water plane the level was rendered with, in the editor's height
+// units. The simulation reads only the media mask exported from it.
+Level_Water :: struct {
+	height:  f32   `json:"height"`,
+	colour:  [3]u8 `json:"colour"`,
+	visible: bool  `json:"visible"`,
+}
+
+// The light the level was rendered with. A field left out keeps
+// LIGHTING_MEASURED's value.
+Level_Lighting :: struct {
+	sun_azimuth_degrees:   f32   `json:"sun_azimuth_degrees"`,
+	sun_elevation_degrees: f32   `json:"sun_elevation_degrees"`,
+	sun_colour:            [3]u8 `json:"sun_colour"`,
+	ambient_colour:        [3]u8 `json:"ambient_colour"`,
+	ambient:               f32   `json:"ambient"`,  // the share of full light left in shadow
+	softness:              f32   `json:"softness"`, // the penumbra's width, in map pixels
+}
+
+// The originals' light, measured on their maps
+// (notes/headless-3d-to-2d-findings.md): a white sun at azimuth 36°,
+// about 28° up, and neutral shadow at 0.44 of full light, a few pixels
+// soft.
+LIGHTING_MEASURED :: Level_Lighting {
+	sun_azimuth_degrees   = 36,
+	sun_elevation_degrees = 28,
+	sun_colour            = {255, 255, 255},
+	ambient_colour        = {255, 255, 255},
+	ambient               = 0.44,
+	softness              = 3,
+}
+
+// Optional exports beside the map, for presentation mods (Stage 10 of
+// notes/level-editor-plan.md): im16 image ids, empty when not exported.
+Level_Layers :: struct {
+	albedo:      string `json:"albedo"`,
+	normal:      string `json:"normal"`,
+	height:      string `json:"height"`,
+	shadow_mask: string `json:"shadow_mask"`,
+	hd_map:      string `json:"hd_map"`,
 }
 
 Json_Frame :: struct {
@@ -118,6 +182,12 @@ Level_Media :: struct {
 	background: string, // im16 image id
 	preview:    string,
 	music:      string,
+	// Not the original's (D54).
+	wind:       Level_Wind,
+	water:      Level_Water,
+	lighting:   Level_Lighting,
+	skybox:     string, // an im16 image id, empty for none
+	layers:     Level_Layers,
 }
 
 // Where the score bar's widgets sit, per player (G_ScoreBar_Init's
@@ -440,9 +510,13 @@ assets_level_media :: proc(a: ^Assets, campaign: sim.Plugin_ID, id: sim.Res_ID) 
 @(private = "file")
 level_media_append :: proc(media: ^[dynamic]Level_Media, dir: string, campaign: sim.Plugin_ID, allocator := context.allocator) {
 	for path in record_paths(dir, "levels", context.temp_allocator) {
-		lv: Json_Level
+		lv := Json_Level{lighting = LIGHTING_MEASURED}
 		if !read_json(path, &lv, context.temp_allocator) {
 			continue
+		}
+		layers := lv.layers
+		for &l in ([]^string{&layers.albedo, &layers.normal, &layers.height, &layers.shadow_mask, &layers.hd_map}) {
+			l^ = strings.clone(l^, allocator)
 		}
 		append(media, Level_Media {
 			id         = sim.res_id(lv.id),
@@ -451,6 +525,11 @@ level_media_append :: proc(media: ^[dynamic]Level_Media, dir: string, campaign: 
 			background = strings.clone(lv.background_image, allocator),
 			preview    = strings.clone(lv.preview_image, allocator),
 			music      = strings.clone(lv.music, allocator),
+			wind       = lv.wind,
+			water      = lv.water,
+			lighting   = lv.lighting,
+			skybox     = strings.clone(lv.skybox, allocator),
+			layers     = layers,
 		})
 	}
 }
@@ -712,6 +791,12 @@ levels_append :: proc(levels: ^[dynamic]sim.Level_Def, dir: string, order: []str
 					bottom = lv.background[3],
 				}),
 				placements = make([]sim.Placement_Def, len(lv.placements), allocator),
+			}
+			if lv.start_weapons.air != "" {
+				l.start_air = sim.res_id(lv.start_weapons.air)
+			}
+			if lv.start_weapons.ground != "" {
+				l.start_ground = sim.res_id(lv.start_weapons.ground)
 			}
 			for pl, k in lv.placements {
 				l.placements[k] = {

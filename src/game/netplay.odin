@@ -435,7 +435,7 @@ netplay_shot_due :: proc() -> bool {
 // the run a test of a level's end without anyone at the keyboard: each
 // side readies as soon as it is connected, the host turns Easy Mode on
 // for the run, and both start the level that many steps before its end
-// (level_system.level_skip_to_end), so the reward screen opens a few
+// (level_system.level_start_at_row), so the reward screen opens a few
 // seconds in. Both sides must be given the same number, or they are not
 // playing the same game (the desync check says so). The log then says
 // when play is held and resumed (netplay_playing_step), which
@@ -954,7 +954,7 @@ netplay_begin_session :: proc(fl: ^Flow, nl: ^Netplay, seed: u32, level_index: i
 	level := levels[level_index].id
 	sim.init(fl.state, session_from_mods(seed, level, .Co_Op, mods, online = true, campaign = campaign), fl.defs)
 	if netplay_test_end > 0 {
-		level_system.level_skip_to_end(fl.state, netplay_test_end)
+		level_system.level_start_at_row(fl.state, netplay_test_end)
 		fmt.eprintfln("netplay: test starts %d steps before the level's end, mods %v", netplay_test_end, mods)
 	}
 	flow_session_began(fl)
