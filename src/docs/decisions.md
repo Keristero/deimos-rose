@@ -1403,3 +1403,37 @@ the cliff's shadow shows through thin water there, where the art's
 shallows are lit. The layer is a still frame. An animated water shader
 (Stage 10, or the renderer's own with no wind) would take it as its
 colour and opacity.
+
+### D58 — The level editor: a binary of its own, drawn by the terrain renderer, undo by tiles
+
+Stage 7's editor is `deimos-editor`, built from `editor/` beside the game
+and shipped in the same zip. It is a program of its own, not a screen of
+the game: it opens GL windows of any size, needs no assets and no
+simulation, and its UI is raygui, which the game does not use.
+
+- **The viewport is the renderer.** `terrain.render_into` draws rows of a
+  project into a render texture the caller owns, which `render` now draws
+  its strips through too. `terrain.renderer_update` uploads one region
+  again after an edit: grown by the smoothing's radius (⌈3σ⌉) and
+  computed from the heights grown by twice it, so the upload is the same
+  bytes as the whole project's (tests/terrain `an_update_is_a_new_upload`).
+  The renderer's `max_height` became `surface_max`, which only rises: the
+  shadow march reads it as a bound, so a bound too high marches further
+  and changes no pixel, and an edit never has to scan the map for it.
+  le07 renders byte for byte as before (the committed tool against the
+  new, the whole map).
+- **Undo keeps tiles, not maps.** A stroke keeps the 32 x 32 tiles of the
+  heights and water layer it touches, before its first dab; undo swaps
+  them back, so the same edit then redoes. Settings keep their value
+  before, and a drag records once. 256 edits or 512 MB, the newest always
+  kept. Stage 8's paint brush adds the splat weights to the tiles.
+- **The water layer follows the ground.** Ground lowered under the water
+  where the layer is clear gets the water's colour, opaque; raised out, it
+  loses it. A shader rule that read a clear pixel as "no water" would have
+  been simpler, but recovered layers hold clear pixels under water (2670 on
+  le05), so it would have changed their render.
+- **No prompt on close.** raylib cannot cancel a window close, so unsaved
+  work is written to `<level>.unsaved.drproj.json` beside the project;
+  Open and New discard only on a second press.
+- **`sim.register_all()` is not called yet** (D50): the editor reads no
+  unit definitions until Stage 8 places units, which will call it first.

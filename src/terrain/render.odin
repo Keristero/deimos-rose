@@ -8,6 +8,7 @@ package terrain
 // context: the editor's window, or a hidden one (tools/terrain).
 
 import "core:math"
+import "core:slice"
 import "core:strings"
 
 import rl "vendor:raylib"
@@ -70,18 +71,23 @@ SAMPLERS := [Slot]cstring {
 }
 
 Renderer :: struct {
-	shader:     rl.Shader,
-	quad:       rl.Mesh,
-	maps:       [rl.MAX_MATERIAL_MAPS]rl.MaterialMap,
-	textures:   [Slot]rl.Texture2D, // zero where the white one stands in
-	white:      rl.Texture2D,
-	width:      int,
-	length:     int,
-	max_height: f32,
+	shader:      rl.Shader,
+	quad:        rl.Mesh,
+	maps:        [rl.MAX_MATERIAL_MAPS]rl.MaterialMap,
+	textures:    [Slot]rl.Texture2D, // zero where the white one stands in
+	white:       rl.Texture2D,
+	width:       int,
+	length:      int,
+	smoothing:   f32,
+	// The highest the surface reaches, where a shadow's march may stop. It
+	// only rises with renderer_update: one too high marches further and
+	// finds nothing, so it never changes a pixel.
+	surface_max: f32,
 }
 
 // Uploads the project, its geometry smoothed by `smoothing` (a Gaussian's
-// sigma in map pixels, 0 for none). Call again after changing its layers.
+// sigma in map pixels, 0 for none). Call again after changing its layers,
+// or renderer_update for a changed region.
 renderer_init :: proc(r: ^Renderer, p: ^Project, smoothing: f32 = GEOMETRY_SMOOTHING) -> bool {
 	if r.shader.id == 0 {
 		r.shader = rl.LoadShaderFromMemory(VERTEX_SHADER, TERRAIN_SHADER)
@@ -102,23 +108,11 @@ renderer_init :: proc(r: ^Renderer, p: ^Project, smoothing: f32 = GEOMETRY_SMOOT
 		}
 		t = {}
 	}
-	r.width, r.length = p.width, p.length
+	r.width, r.length, r.smoothing = p.width, p.length, smoothing
 
-	// Heights: the surface with the canopy on it, the cover, the ground,
-	// the surface unsmoothed.
 	n := p.width * p.length
-	h := make([]f32, n * 4, context.temp_allocator)
-	r.max_height = p.level.water.visible ? p.level.water.height : 0
-	for i in 0 ..< n {
-		cover := p.canopy != nil ? f32(p.canopy[i]) / 255 : 0
-		h[i * 4 + 0] = p.heights[i] + cover * p.canopy_height
-		h[i * 4 + 1] = cover
-		h[i * 4 + 2] = p.heights[i]
-		h[i * 4 + 3] = h[i * 4 + 0]
-		r.max_height = max(r.max_height, h[i * 4])
-	}
-	smooth(h, p.width, p.length, 0, smoothing)
-	smooth(h, p.width, p.length, 2, smoothing)
+	h: []f32
+	h, r.surface_max = height_texels(p, {0, 0, p.width, p.length}, smoothing)
 	r.textures[.Height] = upload(raw_data(h), p.width, p.length, .UNCOMPRESSED_R32G32B32A32, .CLAMP)
 	if p.albedo != nil || p.occlusion != nil {
 		c := make([]u8, n * 4, context.temp_allocator)
@@ -147,6 +141,70 @@ renderer_init :: proc(r: ^Renderer, p: ^Project, smoothing: f32 = GEOMETRY_SMOOT
 		r.maps[map_slot(slot)].texture = t.id != 0 ? t : r.white
 	}
 	return true
+}
+
+// A map region, x0 and y0 in it, x1 and y1 past it.
+Rect :: struct {
+	x0, y0, x1, y1: int,
+}
+
+// Uploads again what changed in `rect` of the heights, and of the water
+// layer when there is one: the same texels renderer_init would. The
+// smoothing spreads a change as far as its kernel reaches, so that much
+// around `rect` is uploaded, smoothed over as much again. The editor calls
+// it for each brush dab.
+renderer_update :: proc(r: ^Renderer, p: ^Project, rect: Rect) {
+	m := smoothing_radius(r.smoothing)
+	inner := rect_clip({rect.x0 - m, rect.y0 - m, rect.x1 + m, rect.y1 + m}, p.width, p.length)
+	if inner.x1 <= inner.x0 || inner.y1 <= inner.y0 {
+		return
+	}
+	outer := rect_clip({inner.x0 - m, inner.y0 - m, inner.x1 + m, inner.y1 + m}, p.width, p.length)
+	h, top := height_texels(p, outer, r.smoothing)
+	r.surface_max = max(r.surface_max, top)
+	ow := outer.x1 - outer.x0
+	w, l := inner.x1 - inner.x0, inner.y1 - inner.y0
+	block := make([]f32, w * l * 4, context.temp_allocator)
+	for y in 0 ..< l {
+		copy(block[y * w * 4:][:w * 4], h[((inner.y0 - outer.y0 + y) * ow + inner.x0 - outer.x0) * 4:][:w * 4])
+	}
+	area := rl.Rectangle{f32(inner.x0), f32(inner.y0), f32(w), f32(l)}
+	rl.UpdateTextureRec(r.textures[.Height], area, raw_data(block))
+	if p.water != nil && r.textures[.Water].id != 0 {
+		wb := make([]u8, w * l * 4, context.temp_allocator)
+		for y in 0 ..< l {
+			copy(wb[y * w * 4:][:w * 4], p.water[((inner.y0 + y) * p.width + inner.x0) * 4:][:w * 4])
+		}
+		rl.UpdateTextureRec(r.textures[.Water], area, raw_data(wb))
+	}
+}
+
+rect_clip :: proc(r: Rect, width, length: int) -> Rect {
+	return {clamp(r.x0, 0, width), clamp(r.y0, 0, length), clamp(r.x1, 0, width), clamp(r.y1, 0, length)}
+}
+
+// The height texture's texels for `rect`, RGBA: the surface with the
+// canopy on it, the cover, the ground, the surface unsmoothed; the first
+// three smoothed within the rect. And the surface's highest point.
+@(private = "file")
+height_texels :: proc(p: ^Project, rect: Rect, smoothing: f32) -> (h: []f32, top: f32) {
+	w, l := rect.x1 - rect.x0, rect.y1 - rect.y0
+	h = make([]f32, w * l * 4, context.temp_allocator)
+	for y in 0 ..< l {
+		for x in 0 ..< w {
+			i := (rect.y0 + y) * p.width + rect.x0 + x
+			o := (y * w + x) * 4
+			cover := p.canopy != nil ? f32(p.canopy[i]) / 255 : 0
+			h[o + 0] = p.heights[i] + cover * p.canopy_height
+			h[o + 1] = cover
+			h[o + 2] = p.heights[i]
+			h[o + 3] = h[o + 0]
+			top = max(top, h[o])
+		}
+	}
+	smooth(h, w, l, 0, smoothing)
+	smooth(h, w, l, 2, smoothing)
+	return
 }
 
 renderer_destroy :: proc(r: ^Renderer) {
@@ -202,21 +260,10 @@ render :: proc(r: ^Renderer, p: ^Project, o: Render_Options, allocator := contex
 		picture_destroy(&pic, allocator)
 		return
 	}
-	uniforms(r, p, o.output, f32(scale))
-	material := rl.Material {
-		shader = r.shader,
-		maps   = raw_data(r.maps[:]),
-	}
+	heights := slice.reinterpret([]u16, pic.pixels)
 	for y0 := from; y0 < to; y0 += strip {
 		rows := min(strip, to - y0)
-		origin := [2]f32{0, f32(y0)}
-		rl.SetShaderValue(r.shader, rl.GetShaderLocation(r.shader, "origin"), &origin, .VEC2)
-		rl.BeginTextureMode(target)
-		rl.ClearBackground(rl.BLACK)
-		rlgl.DisableBackfaceCulling()
-		rl.DrawMesh(r.quad, material, rl.Matrix(1))
-		rlgl.EnableBackfaceCulling()
-		rl.EndTextureMode()
+		render_into(r, p, {output = o.output, scale = scale, from = y0}, target)
 
 		img := rl.LoadImageFromTexture(target.texture)
 		defer rl.UnloadImage(img)
@@ -229,7 +276,7 @@ render :: proc(r: ^Renderer, p: ^Project, o: Render_Options, allocator := contex
 				d := out_y * w + x
 				switch o.output {
 				case .Height:
-					(transmute([]u16)pic.pixels)[d] = u16(s[0]) << 8 | u16(s[1])
+					heights[d] = u16(s[0]) << 8 | u16(s[1])
 				case .Shadow, .Occlusion:
 					pic.pixels[d] = s[0]
 				case .Lit, .Albedo, .Normal:
@@ -242,6 +289,26 @@ render :: proc(r: ^Renderer, p: ^Project, o: Render_Options, allocator := contex
 		quantise_1555(pic)
 	}
 	return pic, true
+}
+
+// Draws the map from row o.from into `target`, as many rows as it holds at
+// o.scale, the map's first row in the texture's first: what render reads
+// back, and the editor's live view. Output as render's, but always RGBA:
+// Height in R and G (high byte first), Shadow and Occlusion in R.
+render_into :: proc(r: ^Renderer, p: ^Project, o: Render_Options, target: rl.RenderTexture2D) {
+	uniforms(r, p, o.output, f32(max(o.scale, 1)))
+	origin := [2]f32{0, f32(o.from)}
+	rl.SetShaderValue(r.shader, rl.GetShaderLocation(r.shader, "origin"), &origin, .VEC2)
+	material := rl.Material {
+		shader = r.shader,
+		maps   = raw_data(r.maps[:]),
+	}
+	rl.BeginTextureMode(target)
+	rl.ClearBackground(rl.BLACK)
+	rlgl.DisableBackfaceCulling()
+	rl.DrawMesh(r.quad, material, rl.Matrix(1))
+	rlgl.EnableBackfaceCulling()
+	rl.EndTextureMode()
 }
 
 // Each colour through 5 bits a channel and back, as the originals'
@@ -293,7 +360,7 @@ uniforms :: proc(r: ^Renderer, p: ^Project, output: Output, scale: f32) {
 	set(r, "ambientColour", colour(l.ambient_colour))
 	set(r, "ambient", l.ambient)
 	set(r, "softness", max(l.softness, 0))
-	set(r, "maxHeight", r.max_height)
+	set(r, "maxHeight", max(r.surface_max, p.level.water.visible ? p.level.water.height : 0))
 	set(r, "marchMax", i32(MARCH_MAX))
 	set(r, "heightUnit", HEIGHT_UNIT)
 	w := p.level.water
@@ -334,7 +401,7 @@ smooth :: proc(px: []f32, w, l, c: int, sigma: f32) {
 	if sigma <= 0 {
 		return
 	}
-	radius := int(math.ceil(3 * sigma))
+	radius := smoothing_radius(sigma)
 	kernel := make([]f32, 2 * radius + 1, context.temp_allocator)
 	sum: f32
 	for &k, i in kernel {
@@ -370,6 +437,12 @@ smooth :: proc(px: []f32, w, l, c: int, sigma: f32) {
 			px[(y * w + x) * 4 + c] = v
 		}
 	}
+}
+
+// How far the smoothing reaches, in map pixels.
+@(private = "file")
+smoothing_radius :: proc(sigma: f32) -> int {
+	return sigma > 0 ? int(math.ceil(3 * sigma)) : 0
 }
 
 @(private = "file")

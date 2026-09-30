@@ -1,0 +1,372 @@
+package editor_tests
+
+// The level editor (Stage 7 of notes/level-editor-plan.md). The brush,
+// undo and the light's JSON run anywhere; the editor itself draws, so its
+// cases share one hidden window and skip when there is no display (mise
+// run test runs them under xvfb-run), as tests/terrain's do. The le07 case
+// needs a recovered project (mise run terrain:recover) and skips without.
+
+import "core:fmt"
+import "core:math"
+import "core:os"
+import "core:testing"
+
+import rl "vendor:raylib"
+
+import "dr:data"
+import "dr:editor"
+import "dr:terrain"
+
+OUT :: "build/editor_test"
+LE07 :: "../work/recovered/le07/le07.drproj.json"
+
+// Rolling ground with water at 9 over a layer that holds none yet.
+@(private = "file")
+hills :: proc(w, l: int, allocator := context.allocator) -> terrain.Project {
+	p := terrain.project_make(w, l, allocator)
+	p.albedo = make([]u8, w * l * 3, allocator)
+	p.water = make([]u8, w * l * 4, allocator)
+	for y in 0 ..< l {
+		for x in 0 ..< w {
+			fx, fy := f32(x), f32(y)
+			p.heights[y * w + x] = 14 + 8 * math.sin(fx * 0.11) * math.cos(fy * 0.07) + 3 * math.sin((fx + fy) * 0.23)
+			c := p.albedo[(y * w + x) * 3:][:3]
+			c[0], c[1], c[2] = u8(80 + x % 50), u8(120 + y % 60), 90
+		}
+	}
+	p.level.water = {height = 9, colour = {20, 60, 110}, visible = true}
+	return p
+}
+
+@(private = "file")
+Snapshot :: struct {
+	heights: []f32,
+	water:   []u8,
+}
+
+@(private = "file")
+snapshot :: proc(p: ^terrain.Project) -> Snapshot {
+	s := Snapshot{make([]f32, len(p.heights), context.temp_allocator), make([]u8, len(p.water), context.temp_allocator)}
+	copy(s.heights, p.heights)
+	copy(s.water, p.water)
+	return s
+}
+
+@(private = "file")
+same :: proc(p: ^terrain.Project, s: Snapshot) -> bool {
+	return string(transmute([]u8)p.heights) == string(transmute([]u8)s.heights) && string(p.water) == string(s.water)
+}
+
+// Strokes of every mode and shape, across tile edges and the water line,
+// undo to the bytes they started from and redo to the bytes they left.
+@(test)
+strokes_undo_exactly :: proc(t: ^testing.T) {
+	p := hills(100, 90, context.temp_allocator)
+	h: editor.History
+	defer editor.history_destroy(&h)
+	start := snapshot(&p)
+
+	b := editor.BRUSH_DEFAULT
+	after: [dynamic]Snapshot
+	after.allocator = context.temp_allocator
+	strokes := [?]struct {
+		mode:  editor.Brush_Mode,
+		shape: editor.Brush_Shape,
+		from:  [2]f32,
+		to:    [2]f32,
+	}{{.Lower, .Round, {10, 10}, {70, 40}}, {.Raise, .Rough, {50, 20}, {60, 80}}, {.Flatten, .Square, {31, 31}, {33, 64}}, {.Smooth, .Round, {0, 0}, {99, 89}}}
+	for s in strokes {
+		b.mode, b.shape, b.strength, b.target = s.mode, s.shape, 1, 30
+		editor.history_begin(&h)
+		for k in 0 ..= 20 {
+			editor.brush_dab(&p, b, s.from + (s.to - s.from) * f32(k) / 20, 1, &h)
+		}
+		editor.history_end(&h)
+		append(&after, snapshot(&p))
+	}
+	testing.expect(t, !same(&p, start), "the strokes changed nothing")
+
+	for i := len(strokes) - 1; i >= 0; i -= 1 {
+		_, ok := editor.history_undo(&h, &p)
+		testing.expect(t, ok)
+		want := i > 0 ? after[i - 1] : start
+		testing.expectf(t, same(&p, want), "undoing stroke %d does not give back what it started from", i)
+	}
+	_, more := editor.history_undo(&h, &p)
+	testing.expect(t, !more, "undid past the first stroke")
+	for i in 0 ..< len(strokes) {
+		editor.history_redo(&h, &p)
+		testing.expectf(t, same(&p, after[i]), "redoing stroke %d does not give what it left", i)
+	}
+
+	// A new stroke after an undo leaves nothing to redo.
+	editor.history_undo(&h, &p)
+	editor.history_begin(&h)
+	editor.brush_dab(&p, b, {50, 50}, 1, &h)
+	editor.history_end(&h)
+	_, redone := editor.history_redo(&h, &p)
+	testing.expect(t, !redone, "redid over a new stroke")
+}
+
+// Past its budget, undo forgets the oldest strokes, and keeps the newest
+// whatever it holds.
+@(test)
+undo_keeps_to_its_budget :: proc(t: ^testing.T) {
+	p := hills(128, 96, context.temp_allocator) // whole tiles
+	TILE_BYTES :: editor.TILE * editor.TILE * 8 // heights and water
+	h := editor.History {
+		budget = 3 * TILE_BYTES,
+	}
+	defer editor.history_destroy(&h)
+	b := editor.BRUSH_DEFAULT
+	b.radius = 4
+	// One tile each, then one of four.
+	for at in ([?][2]f32{{10, 10}, {45, 10}, {80, 10}, {32, 64}}) {
+		editor.history_begin(&h)
+		editor.brush_dab(&p, b, at, 1, &h)
+		editor.history_end(&h)
+	}
+	testing.expect_value(t, h.bytes, 4 * TILE_BYTES)
+	undone := 0
+	for {
+		if _, ok := editor.history_undo(&h, &p); !ok {
+			break
+		}
+		undone += 1
+	}
+	testing.expect_value(t, undone, 1)
+	testing.expect_value(t, h.bytes, 4 * TILE_BYTES)
+}
+
+// Lowered under the water, ground takes the level's water over it; raised
+// out again, it has none.
+@(test)
+water_follows_the_ground :: proc(t: ^testing.T) {
+	p := hills(40, 40, context.temp_allocator)
+	for &v in p.heights {
+		v = 12
+	}
+	h: editor.History
+	defer editor.history_destroy(&h)
+	b := editor.Brush {
+		mode     = .Flatten,
+		shape    = .Square,
+		radius   = 6,
+		strength = 1,
+		falloff  = 0,
+		target   = 4,
+	}
+	editor.brush_dab(&p, b, {20, 20}, 1, &h)
+	i := 20 * 40 + 20
+	testing.expect_value(t, p.heights[i], 4)
+	c := p.level.water.colour
+	testing.expect_value(t, [4]u8{p.water[i * 4], p.water[i * 4 + 1], p.water[i * 4 + 2], p.water[i * 4 + 3]}, [4]u8{c.r, c.g, c.b, 255})
+	testing.expect_value(t, p.water[(2 * 40 + 2) * 4 + 3], 0)
+
+	b.target = 15
+	editor.brush_dab(&p, b, {20, 20}, 1, &h)
+	testing.expect_value(t, p.heights[i], 15)
+	testing.expect_value(t, [4]u8{p.water[i * 4], p.water[i * 4 + 1], p.water[i * 4 + 2], p.water[i * 4 + 3]}, [4]u8{})
+}
+
+// A change of the settings undoes and redoes as one.
+@(test)
+settings_undo :: proc(t: ^testing.T) {
+	p := hills(8, 8, context.temp_allocator)
+	h: editor.History
+	defer editor.history_destroy(&h)
+	before := editor.settings_of(&p)
+	p.level.lighting.sun_azimuth_degrees = 200
+	p.level.water.height = 3
+	p.level.wind = {direction_degrees = 90, strength = 0.5}
+	changed := editor.settings_of(&p)
+	editor.history_settings(&h, before)
+	c, ok := editor.history_undo(&h, &p)
+	testing.expect(t, ok && c.settings && !c.map_)
+	testing.expect_value(t, editor.settings_of(&p), before)
+	editor.history_redo(&h, &p)
+	testing.expect_value(t, editor.settings_of(&p), changed)
+}
+
+// The light copied as JSON pastes back the same; a whole level record's
+// light pastes too, and a field left out keeps the measured value.
+@(test)
+lighting_json_round_trips :: proc(t: ^testing.T) {
+	l := data.LIGHTING_MEASURED
+	l.sun_azimuth_degrees, l.sun_colour, l.softness = 123.5, {250, 200, 150}, 2.25
+	back, ok := editor.lighting_parse(editor.lighting_json(l, context.temp_allocator))
+	testing.expect(t, ok)
+	testing.expect_value(t, back, l)
+
+	record, rok := editor.lighting_parse(`{"id": "le99", "lighting": {"sun_elevation_degrees": 25}}`)
+	testing.expect(t, rok)
+	want := data.LIGHTING_MEASURED
+	want.sun_elevation_degrees = 25
+	testing.expect_value(t, record, want)
+
+	_, bad := editor.lighting_parse("not json")
+	testing.expect(t, !bad)
+	_, list := editor.lighting_parse("[1, 2]")
+	testing.expect(t, !list)
+}
+
+@(test)
+editor_draws :: proc(t: ^testing.T) {
+	rl.SetTraceLogLevel(.WARNING)
+	rl.SetConfigFlags({.WINDOW_HIDDEN})
+	rl.InitWindow(64, 64, "editor test")
+	if !rl.IsWindowReady() {
+		fmt.println("editor_draws: no display, skipped")
+		return
+	}
+	defer rl.CloseWindow()
+	os.make_directory_all(OUT)
+	shot_shows_the_project(t)
+	stroke_and_undo_redraw(t)
+	le07_sculpt_relight_save_reopen(t)
+}
+
+// The editor's shot of a project is its panels, and in the viewport the
+// terrain's own lit rows, the last screenful of the level first.
+@(private = "file")
+shot_shows_the_project :: proc(t: ^testing.T) {
+	p := hills(120, 1000, context.temp_allocator)
+	path :: OUT + "/hills.drproj.json"
+	testing.expect(t, terrain.project_save(&p, path))
+	e: editor.Editor
+	editor.editor_init(&e)
+	defer editor.editor_destroy(&e)
+	if !testing.expect(t, editor.editor_open(&e, path)) {
+		return
+	}
+	W, H :: 800, 600
+	img := editor.editor_shot(&e, W, H)
+	defer rl.UnloadImage(img)
+	rl.ExportImage(img, OUT + "/shot.png")
+	px := ([^]u8)(img.data)[:W * H * 3]
+
+	l := editor.layout(W, H)
+	rows := int(l.view.height)
+	x0 := int(l.view.x) + (int(l.view.width) - 120) / 2
+	from := 1000 - rows
+	lit, ok := terrain.render(&e.renderer, &e.project, {output = .Lit, from = from, to = 1000}, context.temp_allocator)
+	if !testing.expect(t, ok) {
+		return
+	}
+	differ := 0
+	for y in 0 ..< rows {
+		for x in 0 ..< 120 {
+			for c in 0 ..< 3 {
+				if px[(y * W + x0 + x) * 3 + c] != lit.pixels[(y * 120 + x) * 3 + c] {
+					differ += 1
+				}
+			}
+		}
+	}
+	testing.expectf(t, differ == 0, "the viewport differs from the terrain's render in %d values", differ)
+
+	// The panel has something drawn on it: not all its background.
+	first := px[(10 * W + 10) * 3:][:3]
+	varied := false
+	for y in 0 ..< int(l.panel.height) {
+		for x in 0 ..< int(l.panel.width) {
+			if string(px[(y * W + x) * 3:][:3]) != string(first) {
+				varied = true
+			}
+		}
+	}
+	testing.expect(t, varied, "the panel is blank")
+}
+
+// A stroke through the editor draws as the project drawn afresh, and its
+// undo as the project before it.
+@(private = "file")
+stroke_and_undo_redraw :: proc(t: ^testing.T) {
+	p := hills(90, 80, context.temp_allocator)
+	path :: OUT + "/stroke.drproj.json"
+	testing.expect(t, terrain.project_save(&p, path))
+	e: editor.Editor
+	editor.editor_init(&e)
+	defer editor.editor_destroy(&e)
+	if !testing.expect(t, editor.editor_open(&e, path)) {
+		return
+	}
+	fresh :: proc(t: ^testing.T, p: ^terrain.Project) -> string {
+		r: terrain.Renderer
+		testing.expect(t, terrain.renderer_init(&r, p))
+		defer terrain.renderer_destroy(&r)
+		pic, _ := terrain.render(&r, p, {output = .Lit}, context.temp_allocator)
+		return string(pic.pixels)
+	}
+	drawn :: proc(e: ^editor.Editor) -> string {
+		pic, _ := terrain.render(&e.renderer, &e.project, {output = .Lit}, context.temp_allocator)
+		return string(pic.pixels)
+	}
+	before := drawn(&e)
+	e.brush.mode, e.brush.strength = .Lower, 1
+	editor.editor_stroke_begin(&e, {20, 20})
+	editor.editor_stroke_to(&e, {70, 60}, 3)
+	editor.editor_stroke_end(&e)
+	testing.expect(t, e.dirty)
+	after := drawn(&e)
+	testing.expect(t, after != before, "the stroke drew nothing")
+	testing.expect(t, after == fresh(t, &e.project), "the stroke draws otherwise than a fresh upload")
+	testing.expect(t, editor.editor_undo(&e))
+	testing.expect(t, drawn(&e) == before, "the undo draws otherwise than before the stroke")
+	testing.expect(t, editor.editor_redo(&e))
+	testing.expect(t, drawn(&e) == after, "the redo draws otherwise than after the stroke")
+}
+
+// Stage 7's exit: open le07's recovered project, sculpt, relight, save and
+// open it again, to find it as it was left.
+@(private = "file")
+le07_sculpt_relight_save_reopen :: proc(t: ^testing.T) {
+	if !os.exists(LE07) {
+		fmt.println("le07_sculpt_relight_save_reopen: no", LE07, "(mise run terrain:recover), skipped")
+		return
+	}
+	e: editor.Editor
+	editor.editor_init(&e)
+	defer editor.editor_destroy(&e)
+	if !testing.expect(t, editor.editor_open(&e, LE07)) {
+		return
+	}
+	for mode in editor.Brush_Mode {
+		e.brush.mode = mode
+		editor.editor_stroke_begin(&e, {100, 1500 + 40 * f32(mode)})
+		editor.editor_stroke_to(&e, {380, 1540 + 40 * f32(mode)}, 4)
+		editor.editor_stroke_end(&e)
+	}
+	e.project.level.lighting.sun_azimuth_degrees = 300
+	e.project.level.lighting.ambient = 0.3
+	editor.editor_settings_settle(&e, false)
+	e.project.level.wind = {direction_degrees = 45, strength = 0.25}
+	editor.editor_settings_settle(&e, false)
+
+	path :: OUT + "/le07.drproj.json"
+	if !testing.expect(t, editor.editor_save(&e, path)) {
+		return
+	}
+	testing.expect(t, !e.dirty)
+	heights := make([]f32, len(e.project.heights), context.temp_allocator)
+	copy(heights, e.project.heights)
+	water := make([]u8, len(e.project.water), context.temp_allocator)
+	copy(water, e.project.water)
+	level := e.project.level
+
+	if !testing.expect(t, editor.editor_open(&e, path)) {
+		return
+	}
+	testing.expect_value(t, e.project.level.lighting, level.lighting)
+	testing.expect_value(t, e.project.level.wind, level.wind)
+	testing.expect_value(t, e.project.level.water, level.water)
+	testing.expect(t, string(e.project.water) == string(water), "the water layer came back otherwise")
+	for v, i in heights {
+		if f32(terrain.height_quantise(v)) * terrain.HEIGHT_UNIT != e.project.heights[i] {
+			testing.expectf(t, false, "height %d: %v saved, %v opened", i, v, e.project.heights[i])
+			break
+		}
+	}
+	// And the editor can still undo nothing: a project opened is new.
+	testing.expect(t, !editor.editor_undo(&e))
+}

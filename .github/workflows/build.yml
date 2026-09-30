@@ -172,7 +172,7 @@ jobs:
             fi
           fi
           bash src/tools/version/release_notes.sh > notes.md
-          printf '\nUnzip and run deimos (Linux) or deimos.exe (Windows) from inside the unzipped folder. Built from %s (run %s).\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" >> notes.md
+          printf '\nUnzip and run deimos (Linux) or deimos.exe (Windows) from inside the unzipped folder; deimos-editor or deimos-editor.exe beside it is the level editor. Built from %s (run %s).\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" >> notes.md
           cat notes.md
           title="Deimos Rose $tag"
           extra=()

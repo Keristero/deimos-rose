@@ -11,6 +11,7 @@ import "core:encoding/json"
 import "core:image"
 import "core:image/png"
 import "core:os"
+import "core:slice"
 import "core:strings"
 
 import "dr:data"
@@ -20,6 +21,8 @@ PROJECT_VERSION :: 1
 PROJECT_SUFFIX :: ".drproj.json"
 // Heights are stored in 1/32 of a map pixel: up to 2048 pixels high.
 HEIGHT_UNIT :: f32(1) / 32
+// The highest a height can be stored.
+HEIGHT_MAX :: 65535 * HEIGHT_UNIT
 MAX_MATERIALS :: 4
 
 // A material: a colour, or a tiling image tinted by it.
@@ -127,7 +130,7 @@ project_save :: proc(p: ^Project, path: string) -> bool {
 	full: string
 	j.height, full = side(dir, stem, "height")
 	h := picture_make(p.width, p.length, 1, 16, context.temp_allocator)
-	h16 := transmute([]u16)h.pixels
+	h16 := slice.reinterpret([]u16, h.pixels)
 	for v, i in p.heights {
 		h16[i] = height_quantise(v)
 	}
@@ -173,7 +176,7 @@ project_load :: proc(path: string, allocator := context.allocator) -> (p: Projec
 		return
 	}
 	unit := j.height_unit > 0 ? j.height_unit : HEIGHT_UNIT
-	for v, i in transmute([]u16)h.pixels {
+	for v, i in slice.reinterpret([]u16, h.pixels) {
 		if i < len(p.heights) {
 			p.heights[i] = f32(v) * unit
 		}

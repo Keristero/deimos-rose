@@ -9,6 +9,7 @@ package terrain_tests
 import "core:fmt"
 import "core:math"
 import "core:os"
+import "core:slice"
 import "core:testing"
 
 import rl "vendor:raylib"
@@ -123,6 +124,7 @@ terrain_renders :: proc(t: ^testing.T) {
 	occlusion_darkens_the_ambient(t)
 	water_layer_over_the_bed(t)
 	strips_are_the_whole(t)
+	an_update_is_a_new_upload(t)
 	scales_agree(t)
 	heights_come_back(t)
 }
@@ -335,6 +337,37 @@ strips_are_the_whole :: proc(t: ^testing.T) {
 	terrain.png_write(OUT + "/hills.png", whole)
 }
 
+// A region uploaded again after an edit draws as the whole project
+// uploaded afresh: the smoothing's margin is recomputed, and the water
+// layer follows too.
+@(private = "file")
+an_update_is_a_new_upload :: proc(t: ^testing.T) {
+	p := hills(60, 50, context.temp_allocator)
+	p.level.water = {height = 9, colour = {20, 60, 110}, visible = true}
+	p.water = make([]u8, 60 * 50 * 4, context.temp_allocator)
+	r: terrain.Renderer
+	testing.expect(t, terrain.renderer_init(&r, &p))
+	defer terrain.renderer_destroy(&r)
+	// A pit and a peak across one corner, and water filled into the pit.
+	rect := terrain.Rect{40, 30, 60, 50}
+	for y in rect.y0 ..< rect.y1 {
+		for x in rect.x0 ..< rect.x1 {
+			i := y * 60 + x
+			p.heights[i] = x < 50 ? 2 : 40
+			if p.heights[i] < p.level.water.height {
+				copy(p.water[i * 4:][:4], []u8{30, 70, 120, 200})
+			}
+		}
+	}
+	terrain.renderer_update(&r, &p, rect)
+	for output in ([?]terrain.Output{.Lit, .Albedo, .Normal, .Shadow}) {
+		updated, ok := terrain.render(&r, &p, {output = output}, context.temp_allocator)
+		testing.expect(t, ok)
+		fresh := draw(t, &p, {output = output})
+		testing.expectf(t, string(updated.pixels) == string(fresh.pixels), "%v after an update differs from a fresh upload", output)
+	}
+}
+
 // Twice the size, averaged down, is close to the map at its size.
 @(private = "file")
 scales_agree :: proc(t: ^testing.T) {
@@ -364,7 +397,7 @@ scales_agree :: proc(t: ^testing.T) {
 heights_come_back :: proc(t: ^testing.T) {
 	p := hills(60, 50, context.temp_allocator)
 	h := draw(t, &p, {output = .Height})
-	hs := transmute([]u16)h.pixels
+	hs := slice.reinterpret([]u16, h.pixels)
 	for v, i in p.heights {
 		if hs[i] != terrain.height_quantise(v) {
 			testing.expectf(t, false, "height %d: %d, not %d", i, hs[i], terrain.height_quantise(v))

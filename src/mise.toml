@@ -63,9 +63,31 @@ description = "Build the game binary"
 depends = ["setup"]
 run = "odin build game -out:$DR_BUILD/deimos$DR_EXT $DR_COLL $DR_LINK -o:speed -define:DR_VERSION=$(bash tools/version/version.sh)"
 
+[tasks."build:editor"]
+description = "Build the level editor (editor/, notes/level-editor-plan.md Stage 7)"
+depends = ["setup"]
+run = "odin build editor -out:$DR_BUILD/deimos-editor$DR_EXT $DR_COLL $DR_LINK -o:speed -define:DR_VERSION=$(bash tools/version/version.sh)"
+
 [tasks."build:linux"]
-description = "Build the game binary for Linux (x86-64) -- alias for `build`, named explicitly for symmetry with build:windows"
-depends = ["build"]
+description = "Build the game binary and the level editor for Linux (x86-64) -- `build` and `build:editor`, named explicitly for symmetry with build:windows"
+depends = ["build", "build:editor"]
+
+[tasks.editor]
+description = "Build and run the level editor, on a project if given: mise run editor [path/level.drproj.json] (a new level otherwise). It opens a window: for a picture without one, editor:shot"
+depends = ["build:editor"]
+run = 'exec "$DR_BUILD/deimos-editor$DR_EXT" "$@"'
+
+[tasks."editor:shot"]
+description = "Draw one frame of the level editor headlessly ([PROJECT=path/level.drproj.json, a new level otherwise] [OUT=build/editor.png]); extra flags pass through, e.g. -- -tab=light -row=1500 -zoom=2 -tilt=50"
+depends = ["build:editor"]
+run = """
+set -e
+headless() {
+  if command -v xvfb-run >/dev/null; then set -- xvfb-run -a -s "-screen 0 1920x1200x24" "$@"; fi
+  env DISPLAY= WAYLAND_DISPLAY= "$@"
+}
+headless "$DR_BUILD/deimos-editor$DR_EXT" ${PROJECT:+"$PROJECT"} -shot="${OUT:-$DR_BUILD/editor.png}" "$@"
+"""
 
 [tasks.dist]
 description = "Lay out the release folder, dist/deimos: the built binary (build or build:windows first), assets/ and each plugin's content in plugins/<name>/ (every file of src/plugins that is not Odin source; D51). CI zips it"
@@ -75,6 +97,8 @@ set -euo pipefail
 rm -rf dist/deimos
 mkdir -p dist/deimos/plugins
 cp "$DR_BUILD/deimos$DR_EXT" dist/deimos/
+# The level editor, when it was built (build:linux and build:windows do).
+if [ -f "$DR_BUILD/deimos-editor$DR_EXT" ]; then cp "$DR_BUILD/deimos-editor$DR_EXT" dist/deimos/; fi
 cp -r assets dist/deimos/
 # Plugin folders that hold only code (and view/ subpackages) copy nothing.
 (cd plugins && find . -type f ! -name '*.odin' | sort) | while read -r f; do
@@ -90,11 +114,12 @@ run = '''
 set -euo pipefail
 mkdir -p "$DR_BUILD"
 odin build game -out:"$DR_BUILD/deimos.exe" -target:windows_amd64 $DR_COLL -o:speed -define:DR_VERSION="$(bash tools/version/version.sh)"
+odin build editor -out:"$DR_BUILD/deimos-editor.exe" -target:windows_amd64 $DR_COLL -o:speed -define:DR_VERSION="$(bash tools/version/version.sh)"
 # odin build exits 0 even when this particular cross-link failure occurs
 # (confirmed against this toolchain) and simply produces no binary, so a
 # missing output file has to be checked for explicitly rather than trusted
 # to show up as a nonzero exit code.
-if [ ! -f "$DR_BUILD/deimos.exe" ]; then
+if [ ! -f "$DR_BUILD/deimos.exe" ] || [ ! -f "$DR_BUILD/deimos-editor.exe" ]; then
   echo "build:windows: no binary produced -- see this task's description and docs/decisions.md D27" >&2
   exit 1
 fi
@@ -180,10 +205,12 @@ run = [
   "odin check terrain $DR_COLL -vet -strict-style -no-entry-point",
   "odin check tools/terrain $DR_COLL -vet -strict-style",
   "odin check tests/terrain $DR_COLL -vet -strict-style -no-entry-point",
+  "odin check editor $DR_COLL -vet -strict-style",
+  "odin check tests/editor $DR_COLL -vet -strict-style -no-entry-point",
 ]
 
 [tasks.test]
-description = "Run the Odin test suite: tests/, then tests/data_plugins, a package of its own because it registers the fixture plugins in tests/fixtures/plugins (D52), then tests/terrain, which draws through GL under xvfb-run (skipped without a display)"
+description = "Run the Odin test suite: tests/, then tests/data_plugins, a package of its own because it registers the fixture plugins in tests/fixtures/plugins (D52), then tests/terrain and tests/editor, which draw through GL under xvfb-run (skipped without a display)"
 depends = ["setup"]
 run = [
   "odin test tests $DR_COLL $DR_LINK -out:$DR_BUILD/tests$DR_EXT",
@@ -191,6 +218,7 @@ run = [
   # Never on the desktop: under xvfb-run, or with no display at all, when
   # the GL cases skip.
   "if command -v xvfb-run >/dev/null; then set -- xvfb-run -a -s '-screen 0 1280x1024x24'; fi; env DISPLAY= WAYLAND_DISPLAY= \"$@\" odin test tests/terrain $DR_COLL $DR_LINK -out:$DR_BUILD/tests-terrain$DR_EXT",
+  "if command -v xvfb-run >/dev/null; then set -- xvfb-run -a -s '-screen 0 1280x1024x24'; fi; env DISPLAY= WAYLAND_DISPLAY= \"$@\" odin test tests/editor $DR_COLL $DR_LINK -out:$DR_BUILD/tests-editor$DR_EXT",
 ]
 
 [tasks.coverage]

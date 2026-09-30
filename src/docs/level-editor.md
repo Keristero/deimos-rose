@@ -1,7 +1,7 @@
 # Level editor and remastered levels
 
 Progress on [notes/level-editor-plan.md](../../notes/level-editor-plan.md),
-stage by stage. The decisions are D51–D56 in [decisions.md](decisions.md).
+stage by stage. The decisions are D51–D58 in [decisions.md](decisions.md).
 
 | Stage | Status | Where |
 |---|---|---|
@@ -10,8 +10,8 @@ stage by stage. The decisions are D51–D56 in [decisions.md](decisions.md).
 | 3 — Campaigns; the originals become Classic Levels | **complete** | D53 |
 | 4 — Optional level fields, launch flags | **complete** | D54 |
 | 5 — Terrain renderer, le07 proof of concept | **complete** | D55, below |
-| 6 — Recovering the 12 originals' heightmaps | in progress | below |
-| 7 — The editor | not started | |
+| 6 — Recovering the 12 originals' heightmaps | **complete** | D56, D57, below |
+| 7 — The editor | **complete** | D58, below |
 | 8 — Materials, structures, placement | not started | |
 | 9 — Export and Play | not started | |
 | 10 — HD layers, Remastered Levels | not started | |
@@ -189,3 +189,116 @@ Each level's scores are in `work/recovered/leNN/compare.txt` and
 `compare-occlusion.txt`, with side-by-sides. `work/` is not committed: it
 holds the original art. The projects are a starting point for artists, not
 finished levels.
+
+## Stage 7: the editor
+
+`deimos-editor` (`editor/`) sculpts a level project's ground, and sets its
+light, water and wind. `mise run editor [project]` builds and opens it: on
+a project, or a new level 480 wide and 3600 long (`-new=ROWS` for another
+length). `mise run editor:shot` draws one frame headlessly, with flags for
+the view and the tab. `build:linux` and `build:windows` build it beside the
+game, and `dist` puts it in the release zip.
+
+The window is the panel on the left, the level in the middle, the whole
+level on the right with the part in view outlined, and a status line. The
+panel has Open, Save, Undo, Redo and New, then four tabs:
+
+- **Terrain:** the brush. Raise, Lower, Flatten toward a target height, or
+  Smooth, in a round, square or rough shape, with a size, a strength and a
+  soft edge. Right-click takes the ground's height as the target.
+- **Light:** live lighting on or off, the sun's direction and height, the
+  ambient share and colours, the softness. Copy and Paste carry the light
+  between levels as JSON on the clipboard (a level record's light pastes
+  too), and Reset to original loads the measured light.
+- **Water:** its height, shown or hidden, its colour; and the wind's
+  direction and strength.
+- **View:** 1x or 2x, and a tilted view to look at the relief.
+
+The wheel scrolls up and down the level, Shift+wheel across it at 2x,
+middle-drag pans, and clicking the overview goes there. Ctrl+Z, Ctrl+Y and
+Ctrl+S undo, redo and save; 1-4 pick the brush, `[` and `]` size it, `L`
+and `T` toggle the light and the tilt. A project dropped on the window
+opens.
+
+### How it draws
+
+The viewport is the Stage 5 renderer drawing the rows in view into a
+texture of their size (`render_into`), again only when they scroll or
+change. A dab uploads just the region it changed (`renderer_update`): the
+ground is smoothed by σ 1 on the CPU, so a change spreads by the
+smoothing's radius, m = ⌈3σ⌉. The region is grown by m and computed from
+the heights grown by 2m. The renderer's test draws an edited region
+uploaded this way and the whole project uploaded afresh, and they are the
+same bytes in all four outputs. The editor's test finds the same after a
+stroke, its undo and its redo.
+
+The tilted view is the lit rows on a mesh of the heights, one vertex every
+2 px or more, under 65,535. It is framed on the ground's mean height and
+backed off by the relief above it. It is for looking at: the brush works
+on the top-down view.
+
+The renderer's refactor leaves its output as it was: le07 drawn by the
+committed tool and the new one compares byte for byte, IoU 0.937 without
+the occlusion and 0.890 with it, as the Stage 6 report has.
+
+### Undo
+
+A stroke keeps the 32 x 32 tiles of the heights and the water layer it
+touches, as they were before its first dab. Undoing swaps them back, so
+the edit then holds what was undone, for redo. A change of the light,
+water or wind keeps the settings before it, and a slider's drag records
+once, when it is let go. Undo keeps 256 edits, or 512 MB of tiles,
+whichever comes first, and always the newest. A tile is 8 KiB, so a
+stroke over the whole of an original level keeps 14 MB.
+
+### Water that follows the ground
+
+Ground lowered under the water, where the water layer has none, gets the
+level's water colour, opaque. Ground raised out of it loses its water.
+Recovered water's colour and opacity are otherwise left alone: some
+recovered pixels under the water are legitimately clear (on le05, 2670 of
+them), so the renderer cannot read "no water" into a clear pixel. A level
+without a water layer shows the water colour wherever the ground is under
+it, as before.
+
+### Closing with unsaved changes
+
+raylib cannot take back a window's close, so the editor does not ask.
+Unsaved work is written beside the project as
+`<level>.unsaved.drproj.json`, and Open and New ask for a second press
+before they discard it.
+
+### Verified
+
+`tests/editor` (under xvfb-run in `mise run test`):
+- strokes of every mode and shape, across tiles and the water line, undo to
+  the bytes they started from and redo to the bytes they left;
+- undo keeps to its budget;
+- the water follows the ground;
+- the settings undo as one;
+- the light's JSON round-trips, a level record's light parses;
+- the editor's shot of a fixture project has in its viewport the
+  renderer's own lit rows, value for value, and a panel drawn;
+- a stroke through the editor draws as a fresh upload, and so do its undo
+  and redo;
+- Stage 7's exit, when `work/recovered/le07` is there: open le07's
+  project, sculpt in each mode, relight, change the wind, save, open again,
+  and find the heights, water layer, light, wind and water as saved.
+
+### Not as planned
+
+- **`sim.register_all()` waits for Stage 8.** The editor reads no unit
+  definitions until it places units.
+- **Undo keeps the heights and the water layer**, not the splat weights:
+  nothing paints materials until Stage 8's brush, which will add them to the
+  tiles.
+- **The project format** was Stage 5's, and needed no change. The placements
+  arrive with Stage 8.
+- **A Stage 5 bug** read the 16-bit PNGs as twice their length
+  (`transmute` keeps the byte count); it now uses `slice.reinterpret`.
+
+### Still open
+
+- Brushing on the tilted view.
+- The frame time with a large brush is not measured: only software GL
+  under xvfb was at hand, and a dab redraws the rows in view.

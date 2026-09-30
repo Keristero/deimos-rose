@@ -392,9 +392,12 @@ report. They are a starting point for artists, not finished levels.
   `deimos-editor[.exe]` into the zip.
 - Add `editor/` to `check`.
 - Its `main` calls `sim.register_all()` first (D50), since it reads unit
-  definitions.
+  definitions. *Corrected in Stage 7:* it reads none until Stage 8 places
+  units, so the call arrives with placement.
 - The UI uses raygui panels. The viewport is Stage 5's renderer, with an
-  optional tilted camera for inspecting relief.
+  optional tilted camera for inspecting relief. *As built:* the tilted view
+  is the lit top-down render on a mesh of the heights, for looking at; the
+  brush works on the top-down view.
 
 **The project file** is what the editor saves: `<level>.drproj.json` plus
 side files:
@@ -410,7 +413,9 @@ Exported plugins include it, so they can be reopened.
 - **New level:** 480 wide and 3600 long by default, with any length
   allowed.
 - **Open, save and undo.** Undo stores changed regions of the heightmap and
-  splat layers, not whole copies.
+  splat layers, not whole copies. *As built:* 32 x 32 tiles of the heights
+  and the water layer; the splat weights join them with Stage 8's paint
+  brush, the first thing to change them.
 - **Scrolling** up and down the level, like the original editor's panel
   (`EDBU`: scroll, rotate, layer, obstacle, info).
 - **Terrain brush:**
