@@ -12,7 +12,7 @@ stage by stage. The decisions are D51–D60 in [decisions.md](decisions.md).
 | 5 — Terrain renderer, le07 proof of concept | **complete** | D55, below |
 | 6 — Recovering the 12 originals' heightmaps | **complete** | D56, D57, below |
 | 7 — The editor | **complete** | D58, below |
-| 8 — Materials, structures, placement | placement **complete**; materials and structures not started | D60, below |
+| 8 — Materials, structures, placement | placement, materials and level properties **complete**; structures and helpers not started | D60, D61, below |
 | 9 — Export and Play | not started | |
 | 10 — HD layers, Remastered Levels | not started | |
 
@@ -207,11 +207,12 @@ game, and `dist` puts it in the release zip.
 
 The window is the panel on the left, the level in the middle, the whole
 level on the right with the part in view outlined, and a status line. The
-panel has Open, Save, Undo, Redo and New, then five tabs:
+panel has Open, Save, Undo, Redo and New, then seven tabs:
 
 - **Terrain:** the brush. Raise, Lower, Flatten toward a target height, or
   Smooth, in a round, square or rough shape, with a size, a strength and a
   soft edge. Right-click takes the ground's height as the target.
+- **Paint** (Stage 8, below): the materials and their brush.
 - **Light:** live lighting on or off, the sun's direction and height, the
   ambient share and colours, the softness. Copy and Paste carry the light
   between levels as JSON on the clipboard (a level record's light pastes
@@ -220,6 +221,8 @@ panel has Open, Save, Undo, Redo and New, then five tabs:
   direction and strength.
 - **View:** 1x or 2x, and a tilted view to look at the relief.
 - **Units** (Stage 8, below): the level's units.
+- **Level** (Stage 8, below): the level's names, words, music and sky, and
+  the weapons it starts with.
 
 The wheel scrolls up and down the level, Shift+wheel across it at 2x,
 middle-drag pans, and clicking the overview goes there. Ctrl+Z, Ctrl+Y and
@@ -255,8 +258,9 @@ touches, as they were before its first dab. Undoing swaps them back, so
 the edit then holds what was undone, for redo. A change of the light,
 water or wind keeps the settings before it, and a slider's drag records
 once, when it is let go. Undo keeps 256 edits, or 512 MB of tiles,
-whichever comes first, and always the newest. A tile is 8 KiB, so a
-stroke over the whole of an original level keeps 14 MB.
+whichever comes first, and always the newest. A tile was 8 KiB, so a
+stroke over the whole of an original level kept 14 MB. With Stage 8's
+material weights a tile is 12 KiB, and the whole level 21 MB.
 
 ### Water that follows the ground
 
@@ -312,8 +316,9 @@ before they discard it.
 
 ## Stage 8: placement
 
-The Units tab places the level's units. The rest of Stage 8 (materials,
-structure footprints and the helpers) is still to come.
+The Units tab places the level's units. The Paint tab's materials and the
+Level tab's properties follow, below. Structure footprints and the
+placing helpers are still to come.
 
 - **The palette** lists every unit with a preview face
   (`editorPreviewSpriteFace_ID` not `none`), by name: 134 of the
@@ -428,12 +433,157 @@ is unchanged.
 - **The stationary checkbox also shows where the level already sets
   it**, so that a stationary unit can be seen and cleared.
 
+## Stage 8: materials
+
+The Paint tab lays the ground's materials, up to four a level. A
+material is either a plain colour or an image tinted by its colour.
+
+- **The list:** the level's materials, with their colours. Add a colour
+  adds a plain one, and Remove takes the chosen one away. Its Tint is the
+  colour an image is multiplied by. An image's Tile is how many map
+  pixels one copy of it covers.
+- **An image dropped on the window** is added as a material. It is named
+  after the file, lower case and dashed (`Rock Face.png` becomes
+  `rock-face`). It is scaled to fit 1024 px, and tiles at its own width,
+  or at most 256 px. It is kept in memory and written to the project's
+  `materials/` when the project is saved, so a project stands alone, and
+  Stage 9's export takes the folder with it.
+- **The library:** materials to start a level from. Add from the library
+  copies one into the project as a dropped image is copied.
+- **The brush:** Paint moves every weight toward the chosen material, and
+  Erase takes that material away. Both use the Terrain brush's shapes,
+  size, strength and falloff. Keys 1 and 2 pick Paint or Erase.
+- **Laid by the ground:** Steep lays a material by the slope, By water by
+  the height above the water, and Under trees under a recovered level's
+  canopy. These rules were the renderer's since Stage 5; now they can be
+  edited.
+
+A level's weights start empty. The first stroke makes them: an RGBA layer,
+one channel a material, saved beside the project as
+`<level>.splat.png`, as the plan's project format has it. Where the
+weights sum under full, the unlit colour shows through. A level without
+one, as a new level is, shows its first material there. So a weight at
+half shows half, and not all, of the one painted.
+
+### Tiling that does not repeat
+
+The originals' ground never repeats (the findings: autocorrelation peaks
+0.03–0.04). A tiled image repeats every tile. The renderer hex-tiles an
+image material (Mikkelsen, "Practical Real-Time Hex-Tiling", JCGT 2022):
+- A triangle grid is laid over the image, about 3.5 corners a tile.
+- Each corner's copy of the image is moved by its own random offset.
+- The three nearest are blended by how near each corner is, sharpened by
+  their brightness (contrast 0.6, exponent 7). So they meet along the
+  image's features rather than fading through each other.
+
+The copies are moved but not turned: a dropped photograph's light has a
+direction, which a turn would scatter. This is provisional; a per-material
+switch for turns would settle it, and nothing needs one yet. The images
+are mipmapped and read with the map's own derivatives.
+
+### The starting library
+
+`mise run materials:library` makes it, from the recovered levels' unlit
+colour (`work/recovered`, `mise run terrain:recover-all`), into
+`assets/materials`. That is where the editor looks, and it is committed
+with the rest of the assets tree. `tools/materials/library.json` is the
+recipe. For each material, the most uniform 128 px window inside a box of
+one level's albedo is found. Most uniform means the least spread of its
+16 px blocks' mean colours, so the window is one ground and not an edge
+between two. The window is quilted (Efros and Freeman 2001) into a 256 px
+image that tiles, and listed in `index.json` with where it came from,
+tagged `original-derived`:
+
+| Material | From (x,y, size) | Tile |
+|---|---|---|
+| red dust | le01 256,904, 128 | 256 |
+| rust plain | le02 224,1212, 128 | 256 |
+| olive silt | le03 176,1584, 128 | 256 |
+| slate | le05 64,608, 128 | 256 |
+| tan sand | le06 288,976, 128 | 256 |
+| grey rock | le07 0,196, 128 | 256 |
+| jungle | le07 256,1160, 192 | 384 |
+| dry grass | le10 160,0, 128 | 256 |
+
+The quilt lays 40 px blocks overlapping by 8. Each block is one of those
+of the exemplar within 30% of the best's error at the overlap, chosen at
+random, and joined along the cheapest seam. The blocks wrap around the
+image's edges: the last in a row or column is joined to the first as to
+its neighbours, so the image tiles. The paper's 10% repeated the red
+dust's pebbles within one tile; 30% did not, with seams no worse. The
+jungle's trees repeat inside 128 px, so its exemplar is 192. A scrub
+material from le11 was dropped: its quilt repeated in visible blocks.
+
+### Undo
+
+A stroke keeps the weights with the heights and water in its 32 x 32
+tiles. Adding or removing a material keeps the materials before it, with
+their images and the rules that name them. Removing one also keeps every
+tile of the weights, because the channels above it move down one. The
+rules renumber to follow them, and a rule for the removed material is
+cleared. A tint, a tile size or a rule is a setting, undone as the light
+is.
+
+## Stage 8: the level's properties
+
+The Level tab edits:
+- the level record's name and identifier;
+- its description and copyright, the words the originals' campaign
+  screens had;
+- its music, briefing and sky;
+- the air and ground weapons a player starts it with (D54), from the
+  weapons of each kind, or none for what the level's number brings.
+
+A text box's change counts once it is left, and undoes as a setting. The
+wind stays in the Water tab, where Stage 7 put it.
+
+The description, copyright and briefing were in the originals' records
+and in `plugins/classic_levels/data/levels/`, but the game's level
+record did not read them, so a project lost them. It now keeps them.
+The game does not show them yet.
+
+### Verified
+
+`tests/terrain` and `tests/editor`, without the original data:
+- a material's image is written under `materials/` on save and reads
+  back;
+- weights made after the renderer's upload, and a region of them
+  changed, draw as a fresh upload does;
+- without an unlit colour, a weight at half shows half;
+- an image material tiled 16 px draws the pixel a tile along alike less
+  than 10% of the time (a plain tiling: always);
+- a quilt of a pattern that repeats every 8 px is that pattern
+  throughout, across its own wrapped edges, and the same seed quilts the
+  same; the most uniform window of half flat, half gradient is in the flat
+  half;
+- a held brush arrives at all of the material, the weights never sum past
+  full, erasing takes it away, and nothing outside the brush changes;
+- a painted stroke undoes and redoes to the weights' bytes;
+- a look, the rules and the properties undo as one setting;
+- the properties save and read back;
+- a fixture library loads, and so does the committed one: every image
+  256 px and tagged `original-derived`;
+- through the editor: a library material and a dropped image are added
+  and named, two strokes paint, and draw as a fresh upload; removing a
+  material moves the weights above it down and draws as a fresh upload,
+  and its undo restores the weights and the drawing; the save writes the
+  images, and the project opened again has the same weights and the same
+  drawing.
+
+### Not as planned
+
+- **The rules were already there.** The cliff, shore and canopy rules
+  came with the Stage 5 renderer. They are now edited, as "Laid by the
+  ground".
+- **The level's wind** is in the Water tab, as Stage 7 built it, not
+  under the level's properties.
+- **The library is made by `materials:library`, not `assets:all`.** It
+  needs the recovered projects, which need the recovery's models, not
+  only the installer. It is committed, so it is there without them.
+
 ### Still to come in Stage 8
 
-- Materials: images dropped on the window, the paint brush, sampling that
-  breaks up tiling, the quilted starting library. Undo will add the splat
-  weights to its tiles.
 - Structure footprints: the `levels:bases` measurement, the footprint
-  shown live under its unit, and baked on export.
-- The helpers: the obstacle tool (`grob`), the vent group (`geys` with its
-  detector) and the level properties.
+  shown live under its unit, and baked on export (Stage 9).
+- The helpers: the obstacle tool (`grob`) and the vent group (`geys` with
+  its detector).

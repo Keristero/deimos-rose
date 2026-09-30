@@ -445,13 +445,21 @@ Exported plugins include it, so they can be reopened.
 
 **Materials:**
 - Drag and drop an image onto the window (raylib `IsFileDropped`). It is
-  copied into the project's `materials/` and bundled on export.
-- A paint brush sets per-material weights.
+  copied into the project's `materials/` and bundled on export. *As
+  built:* kept in memory and written there on save, scaled to 1024 px at
+  most.
+- A paint brush sets per-material weights. *As built:* where they sum
+  under full the unlit colour shows, or without one the first material;
+  the cliff, shore and canopy rules, the renderer's since Stage 5, are
+  edited beside it.
 - Sampling breaks up tiling (for example, hex-tile blending), because the
   originals' ground never repeats (findings: autocorrelation peaks
-  0.03-0.04).
+  0.03-0.04). *As built:* hex-tiling, offsets only, always on (D61).
 - The starting library is exemplars quilted from the unlit layer (the
-  findings' Efros-Freeman test), tagged `original-derived`.
+  findings' Efros-Freeman test), tagged `original-derived`. *As built:*
+  eight, by `mise run materials:library` from the recovered projects into
+  `assets/materials`, not by `assets:all`: it needs the recovery's models.
+  Quilted with a 30% tolerance, not the paper's 10%.
 
 **Structure footprints:**
 - The original baked each structure's base into the map render, and the
@@ -499,7 +507,9 @@ under the selected unit, with the spawn row drawn across the map):
 - **Vent group:** places `geys` vents with the matching bonus detector
   (`gebd`, `05gb` or `gbd2`, which fire at 2, 3 or 4 destroyed vents).
 - **Level properties:** name, identifier, description, music, briefing,
-  `start_weapons`, wind, skybox.
+  `start_weapons`, wind, skybox. *As built:* the Level tab, with the
+  copyright too; the wind stays in the Water tab. The game's level record
+  now keeps description, copyright and briefing, which it had dropped.
 - **Custom enemies** from another plugin appear in the palette. Export
   records that plugin as a dependency.
 

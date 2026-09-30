@@ -1549,3 +1549,40 @@ Stage 8's placement is the editor's Units tab (docs/level-editor.md).
 
 The two changes to `sim/` move code and name a constant. `oracle:diff`
 is exact, and tests/golden is unchanged.
+
+### D61 — Materials: images kept beside the project, hex-tiled, a library quilted from the recovered ground
+
+Stage 8's materials are the editor's Paint tab (docs/level-editor.md).
+
+- **A material's image lives beside the project**, under `materials/`,
+  written by `terrain.project_save` from the image in memory. A dropped
+  file is copied, not referred to, so a project stands alone and an
+  export takes the folder whole. It is scaled to 1024 px at most.
+- **Image materials are always hex-tiled** (Mikkelsen 2022), with
+  offsets but no turns. The originals' ground never repeats, and an
+  image repeating every tile was the first thing to see. Turns would
+  scatter a photograph's light. Provisional: a per-material switch for
+  turns, if a material wants them.
+- **Without an unlit colour, the first material is the ground under the
+  rest.** What the weights leave short of full is its. Before this, the
+  weights were scaled up to full, so a light stroke showed as all of its
+  material. A recovered level keeps its unlit colour under the weights,
+  as before.
+- **Undo keeps the weights in the heights' tiles**, 12 KiB a tile now.
+  Adding or removing a material keeps the materials as a value, with
+  their images and the rules that name them. The images are in the
+  project's memory, which outlives the history.
+- **The library is made from the recovered levels, not the installer.**
+  `mise run materials:library` quilts it from `work/recovered`, into
+  `assets/materials`, committed as the assets tree is (D29). `assets:all`
+  cannot make it: it needs the recovery's models. Every entry is tagged
+  `original-derived` and records its level, window and size.
+- **Quilting takes a block within 30% of the best**, not the paper's
+  10%, which repeated the red dust's pebbles in a 256 px tile. The quilt
+  wraps, so it tiles on its own before the hex-tiling.
+- **The level record keeps the originals' description, copyright and
+  briefing**, which the records had and the game's type dropped. The
+  Level tab edits them; the game does not show them yet.
+
+The game's code is unchanged but for the three fields it reads and does
+not use. `oracle:diff` is exact, and tests/golden is unchanged.

@@ -204,6 +204,7 @@ run = [
   "odin check tools/clips   $DR_COLL -vet -strict-style",
   "odin check terrain $DR_COLL -vet -strict-style -no-entry-point",
   "odin check tools/terrain $DR_COLL -vet -strict-style",
+  "odin check tools/materials $DR_COLL -vet -strict-style",
   "odin check tests/terrain $DR_COLL -vet -strict-style -no-entry-point",
   "odin check editor $DR_COLL -vet -strict-style",
   "odin check tests/editor $DR_COLL -vet -strict-style -no-entry-point",
@@ -583,6 +584,14 @@ headless() {
 headless python3 tools/terrain_mod/package.py --recovered "$DR_SRC/../work/recovered" \
   --classic "$DR_SRC/plugins/classic_levels" --renderer "$DR_BUILD/terrain$DR_EXT" --out "${OUT:-$DR_SRC/plugins/recovered_levels}"
 '''
+
+[tasks."materials:library"]
+description = "Quilt the level editor's material library from the recovered levels' unlit colour (work/recovered, terrain:recover-all) into assets/materials, tagged original-derived: tools/materials/library.json says which ground from where (OUT=dir for elsewhere)"
+depends = ["setup"]
+run = """
+odin build tools/materials $DR_COLL $DR_LINK -o:speed -out:$DR_BUILD/materials$DR_EXT
+"$DR_BUILD/materials$DR_EXT" tools/materials/library.json "$DR_SRC/../work/recovered" "${OUT:-$DR_ASSETS/materials}"
+"""
 
 [tasks."terrain:occlusion"]
 description = "Bake a level project's occlusion layer, how open to the sky each pixel is, from its colour with Flux 2 [klein] (PROJECT=...; in the hd:setup venv)"

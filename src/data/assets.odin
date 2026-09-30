@@ -72,6 +72,11 @@ Json_Level :: struct {
 	id:               string           `json:"id"`,
 	name:             string           `json:"name"`,
 	identifier:       string           `json:"identifier"`,
+	// The originals' too, which the game does not show yet: kept so the
+	// level editor carries them through (tools/records writes them).
+	description:      string           `json:"description"`,
+	copyright:        string           `json:"copyright"`,
+	briefing:         string           `json:"briefing"`,
 	background:       [4]int           `json:"background"`,
 	background_image: string           `json:"background_image"`,
 	preview_image:    string           `json:"preview_image"`,

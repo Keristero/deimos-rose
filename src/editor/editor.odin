@@ -1,7 +1,7 @@
 package editor
 
 // The level editor's state, and what it does to a project apart from the
-// window: open, make, save, stroke, undo, relight, place units. The window and its
+// window: open, make, save, sculpt, paint, undo, relight, place units. The window and its
 // panels are in view.odin and panel.odin; tests/editor drives these
 // directly.
 
@@ -48,6 +48,10 @@ Editor :: struct {
 	last_dab:    [2]f32,
 	// What can be placed: catalogue_load's, or a test's own.
 	units:         Catalogue,
+	// The materials a level can start from: library_load's.
+	library:       Library,
+	paint:         Paint,
+	level_panel:   Level_Panel,
 	using placing: Placing,
 	using view:    View,
 	using panel:   Panel,
@@ -60,6 +64,8 @@ editor_init :: proc(e: ^Editor) {
 	e.tilt = 45
 	e.new_length = NEW_LENGTH
 	placing_init(&e.placing)
+	e.paint.material, e.paint.library_pick = -1, -1
+	e.level_panel.editing = -1
 	style_dark()
 }
 
@@ -68,6 +74,7 @@ editor_destroy :: proc(e: ^Editor) {
 	terrain.renderer_destroy(&e.renderer)
 	history_destroy(&e.history)
 	catalogue_destroy(&e.units)
+	library_destroy(&e.library)
 	placing_destroy(&e.placing)
 	arena_free(e.arena)
 	e.arena, e.has_project = nil, false
@@ -123,6 +130,8 @@ editor_take :: proc(e: ^Editor, p: terrain.Project, arena: ^virtual.Arena) {
 	e.dirty, e.stroke = false, false
 	e.selected, e.hovered = -1, -1
 	e.dragging_unit, e.placements_changing = false, false
+	e.paint.material = len(p.materials) > 0 ? 0 : -1
+	e.level_panel.editing = -1
 	terrain.renderer_init(&e.renderer, &e.project)
 	view_reset(&e.view, &e.project)
 }
@@ -157,8 +166,15 @@ editor_save :: proc(e: ^Editor, path: string) -> bool {
 	return true
 }
 
-// Starts a stroke at `at` (map pixels) with the brush.
+// Starts a stroke at `at` (map pixels) with the brush: in the Paint tab,
+// of the chosen material's weight, the weights made when there are none.
 editor_stroke_begin :: proc(e: ^Editor, at: [2]f32) {
+	if Tab(e.tab) == .Paint {
+		if e.paint.material < 0 || e.paint.material >= len(e.project.materials) {
+			return
+		}
+		terrain.project_splat(&e.project, virtual.arena_allocator(e.arena))
+	}
 	history_begin(&e.history)
 	e.stroke = true
 	e.last_dab = at
@@ -191,7 +207,12 @@ editor_stroke_end :: proc(e: ^Editor) {
 
 @(private = "file")
 editor_dab :: proc(e: ^Editor, at: [2]f32, amount: f32) {
-	area := brush_dab(&e.project, e.brush, at, amount, &e.history)
+	area: terrain.Rect
+	if Tab(e.tab) == .Paint {
+		area = paint_dab(&e.project, e.brush, Paint_Mode(e.paint.mode), e.paint.material, at, amount, &e.history)
+	} else {
+		area = brush_dab(&e.project, e.brush, at, amount, &e.history)
+	}
 	if area.x1 > area.x0 {
 		terrain.renderer_update(&e.renderer, &e.project, area)
 		e.dirty = true
@@ -220,7 +241,13 @@ editor_changed :: proc(e: ^Editor, c: Change) {
 	if c.map_ {
 		terrain.renderer_update(&e.renderer, &e.project, c.area)
 	}
-	if c.map_ || c.settings {
+	if c.materials {
+		terrain.renderer_materials(&e.renderer, &e.project)
+		if e.paint.material >= len(e.project.materials) {
+			e.paint.material = len(e.project.materials) - 1
+		}
+	}
+	if c.map_ || c.settings || c.materials {
 		e.settings = settings_of(&e.project)
 		e.dirty = true
 		e.view_stale, e.overview_stale = true, true

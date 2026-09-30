@@ -14,10 +14,12 @@ import "dr:terrain"
 
 Tab :: enum c.int {
 	Terrain,
+	Paint,
 	Light,
 	Water,
 	View,
 	Units,
+	Level,
 }
 
 // An action that would lose unsaved changes, asked for once already.
@@ -131,7 +133,7 @@ editor_draw :: proc(e: ^Editor, l: Layout) {
 editor_input :: proc(e: ^Editor, l: Layout) {
 	v, p := &e.view, &e.project
 	mouse := rl.GetMousePosition()
-	typing := e.path_edit || e.length_edit
+	typing := e.path_edit || e.length_edit || e.level_panel.editing >= 0
 	in_view := rl.CheckCollisionPointRec(mouse, l.view)
 	in_overview := rl.CheckCollisionPointRec(mouse, l.overview)
 	rows := view_rows(v, l.view)
@@ -163,7 +165,7 @@ editor_input :: proc(e: ^Editor, l: Layout) {
 	if rl.IsMouseButtonReleased(.LEFT) {
 		editor_stroke_end(e)
 	}
-	if rl.IsMouseButtonPressed(.RIGHT) && v.over_map && Tab(e.tab) != .Units {
+	if rl.IsMouseButtonPressed(.RIGHT) && v.over_map && Tab(e.tab) == .Terrain {
 		e.brush.target = height_at(p, int(v.cursor.x), int(v.cursor.y))
 		editor_message(e, "Target height %.1f", e.brush.target)
 	}
@@ -182,10 +184,21 @@ editor_input :: proc(e: ^Editor, l: Layout) {
 
 	if rl.IsFileDropped() {
 		files := rl.LoadDroppedFiles()
-		if files.count > 0 {
-			path := string(files.paths[0])
-			if strings.has_suffix(path, terrain.PROJECT_SUFFIX) && guarded(e, .Open) {
-				open_reporting(e, strings.clone(path, context.temp_allocator))
+		// A project opens; an image becomes a material.
+		for i in 0 ..< files.count {
+			path := strings.clone(string(files.paths[i]), context.temp_allocator)
+			switch {
+			case strings.has_suffix(path, terrain.PROJECT_SUFFIX):
+				if guarded(e, .Open) {
+					open_reporting(e, path)
+				}
+			case editor_material_add_file(e, path):
+				e.tab = c.int(Tab.Paint)
+				editor_message(e, "Material %s added", e.project.materials[len(e.project.materials) - 1].name)
+			case len(e.project.materials) >= terrain.MAX_MATERIALS:
+				editor_message(e, "A level has at most %d materials", terrain.MAX_MATERIALS)
+			case:
+				editor_message(e, "Cannot read %s as an image", path)
 			}
 		}
 		rl.UnloadDroppedFiles(files)
@@ -227,7 +240,11 @@ editor_input :: proc(e: ^Editor, l: Layout) {
 	}
 	for key, i in ([4]rl.KeyboardKey{.ONE, .TWO, .THREE, .FOUR}) {
 		if rl.IsKeyPressed(key) && !ctrl {
-			e.brush.mode = Brush_Mode(i)
+			if Tab(e.tab) == .Paint {
+				e.paint.mode = c.int(min(i, int(max(Paint_Mode))))
+			} else {
+				e.brush.mode = Brush_Mode(i)
+			}
 		}
 	}
 }
@@ -298,9 +315,13 @@ panel_draw :: proc(e: ^Editor, area: rl.Rectangle) {
 	}
 	y += ROW + 8
 
-	tw := (w - 4 * 2) / 5
-	rl.GuiToggleGroup({x, y, tw, 20}, "Terrain;Light;Water;View;Units", &e.tab)
-	y += ROW + 8
+	// Two rows, raygui's "\n": seven do not fit across.
+	tw := (w - 3 * 2) / 4
+	rl.GuiToggleGroup({x, y, tw, 20}, "Terrain;Paint;Light;Water\nView;Units;Level", &e.tab)
+	y += 2 * ROW + 8
+	if Tab(e.tab) != .Level {
+		level_panel_leave(e)
+	}
 
 	lighting := p.level.lighting
 	zoom, live := v.zoom, v.live_light
@@ -379,8 +400,12 @@ panel_draw :: proc(e: ^Editor, area: rl.Rectangle) {
 		slider(x, &y, w, "Turn", &v.turn, -180, 180, "%.0f deg")
 		y += 4
 		help(x, &y, w, {"Wheel: scroll.  Shift+wheel: across.", "Middle-drag: pan.  Page Up, Page Down,", "Home, End: along the level.", "Click the strip on the right to go there.", "The tilted view is to look at; sculpt", "from above."})
+	case .Paint:
+		paint_panel(e, x, &y, w)
 	case .Units:
 		units_panel(e, x, &y, w, area.y + area.height)
+	case .Level:
+		level_panel(e, x, &y, w)
 	}
 	if p.level.lighting != lighting || v.zoom != zoom || v.live_light != live {
 		v.view_stale = true
@@ -407,7 +432,6 @@ slider :: proc(x: f32, y: ^f32, w: f32, label: cstring, value: ^f32, lo, hi: f32
 	y^ += ROW
 }
 
-@(private = "file")
 colour :: proc(x: f32, y: ^f32, w: f32, label: cstring, c: ^[3]u8) {
 	rl.GuiLabel({x, y^, 96, 20}, label)
 	sw := (w - 96 - 20 - 2 * 4) / 3

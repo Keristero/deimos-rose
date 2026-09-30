@@ -20,7 +20,6 @@ import "dr:terrain"
 OUT :: "build/terrain_test"
 
 // Ground made of hills, with a colour of its own everywhere.
-@(private = "file")
 hills :: proc(w, l: int, allocator := context.allocator) -> terrain.Project {
 	p := terrain.project_make(w, l, allocator)
 	p.albedo = make([]u8, w * l * 3, allocator)
@@ -128,9 +127,11 @@ terrain_renders :: proc(t: ^testing.T) {
 	an_update_is_a_new_upload(t)
 	scales_agree(t)
 	heights_come_back(t)
+	weights_update_is_a_new_upload(t)
+	half_weight_shows_half(t)
+	materials_do_not_repeat(t)
 }
 
-@(private = "file")
 draw :: proc(t: ^testing.T, p: ^terrain.Project, o: terrain.Render_Options, smoothing: f32 = terrain.GEOMETRY_SMOOTHING) -> terrain.Picture {
 	r: terrain.Renderer
 	testing.expect(t, terrain.renderer_init(&r, p, smoothing))

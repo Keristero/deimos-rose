@@ -3,9 +3,10 @@ package terrain
 // A level project: what the level editor saves, and what the renderer
 // draws. `<name>.drproj.json` beside its side files: the heightmap as a
 // 16-bit PNG, and optionally the unlit colour, the material weights, the
-// canopy, the occlusion and the water, each one PNG pixel per map pixel. The level's own record (its
-// placements, lighting, water and wind, D54) is inside, as the game reads
-// it. Maps, masks and previews are exports of a project, not part of it.
+// canopy, the occlusion and the water, each one PNG pixel per map pixel,
+// and the materials' images under the names they give. The level's own
+// record (its placements, lighting, water and wind, D54) is inside, as the
+// game reads it. Maps, masks and previews are exports of a project, not part of it.
 
 import "core:encoding/json"
 import "core:image"
@@ -157,6 +158,21 @@ project_save :: proc(p: ^Project, path: string) -> bool {
 			return false
 		}
 	}
+	// Each material's image, where its name says: a dropped image is only
+	// in memory until then, and a project saved elsewhere takes its own.
+	for m, i in p.materials[:min(len(p.materials), MAX_MATERIALS)] {
+		img := p.material_images[i]
+		if m.image == "" || img.pixels == nil {
+			continue
+		}
+		full = side_path(dir, m.image)
+		if k := strings.last_index_any(full, "/\\"); k > 0 {
+			os.make_directory_all(full[:k])
+		}
+		if !png_write(full, img) {
+			return false
+		}
+	}
 	blob, err := json.marshal(j, {pretty = true, use_spaces = true, spaces = 2}, context.temp_allocator)
 	if err != nil {
 		return false
@@ -212,6 +228,15 @@ project_load :: proc(path: string, allocator := context.allocator) -> (p: Projec
 	append(&p.placements, ..p.level.placements)
 	p.level.placements = nil
 	return p, true
+}
+
+// The material weights, made empty when there are none: no weight
+// anywhere draws as no layer does.
+project_splat :: proc(p: ^Project, allocator := context.allocator) -> []u8 {
+	if p.splat == nil {
+		p.splat = make([]u8, p.width * p.length * 4, allocator)
+	}
+	return p.splat
 }
 
 // A height as the heightmap stores it.

@@ -225,6 +225,7 @@ editor_draws :: proc(t: ^testing.T) {
 	shot_shows_the_project(t)
 	stroke_and_undo_redraw(t)
 	units_draw_on_the_map(t)
+	materials_through_the_editor(t)
 	le07_sculpt_relight_save_reopen(t)
 }
 

@@ -130,17 +130,35 @@ renderer_init :: proc(r: ^Renderer, p: ^Project, smoothing: f32 = GEOMETRY_SMOOT
 	if p.water != nil {
 		r.textures[.Water] = upload(raw_data(p.water), p.width, p.length, .UNCOMPRESSED_R8G8B8A8, .CLAMP)
 	}
+	renderer_materials(r, p)
+	return true
+}
+
+// Uploads the materials' images again: after one is added, taken away or
+// replaced. Mipmapped, as they are drawn smaller than they are.
+renderer_materials :: proc(r: ^Renderer, p: ^Project) {
 	for img, i in p.material_images {
-		if img.pixels == nil || img.depth != 8 {
+		t := &r.textures[Slot(int(Slot.Material_0) + i)]
+		if t.id != 0 {
+			rl.UnloadTexture(t^)
+		}
+		t^ = {}
+		if img.pixels == nil || img.depth != 8 || i >= len(p.materials) {
 			continue
 		}
 		FORMATS := [5]rl.PixelFormat{{}, .UNCOMPRESSED_GRAYSCALE, .UNCOMPRESSED_GRAY_ALPHA, .UNCOMPRESSED_R8G8B8, .UNCOMPRESSED_R8G8B8A8}
-		r.textures[Slot(int(Slot.Material_0) + i)] = upload(raw_data(img.pixels), img.width, img.height, FORMATS[img.channels], .REPEAT)
+		t^ = upload(raw_data(img.pixels), img.width, img.height, FORMATS[img.channels], .REPEAT)
+		rl.GenTextureMipmaps(t)
+		rl.SetTextureFilter(t^, .TRILINEAR)
 	}
+	renderer_bind(r)
+}
+
+@(private = "file")
+renderer_bind :: proc(r: ^Renderer) {
 	for t, slot in r.textures {
 		r.maps[map_slot(slot)].texture = t.id != 0 ? t : r.white
 	}
-	return true
 }
 
 // A map region, x0 and y0 in it, x1 and y1 past it.
@@ -149,7 +167,8 @@ Rect :: struct {
 }
 
 // Uploads again what changed in `rect` of the heights, and of the water
-// layer when there is one: the same texels renderer_init would. The
+// layer and the material weights when there are any: the same texels
+// renderer_init would, and all of a weights layer made since. The
 // smoothing spreads a change as far as its kernel reaches, so that much
 // around `rect` is uploaded, smoothed over as much again. The editor calls
 // it for each brush dab.
@@ -176,6 +195,16 @@ renderer_update :: proc(r: ^Renderer, p: ^Project, rect: Rect) {
 			copy(wb[y * w * 4:][:w * 4], p.water[((inner.y0 + y) * p.width + inner.x0) * 4:][:w * 4])
 		}
 		rl.UpdateTextureRec(r.textures[.Water], area, raw_data(wb))
+	}
+	if p.splat != nil && r.textures[.Splat].id == 0 {
+		r.textures[.Splat] = upload(raw_data(p.splat), p.width, p.length, .UNCOMPRESSED_R8G8B8A8, .CLAMP)
+		renderer_bind(r)
+	} else if p.splat != nil {
+		sb := make([]u8, w * l * 4, context.temp_allocator)
+		for y in 0 ..< l {
+			copy(sb[y * w * 4:][:w * 4], p.splat[((inner.y0 + y) * p.width + inner.x0) * 4:][:w * 4])
+		}
+		rl.UpdateTextureRec(r.textures[.Splat], area, raw_data(sb))
 	}
 }
 
@@ -543,18 +572,53 @@ float surface(vec2 map) {
 	return waterVisible != 0 ? max(h, waterHeight) : h;
 }
 
+vec3 materialSample(int i, vec2 uv, vec2 dx, vec2 dy) {
+	switch (i) {
+	case 0: return textureGrad(material0, uv, dx, dy).rgb;
+	case 1: return textureGrad(material1, uv, dx, dy).rgb;
+	case 2: return textureGrad(material2, uv, dx, dy).rgb;
+	default: return textureGrad(material3, uv, dx, dy).rgb;
+	}
+}
+
+vec2 hexOffset(vec2 v) {
+	return fract(sin(vec2(dot(v, vec2(127.1, 311.7)), dot(v, vec2(269.5, 183.3)))) * 43758.5453);
+}
+
+// A material's image, hex-tiled (Mikkelsen, "Practical Real-Time
+// Hex-Tiling", JCGT 2022): a triangle grid over the image, each corner's
+// copy of it moved by its own random offset, the three blended by how
+// near each corner is, sharpened by the copies' brightness so they meet
+// along their features rather than fading through each other. The
+// originals' ground never repeats; a tiled image repeats every tile.
+// Offsets only, no turns: a dropped photograph's light has a direction.
+vec3 hexTiled(int i, vec2 uv, vec2 dx, vec2 dy) {
+	vec2 st = uv * 3.46410162; // 2 sqrt 3: a few hexes a tile
+	vec2 skewed = vec2(st.x - 0.57735027 * st.y, 1.15470054 * st.y);
+	vec2 base = floor(skewed);
+	vec3 f = vec3(fract(skewed), 0.0);
+	f.z = 1.0 - f.x - f.y;
+	float s = step(0.0, -f.z);
+	float s2 = 2.0 * s - 1.0;
+	vec3 w = vec3(-f.z * s2, s - f.y * s2, s - f.x * s2);
+	vec2 v1 = base + vec2(s, s), v2 = base + vec2(s, 1.0 - s), v3 = base + vec2(1.0 - s, s);
+	vec3 c1 = materialSample(i, uv + hexOffset(v1), dx, dy);
+	vec3 c2 = materialSample(i, uv + hexOffset(v2), dx, dy);
+	vec3 c3 = materialSample(i, uv + hexOffset(v3), dx, dy);
+	vec3 lum = vec3(0.299, 0.587, 0.114);
+	vec3 d = mix(vec3(1.0), vec3(dot(c1, lum), dot(c2, lum), dot(c3, lum)), 0.6);
+	vec3 k = d * pow(w, vec3(7.0));
+	k /= k.x + k.y + k.z;
+	return k.x * c1 + k.y * c2 + k.z * c3;
+}
+
 vec3 materialAt(int i, vec2 map) {
 	vec3 c = materialColour[i];
 	if (materialImage[i] == 0) return c;
-	vec2 uv = map / materialTile[i];
-	vec3 t;
-	switch (i) {
-	case 0: t = texture(material0, uv).rgb; break;
-	case 1: t = texture(material1, uv).rgb; break;
-	case 2: t = texture(material2, uv).rgb; break;
-	default: t = texture(material3, uv).rgb; break;
-	}
-	return t * c;
+	// The map moves 1/scale a pixel, known here where dFdx, under the
+	// caller's per-material test, is not.
+	float px = 1.0 / (scale * materialTile[i]);
+	return hexTiled(i, map / materialTile[i], vec2(px, 0.0), vec2(0.0, px)) * c;
 }
 
 float ramp(vec3 rule, float x) {
@@ -576,7 +640,11 @@ vec3 colourAt(vec2 map, vec3 h, vec2 slope) {
 		base = texture(albedo, map / size).rgb;
 		baseWeight = max(1.0 - sum, 0.0);
 	} else if (materialCount > 0) {
-		if (sum <= 0.0) { w[0] = 1.0; sum = 1.0; }
+		// Without an unlit colour the first material is the ground under
+		// the rest: what the weights leave is its, so a half-painted one
+		// shows half.
+		w[0] += max(1.0 - sum, 0.0);
+		sum = max(sum, 1.0);
 		for (int i = 0; i < 4; i++) w[i] /= sum;
 		baseWeight = 0.0;
 	}

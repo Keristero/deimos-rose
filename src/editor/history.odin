@@ -2,12 +2,14 @@ package editor
 
 // Undo and redo. An edit keeps what it replaced, and undoing it swaps that
 // back into the project, so the edit then holds what was undone, for redo.
-// A brush stroke keeps only the TILE x TILE tiles of the heights and the
-// water layer it touched, as they were before its first dab: changed
-// regions, not copies of the map (notes/level-editor-plan.md, Stage 7). A
-// change to the light, water or wind keeps the settings before it, and a
-// change to the units the list of them before it: a few hundred records,
-// so a copy is cheaper to reason about than a diff.
+// A brush stroke keeps only the TILE x TILE tiles of the heights, the
+// water layer and the material weights it touched, as they were before its
+// first dab: changed regions, not copies of the map
+// (notes/level-editor-plan.md, Stage 7). A change to the light, water,
+// wind or a material's look keeps the settings before it; a change to the
+// units the list of them before it, a few hundred records, so a copy is
+// cheaper to reason about than a diff; and a material added or taken away
+// the materials before it.
 
 import "core:mem"
 import "core:slice"
@@ -17,24 +19,52 @@ import "dr:terrain"
 
 TILE :: 32
 // Older edits are dropped past this many, or once the tiles kept pass
-// HISTORY_BYTES. A tile is 8 KiB with a water layer, so a stroke over the
-// whole of an original level keeps 14 MB; 256 of those would be 3.5 GB.
+// HISTORY_BYTES. A tile is 12 KiB with a water and a weights layer, so a
+// stroke over the whole of an original level keeps 21 MB; 256 of those
+// would be 5 GB.
 HISTORY_MAX :: 256
 HISTORY_BYTES :: 512 * mem.Megabyte
 
 // The level settings the panels edit, undone as one.
 Settings :: struct {
-	lighting: data.Level_Lighting,
-	water:    data.Level_Water,
-	wind:     data.Level_Wind,
+	lighting:     data.Level_Lighting,
+	water:        data.Level_Water,
+	wind:         data.Level_Wind,
+	looks:        [terrain.MAX_MATERIALS]Look,
+	cliff, shore: terrain.Rule,
+	canopy:       int, // the material under the trees, or -1
+	properties:   Properties,
 }
 
-settings_of :: proc(p: ^terrain.Project) -> Settings {
-	return {p.level.lighting, p.level.water, p.level.wind}
+// How a material is drawn, which its sliders change.
+Look :: struct {
+	colour: [3]u8,
+	tile:   f32,
+}
+
+settings_of :: proc(p: ^terrain.Project) -> (s: Settings) {
+	s = {
+		lighting   = p.level.lighting,
+		water      = p.level.water,
+		wind       = p.level.wind,
+		cliff      = p.cliff,
+		shore      = p.shore,
+		canopy     = p.canopy_material,
+		properties = properties_of(p),
+	}
+	for m, i in p.materials[:min(len(p.materials), terrain.MAX_MATERIALS)] {
+		s.looks[i] = {m.colour, m.tile}
+	}
+	return
 }
 
 settings_set :: proc(p: ^terrain.Project, s: Settings) {
 	p.level.lighting, p.level.water, p.level.wind = s.lighting, s.water, s.wind
+	p.cliff, p.shore, p.canopy_material = s.cliff, s.shore, s.canopy
+	properties_set(p, s.properties)
+	for &m, i in p.materials[:min(len(p.materials), terrain.MAX_MATERIALS)] {
+		m.colour, m.tile = s.looks[i].colour, s.looks[i].tile
+	}
 }
 
 @(private = "file")
@@ -42,6 +72,7 @@ Tile :: struct {
 	index:   int, // tile row x tiles across + tile column
 	heights: []f32,
 	water:   []u8, // nil when the project has no water layer
+	splat:   []u8, // nil when it has no material weights
 }
 
 Edit :: struct {
@@ -50,6 +81,7 @@ Edit :: struct {
 	// On the heap. The records' strings are the project's, or the
 	// catalogue's: history is cleared before the project goes.
 	placements: Maybe([]data.Json_Placement),
+	materials:  Maybe(Materials),
 }
 
 History :: struct {
@@ -92,9 +124,11 @@ history_begin :: proc(h: ^History) {
 }
 
 history_end :: proc(h: ^History) {
-	if h.open && len(h.done[len(h.done) - 1].tiles) == 0 {
-		e := pop(&h.done)
-		edit_destroy(&e)
+	if h.open {
+		if last := &h.done[len(h.done) - 1]; len(last.tiles) == 0 && last.materials == nil {
+			e := pop(&h.done)
+			edit_destroy(&e)
+		}
 	}
 	h.open = false
 	history_trim(h)
@@ -121,6 +155,9 @@ history_touch :: proc(h: ^History, p: ^terrain.Project, rect: terrain.Rect) {
 			if p.water != nil {
 				t.water = make([]u8, n * 4)
 			}
+			if p.splat != nil {
+				t.splat = make([]u8, n * 4)
+			}
 			tile_take(p, &t)
 			append(&e.tiles, t)
 			h.bytes += tile_bytes(t)
@@ -140,13 +177,24 @@ history_placements :: proc(h: ^History, before: []data.Json_Placement) {
 	history_push(h, e)
 }
 
+// Records a change of the materials from `before`: into the stroke open,
+// when a change of the map goes with it, or as an edit of its own.
+history_materials :: proc(h: ^History, before: Materials) {
+	if h.open {
+		h.done[len(h.done) - 1].materials = before
+		return
+	}
+	history_push(h, {materials = before})
+}
+
 // What an undo or redo changed: the region of the map, the settings, the
-// units.
+// units, the materials.
 Change :: struct {
 	area:       terrain.Rect,
 	map_:       bool,
 	settings:   bool,
 	placements: bool,
+	materials:  bool,
 }
 
 history_undo :: proc(h: ^History, p: ^terrain.Project) -> (c: Change, ok: bool) {
@@ -186,6 +234,11 @@ history_move :: proc(h: ^History, p: ^terrain.Project, from, to: ^[dynamic]Edit)
 		append(&p.placements, ..ps)
 		delete(ps)
 		c.placements = true
+	}
+	if m, has := e.materials.?; has {
+		e.materials = materials_of(p)
+		materials_set(p, m)
+		c.materials = true
 	}
 	append(to, e)
 	return c, true
@@ -227,7 +280,7 @@ edit_bytes :: proc(e: Edit) -> (n: int) {
 
 @(private = "file")
 tile_bytes :: proc(t: Tile) -> int {
-	return len(t.heights) * size_of(f32) + len(t.water)
+	return len(t.heights) * size_of(f32) + len(t.water) + len(t.splat)
 }
 
 @(private = "file")
@@ -235,6 +288,7 @@ edit_destroy :: proc(e: ^Edit) {
 	for t in e.tiles {
 		delete(t.heights)
 		delete(t.water)
+		delete(t.splat)
 	}
 	delete(e.tiles)
 	if ps, has := e.placements.?; has {
@@ -264,11 +318,17 @@ tile_swap :: proc(p: ^terrain.Project, t: ^Tile) {
 		for x in 0 ..< w {
 			i := y * p.width + r.x0 + x
 			p.heights[i], t.heights[row + x] = t.heights[row + x], p.heights[i]
-			if t.water != nil && p.water != nil {
-				for c in 0 ..< 4 {
-					p.water[i * 4 + c], t.water[(row + x) * 4 + c] = t.water[(row + x) * 4 + c], p.water[i * 4 + c]
-				}
-			}
+			swap4(p.water, t.water, i, row + x)
+			swap4(p.splat, t.splat, i, row + x)
+		}
+	}
+}
+
+@(private = "file")
+swap4 :: #force_inline proc(layer, kept: []u8, i, k: int) {
+	if layer != nil && kept != nil {
+		for c in 0 ..< 4 {
+			layer[i * 4 + c], kept[k * 4 + c] = kept[k * 4 + c], layer[i * 4 + c]
 		}
 	}
 }
@@ -282,6 +342,9 @@ tile_take :: proc(p: ^terrain.Project, t: ^Tile) {
 		copy(t.heights[(y - r.y0) * w:][:w], p.heights[y * p.width + r.x0:][:w])
 		if t.water != nil {
 			copy(t.water[(y - r.y0) * w * 4:][:w * 4], p.water[(y * p.width + r.x0) * 4:][:w * 4])
+		}
+		if t.splat != nil {
+			copy(t.splat[(y - r.y0) * w * 4:][:w * 4], p.splat[(y * p.width + r.x0) * 4:][:w * 4])
 		}
 	}
 }

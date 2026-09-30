@@ -1,0 +1,134 @@
+package editor
+
+// The Paint tab: the project's materials, the library, the brush that
+// paints their weights, and the rules that lay them on steep ground and by
+// the water.
+
+import "core:c"
+import "core:fmt"
+import "core:strings"
+
+import rl "vendor:raylib"
+
+import "dr:terrain"
+
+paint_panel :: proc(e: ^Editor, x: f32, y: ^f32, w: f32) {
+	p, pt := &e.project, &e.paint
+	heading(x, y, w, "Materials")
+	names := make([]cstring, len(p.materials), context.temp_allocator)
+	for m, i in p.materials {
+		names[i] = fmt.ctprintf("%s%s", m.name, m.image == "" ? "  (colour)" : "")
+	}
+	active := c.int(pt.material)
+	focus := c.int(-1)
+	list := rl.Rectangle{x, y^, w - 24, 4 * 18 + 8}
+	rl.GuiListViewEx(list, raw_data(names), c.int(len(names)), &pt.list_scroll, &active, &focus)
+	if int(active) < len(p.materials) {
+		pt.material = int(active)
+	}
+	// Each one's colour beside its name.
+	for m, i in p.materials {
+		rl.DrawRectangleRec({x + w - 18, y^ + 4 + f32(i) * 18 + 2, 14, 14}, {m.colour.r, m.colour.g, m.colour.b, 255})
+	}
+	y^ += list.height + 4
+	bw := (w - 4) / 2
+	full := len(p.materials) >= terrain.MAX_MATERIALS
+	if full {
+		rl.GuiDisable()
+	}
+	if rl.GuiButton({x, y^, bw, 20}, "Add a colour") {
+		editor_material_add(e, {name = fmt.tprintf("colour %d", len(p.materials) + 1), colour = {128, 128, 128}})
+	}
+	rl.GuiEnable()
+	if pt.material < 0 {
+		rl.GuiDisable()
+	}
+	if rl.GuiButton({x + bw + 4, y^, bw, 20}, "Remove") {
+		editor_material_remove(e, pt.material)
+	}
+	rl.GuiEnable()
+	y^ += ROW
+	if i := pt.material; i >= 0 && i < len(p.materials) && i < terrain.MAX_MATERIALS {
+		m := &p.materials[i]
+		colour(x, y, w, "Tint", &m.colour)
+		if m.image != "" {
+			slider(x, y, w, "Tile", &m.tile, 8, 1024, "%.0f px")
+			img := p.material_images[i]
+			tags := strings.join(m.tags, ", ", context.temp_allocator)
+			help(x, y, w, {fmt.ctprintf("%s, %d x %d%s%s", m.image, img.width, img.height, tags != "" ? ": " : "", tags)})
+		}
+	}
+	y^ += 4
+
+	heading(x, y, w, "Library")
+	if len(e.library.entries) > 0 {
+		lnames := make([]cstring, len(e.library.entries), context.temp_allocator)
+		for en, i in e.library.entries {
+			lnames[i] = fmt.ctprintf("%s", en.name)
+		}
+		lfocus := c.int(-1)
+		lrect := rl.Rectangle{x, y^, w, 4 * 18 + 8}
+		rl.GuiListViewEx(lrect, raw_data(lnames), c.int(len(lnames)), &pt.library_scroll, &pt.library_pick, &lfocus)
+		y^ += lrect.height + 4
+		if full || pt.library_pick < 0 {
+			rl.GuiDisable()
+		}
+		if rl.GuiButton({x, y^, w, 20}, "Add from the library") {
+			if !editor_material_add_library(e, &e.library, int(pt.library_pick)) {
+				editor_message(e, "Cannot read %s", e.library.entries[pt.library_pick].image)
+			}
+		}
+		rl.GuiEnable()
+		y^ += ROW
+	} else {
+		help(x, y, w, {"No library: `mise run materials:library`."})
+	}
+	help(x, y, w, {"Drop an image on the window to add it."})
+
+	heading(x, y, w, "Brush")
+	rl.GuiToggleGroup({x, y^, (w - 2) / 2, 20}, "Paint;Erase", &pt.mode)
+	y^ += ROW
+	shape := c.int(e.brush.shape)
+	rl.GuiToggleGroup({x, y^, (w - 2 * 2) / 3, 20}, "Round;Square;Rough", &shape)
+	e.brush.shape = Brush_Shape(shape)
+	y^ += ROW
+	slider(x, y, w, "Size", &e.brush.radius, 1, 160, "%.0f px")
+	slider(x, y, w, "Strength", &e.brush.strength, 0, 1)
+	slider(x, y, w, "Falloff", &e.brush.falloff, 0, 1)
+	y^ += 4
+
+	heading(x, y, w, "Laid by the ground")
+	rule(e, x, y, w, "Steep", &p.cliff, 0, 4, "%.2f")
+	rule(e, x, y, w, "By water", &p.shore, 0, 64, "%.0f px")
+	if p.canopy != nil {
+		material_combo(e, x, y, w, "Under trees", &p.canopy_material)
+	}
+	y^ += 4
+	help(x, y, w, {"Drag on the map to paint the chosen", "material.  Steep lays one by the slope,", "By water by the height over the water."})
+}
+
+// A rule: which material, and the range it comes in over.
+@(private = "file")
+rule :: proc(e: ^Editor, x: f32, y: ^f32, w: f32, label: cstring, r: ^terrain.Rule, lo, hi: f32, format: string) {
+	material_combo(e, x, y, w, label, &r.material)
+	if r.material >= 0 {
+		slider(x, y, w, "  from", &r.from, lo, hi, format)
+		slider(x, y, w, "  to", &r.to, lo, hi, format)
+	}
+}
+
+// Which material, or none (-1): a click takes the next.
+@(private = "file")
+material_combo :: proc(e: ^Editor, x: f32, y: ^f32, w: f32, label: cstring, material: ^int) {
+	sb := strings.builder_make(context.temp_allocator)
+	strings.write_string(&sb, "None")
+	for m in e.project.materials[:min(len(e.project.materials), terrain.MAX_MATERIALS)] {
+		strings.write_byte(&sb, ';')
+		strings.write_string(&sb, m.name)
+	}
+	active := c.int(material^ + 1)
+	rl.GuiLabel({x, y^, 96, 20}, label)
+	rl.GuiComboBox({x + 96, y^, w - 96, 20}, strings.to_cstring(&sb), &active)
+	material^ = int(active) - 1
+	y^ += ROW
+}

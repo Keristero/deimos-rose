@@ -1,16 +1,17 @@
 package editor
 
 // The level editor (Stages 7 and 8 of notes/level-editor-plan.md): sculpt
-// a level project's terrain, light it, set its water and wind, place its
-// units, and save it.
+// a level project's terrain, paint its materials, light it, set its water
+// and wind, place its units, and save it.
 //
-//   deimos-editor [<project>] [-new=ROWS] [-shot=OUT.png] [-size=WxH] [-row=N] [-zoom=1|2] [-tilt=DEGREES] [-tab=terrain|light|water|view|units] [-select=N] [-unlit]
+//   deimos-editor [<project>] [-new=ROWS] [-shot=OUT.png] [-size=WxH] [-row=N] [-zoom=1|2] [-tilt=DEGREES] [-tab=terrain|paint|light|water|view|units|level] [-select=N] [-unlit]
 //
 // With no project it starts a new level, 480 wide and -new rows long
 // (3600 by default). -shot draws one frame in a hidden window, writes it
 // and exits: `mise run editor:shot`. The other flags set up the view, for
 // shots above all. The units come from the assets tree, $DR_ASSETS or
-// ./assets, and the data plugins beside it.
+// ./assets, and the data plugins beside it; the material library from its
+// materials/.
 
 import "core:fmt"
 import "core:os"
@@ -30,7 +31,7 @@ EDITOR_VERSION :: #config(DR_VERSION, "dev")
 WINDOW_WIDTH :: 1280
 WINDOW_HEIGHT :: 900
 
-USAGE :: "usage: deimos-editor [<project>] [-new=ROWS] [-shot=OUT.png] [-size=WxH] [-row=N] [-zoom=1|2] [-tilt=DEGREES] [-tab=terrain|light|water|view|units] [-select=N] [-unlit]"
+USAGE :: "usage: deimos-editor [<project>] [-new=ROWS] [-shot=OUT.png] [-size=WxH] [-row=N] [-zoom=1|2] [-tilt=DEGREES] [-tab=terrain|paint|light|water|view|units|level] [-select=N] [-unlit]"
 
 main :: proc() {
 	flags := make(map[string]string, context.temp_allocator)
@@ -105,6 +106,7 @@ main :: proc() {
 	if len(e.units.palette) == 0 {
 		fmt.eprintfln("deimos-editor: no units under %s: placing them needs `mise run assets:all`", root)
 	}
+	library_load(&e.library, root)
 	if len(plain) == 1 {
 		if !editor_open(&e, plain[0]) {
 			fmt.eprintfln("deimos-editor: cannot open %s", plain[0])
