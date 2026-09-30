@@ -1255,3 +1255,55 @@ its placements from rows 1436 to 1980 spawned, and checks the start
 weapons rule on the synthetic fixture. The fixture campaign's first level
 names start weapons and a wind, and `tests/data_plugins` plays it with
 them. Goldens, `oracle:diff` and `oracle:diff:saved` are unchanged.
+
+### D55 — The terrain renderer and the level project
+
+A level's terrain is data again (notes/level-editor-plan.md, Stage 5):
+the editor saves it, and one renderer draws it for the editor, for
+exports and for comparison with the original art.
+
+- **The project**, `terrain/project.odin`: `<level>.drproj.json` beside
+  its side files, each one PNG pixel per map pixel.
+  - the heightmap, 16-bit grey in 1/32 map pixel (up to 2048 high);
+  - optionally the unlit colour (RGB), four materials' weights (RGBA) and
+    the canopy cover (grey), with the canopy's height and material;
+  - up to four materials (a colour, or a tiling image tinted by it, and
+    tags such as `original-derived`), and the cliff and shore rules that
+    lay one automatically by slope or by height above the water;
+  - the level record itself, as the game reads it, lighting, water and
+    wind included (D54): nothing is kept twice.
+
+  Saving the same project writes the same bytes, JSON and PNGs alike
+  (`terrain/png.odin` writes its own PNGs: raylib's are 8-bit only).
+  Maps, masks, previews and HD layers are exports of it.
+- **The renderer**, `terrain/render.odin`: from straight above, one
+  fragment shader per output pixel, placed by `gl_FragCoord` and not by
+  interpolation, so a map drawn in strips of at most 4096 rows is the map
+  drawn at once, bit for bit. A 4x le07 (1920x14400) is four strips.
+  - Light: ambient, plus the sun by how squarely it meets the ground,
+    scaled so flat ground in the sun is exactly its unlit colour, times
+    the share of the sun not blocked.
+  - Shadow: a march toward the sun over the height texture, a map pixel at
+    a time, from a whole pixel past the penumbra; the deepest the ray goes
+    under the surface sets a smoothstep `softness` pixels wide. No shadow
+    maps, so strips have no seams and the shadow layer comes free.
+  - Outputs: lit, albedo, normal, height (16-bit) and shadow, at any whole
+    scale, each optionally through the originals' 15-bit colour.
+  - Textures go through `DrawMesh`'s material maps, seven slots, since
+    rlgl's batch binds only four; the height texture is RGB32F (surface
+    with canopy, cover, bare ground). The editor's tilted view (Stage 7)
+    will feed the same shader a mesh.
+- **`terrain/analysis.odin`** finds shadows as the findings did (much
+  darker than the 85th percentile of the 81-pixel square around, not
+  water, opened by a 3x3 cross), for `tools/terrain compare`.
+- **Headless only.** The tool and `tests/terrain` open a hidden window;
+  the mise tasks run them under `xvfb-run` with `DISPLAY` and
+  `WAYLAND_DISPLAY` cleared, and without xvfb the GL tests skip. CI
+  installs xvfb and Mesa's software GL.
+
+`tests/terrain` checks the analytic cases (flat ground unshadowed and its
+own colour; a wall's shadow h/tan(e) long; strips and row ranges equal to
+the whole; 2x averaged down within quantisation of 1x; heights back
+exactly), the save-load-save round trip and the 15-bit colour. Goldens,
+`oracle:diff` and `oracle:diff:saved` are unchanged: nothing in the game
+uses the package yet.

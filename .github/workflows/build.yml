@@ -32,10 +32,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: raylib's Linux link-time dependencies
+      # xvfb and Mesa's software GL: tests/terrain draws under xvfb-run.
+      - name: raylib's Linux link-time dependencies, and a headless display
         run: |
           sudo apt-get update
-          sudo apt-get install -y libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev libgl1-mesa-dev
+          sudo apt-get install -y libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev libgl1-mesa-dev xvfb libgl1-mesa-dri
 
       # Odin comes from mise's own plugin here, not Homebrew (see D28) --
       # this local.toml is CI-only and gitignored, so it does not touch the

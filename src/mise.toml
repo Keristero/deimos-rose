@@ -173,14 +173,20 @@ run = [
   "odin check tools/recolour $DR_COLL -vet -strict-style",
   "odin check tools/dps     $DR_COLL -vet -strict-style",
   "odin check tools/clips   $DR_COLL -vet -strict-style",
+  "odin check terrain $DR_COLL -vet -strict-style -no-entry-point",
+  "odin check tools/terrain $DR_COLL -vet -strict-style",
+  "odin check tests/terrain $DR_COLL -vet -strict-style -no-entry-point",
 ]
 
 [tasks.test]
-description = "Run the Odin test suite: tests/, then tests/data_plugins, a package of its own because it registers the fixture plugins in tests/fixtures/plugins (D52)"
+description = "Run the Odin test suite: tests/, then tests/data_plugins, a package of its own because it registers the fixture plugins in tests/fixtures/plugins (D52), then tests/terrain, which draws through GL under xvfb-run (skipped without a display)"
 depends = ["setup"]
 run = [
   "odin test tests $DR_COLL $DR_LINK -out:$DR_BUILD/tests$DR_EXT",
   "odin test tests/data_plugins $DR_COLL $DR_LINK -out:$DR_BUILD/tests-data-plugins$DR_EXT",
+  # Never on the desktop: under xvfb-run, or with no display at all, when
+  # the GL cases skip.
+  "if command -v xvfb-run >/dev/null; then set -- xvfb-run -a -s '-screen 0 1280x1024x24'; fi; env DISPLAY= WAYLAND_DISPLAY= \"$@\" odin test tests/terrain $DR_COLL $DR_LINK -out:$DR_BUILD/tests-terrain$DR_EXT",
 ]
 
 [tasks.coverage]
@@ -422,6 +428,52 @@ run = "odin run tools/extract $DR_COLL $DR_LINK -out:$DR_BUILD/extract$DR_EXT --
 [tasks."addons:extract"]
 description = "Unpack orig/deimos_addons.sit (fan mods, demo films, the Mac 1.0.6 bundle update) into work/addons/ for study; needs unar and hfsutils"
 run = "bash ../tools/extract_addons.sh"
+
+[tasks."terrain:build"]
+description = "Build the level project tool (tools/terrain)"
+depends = ["setup"]
+run = "odin build tools/terrain $DR_COLL $DR_LINK -o:speed -out:$DR_BUILD/terrain$DR_EXT"
+
+[tasks."terrain:render"]
+description = "Draw a level project headlessly (PROJECT=path/le07.drproj.json [OUT=path/stem] [OUTPUT=lit|albedo|normal|height|shadow|all, default all] [SCALE=1]; extra flags pass through, e.g. -- -quantise)"
+depends = ["terrain:build"]
+run = """
+set -e
+[ -n "$PROJECT" ] || { echo "terrain:render: set PROJECT=path/to/level.drproj.json" >&2; exit 2; }
+headless() {
+  if command -v xvfb-run >/dev/null; then set -- xvfb-run -a -s "-screen 0 1280x1024x24" "$@"; fi
+  env DISPLAY= WAYLAND_DISPLAY= "$@"
+}
+headless "$DR_BUILD/terrain$DR_EXT" render "$PROJECT" "${OUT:-${PROJECT%.drproj.json}.render}" -output=${OUTPUT:-all} -scale=${SCALE:-1} "$@"
+"""
+
+[tasks."terrain:compare"]
+description = "Score a level project's render against the original map: shadow IoU, shadow light, fitted sun azimuth, and a side-by-side PNG (PROJECT=... [ORIGINAL=map.png MASK=mask.png, default the level's own from the Classic Levels plugin] [OUT=side.png]; -- -from=ROW -to=ROW for a part)"
+depends = ["terrain:build"]
+run = """
+set -e
+[ -n "$PROJECT" ] || { echo "terrain:compare: set PROJECT=path/to/level.drproj.json" >&2; exit 2; }
+headless() {
+  if command -v xvfb-run >/dev/null; then set -- xvfb-run -a -s "-screen 0 1280x1024x24" "$@"; fi
+  env DISPLAY= WAYLAND_DISPLAY= "$@"
+}
+headless "$DR_BUILD/terrain$DR_EXT" compare "$PROJECT" $ORIGINAL $MASK -images="$DR_PLUGINS/classic_levels/images/im16" \
+  -out="${OUT:-${PROJECT%.drproj.json}.compare.png}" -fit "$@"
+"""
+
+[tasks."terrain:recover"]
+description = "Recover a level project from an original map (LEVEL=le07 into work/terrain/LEVEL/): depth-seeded heights, water from the mask, crude unlit colour; the Stage 5 proof of concept, in the hd:setup venv"
+run = """
+set -e
+PY="$DR_HD_VENV/bin/python"; [ -x "$PY" ] || PY="$DR_HD_VENV/Scripts/python.exe"
+[ -x "$PY" ] || { echo "no venv at $DR_HD_VENV: run 'mise run hd:setup' first"; exit 1; }
+LEVEL="${LEVEL:-le07}"
+REC="$DR_PLUGINS/classic_levels/data/levels/$LEVEL.json"
+MAP=$("$PY" -c "import json,sys; print(json.load(open(sys.argv[1]))['background_image'])" "$REC")
+MASK=$("$PY" -c "import json,sys; print(json.load(open(sys.argv[1]))['media_mask'])" "$REC")
+"$PY" tools/terrain_recover/recover.py "$MAP" --mask "$MASK" --level "$REC" \
+  --images "$DR_PLUGINS/classic_levels/images/im16" --out "$DR_SRC/../work/terrain/$LEVEL" "$@"
+"""
 
 [tasks."hd:setup"]
 description = "Create the Python venv for hd:upscale (torch from TORCH_INDEX, default CUDA 12.8; see tools/hd_upscale/README.md for ROCm)"
