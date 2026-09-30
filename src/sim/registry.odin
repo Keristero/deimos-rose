@@ -77,9 +77,17 @@ register_all :: proc() {
 	slice.sort_by(steps, proc(a, b: Register_Step) -> bool {
 		return a.stage != b.stage ? a.stage < b.stage : a.name < b.name
 	})
+	data_plugins_done := false
 	for s, i in steps {
 		assert(i == 0 || s.name != steps[i - 1].name, "sim: two registration steps share a name")
+		if s.stage > .Plugin && !data_plugins_done {
+			plugins_register_declared()
+			data_plugins_done = true
+		}
 		s.run()
+	}
+	if !data_plugins_done {
+		plugins_register_declared()
 	}
 }
 
@@ -89,10 +97,10 @@ registered :: proc "contextless" () -> bool {
 }
 
 // A digest of everything peers must register alike: the component
-// catalog, the plugins, the systems and stages, and the weapon keys, in
-// id order. Netplay peers compare it in their Hello, and refuse each other
-// when it differs, rather than meet a snapshot or a mod they read another
-// way.
+// catalog, the plugins (with their versions and content digests), the
+// systems and stages, and the weapon keys, in id order. Netplay peers
+// compare it in their Hello, and refuse each other when it differs, rather
+// than meet a snapshot or a mod they read another way.
 registration_hash :: proc "contextless" () -> u64 {
 	h := hasher()
 	name :: proc "contextless" (h: ^Hasher, s: string) {
@@ -103,6 +111,8 @@ registration_hash :: proc "contextless" () -> u64 {
 	for p in registered_plugins() {
 		name(&h, p.name)
 		hash_u64(&h, u64(p.session))
+		name(&h, p.version)
+		hash_u64(&h, p.digest)
 	}
 	for s in registered_systems() {
 		name(&h, s.name)

@@ -23,6 +23,13 @@ import "dr:ui"
 MAX_STEPS_PER_FRAME :: 4
 
 main :: proc() {
+	// Plugin folders with a plugin.json and no code in this build (D52):
+	// registered after the compiled plugins, by name.
+	declared, problems := data.plugins_discover(data.plugins_roots())
+	for p in problems {
+		fmt.eprintfln("plugins: %s: %s", p.dir, p.reason)
+	}
+	sim.plugins_declare(declared)
 	// Every registry filled, in the same order on every platform.
 	sim.register_all()
 	settings := settings_parse(os.args)
@@ -41,6 +48,8 @@ main :: proc() {
 	// New content (plugins/<name>/data) rides after the originals; only a New
 	// Weapons session reaches it (docs/new-weapons.md).
 	data.extra_defs_load(&defs)
+	// Peers with different plugin content refuse each other (D52).
+	data.plugins_digest()
 	if len(defs.levels) == 0 {
 		fmt.eprintfln("no level definitions under %v -- run `mise run assets:all`", root)
 		os.exit(1)
@@ -449,6 +458,12 @@ run_menu_shot :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, r
 		// The Mods page as a new player finds it.
 		flow.mode = .Preferences
 		flow.preferences.page = .Mods
+	case "preferences_mods_end":
+		// Its last rows: where data plugins list (D52), which
+		// DR_PLUGINS=$PWD/tests/fixtures/plugins shows with the fixtures.
+		flow.mode = .Preferences
+		flow.preferences.page = .Mods
+		mods_page_scroll_end(&flow.preferences.mods)
 	case "netplay_lobby_name":
 		flow.mode = .Netplay_Lobby
 		netplay_lobby_init(&flow.netplay, r)

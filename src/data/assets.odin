@@ -608,30 +608,6 @@ extra_defs_load :: proc(defs: ^sim.Defs, allocator := context.allocator) -> (rep
 	return report, defs.content != {}
 }
 
-// Where plugins' content folders are (D51): $DR_PLUGINS, or `plugins` in
-// the working directory. That is src/plugins when run from src/, as mise
-// tasks and tests are, and deimos/plugins in a release, where each folder
-// holds only a plugin's content.
-plugins_root :: proc() -> string {
-	if dir := os.get_env("DR_PLUGINS", context.temp_allocator); dir != "" {
-		return dir
-	}
-	return "plugins"
-}
-
-// `<plugins root>/<plugin name>`, where a plugin's own content is, if it has
-// any: data/, sprites/, images/im16/ and audio/, each laid out as the game's
-// own tree is. A plugin whose folder holds only code has none.
-plugin_content_dir :: proc(id: sim.Plugin_ID) -> (dir: string, found: bool) {
-	dir = strings.concatenate({plugins_root(), "/", sim.registered_plugins()[id].name}, context.temp_allocator)
-	for sub in ([]string{"data", "sprites", "images", "audio"}) {
-		if os.exists(strings.concatenate({dir, "/", sub}, context.temp_allocator)) {
-			return dir, true
-		}
-	}
-	return dir, false
-}
-
 // Every `<dir><sub>*<ext>` whose id the core tree (`root`) has no file
 // for, into `media` by id. The first plugin with an id keeps it.
 plugin_media_add :: proc(media: ^map[string]string, root, sub, dir, ext: string, allocator := context.allocator) {

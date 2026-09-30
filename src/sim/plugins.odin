@@ -9,19 +9,24 @@ package sim
 // A plugin names the plugins it depends on. That is what lets it use their
 // components; it is on only while they are. Run order between systems is a
 // separate matter, settled by the systems themselves (schedule.odin).
+//
+// A data plugin has no code: a folder with a plugin.json and content,
+// found at startup (data.plugins_discover) and declared before
+// register_all, which registers it after every compiled plugin (D52).
 
-MAX_PLUGINS :: 31
+MAX_PLUGINS :: 63
 
 // A plugin's index in the registry, from 1; CORE is the original game.
 // Indexes follow registration order, which is by name (register_all), the
-// same on every platform: peers agree on them when they run the same
-// build, as netplay requires and checks (registration_hash).
+// same on every platform, compiled plugins first and then data plugins:
+// peers agree on them when they run the same build with the same plugin
+// folders, as netplay requires and checks (registration_hash).
 Plugin_ID :: distinct u8
 
 CORE :: Plugin_ID(0)
 
 // A set of plugins, by ID.
-Mods :: bit_set[0 ..= MAX_PLUGINS; u32]
+Mods :: bit_set[0 ..= MAX_PLUGINS; u64]
 
 Plugin :: struct {
 	name:        string, // saved in preferences and named by dependants
@@ -37,11 +42,68 @@ Plugin :: struct {
 	// Needs its own content, in plugins/<name>/ (D51): off when that did
 	// not load (Defs.content, mods_with_content).
 	content:     bool,
+	// From its plugin.json, if it has one: peers compare it (registration_hash).
+	version:     string,
+	// Registered from a plugin.json alone, with no code in the build (D52).
+	data_only:   bool,
+	// A digest of its content files (plugin_digest_set), 0 before they are
+	// read: peers with different content refuse each other rather than
+	// desync.
+	digest:      u64,
 }
 
 // Slot 0, CORE's, is empty.
 @(private = "file")
 plugins := Registry(Plugin, MAX_PLUGINS + 1){count = 1}
+
+@(private = "file")
+declared: []Plugin
+
+// The plugins found as folders at startup, in name order: before
+// register_all, which registers each after the compiled plugins. One whose
+// name a compiled plugin has only gives that plugin its label, description
+// and version, where they are set. `list` must outlive the program.
+plugins_declare :: proc(list: []Plugin) {
+	assert(!registered(), "sim: plugins declared after register_all")
+	declared = list
+}
+
+// register_all's, once every compiled plugin has registered.
+@(private)
+plugins_register_declared :: proc() {
+	for p in declared {
+		if id, ok := plugin_find(p.name); ok {
+			c := &plugins.items[id]
+			if p.label != "" {
+				c.label = p.label
+			}
+			if p.description != "" {
+				c.description = p.description
+			}
+			c.version = p.version
+			continue
+		}
+		d := p
+		d.data_only, d.content = true, true
+		plugin_register(d)
+	}
+}
+
+// Records the digest of a plugin's content (data.plugins_digest).
+plugin_digest_set :: proc "contextless" (id: Plugin_ID, digest: u64) {
+	plugins.items[id].digest = digest
+}
+
+// The first plugin `id` depends on that is not in the build, if any: why
+// it can never be on.
+plugin_missing_dep :: proc "contextless" (id: Plugin_ID) -> (dep: string, missing: bool) {
+	for d in plugins.items[id].deps {
+		if _, ok := plugin_find(d); !ok {
+			return d, true
+		}
+	}
+	return "", false
+}
 
 // Called from registration steps only (sim.register_step), like system_register; `deps` must
 // outlive the call. Returns the plugin's ID, for its systems and hooks.

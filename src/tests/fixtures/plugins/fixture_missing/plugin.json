@@ -1,0 +1,6 @@
+{
+    "label": "Fixture Missing Dependency",
+    "version": "1",
+    "deps": ["not_installed"],
+    "session": true
+}

@@ -282,6 +282,7 @@ The extension points today:
 | a screen over the play field | `ui.overlay_register` | `ui/overlays.odin` |
 | a setting on the Extras page | `prefs.setting_register` | `prefs/settings.odin` |
 | records, weapons, sprites, im16 images and sounds of a plugin's own | `plugins/<name>/{data,sprites,images/im16,audio}` beside its code, a recipe in `tools/recolour/`, `content = true` | `data/assets.odin` (D49, D51) |
+| a plugin with no code: content and a manifest | `plugins/<name>/plugin.json` beside its content, found at startup | `data/plugins.odin` (D52) |
 | a screenshot scenario (`mise run menu-shot MENU=...`) | `ui.shot_register` | `ui/shots.odin` |
 
 ## Finishing a phase

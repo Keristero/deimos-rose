@@ -68,7 +68,7 @@ packet_level_choice_round_trips :: proc(t: ^testing.T) {
 	// Exactly the size the lobby sends it in: a smaller buffer was once
 	// declared there, and every host crashed on its first lobby frame.
 	buf: [net.LEVEL_CHOICE_SIZE]byte
-	mods := sim.Mods{1, 3, 31}
+	mods := sim.Mods{1, 3, 31, 40, sim.MAX_PLUGINS}
 	n := net.encode_level_choice(buf[:], 7, net.START_EASY, mods)
 	kind, kok := net.peek_kind(buf[:n])
 	testing.expect(t, kok)
@@ -93,7 +93,7 @@ packet_level_choice_round_trips :: proc(t: ^testing.T) {
 @(test)
 packet_start_round_trips_with_flags_and_mods :: proc(t: ^testing.T) {
 	buf: [64]byte
-	mods := sim.Mods{2, 5}
+	mods := sim.Mods{2, 5, 47}
 	n := net.encode_start(buf[:], 5, 0xCAFE_F00D, 3, net.START_EASY, mods)
 	seq, seed, level, flags, got, ok := net.decode_start(buf[:n])
 	testing.expect(t, ok)
@@ -102,7 +102,11 @@ packet_start_round_trips_with_flags_and_mods :: proc(t: ^testing.T) {
 	testing.expect_value(t, level, u8(3))
 	testing.expect_value(t, flags, u8(net.START_EASY))
 	testing.expect_value(t, got.? or_else {}, mods)
-	// A build from before the mods sends eight bytes.
+	// A build from before data plugins sends four bytes of mods (D52).
+	_, _, _, _, narrow, narrow_ok := net.decode_start(buf[:12])
+	testing.expect(t, narrow_ok)
+	testing.expect_value(t, narrow.? or_else {}, sim.Mods{2, 5})
+	// One from before the mods sends eight bytes.
 	_, _, _, old_flags, old_mods, old_ok := net.decode_start(buf[:8])
 	testing.expect(t, old_ok)
 	testing.expect_value(t, old_flags, u8(net.START_EASY))

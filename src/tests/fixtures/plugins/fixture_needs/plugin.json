@@ -1,0 +1,6 @@
+{
+    "label": "Fixture Needs Units",
+    "version": "1",
+    "deps": ["fixture_units"],
+    "session": true
+}

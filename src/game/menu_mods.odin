@@ -102,10 +102,15 @@ mods_row_y :: proc(m: ^Mods_Page, row: int) -> (f32, bool) {
 mods_page_layout :: proc(r: ^render.Renderer, m: ^Mods_Page, ps: ^Prefs_State) {
 	for id, row in mods_order() {
 		if y, shown := mods_row_y(m, row); shown {
-			ui.text_button_relabel(r, &m.toggles[row], int(id) in ps.saved.mods ? "ON" : "OFF", MODS_VALUE_X, y)
+			ui.text_button_relabel(r, &m.toggles[row], mods_value(ps, id), MODS_VALUE_X, y)
 		}
 	}
 	ui.text_button_relabel(r, &m.back, "BACK", render.SCREEN_W / 2, MODS_BACK_Y)
+}
+
+// Scrolled to its last rows, for a screenshot.
+mods_page_scroll_end :: proc(m: ^Mods_Page) {
+	m.scroll.first = max(0, len(mods_order()) - MODS_ROWS_SHOWN)
 }
 
 // Returns true when the page is left (Back or Escape).
@@ -115,8 +120,12 @@ mods_page_update :: proc(r: ^render.Renderer, m: ^Mods_Page, ps: ^Prefs_State) -
 	mouse := ui.menu_mouse_pos()
 	dt := rl.GetFrameTime()
 	for id, row in mods_order() {
+		// One that needs a plugin not in the build can never run: its
+		// row says so, and its switch stays off.
 		if _, shown := mods_row_y(m, row); shown && ui.text_button_update(r, &m.toggles[row], mouse, dt) {
-			prefs_mod_toggle(ps, id)
+			if _, missing := sim.plugin_missing_dep(id); !missing {
+				prefs_mod_toggle(ps, id)
+			}
 		}
 	}
 	return ui.text_button_update(r, &m.back, mouse, dt) || rl.IsKeyPressed(.ESCAPE)
@@ -138,7 +147,7 @@ mods_page_draw :: proc(r: ^render.Renderer, m: ^Mods_Page, ps: ^Prefs_State) {
 			continue
 		}
 		p := sim.registered_plugins()[id]
-		ui.menu_draw_text(r, p.label, MODS_LABEL_X, i32(y) + 5, classic ? dim : white)
+		ui.menu_draw_text(r, strings.to_upper(p.label, context.temp_allocator), MODS_LABEL_X, i32(y) + 5, classic ? dim : white)
 		ui.menu_draw_text(r, mods_detail(p), MODS_LABEL_X, i32(y) + 24, dim)
 		ui.text_button_draw(r, &m.toggles[row])
 	}
@@ -148,17 +157,28 @@ mods_page_draw :: proc(r: ^render.Renderer, m: ^Mods_Page, ps: ^Prefs_State) {
 	ui.text_button_draw(r, &m.back)
 }
 
-// A mod's description, and what it needs, in the menu font's capitals.
+@(private = "file")
+mods_value :: proc(ps: ^Prefs_State, id: sim.Plugin_ID) -> string {
+	if _, missing := sim.plugin_missing_dep(id); missing {
+		return "N/A"
+	}
+	return int(id) in ps.saved.mods ? "ON" : "OFF"
+}
+
+// A mod's description, and what it needs, in the menu font's capitals. A
+// plugin it needs that is not installed is named by its folder name, and
+// marked missing.
 @(private = "file")
 mods_detail :: proc(p: sim.Plugin) -> string {
 	sb := strings.builder_make(context.temp_allocator)
-	strings.write_string(&sb, strings.to_upper(p.description, context.temp_allocator))
+	strings.write_string(&sb, p.description)
 	for dep, i in p.deps {
-		label := dep
+		label := fmt.tprintf("%s (MISSING)", dep)
 		if id, ok := sim.plugin_find(dep); ok {
 			label = sim.registered_plugins()[id].label
 		}
-		fmt.sbprintf(&sb, "%s%s", i == 0 ? " -- NEEDS " : ", ", label)
+		lead := i > 0 ? ", " : p.description != "" ? " -- NEEDS " : "NEEDS "
+		fmt.sbprintf(&sb, "%s%s", lead, label)
 	}
-	return strings.to_string(sb)
+	return strings.to_upper(strings.to_string(sb), context.temp_allocator)
 }

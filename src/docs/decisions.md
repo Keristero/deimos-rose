@@ -1124,3 +1124,44 @@ assets:extra` into the new folders, are byte-identical to the moved ones.
 The golden fingerprints, `oracle:diff:saved` and the Chaingun and
 Discharge Beam `dps:report` pages are unchanged. The two weapons load in
 a laid-out release run with neither `DR_ASSETS` nor `DR_PLUGINS` set.
+
+### D52 — Data plugins are found at startup, after the compiled ones
+
+The level editor cannot compile Odin, so what it exports has to be a
+plugin the game finds at run time.
+
+- **A data plugin** is a folder under a plugins root (D51) with a
+  `plugin.json`: label, description, version, deps, `default_on` and
+  `session`. Its name is the folder's: lower-case letters, digits and
+  underscores. `data.plugins_discover` reads them, in name order, taking
+  a name from the first root that has it, and reports any it cannot read.
+  `game/main` declares them (`sim.plugins_declare`) before
+  `sim.register_all`, which registers them after every compiled plugin
+  and before the presentation's steps. So compiled plugins keep their ids
+  whatever folders are installed, and two machines with the same folders
+  agree on every id.
+- **A compiled plugin's folder may have a `plugin.json` too.** It then
+  only gives the plugin its label, description and version.
+- **Every data plugin is `content`.** It is dropped from a session when
+  its content did not load, like the Chaingun without its folder. One that
+  needs a plugin not in the build can never be on: the Mods page shows N/A
+  and names the missing plugin (`sim.plugin_missing_dep`).
+- **Peers compare content.** `data.plugins_digest` hashes every file of
+  each plugin's content folder but Odin source (XXH3, by relative path and
+  contents), and `registration_hash` covers each plugin's version and
+  digest. Two peers with different level packs refuse each other at Hello
+  rather than desync.
+- **`Mods` is 64 bits** (`MAX_PLUGINS` 63). Start carries it in 8 bytes
+  and Level_Choice is 11 bytes long. Both still read the 4-byte form, but
+  an older build is refused at Hello anyway (D50), which is deliberate.
+- **Tests.** `tests/fixtures/plugins` holds synthetic plugins: one unit,
+  one depending on it, one with a missing dependency, a relabel of Accent
+  and a badly named folder. `tests/data_plugins` is a test package of its
+  own, which declares them before registering, so the main suite still
+  sees the ids a game sees. `DR_PLUGINS=$PWD/tests/fixtures/plugins mise
+  run menu-shot MENU=preferences_mods_end` shows them on the Mods page.
+
+The Session is not part of the hashed world, so widening `Mods` moved no
+golden fingerprint. The Mods page as a new player finds it is
+pixel-identical.
+

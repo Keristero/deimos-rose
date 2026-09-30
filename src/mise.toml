@@ -15,8 +15,10 @@ DR_ORIG   = "{{config_root}}/../game"
 DR_ASSETS = "{{config_root}}/assets"
 # Plugins' content folders (D51): each plugin's data, sprites, images and
 # audio beside its code. The game falls back to plugins/ in its working
-# directory, which is how a release is laid out.
-DR_PLUGINS = "{{config_root}}/plugins"
+# directory, which is how a release is laid out. A value already in the
+# environment wins (DR_PLUGINS=$PWD/tests/fixtures/plugins for the data
+# plugin fixtures, D52).
+DR_PLUGINS = "{{ get_env(name='DR_PLUGINS', default=config_root ~ '/plugins') }}"
 DR_BUILD  = "{{config_root}}/build"
 DR_DEPS   = "{{config_root}}/.deps"
 # Ghidra itself is ~900 MB of tooling, so it lives in the user cache.
@@ -165,9 +167,12 @@ run = [
 ]
 
 [tasks.test]
-description = "Run the Odin test suite"
+description = "Run the Odin test suite: tests/, then tests/data_plugins, a package of its own because it registers the fixture plugins in tests/fixtures/plugins (D52)"
 depends = ["setup"]
-run = "odin test tests $DR_COLL $DR_LINK -out:$DR_BUILD/tests$DR_EXT"
+run = [
+  "odin test tests $DR_COLL $DR_LINK -out:$DR_BUILD/tests$DR_EXT",
+  "odin test tests/data_plugins $DR_COLL $DR_LINK -out:$DR_BUILD/tests-data-plugins$DR_EXT",
+]
 
 [tasks.coverage]
 description = "Block coverage of the simulation by the test suite (build/coverage/missed.txt lists what never ran)"
@@ -264,7 +269,7 @@ depends = ["build"]
 run = "bash tools/oracle/menu_compare.sh"
 
 [tasks."menu-shot"]
-description = "Render one of our own menu screens headlessly, no comparison (MENU=main [OUT=path]; MENU=restarted checks a new game starts with none of the last one's particles; DR_SHOT_HUE=63 sets the accent on preferences_extras; MENU=preferences_mods shows the Mods page; MENU=reward, reward_2p and level_select_easy show easy mode; MENU=loadout, loadout_2p, loadout_placed, chaingun, chaingun_charge, chaingun_release, discharge_windup, discharge, discharge_charge, discharge_motes and discharge_burst show New Weapons; MENU=rear_gun_side shows the Rear Gun's side volleys) -- for a quick look, or debug MENU cases from run_menu_shot"
+description = "Render one of our own menu screens headlessly, no comparison (MENU=main [OUT=path]; MENU=restarted checks a new game starts with none of the last one's particles; DR_SHOT_HUE=63 sets the accent on preferences_extras; MENU=preferences_mods shows the Mods page, and preferences_mods_end its last rows (DR_PLUGINS=$PWD/tests/fixtures/plugins adds the data plugin fixtures); MENU=reward, reward_2p and level_select_easy show easy mode; MENU=loadout, loadout_2p, loadout_placed, chaingun, chaingun_charge, chaingun_release, discharge_windup, discharge, discharge_charge, discharge_motes and discharge_burst show New Weapons; MENU=rear_gun_side shows the Rear Gun's side volleys) -- for a quick look, or debug MENU cases from run_menu_shot"
 depends = ["build"]
 # Wrapped in xvfb-run/DISPLAY= exactly like the shots and menu-shots:compare
 # tasks -- running $DR_BUILD/deimos directly (without this) opens a real

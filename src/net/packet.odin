@@ -174,10 +174,10 @@ decode_ack :: proc(buf: []byte) -> (seq: u8, ok: bool) {
 // transition on the Ack -- see game/netplay.odin).
 //
 // The eighth byte is the session's flags (START_EASY: easy mode,
-// START_LOADOUT: new weapons), and the four after it the session's mods
-// (sim.Session.mods), which supersede them. A build from before the mods
-// sends eight bytes, and one from before the flags seven, which decode as
-// no flags: the game makes what mods it can of the flags (game/flow.odin
+// START_LOADOUT: new weapons), and the eight after it the session's mods
+// (sim.Session.mods), which supersede them: four before data plugins
+// widened Mods (D52). A build from before the mods sends eight bytes, and
+// one from before the flags seven, which decode as no flags: the game makes what mods it can of the flags (game/flow.odin
 // mods_from_flags). The flags are still sent for the builds that read
 // only them.
 START_EASY :: 0x01
@@ -189,16 +189,18 @@ encode_start :: proc(buf: []byte, seq: u8, seed: u32, level: u8, flags: u8 = 0, 
 	put_u32(buf[2:], seed)
 	buf[6] = level
 	buf[7] = flags
-	put_u32(buf[8:], transmute(u32)mods)
-	return 12
+	put_u64(buf[8:], transmute(u64)mods)
+	return 16
 }
 
 decode_start :: proc(buf: []byte) -> (seq: u8, seed: u32, level: u8, flags: u8, mods: Maybe(sim.Mods), ok: bool) {
 	if len(buf) < 7 || Packet_Kind(buf[0]) != .Start {
 		return
 	}
-	if len(buf) >= 12 {
-		mods = transmute(sim.Mods)get_u32(buf[8:])
+	if len(buf) >= 16 {
+		mods = transmute(sim.Mods)get_u64(buf[8:])
+	} else if len(buf) >= 12 {
+		mods = transmute(sim.Mods)u64(get_u32(buf[8:]))
 	}
 	return buf[1], get_u32(buf[2:]), buf[6], len(buf) >= 8 ? buf[7] : 0, mods, true
 }
@@ -211,13 +213,13 @@ decode_start :: proc(buf: []byte) -> (seq: u8, seed: u32, level: u8, flags: u8, 
 // Input: a dropped one is invisible since the next one due (a frame later)
 // repeats the same value. The host's choice of flags and mods (Start's)
 // rides along the same way, for the guest's display; Start is what counts.
-LEVEL_CHOICE_SIZE :: 7
+LEVEL_CHOICE_SIZE :: 11
 
 encode_level_choice :: proc(buf: []byte, level_index: u8, flags: u8 = 0, mods: sim.Mods = {}) -> int {
 	buf[0] = u8(Packet_Kind.Level_Choice)
 	buf[1] = level_index
 	buf[2] = flags
-	put_u32(buf[3:], transmute(u32)mods)
+	put_u64(buf[3:], transmute(u64)mods)
 	return LEVEL_CHOICE_SIZE
 }
 
@@ -225,8 +227,10 @@ decode_level_choice :: proc(buf: []byte) -> (level_index: u8, flags: u8, mods: M
 	if len(buf) < 2 || Packet_Kind(buf[0]) != .Level_Choice {
 		return
 	}
-	if len(buf) >= 7 {
-		mods = transmute(sim.Mods)get_u32(buf[3:])
+	if len(buf) >= 11 {
+		mods = transmute(sim.Mods)get_u64(buf[3:])
+	} else if len(buf) >= 7 {
+		mods = transmute(sim.Mods)u64(get_u32(buf[3:]))
 	}
 	return buf[1], len(buf) >= 3 ? buf[2] : 0, mods, true
 }
