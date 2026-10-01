@@ -522,6 +522,69 @@ under the selected unit, with the spawn row drawn across the map):
 - **Custom enemies** from another plugin appear in the palette. Export
   records that plugin as a dependency.
 
+**Scenery models** (added after the rest of Stage 8, at the project
+owner's request). Painted vegetation needs albedos like the originals'
+baked trees, which are hard to make. Models scattered over the ground are
+easier. [I] unless marked.
+- **Seen from straight above, a model is an impostor.** An orthographic
+  view straight down commutes with a turn about the vertical, so a model's
+  look from above, turned, is the model turned. Each model is therefore
+  baked once, when it is imported, into a sprite:
+  - its colour and coverage;
+  - its normal;
+  - the heights of its top and of its underside, which a view from below
+    gives.
+
+  An instance is that sprite drawn turned, scaled and lifted, into a
+  map-space layer. A turn about the vertical, a scale, and an offset from
+  the ground are what it can take. A tilt cannot be drawn this way; none
+  is offered. *As built:* no sprites. At the project owner's direction,
+  each instance's mesh is drawn straight down into the layer every time
+  the map is drawn, for its real shadows. So a lean is offered too
+  (D63).
+- **The renderer lights the layer as the ground.** It uses the same sun,
+  and the same shadow march over the ground plus the models. A model
+  blocks a ray between its underside and its top, so a canopy casts its
+  shadow with light under it. The layer is at 2x the map. Edges are
+  antialiased from its 2x2 texels. Exports carry the models, since they
+  come from the same render. *As built:* so; the cutout reads the
+  texture's full-size texels, not its mipmaps, which lose thin leaves.
+- **A model is imported from glTF or GLB, through cgltf** (vendor:cgltf).
+  raylib's loader is not used, for two reasons [V: its build here reads no
+  JPEG, and Poly Haven's textures are JPEG; it truncates 32-bit indices to
+  16]. A set of variants, one node each, becomes one model a node, as Poly
+  Haven lays its sets out. The size is 3 map pixels a metre [V: le11's
+  palm crowns are about 30 px across; a palm's crown is 8-10 m].
+  *As built:* not cgltf. raylib's bundled cgltf collides with the vendor
+  package at link time, so `terrain/gltf.odin` reads glTF and GLB itself,
+  with KHR_texture_transform. OBJ goes through raylib. Imports are
+  simplified under 60,000 triangles, with leaves kept as leaves.
+- **A project keeps each model's two images under `models/`**, as it keeps
+  its materials' under `materials/`. It also keeps the instances in its
+  JSON: model, point, offset, turn and scale. *As built:* it keeps each
+  model as a GLB under `models/`, and each instance's lean as well.
+- **Brush profiles** ("Jungle Trees", "Grasses", "Sparse Rocks") hold:
+  - weighted entries of models, each with a scale range and an offset
+    range;
+  - a turn range, a spacing, a density, a steepest slope, and whether to
+    keep out of the water.
+
+  The brush fills the circle to the density with a spacing test among the
+  profile's own models. An erase mode takes those models away. Sample
+  profiles come with the library; the author's own are saved in the user
+  data directory. *As built:* so, with a lean range too. Six samples:
+  Jungle Trees, Jungle Undergrowth, Grasses, Shrubs, Sparse Rocks and Dry
+  Scrub.
+- **A select mode** picks an instance by its sprite's coverage, the
+  highest on top. It drags it, and sets its offset, turn and scale. An
+  instance follows the ground as it is sculpted. *As built:* it picks by
+  the mesh's top seen from above, and sets the lean and model too.
+- **The library** is CC0 models from Poly Haven. They are fetched and
+  baked by a tool into `assets/models`, with their licence and the API's
+  "Powered by Poly Haven" credit. *As built:* 27 models in 16 MB,
+  committed and shipped in the release zip (D63). Poly Haven has no CC0
+  palm; one can be imported.
+
 **Exit:** a level with painted materials, a baked structure and placements
 from two plugins exports and plays (Stage 9).
 

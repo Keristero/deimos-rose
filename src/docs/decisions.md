@@ -1614,3 +1614,45 @@ Stage 8's structure footprints and helpers (docs/level-editor.md).
 
 The game is unchanged. `oracle:diff` is exact, and tests/golden is
 unchanged.
+
+### D63 — Scenery models: meshes drawn into the map's light, a CC0 library shipped, profiles in the user's data
+
+Stage 8's scenery models (docs/level-editor.md).
+
+- **Vegetation is 3D models, not painted colour.** The originals' trees
+  were rendered from models into their maps, and an albedo that good is
+  far harder to paint than models are to scatter. Each instance is its
+  mesh drawn straight down into a layer of colour, top height, normal
+  and underside height. The terrain shader lights the layer, and the
+  sun's march is blocked between underside and top. So the models'
+  shadows are in the lit map that Stage 9 exports. The models are not
+  baked into sprites, as the plan had it: the project owner wanted
+  their real shadows. A lean is then just a rotation.
+- **3 map pixels a metre**, models life size: le11's palm crowns are
+  about 30 px across, and a real one is 8-10 m. Provisional, until
+  Stage 9's export is compared with the originals.
+- **The library is committed and ships in the zip.** It is in
+  `assets/models`, 27 Poly Haven models (CC0) in 16 MB. The project owner
+  wants the editor usable from the release zip as it comes. The library
+  is regenerable: `models:fetch` downloads the sources into a cache
+  outside the repository, and `models:library` rebuilds the same bytes.
+  To keep it small, its images are 256 px, with the cutout's coverage
+  kept (Castaño 2010), and its models are under 10,000 triangles, or
+  20,000 for a tree. CREDITS.md credits every model and carries Poly
+  Haven's "Powered by Poly Haven".
+- **Heavy models are simplified by clustering, with leaves treated as
+  leaves.** Vertex clustering is quick and keeps the cover from above,
+  which is all the layer draws. Pieces smaller than two cells are
+  clustered on their own grid, and thinned with the kept ones grown, so
+  a crown keeps its cover. Imports are brought under 60,000 triangles.
+  Provisional: no frame-time budget has been measured.
+- **The cutout reads the full-size texels**, not the mipmaps, whose
+  averaged alpha drops thin leaves under the cutoff.
+- **Profiles and imported models are the author's, in the user's
+  data**, as the game's progress is: `editor/brush-profiles.json` and
+  `editor/models/`. A project keeps a copy of each model it uses, in
+  `models/`, so it stands alone. The user-data path moved from `game/`
+  to `prefs/`, so the game and the editor share it.
+
+The game is unchanged. `oracle:diff` is exact, and tests/golden is
+unchanged.

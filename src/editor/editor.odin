@@ -1,9 +1,9 @@
 package editor
 
 // The level editor's state, and what it does to a project apart from the
-// window: open, make, save, sculpt, paint, undo, relight, place units. The window and its
-// panels are in view.odin and panel.odin; tests/editor drives these
-// directly.
+// window: open, make, save, sculpt, paint, put down models, undo, relight,
+// place units. The window and its panels are in view.odin and panel.odin;
+// tests/editor drives these directly.
 
 import "core:encoding/json"
 import "core:math"
@@ -51,6 +51,8 @@ Editor :: struct {
 	// The materials a level can start from: library_load's.
 	library:       Library,
 	paint:         Paint,
+	// The models, their library and the brush's profiles.
+	scenery:       Scenery,
 	level_panel:   Level_Panel,
 	using placing: Placing,
 	using view:    View,
@@ -66,6 +68,7 @@ editor_init :: proc(e: ^Editor) {
 	placing_init(&e.placing)
 	e.paint.material, e.paint.library_pick = -1, -1
 	e.level_panel.editing = -1
+	scenery_init(&e.scenery)
 	style_dark()
 }
 
@@ -75,6 +78,7 @@ editor_destroy :: proc(e: ^Editor) {
 	history_destroy(&e.history)
 	catalogue_destroy(&e.units)
 	library_destroy(&e.library)
+	scenery_destroy(&e.scenery)
 	placing_destroy(&e.placing)
 	arena_free(e.arena)
 	e.arena, e.has_project = nil, false
@@ -130,6 +134,8 @@ editor_take :: proc(e: ^Editor, p: terrain.Project, arena: ^virtual.Arena) {
 	e.dirty, e.stroke = false, false
 	e.selected, e.hovered = -1, -1
 	e.dragging_unit, e.placements_changing = false, false
+	e.scenery.instance, e.scenery.hovered = -1, -1
+	e.scenery.dragging, e.scenery.changing = false, false
 	e.paint.material = len(p.materials) > 0 ? 0 : -1
 	e.level_panel.editing = -1
 	terrain.renderer_init(&e.renderer, &e.project)
@@ -167,8 +173,20 @@ editor_save :: proc(e: ^Editor, path: string) -> bool {
 }
 
 // Starts a stroke at `at` (map pixels) with the brush: in the Paint tab,
-// of the chosen material's weight, the weights made when there are none.
+// of the chosen material's weight, the weights made when there are none;
+// in the Models tab, of the profile's models, recorded as the instances
+// before it.
 editor_stroke_begin :: proc(e: ^Editor, at: [2]f32) {
+	if Tab(e.tab) == .Models {
+		if Models_Mode(e.scenery.mode) == .Select {
+			return
+		}
+		instances_changing(e)
+		e.stroke = true
+		e.last_dab = at
+		editor_dab(e, at, 1)
+		return
+	}
 	if Tab(e.tab) == .Paint {
 		if e.paint.material < 0 || e.paint.material >= len(e.project.materials) {
 			return
@@ -200,6 +218,11 @@ editor_stroke_end :: proc(e: ^Editor) {
 	if !e.stroke {
 		return
 	}
+	if Tab(e.tab) == .Models {
+		e.stroke = false
+		instances_settle(e, false)
+		return
+	}
 	history_end(&e.history)
 	e.stroke = false
 	e.overview_stale = true
@@ -208,6 +231,14 @@ editor_stroke_end :: proc(e: ^Editor) {
 @(private = "file")
 editor_dab :: proc(e: ^Editor, at: [2]f32, amount: f32) {
 	area: terrain.Rect
+	if Tab(e.tab) == .Models {
+		put := Models_Mode(e.scenery.mode) == .Erase ? erase_dab(e, at) : scatter_dab(e, at)
+		if put {
+			instances_drawn(e)
+			e.dirty = true
+		}
+		return
+	}
 	if Tab(e.tab) == .Paint {
 		area = paint_dab(&e.project, e.brush, Paint_Mode(e.paint.mode), e.paint.material, at, amount, &e.history)
 	} else {
@@ -223,6 +254,7 @@ editor_dab :: proc(e: ^Editor, at: [2]f32, amount: f32) {
 editor_undo :: proc(e: ^Editor) -> bool {
 	editor_stroke_end(e)
 	placements_settle(e, false)
+	instances_settle(e, false)
 	c, ok := history_undo(&e.history, &e.project)
 	editor_changed(e, c)
 	return ok
@@ -231,6 +263,7 @@ editor_undo :: proc(e: ^Editor) -> bool {
 editor_redo :: proc(e: ^Editor) -> bool {
 	editor_stroke_end(e)
 	placements_settle(e, false)
+	instances_settle(e, false)
 	c, ok := history_redo(&e.history, &e.project)
 	editor_changed(e, c)
 	return ok
@@ -251,6 +284,11 @@ editor_changed :: proc(e: ^Editor, c: Change) {
 		e.settings = settings_of(&e.project)
 		e.dirty = true
 		e.view_stale, e.overview_stale = true, true
+	}
+	if c.instances {
+		e.scenery.instance, e.scenery.hovered, e.scenery.dragging = -1, -1, false
+		instances_drawn(e)
+		e.dirty, e.overview_stale = true, true
 	}
 	// The units are drawn over the views each frame: nothing to redraw.
 	if c.placements {

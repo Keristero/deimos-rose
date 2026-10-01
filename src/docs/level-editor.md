@@ -1,7 +1,7 @@
 # Level editor and remastered levels
 
 Progress on [notes/level-editor-plan.md](../../notes/level-editor-plan.md),
-stage by stage. The decisions are D51–D60 in [decisions.md](decisions.md).
+stage by stage. The decisions are D51–D63 in [decisions.md](decisions.md).
 
 | Stage | Status | Where |
 |---|---|---|
@@ -12,7 +12,7 @@ stage by stage. The decisions are D51–D60 in [decisions.md](decisions.md).
 | 5 — Terrain renderer, le07 proof of concept | **complete** | D55, below |
 | 6 — Recovering the 12 originals' heightmaps | **complete** | D56, D57, below |
 | 7 — The editor | **complete** | D58, below |
-| 8 — Materials, structures, placement | **complete** but for the exit, which is Stage 9's | D60, D61, D62, below |
+| 8 — Materials, structures, placement, scenery models | **complete** but for the exit, which is Stage 9's | D60, D61, D62, D63, below |
 | 9 — Export and Play | not started | |
 | 10 — HD layers, Remastered Levels | not started | |
 
@@ -207,12 +207,14 @@ game, and `dist` puts it in the release zip.
 
 The window is the panel on the left, the level in the middle, the whole
 level on the right with the part in view outlined, and a status line. The
-panel has Open, Save, Undo, Redo and New, then seven tabs:
+panel has Open, Save, Undo, Redo and New, then eight tabs:
 
 - **Terrain:** the brush. Raise, Lower, Flatten toward a target height, or
   Smooth, in a round, square or rough shape, with a size, a strength and a
   soft edge. Right-click takes the ground's height as the target.
 - **Paint** (Stage 8, below): the materials and their brush.
+- **Models** (Stage 8, below): trees, grass and rocks as 3D models, put
+  down with a profile's brush.
 - **Light:** live lighting on or off, the sun's direction and height, the
   ambient share and colours, the softness. Copy and Paste carry the light
   between levels as JSON on the clipboard (a level record's light pastes
@@ -711,3 +713,220 @@ units with a preview face, as the placement section says.
   the large popup's two looks.
 - A recovered level keeps its baked bases in its unlit colour; a moved
   structure leaves its old one there.
+
+## Stage 8: scenery models
+
+Vegetation is hard to paint. The recovered levels' unlit colour has the
+originals' trees baked into it, rendered from models. A new albedo with
+trees that good would mean painting each one, light and all. So the
+editor puts real 3D models on the ground instead: trees, grass, shrubs and
+rocks. The renderer draws them into the level's light, so their shadows
+fall on the ground, on each other and on themselves, and the map Stage 9
+exports has them baked in.
+
+The **Models** tab has three modes, keys 1 to 3:
+- **Scatter:** the brush puts down the chosen profile's models. A dab
+  fills the brush's circle to the profile's density, so dragging over
+  ground already full adds nothing.
+- **Erase:** the brush takes away the profile's models in its circle, and
+  no others.
+- **Select:** a click picks the model on top under the cursor, and a drag
+  moves it. The panel sets its model, lift, turn, lean and scale. Q and E
+  turn it 15°, or 1° with Shift; Delete removes it; Escape lets it go.
+
+A model's foot is centred on its point, at the ground's height there plus
+its lift (negative sinks it). It follows the ground as the ground is
+sculpted. A stroke, a move or an edit is one undo.
+
+### Profiles
+
+A profile is a brush's recipe:
+- **its models**, each with a chance, a scale range and a lift range. An
+  entry is either one model of a set (a file of variants) or "any of
+  them";
+- **a spacing**: no two of the profile's models are put nearer than this,
+  in map pixels;
+- **a density**: how full of them a dab leaves the circle, as a share of
+  as many as can be packed;
+- **a turn range and a lean range**, in degrees;
+- **a steepest slope**, and whether to keep out of the water.
+
+A dab wants density × 0.697 × πr² / spacing² models in all. 0.697 is the
+share a random sequential packing fills before it jams (Feder, 1980).
+Each is tried at up to 30 random points in the circle. A point is kept
+if it keeps the spacing, the slope is gentle enough and the ground is
+dry. Each model's entry, scale, lift, turn and lean are then drawn from
+the profile's ranges.
+
+Six profiles come with the library (`tools/models/profiles.json`):
+
+| Profile | Spacing | Density | Models |
+|---|---|---|---|
+| Jungle Trees | 18 px | 0.9 | island trees, searsia burchellii |
+| Jungle Undergrowth | 7 px | 0.7 | fern, calathea, anthurium, mossy rocks |
+| Grasses | 4 px | 0.8 | two grasses, a weed, nettles |
+| Shrubs | 9 px | 0.6 | rooibos, two shrubs, pine saplings |
+| Sparse Rocks | 14 px | 0.25 | boulders, rocks and stones, a little sunk |
+| Dry Scrub | 12 px | 0.35 | rooibos, searsia lucida, quiver trees, dry branches, a dead trunk and a stump |
+
+New, Copy, Delete and Save edit them. The author's own profiles, and
+their changes to the library's, are saved to the user's data
+(`editor/brush-profiles.json`, beside the game's progress), so they are
+there for every level.
+
+### Importing a model
+
+A glTF, GLB or OBJ file dropped on the window is imported:
+1. It is read into memory: its triangles, and each material's base
+   colour, texture and alpha cutout.
+2. It is brought under 60,000 triangles (below).
+3. It is kept in the user's data, `editor/models/<name>.glb`, so it is in
+   the library for every level after.
+
+A file with several models at its root, as Poly Haven lays out a set,
+is one model with variants. Models are life size, at 3 map pixels a
+metre: le11's palm crowns are about 30 px across, and a palm's crown is
+8-10 m. The first time a model is put down, it is copied into the
+project and saved beside it in `models/`, so a project stands alone.
+
+### How they are drawn
+
+Each instance's triangles are drawn straight down, orthographically,
+into a layer over the whole map at 2 texels a map pixel. The layer holds:
+- the model's colour;
+- the height and normal of its top;
+- the height of its underside, from a second pass with the depth test
+  reversed.
+
+The terrain shader lights the layer as it lights the ground. The sun's
+march is blocked where a ray passes between a model's underside and its
+top, so a canopy's shadow has light under it. A turn about the vertical,
+a lean, a scale and a lift are all just the instance's matrix.
+
+The alpha cutout reads the texture's full-size texels, not its mipmaps.
+A mipmap averages a grass blade's alpha below the cutoff, and the grass
+vanished (grass_medium_02 did).
+
+### The library
+
+`assets/models` is committed with the rest of the assets tree, so it is
+in the release zip. 27 models from Poly Haven, all CC0, take 16 MB:
+
+| | Models |
+|---|---|
+| Trees | island_tree_01, island_tree_02, searsia_lucida, searsia_burchellii, quiver_tree_02, pine_sapling_small |
+| Shrubs and plants | shrub_02, shrub_03, wild_rooibos_bush, fern_02, calathea_orbifolia_01, anthurium_botany_01, nettle_plant, weed_plant_02 |
+| Grass | grass_medium_01, grass_medium_02 |
+| Rocks | rock_07, rock_09, stone_01, boulder_01, namaqualand_boulder_02, namaqualand_boulder_05, namaqualand_stones_01, rock_moss_set_01 |
+| Debris | dead_tree_trunk_02, dry_branches_medium_01, tree_stump_01 |
+
+It is made in two steps:
+- **`mise run models:fetch`** (`tools/models/fetch.py`) downloads each
+  model's 1k glTF into `~/.cache/deimos-rising/models`, about 200 MB.
+  The downloads are checked against the API's MD5s, and the tool sends
+  its own User-Agent, as Poly Haven's terms ask.
+- **`mise run models:library`** (`tools/models`) builds `assets/models`
+  from the cache, the same bytes each time. For each model it:
+  1. merges the leaves' alpha into the colour;
+  2. makes each image 256 px, keeping the cutout's coverage;
+  3. brings the triangles under 10,000, or 20,000 for a tree;
+  4. writes the result as a GLB.
+
+  It also writes `index.json` (each model's tags and credit),
+  `profiles.json` (after checking that every entry's model and variant
+  exist) and `CREDITS.md`, headed "Powered by Poly Haven".
+
+Poly Haven's plants keep their leaves' alpha in a map of its own, which
+the glTF does not name. Without it, every leaf card is an opaque square.
+`fetch.py` fetches each `*alpha` map, and the builder pairs it with the
+diffuse image beside it. Shrinking an alpha-tested texture thins its
+leaves, because the averaged alpha falls under the cutoff. So each image
+is shrunk with its alpha scaled to keep the share of texels over the
+cutoff (Castaño, "Computing Alpha Mipmaps", 2010).
+
+| Model | Triangles | Kept |
+|---|---|---|
+| island_tree_01 | 1,599,403 | 19,094 |
+| island_tree_02 | 1,072,213 | 18,664 |
+| searsia_burchellii | 616,336 | 18,886 |
+| pine_sapling_small | 398,144 | 18,607 |
+| boulder_01 | 66,122 | 6,760 |
+| grass_medium_01 (17 clumps) | 24,730 | 9,212 |
+
+### Fewer triangles
+
+`terrain/simplify.odin` uses vertex clustering (Rossignac and Borrel,
+1993). Each part's vertices are gathered into the cells of a grid and
+merged at their mean, and a triangle with two corners in one cell is
+dropped. The cell starts at 1/1024 of the model's size and grows by √2 a
+try until the model fits. Clustering keeps a solid's outline and its
+cover from above, which is all the layer draws. A cell also groups by
+UV, so a texture's seam stays a seam: island_tree_01's bark wraps 15
+times round.
+
+A crown is not a solid. island_tree_01's is 44,168 leaves of 24
+triangles each, 5 cm across. A grid fine enough to keep a leaf keeps a
+million triangles, and one coarse enough to fit folded every leaf to
+nothing, leaving bare branches. So a piece (a run of triangles joined
+at their corners) smaller than two cells is a leaf:
+- it is clustered on a grid of its own, three cells across it;
+- where the leaves are still too many, an even share of them is kept,
+  and each kept leaf is grown by the square root of what was dropped, so
+  the crown covers as much from above. This is how foliage is thinned
+  for distance (Cook, Halstead, Planck and Ryu, "Stochastic
+  Simplification of Aggregate Detail", 2007).
+
+By eye, the library's trees, shrubs, grass and rocks match their full
+models from above.
+
+### Verified
+
+- `tests/terrain`:
+  - a model reads from glTF with its extent and colours;
+  - a set's root nodes become variants;
+  - KHR_texture_transform moves the UVs, and a second UV set is not read;
+  - a lifted slab shades the ground with light under it;
+  - a turn turns the footprint, and a lean tips it;
+  - a cutout has holes, and water hides a model under it;
+  - a model follows the ground, and saves and reopens the same.
+- `tests/terrain`, simplify: a dome of 59,400 triangles is brought under
+  2,000 with both parts and its extent kept. It covers the same points
+  from above, its top is within 2.4 px, and no triangle spans the seam.
+- `tests/editor`:
+  - the library and profiles load, and a user's profile is saved and
+    read again;
+  - a scatter keeps out of the water, puts 80-100% of the wanted count,
+    keeps the spacing and uses each entry;
+  - it draws as a fresh upload does, and undoes and redoes;
+  - the eraser takes the brush's circle;
+  - an instance is set and deleted with undo;
+  - an import is kept in the user's data;
+  - a project saves and reopens the same.
+
+  With `assets/models` present, every library model is under its budget
+  and credited, and every profile's entries resolve.
+- By eye: each profile scattered on a new level, and the Models tab drawn
+  by `editor:shot`. The editor drawn from inside `dist/deimos`, with no
+  `DR_ASSETS` and an empty user data folder, has the library and its six
+  profiles.
+
+### Not as planned
+
+- **Real meshes, not baked sprites.** The plan baked each model once into
+  a sprite of its colour, normal and top and underside heights. The
+  project owner asked for the models' own shadows, so the meshes are
+  drawn into the layer every time the map is drawn. A lean is then just a
+  rotation, and is offered. The editor's tilted view does not draw them:
+  the map's lit image is the point.
+- **glTF is read by `terrain/gltf.odin`, not cgltf.** raylib bundles its
+  own cgltf, and the vendor package's symbols collide with it at link
+  time. OBJ goes through raylib.
+- **No palm.** Poly Haven has no CC0 palm. A palm from elsewhere can be
+  imported.
+
+### Still open
+
+- An imported glTF whose leaves' alpha is a separate map its material
+  does not name imports opaque. Only the library's builder pairs those
+  maps.
+- The export of the models' shadows into the level's map is Stage 9's.

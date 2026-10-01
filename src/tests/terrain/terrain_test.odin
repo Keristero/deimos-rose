@@ -130,6 +130,7 @@ terrain_renders :: proc(t: ^testing.T) {
 	weights_update_is_a_new_upload(t)
 	half_weight_shows_half(t)
 	materials_do_not_repeat(t)
+	scenery_cases(t)
 }
 
 draw :: proc(t: ^testing.T, p: ^terrain.Project, o: terrain.Render_Options, smoothing: f32 = terrain.GEOMETRY_SMOOTHING) -> terrain.Picture {

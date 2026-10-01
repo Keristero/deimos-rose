@@ -82,7 +82,7 @@ high_scores_load :: proc(levels: []sim.Level_Def) -> High_Scores_Save {
 		table            = high_scores_default(),
 		last_name_player = {high_scores_default_last_name(0), high_scores_default_last_name(1)},
 	}
-	path := user_data_path("highscores", context.temp_allocator)
+	path := prefs.user_data_path("highscores", context.temp_allocator)
 	if path == "" {
 		return fallback
 	}
@@ -119,7 +119,7 @@ high_scores_save :: proc(save: ^High_Scores_Save) {
 		fmt.sbprintf(&sb, "%d\n%s\n%s\n", e.score, e.name, e.sector)
 	}
 	fmt.sbprintf(&sb, "%s\n%s\n", save.last_name_player[0], save.last_name_player[1])
-	user_data_write("highscores", strings.to_string(sb))
+	prefs.user_data_write("highscores", strings.to_string(sb))
 }
 
 // G_Scores_IsAHighScore_03b360.c (read in full): `local_22cf < param_1`,

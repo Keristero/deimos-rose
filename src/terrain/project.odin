@@ -6,7 +6,9 @@ package terrain
 // canopy, the occlusion and the water, each one PNG pixel per map pixel,
 // and the materials' images under the names they give. The level's own
 // record (its placements, lighting, water and wind, D54) is inside, as the
-// game reads it. Maps, masks and previews are exports of a project, not part of it.
+// game reads it. The scenery models' files are under models/, each as a
+// GLB (model.odin), and the models put on the map are inside. Maps,
+// masks and previews are exports of a project, not part of it.
 
 import "core:encoding/json"
 import "core:image"
@@ -18,7 +20,8 @@ import "core:strings"
 import "dr:data"
 
 PROJECT_FORMAT :: "deimos-rising.level-project"
-PROJECT_VERSION :: 1
+// 2 added the scenery models; a version 1 project has none.
+PROJECT_VERSION :: 2
 PROJECT_SUFFIX :: ".drproj.json"
 // Heights are stored in 1/32 of a map pixel: up to 2048 pixels high.
 HEIGHT_UNIT :: f32(1) / 32
@@ -74,6 +77,11 @@ Project :: struct {
 	// The level's units, lifted out of level.placements so the editor can
 	// add and remove them; saved back into the level record.
 	placements:      [dynamic]data.Json_Placement,
+	// The scenery models (model.odin), the files they are in, and the
+	// models put on the map, by their index in `models`.
+	models:          [dynamic]Model,
+	model_files:     [dynamic]Model_File,
+	instances:       [dynamic]Instance,
 }
 
 // A new project: flat ground, the originals' light, no water.
@@ -84,6 +92,9 @@ project_make :: proc(width, length: int, allocator := context.allocator) -> (p: 
 	p.cliff.material, p.shore.material = -1, -1
 	p.materials = make([dynamic]Material, allocator)
 	p.placements = make([dynamic]data.Json_Placement, allocator)
+	p.models = make([dynamic]Model, allocator)
+	p.model_files = make([dynamic]Model_File, allocator)
+	p.instances = make([dynamic]Instance, allocator)
 	p.level.background = {0, 0, width, length}
 	p.level.lighting = data.LIGHTING_MEASURED
 	return
@@ -109,6 +120,8 @@ Json_Project :: struct {
 	cliff:           Rule            `json:"cliff"`,
 	shore:           Rule            `json:"shore"`,
 	level:           data.Json_Level `json:"level"`,
+	models:          []Model         `json:"models"`,
+	instances:       []Instance      `json:"instances"`,
 }
 
 // Saves to `path` (…/<name>.drproj.json) and its side files beside it,
@@ -131,6 +144,8 @@ project_save :: proc(p: ^Project, path: string) -> bool {
 		cliff           = p.cliff,
 		shore           = p.shore,
 		level           = p.level,
+		models          = p.models[:],
+		instances       = p.instances[:],
 	}
 	j.level.placements = p.placements[:]
 	full: string
@@ -162,14 +177,22 @@ project_save :: proc(p: ^Project, path: string) -> bool {
 	// in memory until then, and a project saved elsewhere takes its own.
 	for m, i in p.materials[:min(len(p.materials), MAX_MATERIALS)] {
 		img := p.material_images[i]
-		if m.image == "" || img.pixels == nil {
+		if m.image != "" && img.pixels != nil && !side_write(dir, m.image, img) {
+			return false
+		}
+	}
+	// The model files the models are in; one no model uses is not kept.
+	for f in p.model_files {
+		used := false
+		for m in p.models {
+			used ||= m.file == f.name
+		}
+		if !used {
 			continue
 		}
-		full = side_path(dir, m.image)
-		if k := strings.last_index_any(full, "/\\"); k > 0 {
-			os.make_directory_all(full[:k])
-		}
-		if !png_write(full, img) {
+		at := side_path(dir, model_file_path(f.name))
+		os.make_directory_all(at[:strings.last_index_byte(at, '/')])
+		if !model_file_write(at, f) {
 			return false
 		}
 	}
@@ -227,6 +250,24 @@ project_load :: proc(path: string, allocator := context.allocator) -> (p: Projec
 	p.cliff, p.shore, p.level = j.cliff, j.shore, j.level
 	append(&p.placements, ..p.level.placements)
 	p.level.placements = nil
+	append(&p.models, ..j.models)
+	for m in p.models {
+		// A name as model_name makes it, so it names no file elsewhere.
+		if m.file != model_name(m.file, context.temp_allocator) {
+			return
+		}
+		if model_file_find(&p, m.file) >= 0 {
+			continue
+		}
+		f := model_file_read(side_path(dir, model_file_path(m.file)), allocator) or_return
+		f.name = m.file
+		append(&p.model_files, f)
+	}
+	for i in j.instances {
+		if i.model >= 0 && i.model < len(p.models) {
+			append(&p.instances, i)
+		}
+	}
 	return p, true
 }
 
@@ -255,6 +296,18 @@ project_names :: proc(path: string) -> (dir, stem: string) {
 @(private = "file")
 side_path :: proc(dir, name: string) -> string {
 	return strings.concatenate({dir, "/", name}, context.temp_allocator)
+}
+
+// Writes a side file where its name says, making its directory: a dropped
+// image is only in memory until then, and a project saved elsewhere takes
+// its own.
+@(private = "file")
+side_write :: proc(dir, name: string, pic: Picture) -> bool {
+	full := side_path(dir, name)
+	if k := strings.last_index_any(full, "/\\"); k > 0 {
+		os.make_directory_all(full[:k])
+	}
+	return png_write(full, pic)
 }
 
 // A PNG as a Picture with `channels` samples a pixel (0 for the file's

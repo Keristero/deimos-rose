@@ -15,6 +15,7 @@ import "dr:terrain"
 Tab :: enum c.int {
 	Terrain,
 	Paint,
+	Models,
 	Light,
 	Water,
 	View,
@@ -127,13 +128,14 @@ editor_draw :: proc(e: ^Editor, l: Layout) {
 	status_draw(e, l.status)
 	editor_settings_settle(e, rl.IsMouseButtonDown(.LEFT))
 	placements_settle(e, rl.IsMouseButtonDown(.LEFT))
+	instances_settle(e, rl.IsMouseButtonDown(.LEFT))
 }
 
 @(private = "file")
 editor_input :: proc(e: ^Editor, l: Layout) {
 	v, p := &e.view, &e.project
 	mouse := rl.GetMousePosition()
-	typing := e.path_edit || e.length_edit || e.level_panel.editing >= 0
+	typing := e.path_edit || e.length_edit || e.level_panel.editing >= 0 || e.scenery.name_edit
 	in_view := rl.CheckCollisionPointRec(mouse, l.view)
 	in_overview := rl.CheckCollisionPointRec(mouse, l.overview)
 	rows := view_rows(v, l.view)
@@ -154,9 +156,11 @@ editor_input :: proc(e: ^Editor, l: Layout) {
 		v.left -= d.x / f32(v.zoom)
 	}
 
-	// The brush, or in the Units tab the units.
+	// The brush, or in the Units tab the units, or the models to select.
 	if Tab(e.tab) == .Units {
 		units_input(e)
+	} else if Tab(e.tab) == .Models && Models_Mode(e.scenery.mode) == .Select {
+		models_select_input(e)
 	} else if rl.IsMouseButtonPressed(.LEFT) && v.over_map {
 		editor_stroke_begin(e, v.cursor)
 	} else if rl.IsMouseButtonDown(.LEFT) && e.stroke {
@@ -184,13 +188,22 @@ editor_input :: proc(e: ^Editor, l: Layout) {
 
 	if rl.IsFileDropped() {
 		files := rl.LoadDroppedFiles()
-		// A project opens; an image becomes a material.
+		// A project opens; a model goes into the library; an image becomes
+		// a material.
 		for i in 0 ..< files.count {
 			path := strings.clone(string(files.paths[i]), context.temp_allocator)
+			lower := strings.to_lower(path, context.temp_allocator)
 			switch {
 			case strings.has_suffix(path, terrain.PROJECT_SUFFIX):
 				if guarded(e, .Open) {
 					open_reporting(e, path)
+				}
+			case strings.has_suffix(lower, ".glb") || strings.has_suffix(lower, ".gltf") || strings.has_suffix(lower, ".obj"):
+				if k := editor_model_import(e, path); k >= 0 {
+					e.tab = c.int(Tab.Models)
+					editor_message(e, "Model %s imported", e.scenery.library[k].file.name)
+				} else {
+					editor_message(e, "Cannot read %s as a model", path)
 				}
 			case editor_material_add_file(e, path):
 				e.tab = c.int(Tab.Paint)
@@ -237,11 +250,15 @@ editor_input :: proc(e: ^Editor, l: Layout) {
 		e.show_units = !e.show_units
 	case Tab(e.tab) == .Units:
 		units_keys(e, shift)
+	case Tab(e.tab) == .Models:
+		models_keys(e, shift)
 	}
 	for key, i in ([4]rl.KeyboardKey{.ONE, .TWO, .THREE, .FOUR}) {
 		if rl.IsKeyPressed(key) && !ctrl {
 			if Tab(e.tab) == .Paint {
 				e.paint.mode = c.int(min(i, int(max(Paint_Mode))))
+			} else if Tab(e.tab) == .Models {
+				e.scenery.mode = c.int(min(i, int(max(Models_Mode))))
 			} else {
 				e.brush.mode = Brush_Mode(i)
 			}
@@ -315,9 +332,9 @@ panel_draw :: proc(e: ^Editor, area: rl.Rectangle) {
 	}
 	y += ROW + 8
 
-	// Two rows, raygui's "\n": seven do not fit across.
+	// Two rows, raygui's "\n": eight do not fit across.
 	tw := (w - 3 * 2) / 4
-	rl.GuiToggleGroup({x, y, tw, 20}, "Terrain;Paint;Light;Water\nView;Units;Level", &e.tab)
+	rl.GuiToggleGroup({x, y, tw, 20}, "Terrain;Paint;Models;Light\nWater;View;Units;Level", &e.tab)
 	y += 2 * ROW + 8
 	if Tab(e.tab) != .Level {
 		level_panel_leave(e)
@@ -402,6 +419,8 @@ panel_draw :: proc(e: ^Editor, area: rl.Rectangle) {
 		help(x, &y, w, {"Wheel: scroll.  Shift+wheel: across.", "Middle-drag: pan.  Page Up, Page Down,", "Home, End: along the level.", "Click the strip on the right to go there.", "The tilted view is to look at; sculpt", "from above."})
 	case .Paint:
 		paint_panel(e, x, &y, w)
+	case .Models:
+		models_panel(e, x, &y, w, area.y + area.height)
 	case .Units:
 		units_panel(e, x, &y, w, area.y + area.height)
 	case .Level:
@@ -470,6 +489,9 @@ status_draw :: proc(e: ^Editor, area: rl.Rectangle) {
 	}
 	if Tab(e.tab) == .Units {
 		units_status(e, &sb)
+	}
+	if Tab(e.tab) == .Models {
+		models_status(e, &sb)
 	}
 	if rl.GetTime() < e.message_until {
 		fmt.sbprintf(&sb, "   |   %s", string(cstring(raw_data(e.message[:]))))

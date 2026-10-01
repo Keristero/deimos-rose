@@ -176,7 +176,10 @@ view_draw :: proc(e: ^Editor, l: Layout) {
 		if e.show_units {
 			units_draw(e, o, area)
 		}
-		if v.over_map && Tab(e.tab) != .Units {
+		if Tab(e.tab) == .Models {
+			models_draw(e, o)
+		}
+		if v.over_map && Tab(e.tab) != .Units && !(Tab(e.tab) == .Models && Models_Mode(e.scenery.mode) == .Select) {
 			brush_outline(e, o)
 		}
 	}

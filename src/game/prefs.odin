@@ -27,37 +27,6 @@ import "dr:sim"
 #assert(i32(rl.KeyboardKey.CAPS_LOCK) == prefs.KEY_CAPS_LOCK)
 #assert(i32(rl.KeyboardKey.ESCAPE) == prefs.KEY_ESCAPE)
 
-// $XDG_DATA_HOME/deimos-rising/<name>, else %APPDATA%\deimos-rising\<name>
-// on Windows (which has no HOME), else ~/.local/share/deimos-rising/<name>.
-// Empty when none of those is set: callers treat that as "no persistence"
-// rather than failing. Shared by progress, high scores and preferences.
-user_data_path :: proc(name: string, allocator := context.allocator) -> string {
-	if dir := os.get_env("XDG_DATA_HOME", allocator); dir != "" {
-		return strings.concatenate({dir, "/deimos-rising/", name}, allocator)
-	}
-	when ODIN_OS == .Windows {
-		if dir := os.get_env("APPDATA", allocator); dir != "" {
-			return strings.concatenate({dir, "/deimos-rising/", name}, allocator)
-		}
-	}
-	home := os.get_env("HOME", allocator)
-	if home == "" {
-		return ""
-	}
-	return strings.concatenate({home, "/.local/share/deimos-rising/", name}, allocator)
-}
-
-// Best-effort, like progress_save: a read-only data directory means changes
-// last only for this run.
-user_data_write :: proc(name: string, contents: string) {
-	path := user_data_path(name, context.temp_allocator)
-	if path == "" {
-		return
-	}
-	os.make_directory_all(path[:strings.last_index(path, "/")])
-	_ = os.write_entire_file(path, transmute([]byte)contents)
-}
-
 // What was saved, plus this run's launch flags. A flag (-classic,
 // -diagnostics, -fullscreen, -highrefreshrate) switches its setting on for the run without
 // saving it; changing that setting in Preferences then drops the flag and
@@ -69,7 +38,7 @@ Prefs_State :: struct {
 
 prefs_state_load :: proc(launch: Settings) -> Prefs_State {
 	ps := Prefs_State{saved = prefs.defaults(), launch = launch}
-	path := user_data_path("preferences", context.temp_allocator)
+	path := prefs.user_data_path("preferences", context.temp_allocator)
 	if path == "" {
 		return ps
 	}
@@ -80,7 +49,7 @@ prefs_state_load :: proc(launch: Settings) -> Prefs_State {
 }
 
 prefs_state_save :: proc(ps: ^Prefs_State) {
-	user_data_write("preferences", prefs.format(&ps.saved, context.temp_allocator))
+	prefs.user_data_write("preferences", prefs.format(&ps.saved, context.temp_allocator))
 }
 
 prefs_classic :: proc(ps: ^Prefs_State) -> bool {return ps.saved.classic || ps.launch.classic}

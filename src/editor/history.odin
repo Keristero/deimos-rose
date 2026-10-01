@@ -8,8 +8,10 @@ package editor
 // (notes/level-editor-plan.md, Stage 7). A change to the light, water,
 // wind or a material's look keeps the settings before it; a change to the
 // units the list of them before it, a few hundred records, so a copy is
-// cheaper to reason about than a diff; and a material added or taken away
-// the materials before it.
+// cheaper to reason about than a diff, and so for the models put down, a
+// few thousand of 28 bytes; and a material added or taken away the
+// materials before it. A model added to the project stays when what put
+// it down is undone: it is in no instance, and costs a file, not a look.
 
 import "core:mem"
 import "core:slice"
@@ -81,6 +83,7 @@ Edit :: struct {
 	// On the heap. The records' strings are the project's, or the
 	// catalogue's: history is cleared before the project goes.
 	placements: Maybe([]data.Json_Placement),
+	instances:  Maybe([]terrain.Instance),
 	materials:  Maybe(Materials),
 }
 
@@ -177,6 +180,13 @@ history_placements :: proc(h: ^History, before: []data.Json_Placement) {
 	history_push(h, e)
 }
 
+// Records a change of the models put down from `before`.
+history_instances :: proc(h: ^History, before: []terrain.Instance) {
+	e := Edit{instances = slice.clone(before)}
+	h.bytes += edit_bytes(e)
+	history_push(h, e)
+}
+
 // Records a change of the materials from `before`: into the stroke open,
 // when a change of the map goes with it, or as an edit of its own.
 history_materials :: proc(h: ^History, before: Materials) {
@@ -188,12 +198,13 @@ history_materials :: proc(h: ^History, before: Materials) {
 }
 
 // What an undo or redo changed: the region of the map, the settings, the
-// units, the materials.
+// units, the models put down, the materials.
 Change :: struct {
 	area:       terrain.Rect,
 	map_:       bool,
 	settings:   bool,
 	placements: bool,
+	instances:  bool,
 	materials:  bool,
 }
 
@@ -235,6 +246,14 @@ history_move :: proc(h: ^History, p: ^terrain.Project, from, to: ^[dynamic]Edit)
 		delete(ps)
 		c.placements = true
 	}
+	if is, has := e.instances.?; has {
+		h.bytes += (len(p.instances) - len(is)) * size_of(terrain.Instance)
+		e.instances = slice.clone(p.instances[:])
+		clear(&p.instances)
+		append(&p.instances, ..is)
+		delete(is)
+		c.instances = true
+	}
 	if m, has := e.materials.?; has {
 		e.materials = materials_of(p)
 		materials_set(p, m)
@@ -275,6 +294,9 @@ edit_bytes :: proc(e: Edit) -> (n: int) {
 	if ps, has := e.placements.?; has {
 		n += len(ps) * size_of(data.Json_Placement)
 	}
+	if is, has := e.instances.?; has {
+		n += len(is) * size_of(terrain.Instance)
+	}
 	return
 }
 
@@ -293,6 +315,9 @@ edit_destroy :: proc(e: ^Edit) {
 	delete(e.tiles)
 	if ps, has := e.placements.?; has {
 		delete(ps)
+	}
+	if is, has := e.instances.?; has {
+		delete(is)
 	}
 }
 

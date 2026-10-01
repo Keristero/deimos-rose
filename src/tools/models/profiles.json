@@ -1,0 +1,472 @@
+{
+  "format": "deimos-rising.brush-profiles",
+  "comment": "The level editor's sample brushes (tools/models). Spacing and offsets are map pixels, 3 a metre; scales multiply a model's real size, and Poly Haven's plants are life size: a fern is a metre across, a grass clump 20 cm.",
+  "profiles": [
+    {
+      "name": "Jungle Trees",
+      "spacing": 18,
+      "density": 0.9,
+      "turn": [
+        0,
+        360
+      ],
+      "lean": [
+        0,
+        6
+      ],
+      "max_slope": 35,
+      "dry": true,
+      "entries": [
+        {
+          "model": "island-tree-01",
+          "variant": "",
+          "chance": 3,
+          "scale": [
+            1.6,
+            2.3
+          ],
+          "offset": [
+            -1,
+            0
+          ]
+        },
+        {
+          "model": "island-tree-02",
+          "variant": "",
+          "chance": 3,
+          "scale": [
+            1.6,
+            2.4
+          ],
+          "offset": [
+            -1,
+            0
+          ]
+        },
+        {
+          "model": "searsia-burchellii",
+          "variant": "searsia_burchellii_large_LOD0",
+          "chance": 1,
+          "scale": [
+            1.5,
+            2.0
+          ],
+          "offset": [
+            -1,
+            0
+          ]
+        },
+        {
+          "model": "searsia-burchellii",
+          "variant": "searsia_burchellii_medium_LOD0",
+          "chance": 1,
+          "scale": [
+            1.6,
+            2.2
+          ],
+          "offset": [
+            -1,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Jungle Undergrowth",
+      "spacing": 7,
+      "density": 0.7,
+      "turn": [
+        0,
+        360
+      ],
+      "lean": [
+        0,
+        10
+      ],
+      "max_slope": 40,
+      "dry": true,
+      "entries": [
+        {
+          "model": "fern-02",
+          "variant": "",
+          "chance": 4,
+          "scale": [
+            3,
+            5
+          ],
+          "offset": [
+            0,
+            0
+          ]
+        },
+        {
+          "model": "calathea-orbifolia-01",
+          "variant": "",
+          "chance": 2,
+          "scale": [
+            4,
+            6
+          ],
+          "offset": [
+            0,
+            0
+          ]
+        },
+        {
+          "model": "anthurium-botany-01",
+          "variant": "",
+          "chance": 2,
+          "scale": [
+            4,
+            6
+          ],
+          "offset": [
+            0,
+            0
+          ]
+        },
+        {
+          "model": "rock-moss-set-01",
+          "variant": "",
+          "chance": 0.5,
+          "scale": [
+            0.8,
+            1.2
+          ],
+          "offset": [
+            -1,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Grasses",
+      "spacing": 4,
+      "density": 0.8,
+      "turn": [
+        0,
+        360
+      ],
+      "lean": [
+        0,
+        12
+      ],
+      "max_slope": 45,
+      "dry": true,
+      "entries": [
+        {
+          "model": "grass-medium-01",
+          "variant": "",
+          "chance": 3,
+          "scale": [
+            8,
+            12
+          ],
+          "offset": [
+            0,
+            0
+          ]
+        },
+        {
+          "model": "grass-medium-02",
+          "variant": "",
+          "chance": 2,
+          "scale": [
+            8,
+            12
+          ],
+          "offset": [
+            0,
+            0
+          ]
+        },
+        {
+          "model": "weed-plant-02",
+          "variant": "",
+          "chance": 1,
+          "scale": [
+            8,
+            12
+          ],
+          "offset": [
+            0,
+            0
+          ]
+        },
+        {
+          "model": "nettle-plant",
+          "variant": "",
+          "chance": 1,
+          "scale": [
+            10,
+            14
+          ],
+          "offset": [
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Shrubs",
+      "spacing": 9,
+      "density": 0.6,
+      "turn": [
+        0,
+        360
+      ],
+      "lean": [
+        0,
+        8
+      ],
+      "max_slope": 35,
+      "dry": true,
+      "entries": [
+        {
+          "model": "wild-rooibos-bush",
+          "variant": "",
+          "chance": 3,
+          "scale": [
+            3,
+            4.5
+          ],
+          "offset": [
+            0,
+            0
+          ]
+        },
+        {
+          "model": "shrub-02",
+          "variant": "",
+          "chance": 2,
+          "scale": [
+            1.5,
+            2.2
+          ],
+          "offset": [
+            0,
+            0
+          ]
+        },
+        {
+          "model": "shrub-03",
+          "variant": "",
+          "chance": 1,
+          "scale": [
+            6,
+            9
+          ],
+          "offset": [
+            0,
+            0
+          ]
+        },
+        {
+          "model": "pine-sapling-small",
+          "variant": "",
+          "chance": 1,
+          "scale": [
+            2,
+            3
+          ],
+          "offset": [
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Sparse Rocks",
+      "spacing": 14,
+      "density": 0.25,
+      "turn": [
+        0,
+        360
+      ],
+      "lean": [
+        0,
+        20
+      ],
+      "max_slope": 60,
+      "dry": false,
+      "entries": [
+        {
+          "model": "boulder-01",
+          "variant": "",
+          "chance": 2,
+          "scale": [
+            1.5,
+            2.5
+          ],
+          "offset": [
+            -2,
+            0
+          ]
+        },
+        {
+          "model": "namaqualand-boulder-02",
+          "variant": "",
+          "chance": 1,
+          "scale": [
+            1,
+            1.6
+          ],
+          "offset": [
+            -2,
+            0
+          ]
+        },
+        {
+          "model": "namaqualand-boulder-05",
+          "variant": "",
+          "chance": 2,
+          "scale": [
+            1.5,
+            2.5
+          ],
+          "offset": [
+            -2,
+            0
+          ]
+        },
+        {
+          "model": "rock-07",
+          "variant": "",
+          "chance": 2,
+          "scale": [
+            10,
+            16
+          ],
+          "offset": [
+            -1,
+            0
+          ]
+        },
+        {
+          "model": "stone-01",
+          "variant": "",
+          "chance": 2,
+          "scale": [
+            8,
+            14
+          ],
+          "offset": [
+            -1,
+            0
+          ]
+        },
+        {
+          "model": "namaqualand-stones-01",
+          "variant": "",
+          "chance": 2,
+          "scale": [
+            10,
+            16
+          ],
+          "offset": [
+            -1,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Dry Scrub",
+      "spacing": 12,
+      "density": 0.35,
+      "turn": [
+        0,
+        360
+      ],
+      "lean": [
+        0,
+        8
+      ],
+      "max_slope": 40,
+      "dry": true,
+      "entries": [
+        {
+          "model": "wild-rooibos-bush",
+          "variant": "",
+          "chance": 3,
+          "scale": [
+            2.5,
+            4
+          ],
+          "offset": [
+            0,
+            0
+          ]
+        },
+        {
+          "model": "searsia-lucida",
+          "variant": "",
+          "chance": 2,
+          "scale": [
+            1.2,
+            1.8
+          ],
+          "offset": [
+            0,
+            0
+          ]
+        },
+        {
+          "model": "quiver-tree-02",
+          "variant": "",
+          "chance": 1,
+          "scale": [
+            2.5,
+            3.5
+          ],
+          "offset": [
+            0,
+            0
+          ]
+        },
+        {
+          "model": "dry-branches-medium-01",
+          "variant": "",
+          "chance": 2,
+          "scale": [
+            6,
+            10
+          ],
+          "offset": [
+            0,
+            0
+          ]
+        },
+        {
+          "model": "dead-tree-trunk-02",
+          "variant": "",
+          "chance": 0.3,
+          "scale": [
+            1,
+            1.4
+          ],
+          "offset": [
+            -1,
+            0
+          ]
+        },
+        {
+          "model": "tree-stump-01",
+          "variant": "",
+          "chance": 0.3,
+          "scale": [
+            1,
+            1.4
+          ],
+          "offset": [
+            -1,
+            0
+          ]
+        }
+      ]
+    }
+  ]
+}

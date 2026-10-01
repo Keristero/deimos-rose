@@ -83,6 +83,7 @@ Renderer :: struct {
 	// only rises with renderer_update: one too high marches further and
 	// finds nothing, so it never changes a pixel.
 	surface_max: f32,
+	scenery:     Scenery,
 }
 
 // Uploads the project, its geometry smoothed by `smoothing` (a Gaussian's
@@ -131,6 +132,7 @@ renderer_init :: proc(r: ^Renderer, p: ^Project, smoothing: f32 = GEOMETRY_SMOOT
 		r.textures[.Water] = upload(raw_data(p.water), p.width, p.length, .UNCOMPRESSED_R8G8B8A8, .CLAMP)
 	}
 	renderer_materials(r, p)
+	renderer_models(r, p)
 	return true
 }
 
@@ -206,6 +208,14 @@ renderer_update :: proc(r: ^Renderer, p: ^Project, rect: Rect) {
 		}
 		rl.UpdateTextureRec(r.textures[.Splat], area, raw_data(sb))
 	}
+	// The models stand on the ground: any over the change move with it.
+	for i in p.instances {
+		reach := instance_reach(p, i)
+		if i.x + reach >= f32(inner.x0) && i.x - reach <= f32(inner.x1) && i.y + reach >= f32(inner.y0) && i.y - reach <= f32(inner.y1) {
+			scenery_draw(r, p)
+			break
+		}
+	}
 }
 
 rect_clip :: proc(r: Rect, width, length: int) -> Rect {
@@ -242,6 +252,7 @@ renderer_destroy :: proc(r: ^Renderer) {
 			rl.UnloadTexture(t)
 		}
 	}
+	scenery_destroy(&r.scenery)
 	if r.shader.id != 0 {
 		rl.UnloadMesh(r.quad)
 		rl.UnloadTexture(r.white)
@@ -332,13 +343,36 @@ render_into :: proc(r: ^Renderer, p: ^Project, o: Render_Options, target: rl.Ren
 		shader = r.shader,
 		maps   = raw_data(r.maps[:]),
 	}
+	// The models' layer, by hand: DrawMesh binds the material's twelve
+	// slots and no more.
+	s := &r.scenery
+	layer := [3]rl.Texture2D{r.white, r.white, r.white}
+	if s.drawn {
+		layer = {s.top.colours[0], s.top.colours[1], s.bottom.colours[0]}
+	}
+	names := [3]cstring{"modelColour", "modelShape", "modelBottom"}
 	rl.BeginTextureMode(target)
 	rl.ClearBackground(rl.BLACK)
 	rlgl.DisableBackfaceCulling()
+	for t, k in layer {
+		unit := i32(MODEL_UNIT + k)
+		rl.SetShaderValue(r.shader, rl.GetShaderLocation(r.shader, names[k]), &unit, .INT)
+		rlgl.ActiveTextureSlot(unit)
+		rlgl.EnableTexture(t.id)
+	}
 	rl.DrawMesh(r.quad, material, rl.Matrix(1))
+	for k in 0 ..< len(layer) {
+		rlgl.ActiveTextureSlot(i32(MODEL_UNIT + k))
+		rlgl.DisableTexture()
+	}
+	rlgl.ActiveTextureSlot(0)
 	rlgl.EnableBackfaceCulling()
 	rl.EndTextureMode()
 }
+
+// The texture units the models' layer is bound to, past the material's.
+@(private = "file")
+MODEL_UNIT :: rl.MAX_MATERIAL_MAPS
 
 // Each colour through 5 bits a channel and back, as the originals'
 // 16-bit images were.
@@ -415,6 +449,8 @@ uniforms :: proc(r: ^Renderer, p: ^Project, output: Output, scale: f32) {
 	rule(r, "cliff", p.cliff, count)
 	rule(r, "shore", p.shore, count)
 	set(r, "canopyMaterial", i32(p.canopy_material < count ? p.canopy_material : -1))
+	set(r, "hasModels", i32(r.scenery.drawn))
+	set(r, "modelScale", f32(MODEL_SCALE))
 }
 
 @(private = "file")
@@ -474,7 +510,7 @@ smoothing_radius :: proc(sigma: f32) -> int {
 	return sigma > 0 ? int(math.ceil(3 * sigma)) : 0
 }
 
-@(private = "file")
+@(private)
 upload :: proc(pixels: rawptr, w, h: int, format: rl.PixelFormat, wrap: rl.TextureWrap) -> rl.Texture2D {
 	img := rl.Image {
 		data    = pixels,
@@ -558,6 +594,23 @@ uniform int materialImage[4];
 uniform vec3 cliff; // material, from, to
 uniform vec3 shore;
 uniform int canopyMaterial;
+
+uniform sampler2D modelColour; // RGB the models' colour, times A, their cover
+uniform sampler2D modelShape; // the top, nothing, the normal's x and y
+uniform sampler2D modelBottom; // the underside
+uniform int hasModels;
+uniform float modelScale; // the models' texels a map pixel
+
+ivec2 clampTexel(ivec2 t) {
+	return clamp(t, ivec2(0), ivec2(size * modelScale) - 1);
+}
+
+// The models' shape at a texel of their layer: none, top and underside 0,
+// where none is.
+vec4 modelAt(ivec2 t) {
+	vec4 s = texelFetch(modelShape, clampTexel(t), 0);
+	return vec4(s.x, texelFetch(modelBottom, clampTexel(t), 0).r, s.zw);
+}
 
 vec3 at(vec2 map) {
 	return texture(heights, map / size).rgb;
@@ -666,6 +719,37 @@ vec3 colourAt(vec2 map, vec3 h, vec2 slope) {
 	return col;
 }
 
+// How much of the sun reaches height h0 at map: walking toward it a map
+// pixel at a time, how far the ray passes under the surface, or between a
+// model's underside and its top (the penumbra softness map pixels wide).
+float sunVisible(vec2 map, float h0) {
+	if (sun.z <= 0.0 || length(sun.xy) <= 1e-4) return 1.0;
+	vec2 d = normalize(sun.xy);
+	float rise = sun.z / length(sun.xy);
+	float halfSoft = softness * 0.5;
+	float pen = -1e9;
+	float dist = floor(halfSoft) + 1.0;
+	for (int k = 0; k < marchMax; k++, dist += 1.0) {
+		float ray = h0 + rise * dist;
+		if (ray - maxHeight > rise * halfSoft) break;
+		vec2 p = map + d * dist;
+		pen = max(pen, (surface(p) - ray) / rise);
+		if (hasModels != 0) {
+			vec4 s = modelAt(ivec2(p * modelScale));
+			pen = max(pen, min(s.x - ray, ray - s.y) / rise);
+		}
+	}
+	return halfSoft > 0.0 ? 1.0 - smoothstep(-halfSoft, halfSoft, pen) : 1.0 - step(0.0, pen);
+}
+
+// Ambient, as open to the sky as open says, plus the sun by how squarely
+// it meets the surface, scaled so that flat ground in the sun is its
+// albedo, times how much of it is not blocked.
+vec3 lightOf(vec3 n, float open, float vis) {
+	float direct = sun.z > 0.0 ? max(dot(n, sun), 0.0) / sun.z : 0.0;
+	return ambient * open * ambientColour + (1.0 - ambient) * sunColour * direct * vis;
+}
+
 void main() {
 	vec2 map = origin + gl_FragCoord.xy / scale;
 	vec3 h = at(map);
@@ -684,19 +768,43 @@ void main() {
 	                 surface(map + vec2(0.0, 1.0)) - surface(map - vec2(0.0, 1.0))) * 0.5;
 	vec3 n = water ? vec3(0.0, 0.0, 1.0) : normalize(vec3(-rise, 1.0));
 
+	// The models over this pixel: how much of it they cover, their colour,
+	// and the shape of the highest of the four texels about it. A model
+	// under the visible water is hidden by it.
+	float cover = 0.0;
+	vec3 modelCol = vec3(0.0);
+	vec4 shape = vec4(-1e9, -1e9, 0.0, 0.0);
+	if (hasModels != 0) {
+		vec4 c = texture(modelColour, map / size);
+		ivec2 t = ivec2(floor(map * modelScale - 0.5));
+		for (int k = 0; k < 4; k++) {
+			ivec2 q = t + ivec2(k % 2, k / 2);
+			vec4 s = modelAt(q);
+			if (s.x > shape.x && texelFetch(modelColour, clampTexel(q), 0).a > 0.5) shape = s;
+		}
+		if (shape.x > -1e8 && c.a > 0.0 && !(waterVisible != 0 && shape.x < waterHeight)) {
+			cover = c.a;
+			modelCol = c.rgb / c.a;
+		}
+	}
+	vec3 modelN = vec3(shape.zw, sqrt(max(1.0 - dot(shape.zw, shape.zw), 0.0)));
+
 	if (mode == 3) {
+		// The ground's, under the models: provisional, until a game reads
+		// one with them.
 		float v = clamp(floor((water ? waterHeight : unsmoothed(map)) / heightUnit + 0.5), 0.0, 65535.0);
 		float hi = floor(v / 256.0);
 		finalColor = vec4(hi / 255.0, (v - hi * 256.0) / 255.0, 0.0, 1.0);
 		return;
 	}
 	if (mode == 2) {
-		finalColor = vec4(n * 0.5 + 0.5, 1.0);
+		finalColor = vec4((cover >= 0.5 ? modelN : n) * 0.5 + 0.5, 1.0);
 		return;
 	}
+	// A model's own occlusion is not known: it is open to the sky.
 	float open = texture(albedo, map / size).a;
 	if (mode == 5) {
-		finalColor = vec4(vec3(open), 1.0);
+		finalColor = vec4(vec3(mix(open, 1.0, cover)), 1.0);
 		return;
 	}
 	// Under the water, the bed, and over it the water's own colour by how
@@ -704,37 +812,23 @@ void main() {
 	vec3 col = colourAt(map, h, slope);
 	vec4 over = vec4(0.0);
 	if (water) over = hasWater != 0 ? texture(waterLayer, map / size) : vec4(waterColour, 1.0);
+	vec3 ground = mix(col, over.rgb, over.a);
 	if (mode == 1) {
-		finalColor = vec4(mix(col, over.rgb, over.a), 1.0);
+		finalColor = vec4(mix(ground, modelCol, cover), 1.0);
 		return;
 	}
 
-	float vis = 1.0;
-	if (sun.z > 0.0 && length(sun.xy) > 1e-4) {
-		vec2 d = normalize(sun.xy);
-		float rise = sun.z / length(sun.xy);
-		float halfSoft = softness * 0.5;
-		float pen = -1e9;
-		float dist = floor(halfSoft) + 1.0;
-		for (int k = 0; k < marchMax; k++, dist += 1.0) {
-			float ray = h0 + rise * dist;
-			if (ray - maxHeight > rise * halfSoft) break;
-			pen = max(pen, (surface(map + d * dist) - ray) / rise);
-		}
-		vis = halfSoft > 0.0 ? 1.0 - smoothstep(-halfSoft, halfSoft, pen) : 1.0 - step(0.0, pen);
-	}
+	float vis = cover < 1.0 ? sunVisible(map, h0) : 0.0;
+	float modelVis = cover > 0.0 ? sunVisible(map, shape.x) : 0.0;
 	if (mode == 4) {
-		finalColor = vec4(vec3(vis), 1.0);
+		finalColor = vec4(vec3(mix(vis, modelVis, cover)), 1.0);
 		return;
 	}
-	float direct = sun.z > 0.0 ? max(dot(n, sun), 0.0) / sun.z : 0.0;
-	vec3 sky = ambient * open * ambientColour;
-	vec3 light = sky + (1.0 - ambient) * sunColour * direct * vis;
 	// The water's surface takes no cast shadow, as in the originals, and
 	// is open to the whole sky: only the bed seen through it is shaded and
 	// occluded. The occlusion under open water is the ground's, which the
 	// surface hides (le03's invented rocks, D59).
-	vec3 surfaceLight = ambient * ambientColour + (1.0 - ambient) * sunColour * direct;
-	finalColor = vec4(mix(col * light, over.rgb * surfaceLight, over.a), 1.0);
+	vec3 lit = mix(col * lightOf(n, open, vis), over.rgb * lightOf(n, 1.0, 1.0), over.a);
+	finalColor = vec4(mix(lit, modelCol * lightOf(modelN, 1.0, modelVis), cover), 1.0);
 }
 `
