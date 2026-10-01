@@ -54,6 +54,8 @@ Editor :: struct {
 	// The models, their library and the brush's profiles.
 	scenery:       Scenery,
 	level_panel:   Level_Panel,
+	// The touchpad's pinch, in a window; none in a shot.
+	pinch:         Pinch,
 	using placing: Placing,
 	using view:    View,
 	using panel:   Panel,

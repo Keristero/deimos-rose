@@ -5,6 +5,7 @@ package editor
 
 import "core:c"
 import "core:fmt"
+import "core:math"
 import "core:strings"
 
 import rl "vendor:raylib"
@@ -43,6 +44,11 @@ Panel :: struct {
 
 // Rows scrolled by a notch of the wheel.
 WHEEL_ROWS :: 64
+// The zoom's factor for a notch of the wheel with Ctrl held, and for a
+// press of Ctrl and + or -. A touchpad's wheel moves in fractions of a
+// notch, so the wheel's is a power of it.
+ZOOM_WHEEL :: 1.1
+ZOOM_KEY :: 1.25
 ROW :: 24
 
 editor_message :: proc(e: ^Editor, format: string, args: ..any) {
@@ -124,7 +130,7 @@ editor_shot :: proc(e: ^Editor, width, height: int) -> rl.Image {
 editor_draw :: proc(e: ^Editor, l: Layout) {
 	rl.ClearBackground({34, 36, 40, 255})
 	view_draw(e, l)
-	panel_draw(e, l.panel)
+	panel_draw(e, l.panel, l.view)
 	status_draw(e, l.status)
 	editor_settings_settle(e, rl.IsMouseButtonDown(.LEFT))
 	placements_settle(e, rl.IsMouseButtonDown(.LEFT))
@@ -143,17 +149,30 @@ editor_input :: proc(e: ^Editor, l: Layout) {
 	v.cursor = view_to_map(v, p, l.view, mouse)
 	v.over_map = in_view && !v.tilted && v.cursor.x >= 0 && v.cursor.y >= 0 && v.cursor.x < f32(p.width) && v.cursor.y < f32(p.length)
 
+	ctrl := rl.IsKeyDown(.LEFT_CONTROL) || rl.IsKeyDown(.RIGHT_CONTROL)
+	shift := rl.IsKeyDown(.LEFT_SHIFT) || rl.IsKeyDown(.RIGHT_SHIFT)
+	// Zooms about the mouse in the view, else about the view's middle.
+	centre := [2]f32{l.view.x + l.view.width / 2, l.view.y + l.view.height / 2}
+	about := in_view ? mouse : centre
+	// Ctrl and the wheel zoom, as in most editors; and so does a pinch on
+	// Windows' precision touchpads, which it sends as just that.
 	if wheel := rl.GetMouseWheelMove(); wheel != 0 && (in_view || in_overview) {
-		if rl.IsKeyDown(.LEFT_SHIFT) || rl.IsKeyDown(.RIGHT_SHIFT) {
-			v.left -= wheel * WHEEL_ROWS / f32(v.zoom)
+		if ctrl {
+			view_zoom_at(v, p, l.view, about, math.pow(f32(ZOOM_WHEEL), wheel))
+		} else if shift {
+			v.left -= wheel * WHEEL_ROWS / v.zoom
 		} else {
-			v.row -= wheel * WHEEL_ROWS / f32(v.zoom)
+			v.row -= wheel * WHEEL_ROWS / v.zoom
 		}
+	}
+	// Polled every frame, so a pinch begun elsewhere is not kept for later.
+	if f := pinch_poll(&e.pinch); f != 1 && in_view {
+		view_zoom_at(v, p, l.view, mouse, f)
 	}
 	if rl.IsMouseButtonDown(.MIDDLE) && in_view {
 		d := rl.GetMouseDelta()
-		v.row -= d.y / f32(v.zoom)
-		v.left -= d.x / f32(v.zoom)
+		v.row -= d.y / v.zoom
+		v.left -= d.x / v.zoom
 	}
 
 	// The brush, or in the Units tab the units, or the models to select.
@@ -220,9 +239,13 @@ editor_input :: proc(e: ^Editor, l: Layout) {
 	if typing {
 		return
 	}
-	ctrl := rl.IsKeyDown(.LEFT_CONTROL) || rl.IsKeyDown(.RIGHT_CONTROL)
-	shift := rl.IsKeyDown(.LEFT_SHIFT) || rl.IsKeyDown(.RIGHT_SHIFT)
 	switch {
+	case ctrl && (rl.IsKeyPressed(.EQUAL) || rl.IsKeyPressed(.KP_ADD)):
+		view_zoom_at(v, p, l.view, about, ZOOM_KEY)
+	case ctrl && (rl.IsKeyPressed(.MINUS) || rl.IsKeyPressed(.KP_SUBTRACT)):
+		view_zoom_at(v, p, l.view, about, 1 / ZOOM_KEY)
+	case ctrl && (rl.IsKeyPressed(.ZERO) || rl.IsKeyPressed(.KP_0)):
+		view_zoom_at(v, p, l.view, about, 1 / v.zoom)
 	case ctrl && rl.IsKeyPressed(.Z) && !shift:
 		editor_undo(e)
 	case ctrl && (rl.IsKeyPressed(.Y) || rl.IsKeyPressed(.Z) && shift):
@@ -295,7 +318,7 @@ save_reporting :: proc(e: ^Editor) {
 }
 
 @(private = "file")
-panel_draw :: proc(e: ^Editor, area: rl.Rectangle) {
+panel_draw :: proc(e: ^Editor, area, view: rl.Rectangle) {
 	v, p := &e.view, &e.project
 	rl.DrawRectangleRec(area, {44, 46, 52, 255})
 	x, w := area.x + 8, area.width - 16
@@ -341,7 +364,7 @@ panel_draw :: proc(e: ^Editor, area: rl.Rectangle) {
 	}
 
 	lighting := p.level.lighting
-	zoom, live := v.zoom, v.live_light
+	live := v.live_light
 	switch Tab(e.tab) {
 	case .Terrain:
 		heading(x, &y, w, "Brush")
@@ -405,9 +428,28 @@ panel_draw :: proc(e: ^Editor, area: rl.Rectangle) {
 		slider(x, &y, w, "Strength", &wd.strength, 0, 1)
 	case .View:
 		heading(x, &y, w, "View")
-		z := c.int(v.zoom - 1)
-		rl.GuiToggleGroup({x, y, (w - 2) / 2, 20}, "1x;2x", &z)
-		v.zoom = int(z) + 1
+		// The presets, and between them a slider by powers of two, so 1x
+		// is its middle; both zoom about the view's middle.
+		middle := [2]f32{view.x + view.width / 2, view.y + view.height / 2}
+		presets := [?]f32{0.25, 0.5, 1, 2, 4}
+		z := c.int(-1)
+		for q, i in presets {
+			if v.zoom == q {
+				z = c.int(i)
+			}
+		}
+		was := z
+		rl.GuiToggleGroup({x, y, (w - 4 * 2) / 5, 20}, "1/4x;1/2x;1x;2x;4x", &z)
+		if z != was && z >= 0 {
+			view_zoom_at(v, p, view, middle, presets[z] / v.zoom)
+		}
+		y += ROW
+		power := math.log2(v.zoom)
+		rl.GuiLabel({x, y, 96, 20}, "Zoom")
+		rl.GuiSlider({x + 96, y, w - 96 - 56, 20}, nil, fmt.ctprintf("%.0f%%", v.zoom * 100), &power, math.log2(f32(ZOOM_MIN)), math.log2(f32(ZOOM_MAX)))
+		if zoom := math.pow(2, power); abs(zoom - v.zoom) > 1e-4 {
+			view_zoom_at(v, p, view, middle, zoom / v.zoom)
+		}
 		y += ROW
 		rl.GuiCheckBox({x, y, 20, 20}, "Tilted (T)", &v.tilted)
 		y += ROW
@@ -416,7 +458,7 @@ panel_draw :: proc(e: ^Editor, area: rl.Rectangle) {
 		slider(x, &y, w, "Tilt", &v.tilt, 5, 85, "%.0f deg")
 		slider(x, &y, w, "Turn", &v.turn, -180, 180, "%.0f deg")
 		y += 4
-		help(x, &y, w, {"Wheel: scroll.  Shift+wheel: across.", "Middle-drag: pan.  Page Up, Page Down,", "Home, End: along the level.", "Click the strip on the right to go there.", "The tilted view is to look at; sculpt", "from above."})
+		help(x, &y, w, {"Wheel: scroll.  Shift+wheel: across.", "Ctrl+wheel, a touchpad's pinch: zoom.", "Ctrl+= and Ctrl+-: zoom; Ctrl+0: 1x.", "Middle-drag: pan.  Page Up, Page Down,", "Home, End: along the level.", "Click the strip on the right to go there.", "The tilted view is to look at; sculpt", "from above."})
 	case .Paint:
 		paint_panel(e, x, &y, w)
 	case .Models:
@@ -426,7 +468,7 @@ panel_draw :: proc(e: ^Editor, area: rl.Rectangle) {
 	case .Level:
 		level_panel(e, x, &y, w)
 	}
-	if p.level.lighting != lighting || v.zoom != zoom || v.live_light != live {
+	if p.level.lighting != lighting || v.live_light != live {
 		v.view_stale = true
 		if v.live_light != live || p.level.lighting != lighting {
 			v.overview_stale = true
@@ -479,7 +521,7 @@ status_draw :: proc(e: ^Editor, area: rl.Rectangle) {
 		name = name[i + 1:]
 	}
 	sb := strings.builder_make(context.temp_allocator)
-	fmt.sbprintf(&sb, "%s%s   %d x %d   row %d", name, e.dirty ? " *" : "", p.width, p.length, int(v.row))
+	fmt.sbprintf(&sb, "%s%s   %d x %d   row %d   zoom %.0f%%", name, e.dirty ? " *" : "", p.width, p.length, int(v.row), v.zoom * 100)
 	if v.over_map {
 		x, y := int(v.cursor.x), int(v.cursor.y)
 		fmt.sbprintf(&sb, "   at %d, %d: height %.1f", x, y, height_at(p, x, y))

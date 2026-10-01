@@ -4,7 +4,7 @@ package editor
 // a level project's terrain, paint its materials, put down its trees and
 // rocks, light it, set its water and wind, place its units, and save it.
 //
-//   deimos-editor [<project>] [-new=ROWS] [-shot=OUT.png] [-size=WxH] [-row=N] [-zoom=1|2] [-tilt=DEGREES] [-tab=terrain|paint|models|light|water|view|units|level] [-select=N] [-unlit]
+//   deimos-editor [<project>] [-new=ROWS] [-shot=OUT.png] [-size=WxH] [-row=N] [-zoom=0.25..4] [-tilt=DEGREES] [-tab=terrain|paint|models|light|water|view|units|level] [-select=N] [-unlit]
 //
 // With no project it starts a new level, 480 wide and -new rows long
 // (3600 by default). -shot draws one frame in a hidden window, writes it
@@ -31,7 +31,7 @@ EDITOR_VERSION :: #config(DR_VERSION, "dev")
 WINDOW_WIDTH :: 1280
 WINDOW_HEIGHT :: 900
 
-USAGE :: "usage: deimos-editor [<project>] [-new=ROWS] [-shot=OUT.png] [-size=WxH] [-row=N] [-zoom=1|2] [-tilt=DEGREES] [-tab=terrain|paint|models|light|water|view|units|level] [-select=N] [-unlit]"
+USAGE :: "usage: deimos-editor [<project>] [-new=ROWS] [-shot=OUT.png] [-size=WxH] [-row=N] [-zoom=0.25..4] [-tilt=DEGREES] [-tab=terrain|paint|models|light|water|view|units|level] [-select=N] [-unlit]"
 
 main :: proc() {
 	flags := make(map[string]string, context.temp_allocator)
@@ -122,7 +122,14 @@ main :: proc() {
 	if "row" in flags {
 		e.row = f32(number(flags, "row", 0))
 	}
-	e.zoom = clamp(number(flags, "zoom", 1), 1, 2)
+	if z, given := flags["zoom"]; given {
+		zoom, ok := strconv.parse_f32(z)
+		if !ok {
+			fmt.eprintfln("deimos-editor: -zoom=%s is not a number", z)
+			os.exit(2)
+		}
+		e.zoom = clamp(zoom, ZOOM_MIN, ZOOM_MAX)
+	}
 	if "tilt" in flags {
 		e.tilted, e.tilt = true, f32(number(flags, "tilt", 45))
 	}
@@ -138,7 +145,7 @@ main :: proc() {
 		at := placement_point(&e.units, e.project.placements[n])
 		area := layout(f32(width), f32(height)).view
 		e.row = at.y - view_rows(&e.view, area) / 2
-		e.left = at.x - area.width / f32(2 * e.zoom)
+		e.left = at.x - area.width / (2 * e.zoom)
 	}
 	if tab, given := flags["tab"]; given {
 		found := false
@@ -164,6 +171,10 @@ main :: proc() {
 		return
 	}
 
+	// A touchpad's pinch zooms the view, where the platform tells of one
+	// (pinch_linux.odin); Ctrl and the wheel do everywhere.
+	pinch_init(&e.pinch)
+	defer pinch_destroy(&e.pinch)
 	for !rl.WindowShouldClose() {
 		title := fmt.ctprintf("%s%s - Deimos Rising level editor %s", editor_path(&e), e.dirty ? " *" : "", EDITOR_VERSION)
 		rl.SetWindowTitle(title)

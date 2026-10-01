@@ -1,9 +1,10 @@
 package editor
 
 // The editor's views of the project, all drawn by the terrain renderer: the
-// map from above at 1x or 2x, scrolled up and down the level; the whole
-// level down the right-hand side, to scroll by; and a tilted view for
-// looking at the relief, the same render laid over the heights as a mesh.
+// map from above, zoomed from ZOOM_MIN to ZOOM_MAX and scrolled up and down
+// the level; the whole level down the right-hand side, to scroll by; and a
+// tilted view for looking at the relief, the same render laid over the
+// heights as a mesh.
 
 import "core:math"
 
@@ -19,21 +20,32 @@ STATUS_HEIGHT :: 24
 OVERVIEW_MAX :: 8192
 // The tilted view's mesh has at most this many vertices (16-bit indices).
 MESH_VERTICES_MAX :: 65535
+// Screen pixels a map pixel, at least and at most. At a quarter a 3600-row
+// level is 900 px high, all in view on a 1080p screen; past 4 the 2x
+// render's own texels (and the models layer's) are all that is magnified.
+// Provisional: a guess at what is useful, not measured.
+ZOOM_MIN :: 0.25
+ZOOM_MAX :: 4
+// The view's target is made a whole number of these rows high, so zooming
+// out does not make it again every frame.
+TARGET_ROWS_STEP :: 64
 
 View :: struct {
 	row:            f32, // the map row at the view's top
-	left:           f32, // map columns scrolled off the view's left, at 2x
-	zoom:           int,
+	left:           f32, // map columns scrolled off the view's left
+	zoom:           f32,
 	live_light:     bool, // lit, or the unlit colour
 	tilted:         bool,
 	tilt:           f32, // degrees from straight down
 	turn:           f32, // degrees about the vertical
 	view_stale:     bool,
 	overview_stale: bool,
-	// The view from above, map rows from `drawn_from` down.
+	// The view from above, map rows from `drawn_from` down, rendered at
+	// `drawn_scale` (view_scale) and drawn at the zoom.
 	target:         rl.RenderTexture2D,
 	drawn_from:     int,
-	drawn_zoom:     int,
+	drawn_scale:    int,
+	minified:       bool, // drawn smaller than rendered: mipmapped, trilinear
 	overview:       rl.RenderTexture2D,
 	tilted_target:  rl.RenderTexture2D,
 	mesh:           rl.Mesh,
@@ -91,33 +103,56 @@ view_destroy :: proc(v: ^View) {
 
 // Map rows the view shows.
 view_rows :: proc(v: ^View, area: rl.Rectangle) -> f32 {
-	return area.height / f32(v.zoom)
+	return area.height / v.zoom
+}
+
+// The renderer's output pixels a map pixel for the view: 2 when zoomed in
+// past 1x, so the models layer's 2 texels a pixel show; else 1, scaled
+// down from there.
+view_scale :: proc(v: ^View) -> int {
+	return v.zoom > 1 ? 2 : 1
 }
 
 // Keeps the scroll inside the map.
 view_clamp :: proc(v: ^View, p: ^terrain.Project, area: rl.Rectangle) {
+	v.zoom = clamp(v.zoom, ZOOM_MIN, ZOOM_MAX)
 	v.row = clamp(v.row, 0, max(f32(p.length) - view_rows(v, area), 0))
-	v.left = clamp(v.left, 0, max(f32(p.width) - area.width / f32(v.zoom), 0))
+	v.left = clamp(v.left, 0, max(f32(p.width) - area.width / v.zoom, 0))
 }
 
 // Where map pixel (0, row) is drawn, and so every other.
 @(private = "file")
 view_origin :: proc(v: ^View, p: ^terrain.Project, area: rl.Rectangle) -> [2]f32 {
-	mw := f32(p.width * v.zoom)
-	x := mw < area.width ? area.x + math.floor((area.width - mw) / 2) : area.x - v.left * f32(v.zoom)
-	return {x, area.y - v.row * f32(v.zoom)}
+	mw := f32(p.width) * v.zoom
+	x := mw < area.width ? area.x + math.floor((area.width - mw) / 2) : area.x - v.left * v.zoom
+	return {x, area.y - v.row * v.zoom}
 }
 
 view_to_map :: proc(v: ^View, p: ^terrain.Project, area: rl.Rectangle, screen: [2]f32) -> [2]f32 {
-	return (screen - view_origin(v, p, area)) / f32(v.zoom)
+	return (screen - view_origin(v, p, area)) / v.zoom
+}
+
+// Zooms by `factor` about `screen`: the map point under it stays under it,
+// as far as the scroll's clamp allows.
+view_zoom_at :: proc(v: ^View, p: ^terrain.Project, area: rl.Rectangle, screen: [2]f32, factor: f32) {
+	at := view_to_map(v, p, area, screen)
+	v.zoom = clamp(v.zoom * factor, ZOOM_MIN, ZOOM_MAX)
+	// The origin moves with the scroll one for one, a zoom's worth of map
+	// pixels a pixel, so one step puts `at` back under `screen`.
+	d := at - view_to_map(v, p, area, screen)
+	v.left += d.x
+	v.row += d.y
+	view_clamp(v, p, area)
 }
 
 // Draws what changed into the offscreen targets, before the frame.
 view_prepare :: proc(e: ^Editor, area: rl.Rectangle) {
 	v, p := &e.view, &e.project
 	view_clamp(v, p, area)
-	w := i32(p.width * v.zoom)
-	h := i32(math.ceil(area.height / f32(v.zoom)) + 1) * i32(v.zoom)
+	scale := view_scale(v)
+	rows := (int(math.ceil(view_rows(v, area))) + 1 + TARGET_ROWS_STEP - 1) / TARGET_ROWS_STEP * TARGET_ROWS_STEP
+	rows = min(rows, max(p.length, 1), terrain.STRIP_MAX / scale)
+	w, h := i32(p.width * scale), i32(rows * scale)
 	if w > terrain.STRIP_MAX || h <= 0 {
 		return
 	}
@@ -129,9 +164,11 @@ view_prepare :: proc(e: ^Editor, area: rl.Rectangle) {
 		v.view_stale = true
 	}
 	from := int(v.row)
-	if v.view_stale || from != v.drawn_from || v.zoom != v.drawn_zoom {
-		terrain.render_into(&e.renderer, p, {output = v.live_light ? .Lit : .Albedo, scale = v.zoom, from = from}, v.target)
-		v.drawn_from, v.drawn_zoom = from, v.zoom
+	rendered := false
+	if v.view_stale || from != v.drawn_from || scale != v.drawn_scale {
+		rendered = true
+		terrain.render_into(&e.renderer, p, {output = v.live_light ? .Lit : .Albedo, scale = scale, from = from}, v.target)
+		v.drawn_from, v.drawn_scale = from, scale
 		v.view_stale = false
 		if v.tilted {
 			view_mesh(v, p)
@@ -143,6 +180,7 @@ view_prepare :: proc(e: ^Editor, area: rl.Rectangle) {
 	} else if v.tilted && v.mesh.vaoId == 0 {
 		view_mesh(v, p)
 	}
+	view_filter(v, rendered)
 	if v.overview_stale && p.length <= OVERVIEW_MAX && p.width <= terrain.STRIP_MAX {
 		if v.overview.texture.width != i32(p.width) || v.overview.texture.height != i32(p.length) {
 			if v.overview.id != 0 {
@@ -171,8 +209,12 @@ view_draw :: proc(e: ^Editor, l: Layout) {
 	} else if v.target.id != 0 {
 		// The target holds the map's rows top first, as render reads them.
 		o := view_origin(v, p, area)
+		// Only its rows on the map: the rest are the renderer's edge
+		// smeared, when the view reaches past the level's end.
 		t := v.target.texture
-		rl.DrawTextureRec(t, {0, 0, f32(t.width), f32(t.height)}, {o.x, o.y + f32(v.drawn_from * v.zoom)}, rl.WHITE)
+		k := v.zoom / f32(v.drawn_scale)
+		h := min(f32(t.height), f32((p.length - v.drawn_from) * v.drawn_scale))
+		rl.DrawTexturePro(t, {0, 0, f32(t.width), h}, {o.x, o.y + f32(v.drawn_from) * v.zoom, f32(t.width) * k, h * k}, {}, 0, rl.WHITE)
 		if e.show_units {
 			units_draw(e, o, area)
 		}
@@ -195,9 +237,24 @@ view_draw :: proc(e: ^Editor, l: Layout) {
 		if e.show_units {
 			units_overview(e, s, r)
 		}
-		rows := view_rows(v, area)
+		rows := min(view_rows(v, area), f32(p.length) - v.row)
 		rl.DrawRectangleLinesEx({r.x - 1, r.y + v.row * s - 1, r.width + 2, rows * s + 2}, 1, {255, 220, 90, 255})
 	}
+}
+
+// Drawn smaller than it was rendered, the view is mipmapped, made again
+// after each render, so a zoom out does not alias the map's fine detail
+// into noise; drawn at its size or larger, its pixels are kept sharp.
+@(private = "file")
+view_filter :: proc(v: ^View, rendered: bool) {
+	minify := v.zoom < f32(v.drawn_scale)
+	if minify && (rendered || !v.minified) {
+		rl.GenTextureMipmaps(&v.target.texture)
+		rl.SetTextureFilter(v.target.texture, .TRILINEAR)
+	} else if !minify && v.minified {
+		rl.SetTextureFilter(v.target.texture, .POINT)
+	}
+	v.minified = minify
 }
 
 // Where the overview draws the map, and its scale.
@@ -210,7 +267,7 @@ overview_fit :: proc(p: ^terrain.Project, area: rl.Rectangle) -> (s: f32, r: rl.
 @(private = "file")
 brush_outline :: proc(e: ^Editor, o: [2]f32) {
 	b := e.brush
-	z := f32(e.zoom)
+	z := e.zoom
 	c := o + e.cursor * z
 	colour := rl.Color{255, 255, 255, 200}
 	switch b.shape {
@@ -233,7 +290,7 @@ view_mesh :: proc(v: ^View, p: ^terrain.Project) {
 		rl.UnloadMesh(v.mesh)
 		v.mesh = {}
 	}
-	rows := int(v.target.texture.height) / v.zoom
+	rows := int(v.target.texture.height) / v.drawn_scale
 	step := 2
 	for (p.width / step + 1) * (rows / step + 1) > MESH_VERTICES_MAX {
 		step += 1
@@ -303,7 +360,7 @@ view_tilted :: proc(v: ^View, p: ^terrain.Project, area: rl.Rectangle) {
 	if v.mesh.vaoId == 0 {
 		return
 	}
-	rows := f32(v.target.texture.height) / f32(v.zoom)
+	rows := f32(v.target.texture.height) / f32(v.drawn_scale)
 	tilt := math.to_radians(clamp(v.tilt, 5, 85))
 	turn := math.to_radians(v.turn)
 	fovy := f32(45)

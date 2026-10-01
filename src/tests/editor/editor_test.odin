@@ -6,6 +6,7 @@ package editor_tests
 // run test runs them under xvfb-run), as tests/terrain's do. The le07 case
 // needs a recovered project (mise run terrain:recover) and skips without.
 
+import "core:dynlib"
 import "core:fmt"
 import "core:math"
 import "core:os"
@@ -211,6 +212,35 @@ lighting_json_round_trips :: proc(t: ^testing.T) {
 	testing.expect(t, !list)
 }
 
+// A zoom keeps the map's point under the cursor where it was, anywhere
+// but against the map's ends, and stays within its limits. The map is wider
+// than the view throughout: narrower, it is centred instead.
+@(test)
+zoom_keeps_the_point_under_the_cursor :: proc(t: ^testing.T) {
+	p := terrain.project_make(1000, 3600, context.temp_allocator)
+	area := editor.layout(1280, 900).view
+	v := editor.View {
+		zoom = 1,
+		row  = 1500,
+	}
+	screen := [2]f32{area.x + 300, area.y + 200}
+	for factor in ([?]f32{1.5, 1.1, 2, 0.5, 0.8, 1 / 1.1}) {
+		at := editor.view_to_map(&v, &p, area, screen)
+		editor.view_zoom_at(&v, &p, area, screen, factor)
+		moved := editor.view_to_map(&v, &p, area, screen) - at
+		testing.expectf(t, abs(moved.x) < 1e-2 && abs(moved.y) < 1e-2, "zoomed by %v to %v, the point under the cursor moved %v", factor, v.zoom, moved)
+	}
+	editor.view_zoom_at(&v, &p, area, screen, 100)
+	testing.expect_value(t, v.zoom, f32(editor.ZOOM_MAX))
+	editor.view_zoom_at(&v, &p, area, screen, 0.001)
+	testing.expect_value(t, v.zoom, f32(editor.ZOOM_MIN))
+	testing.expect_value(t, editor.view_rows(&v, area), area.height / editor.ZOOM_MIN)
+	// Out at the top of the level, the scroll is held at its start.
+	v.zoom, v.row = 2, 10
+	editor.view_zoom_at(&v, &p, area, {area.x + 10, area.y + area.height - 10}, 0.5)
+	testing.expect_value(t, v.row, 0)
+}
+
 @(test)
 editor_draws :: proc(t: ^testing.T) {
 	rl.SetTraceLogLevel(.WARNING)
@@ -223,6 +253,8 @@ editor_draws :: proc(t: ^testing.T) {
 	defer rl.CloseWindow()
 	os.make_directory_all(OUT)
 	shot_shows_the_project(t)
+	shot_zoomed(t)
+	pinch_selects(t)
 	stroke_and_undo_redraw(t)
 	units_draw_on_the_map(t)
 	materials_through_the_editor(t)
@@ -280,6 +312,68 @@ shot_shows_the_project :: proc(t: ^testing.T) {
 		}
 	}
 	testing.expect(t, varied, "the panel is blank")
+}
+
+// Zoomed out, a short level is drawn its own height and no more, the view's
+// background below it; zoomed in between the presets, the view is full.
+@(private = "file")
+shot_zoomed :: proc(t: ^testing.T) {
+	p := hills(120, 300, context.temp_allocator)
+	path :: OUT + "/zoomed.drproj.json"
+	testing.expect(t, terrain.project_save(&p, path))
+	e: editor.Editor
+	editor.editor_init(&e)
+	defer editor.editor_destroy(&e)
+	if !testing.expect(t, editor.editor_open(&e, path)) {
+		return
+	}
+	W, H :: 800, 600
+	l := editor.layout(W, H)
+	background :: [3]u8{24, 26, 30}
+	for zoom in ([?]f32{0.5, 1.5}) {
+		e.zoom = zoom
+		img := editor.editor_shot(&e, W, H)
+		defer rl.UnloadImage(img)
+		rl.ExportImage(img, fmt.ctprintf("%s/zoomed-%.0f.png", OUT, zoom * 100))
+		px := ([^]u8)(img.data)[:W * H * 3]
+		at :: proc(px: []u8, x, y: int) -> [3]u8 {
+			c := px[(y * W + x) * 3:][:3]
+			return {c[0], c[1], c[2]}
+		}
+		// Along the view's middle column, the map's rows and then any below.
+		x := int(l.view.x + l.view.width / 2)
+		shown := min(int(l.view.height), int(300 * zoom))
+		ground, below := 0, 0
+		for y in int(l.view.y) ..< int(l.view.y + l.view.height) {
+			c := at(px, x, y)
+			if y - int(l.view.y) < shown - 1 {
+				ground += c != background ? 1 : 0
+			} else if y - int(l.view.y) > shown {
+				below += c != background ? 1 : 0
+			}
+		}
+		testing.expectf(t, ground == shown - 1, "at %v the level shows in %d of its %d rows", zoom, ground, shown - 1)
+		testing.expectf(t, below == 0, "at %v %d rows below the level are drawn", zoom, below)
+	}
+}
+
+// Under X (xvfb-run's has XInput 2.4), the pinch is selected on the
+// editor's window, and with no touchpad there is none.
+@(private = "file")
+pinch_selects :: proc(t: ^testing.T) {
+	when ODIN_OS == .Linux {
+		if lib, ok := dynlib.load_library("libXi.so.6"); ok {
+			dynlib.unload_library(lib)
+		} else {
+			fmt.println("pinch_selects: no libXi, skipped")
+			return
+		}
+		pinch: editor.Pinch
+		defer editor.pinch_destroy(&pinch)
+		if testing.expect(t, editor.pinch_init(&pinch), "no pinch under X with libXi") {
+			testing.expect_value(t, editor.pinch_poll(&pinch), 1)
+		}
+	}
 }
 
 // A stroke through the editor draws as the project drawn afresh, and its

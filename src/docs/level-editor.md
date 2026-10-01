@@ -221,13 +221,16 @@ panel has Open, Save, Undo, Redo and New, then eight tabs:
   too), and Reset to original loads the measured light.
 - **Water:** its height, shown or hidden, its colour; and the wind's
   direction and strength.
-- **View:** 1x or 2x, and a tilted view to look at the relief.
+- **View:** the zoom, from a quarter to 4x, by presets or a slider; and a
+  tilted view to look at the relief.
 - **Units** (Stage 8, below): the level's units.
 - **Level** (Stage 8, below): the level's names, words, music and sky, and
   the weapons it starts with.
 
-The wheel scrolls up and down the level, Shift+wheel across it at 2x,
-middle-drag pans, and clicking the overview goes there. Ctrl+Z, Ctrl+Y and
+The wheel scrolls up and down the level, Shift+wheel across it when it is
+wider than the view, middle-drag pans, and clicking the overview goes
+there. Ctrl+wheel, a touchpad's pinch, and Ctrl+= and Ctrl+- zoom about the
+mouse, and Ctrl+0 goes back to 1x. Ctrl+Z, Ctrl+Y and
 Ctrl+S undo, redo and save; 1-4 pick the brush, `[` and `]` size it, `L`
 and `T` toggle the light and the tilt. A project dropped on the window
 opens.
@@ -243,6 +246,24 @@ the heights grown by 2m. The renderer's test draws an edited region
 uploaded this way and the whole project uploaded afresh, and they are the
 same bytes in all four outputs. The editor's test finds the same after a
 stroke, its undo and its redo.
+
+Zoomed in past 1x, the rows are rendered at 2 px a map pixel, so the
+models' finer layer shows, and drawn larger from there with their pixels
+kept sharp; at 1x or out, at 1 px, and drawn smaller through mipmaps, so
+the ground's detail is not aliased into noise. The texture is a whole
+number of 64 rows high, at most the level's length, so a zoom remakes it
+only now and then; zooming out far, a short level is drawn its own height
+on the view's background.
+
+The pinch comes from X, not GLFW, which tells of no gestures: the editor
+opens a connection of its own beside GLFW's, asks it for XInput 2.4 and
+selects the pinch on the editor's window. Under Wayland that is XWayland,
+which makes X's pinch from the compositor's (XWayland 22.1 and later).
+libX11 and libXi are loaded when the editor starts rather than linked, so
+without them there is just no pinch, and stderr says why. Xvfb has no
+touchpad, so the test only finds the pinch selected; whether a real one
+arrives needs a touchpad. On Windows a precision touchpad's pinch arrives
+as Ctrl and the wheel, which zooms as well (untried on Windows).
 
 The tilted view is the lit rows on a mesh of the heights, one vertex every
 2 px or more, under 65,535. It is framed on the ground's mean height and
