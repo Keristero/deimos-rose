@@ -83,7 +83,15 @@ paint_panel :: proc(e: ^Editor, x: f32, y: ^f32, w: f32) {
 	} else {
 		help(x, y, w, {"No library: `mise run materials:library`."})
 	}
-	help(x, y, w, {"Drop an image on the window to add it."})
+	if full {
+		rl.GuiDisable()
+	}
+	if rl.GuiButton({x, y^, w, 20}, "Add an image...") && !editor_dialog(e, .Image) {
+		editor_message(e, "No file dialog here: drop the image on the window")
+	}
+	rl.GuiEnable()
+	y^ += ROW
+	help(x, y, w, {"Or drop an image on the window."})
 
 	heading(x, y, w, "Brush")
 	rl.GuiToggleGroup({x, y^, (w - 2) / 2, 20}, "Paint;Erase", &pt.mode)

@@ -176,6 +176,8 @@ main :: proc() {
 	// wheel zoom everywhere.
 	gestures_init(&e.gestures)
 	defer gestures_destroy(&e.gestures)
+	dialog_init(&e.dialog)
+	defer dialog_destroy(&e.dialog)
 	for !rl.WindowShouldClose() {
 		title := fmt.ctprintf("%s%s - Deimos Rising level editor %s", editor_path(&e), e.dirty ? " *" : "", EDITOR_VERSION)
 		rl.SetWindowTitle(title)

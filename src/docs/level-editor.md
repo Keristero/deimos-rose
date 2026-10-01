@@ -207,7 +207,9 @@ game, and `dist` puts it in the release zip.
 
 The window is the panel on the left, the level in the middle, the whole
 level on the right with the part in view outlined, and a status line. The
-panel has Open, Save, Undo, Redo and New, then eight tabs:
+panel has Open, Save, Undo, Redo and New, then eight tabs. Open shows the
+system's file dialog for a level project; where there is none, it opens
+the path typed in above it, as Save saves to it.
 
 - **Terrain:** the brush. Raise, Lower, Flatten toward a target height, or
   Smooth, in a round, square or rough shape, with a size, a strength and a
@@ -234,6 +236,32 @@ mouse, and Ctrl+0 goes back to 1x. Ctrl+Z, Ctrl+Y and
 Ctrl+S undo, redo and save; 1-4 pick the brush, `[` and `]` size it, `L`
 and `T` toggle the light and the tilt. A project dropped on the window
 opens.
+
+### The file dialog
+
+Open, the Paint tab's Add an image and the Models tab's Import a model
+show the system's own file dialog, starting in the project's folder, and
+take its file as a dropped one is taken. While it is open the editor
+draws but takes no input.
+
+On Linux it is the desktop portal's (`org.freedesktop.portal.FileChooser`
+over D-Bus), so KDE's or GNOME's own dialog, and the same from a sandbox.
+OpenFile answers at once with a request; the request's Response signal,
+when the dialog closes, carries the file as a `file://` URI. Both are read
+off the bus each frame. libdbus is loaded when the editor starts rather
+than linked; without it, or without a portal (the bus answers
+ServiceUnknown), Open opens the typed path and the others ask for a drop.
+On Windows it is the common Open dialog, which runs its own message loop
+until it closes, so the editor waits for it (untried on Windows). On other
+systems there is none.
+
+The test plays the portal: on a D-Bus of its own (`mise run test` starts
+one with dbus-run-session), it takes the portal's name, answers OpenFile
+as the portal does, and checks what the editor asked for (its token, the
+level filter and the folder) and that it takes the chosen file, or none
+when the dialog is cancelled. It never runs on the desktop's bus, where
+the real portal would show a dialog. The case of no portal at all is not
+tested: a bus of its own would start the real portal, which it can.
 
 ### How it draws
 
@@ -471,7 +499,8 @@ material is either a plain colour or an image tinted by its colour.
   adds a plain one, and Remove takes the chosen one away. Its Tint is the
   colour an image is multiplied by. An image's Tile is how many map
   pixels one copy of it covers.
-- **An image dropped on the window** is added as a material. It is named
+- **An image dropped on the window**, or chosen by Add an image, is added
+  as a material. It is named
   after the file, lower case and dashed (`Rock Face.png` becomes
   `rock-face`). It is scaled to fit 1024 px, and tiles at its own width,
   or at most 256 px. It is kept in memory and written to the project's
@@ -803,7 +832,8 @@ there for every level.
 
 ### Importing a model
 
-A glTF, GLB or OBJ file dropped on the window is imported:
+A glTF, GLB or OBJ file dropped on the window, or chosen by Import a
+model, is imported:
 1. It is read into memory: its triangles, and each material's base
    colour, texture and alpha cutout.
 2. It is brought under 60,000 triangles (below).

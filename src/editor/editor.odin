@@ -56,6 +56,8 @@ Editor :: struct {
 	level_panel:   Level_Panel,
 	// The touchpad's pinch and smooth scroll, in a window; none in a shot.
 	gestures:      Gestures,
+	// The system's file dialog, in a window; none in a shot.
+	dialog:        File_Dialog,
 	using placing: Placing,
 	using view:    View,
 	using panel:   Panel,

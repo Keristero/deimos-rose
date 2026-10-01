@@ -137,9 +137,59 @@ editor_draw :: proc(e: ^Editor, l: Layout) {
 	instances_settle(e, rl.IsMouseButtonDown(.LEFT))
 }
 
+// A file dropped on the window or chosen in the dialog: a project opens
+// (`guard`ed, unless that was done when the dialog was asked for); a model
+// goes into the library; an image becomes a material.
+@(private = "file")
+take_file :: proc(e: ^Editor, path: string, guard: bool) {
+	lower := strings.to_lower(path, context.temp_allocator)
+	switch {
+	case strings.has_suffix(path, terrain.PROJECT_SUFFIX):
+		if !guard || guarded(e, .Open) {
+			open_reporting(e, path)
+		}
+	case strings.has_suffix(lower, ".glb") || strings.has_suffix(lower, ".gltf") || strings.has_suffix(lower, ".obj"):
+		if k := editor_model_import(e, path); k >= 0 {
+			e.tab = c.int(Tab.Models)
+			editor_message(e, "Model %s imported", e.scenery.library[k].file.name)
+		} else {
+			editor_message(e, "Cannot read %s as a model", path)
+		}
+	case editor_material_add_file(e, path):
+		e.tab = c.int(Tab.Paint)
+		editor_message(e, "Material %s added", e.project.materials[len(e.project.materials) - 1].name)
+	case len(e.project.materials) >= terrain.MAX_MATERIALS:
+		editor_message(e, "A level has at most %d materials", terrain.MAX_MATERIALS)
+	case:
+		editor_message(e, "Cannot read %s as an image", path)
+	}
+}
+
+// The file dialog's answer, when it comes. While it is open the editor
+// takes no other input, as a modal dialog's window does not.
+@(private = "file")
+dialog_input :: proc(e: ^Editor) -> (open: bool) {
+	path, done, failed := dialog_poll(&e.dialog)
+	switch {
+	case !done:
+	case failed && e.dialog.purpose == .Project:
+		// No portal after all: Open is what it was, the path typed in.
+		open_reporting(e, strings.clone(editor_path(e), context.temp_allocator))
+	case failed:
+		editor_message(e, "No file dialog here: drop the file on the window")
+	case path != "":
+		take_file(e, path, false)
+	}
+	return e.dialog.open
+}
+
 @(private = "file")
 editor_input :: proc(e: ^Editor, l: Layout) {
 	v, p := &e.view, &e.project
+	if dialog_input(e) {
+		gestures_poll(&e.gestures) // drained, not kept for later
+		return
+	}
 	mouse := rl.GetMousePosition()
 	typing := e.path_edit || e.length_edit || e.level_panel.editing >= 0 || e.scenery.name_edit
 	in_view := rl.CheckCollisionPointRec(mouse, l.view)
@@ -214,31 +264,8 @@ editor_input :: proc(e: ^Editor, l: Layout) {
 
 	if rl.IsFileDropped() {
 		files := rl.LoadDroppedFiles()
-		// A project opens; a model goes into the library; an image becomes
-		// a material.
 		for i in 0 ..< files.count {
-			path := strings.clone(string(files.paths[i]), context.temp_allocator)
-			lower := strings.to_lower(path, context.temp_allocator)
-			switch {
-			case strings.has_suffix(path, terrain.PROJECT_SUFFIX):
-				if guarded(e, .Open) {
-					open_reporting(e, path)
-				}
-			case strings.has_suffix(lower, ".glb") || strings.has_suffix(lower, ".gltf") || strings.has_suffix(lower, ".obj"):
-				if k := editor_model_import(e, path); k >= 0 {
-					e.tab = c.int(Tab.Models)
-					editor_message(e, "Model %s imported", e.scenery.library[k].file.name)
-				} else {
-					editor_message(e, "Cannot read %s as a model", path)
-				}
-			case editor_material_add_file(e, path):
-				e.tab = c.int(Tab.Paint)
-				editor_message(e, "Material %s added", e.project.materials[len(e.project.materials) - 1].name)
-			case len(e.project.materials) >= terrain.MAX_MATERIALS:
-				editor_message(e, "A level has at most %d materials", terrain.MAX_MATERIALS)
-			case:
-				editor_message(e, "Cannot read %s as an image", path)
-			}
+			take_file(e, strings.clone(string(files.paths[i]), context.temp_allocator), true)
 		}
 		rl.UnloadDroppedFiles(files)
 	}
@@ -339,7 +366,8 @@ panel_draw :: proc(e: ^Editor, area, view: rl.Rectangle) {
 	}
 	y += ROW
 	bw := (w - 3 * 4) / 4
-	if rl.GuiButton({x, y, bw, 20}, "Open") && guarded(e, .Open) {
+	// The system's dialog, or where there is none, the path typed in.
+	if rl.GuiButton({x, y, bw, 20}, "Open") && guarded(e, .Open) && !editor_dialog(e, .Project) {
 		open_reporting(e, strings.clone(editor_path(e), context.temp_allocator))
 	}
 	if rl.GuiButton({x + (bw + 4), y, bw, 20}, "Save") {

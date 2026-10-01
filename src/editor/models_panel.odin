@@ -169,7 +169,8 @@ library_panel :: proc(e: ^Editor, x: f32, y: ^f32, w: f32, bottom: f32) {
 	s := &e.scenery
 	heading(x, y, w, "Library")
 	if len(s.library) == 0 {
-		help(x, y, w, {"No library: `mise run models:library`.", "Drop a .glb, .gltf or .obj on the window", "to import one."})
+		import_button(e, x, y, w)
+		help(x, y, w, {"No library: `mise run models:library`.", "Import a .glb, .gltf or .obj, or drop one", "on the window."})
 		return
 	}
 	names := make([]cstring, len(s.library), context.temp_allocator)
@@ -193,7 +194,16 @@ library_panel :: proc(e: ^Editor, x: f32, y: ^f32, w: f32, bottom: f32) {
 		hi := m.file.variants[0].hi
 		help(x, y, w, {fmt.ctprintf("%.1f x %.1f m, %.1f m tall", 2 * hi.x, 2 * hi.z, hi.y), fmt.ctprintf("%s", m.source)})
 	}
-	help(x, y, w, {"Drag on the map to put models down.", "Drop a model file on the window to import it."})
+	import_button(e, x, y, w)
+	help(x, y, w, {"Drag on the map to put models down.", "Or drop a model file on the window."})
+}
+
+@(private = "file")
+import_button :: proc(e: ^Editor, x: f32, y: ^f32, w: f32) {
+	if rl.GuiButton({x, y^, w, 20}, "Import a model...") && !editor_dialog(e, .Model) {
+		editor_message(e, "No file dialog here: drop the model on the window")
+	}
+	y^ += ROW
 }
 
 // The model selected: where it is, its lift, turn, lean and scale.
