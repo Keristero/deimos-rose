@@ -227,9 +227,9 @@ panel has Open, Save, Undo, Redo and New, then eight tabs:
 - **Level** (Stage 8, below): the level's names, words, music and sky, and
   the weapons it starts with.
 
-The wheel scrolls up and down the level, Shift+wheel across it when it is
-wider than the view, middle-drag pans, and clicking the overview goes
-there. Ctrl+wheel, a touchpad's pinch, and Ctrl+= and Ctrl+- zoom about the
+The wheel and a touchpad's two fingers scroll up and down the level and
+across it when it is wider than the view (Shift turns the wheel across),
+middle-drag pans, and clicking the overview goes there. Ctrl+wheel, a touchpad's pinch, and Ctrl+= and Ctrl+- zoom about the
 mouse, and Ctrl+0 goes back to 1x. Ctrl+Z, Ctrl+Y and
 Ctrl+S undo, redo and save; 1-4 pick the brush, `[` and `]` size it, `L`
 and `T` toggle the light and the tilt. A project dropped on the window
@@ -255,15 +255,21 @@ number of 64 rows high, at most the level's length, so a zoom remakes it
 only now and then; zooming out far, a short level is drawn its own height
 on the view's background.
 
-The pinch comes from X, not GLFW, which tells of no gestures: the editor
-opens a connection of its own beside GLFW's, asks it for XInput 2.4 and
-selects the pinch on the editor's window. Under Wayland that is XWayland,
-which makes X's pinch from the compositor's (XWayland 22.1 and later).
-libX11 and libXi are loaded when the editor starts rather than linked, so
-without them there is just no pinch, and stderr says why. Xvfb has no
-touchpad, so the test only finds the pinch selected; whether a real one
-arrives needs a touchpad. On Windows a precision touchpad's pinch arrives
-as Ctrl and the wheel, which zooms as well (untried on Windows).
+The pinch and the smooth scroll come from X, not GLFW, which tells of no
+gestures and of scrolling only as whole wheel clicks, so a touchpad's
+scroll would move in steps. The editor opens a connection of its own
+beside GLFW's, asks it for XInput 2.4 and selects the pinch and the
+pointer's motion on the editor's window. The motion carries the pointer's
+scroll axes, which move by fractions of a click; once one has moved, the
+wheel is read from them and GLFW's clicks are left, or a scroll would
+count twice. Under Wayland this is XWayland, which makes X's pinch from
+the compositor's (XWayland 22.1 and later). libX11 and libXi are loaded
+when the editor starts rather than linked, so without them there is just
+GLFW's wheel, and stderr says why. Xvfb has no touchpad and its pointers
+no scroll axes, so the test finds the events selected and reads made-up
+motions' axes; whether real ones arrive needs a touchpad. On Windows a
+precision touchpad's pinch arrives as Ctrl and the wheel, which zooms as
+well, and its scroll as the wheel in fractions (untried on Windows).
 
 The tilted view is the lit rows on a mesh of the heights, one vertex every
 2 px or more, under 65,535. It is framed on the ground's mean height and

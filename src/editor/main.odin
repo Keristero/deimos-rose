@@ -171,10 +171,11 @@ main :: proc() {
 		return
 	}
 
-	// A touchpad's pinch zooms the view, where the platform tells of one
-	// (pinch_linux.odin); Ctrl and the wheel do everywhere.
-	pinch_init(&e.pinch)
-	defer pinch_destroy(&e.pinch)
+	// A touchpad's pinch zooms the view and its scroll pans it smoothly,
+	// where the platform tells of them (gestures_linux.odin); Ctrl and the
+	// wheel zoom everywhere.
+	gestures_init(&e.gestures)
+	defer gestures_destroy(&e.gestures)
 	for !rl.WindowShouldClose() {
 		title := fmt.ctprintf("%s%s - Deimos Rising level editor %s", editor_path(&e), e.dirty ? " *" : "", EDITOR_VERSION)
 		rl.SetWindowTitle(title)

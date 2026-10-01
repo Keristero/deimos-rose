@@ -154,20 +154,27 @@ editor_input :: proc(e: ^Editor, l: Layout) {
 	// Zooms about the mouse in the view, else about the view's middle.
 	centre := [2]f32{l.view.x + l.view.width / 2, l.view.y + l.view.height / 2}
 	about := in_view ? mouse : centre
-	// Ctrl and the wheel zoom, as in most editors; and so does a pinch on
-	// Windows' precision touchpads, which it sends as just that.
-	if wheel := rl.GetMouseWheelMove(); wheel != 0 && (in_view || in_overview) {
-		if ctrl {
-			view_zoom_at(v, p, l.view, about, math.pow(f32(ZOOM_WHEEL), wheel))
-		} else if shift {
-			v.left -= wheel * WHEEL_ROWS / v.zoom
-		} else {
-			v.row -= wheel * WHEEL_ROWS / v.zoom
-		}
+	// Polled every frame, so a pinch or a scroll elsewhere is not kept for
+	// later.
+	g := gestures_poll(&e.gestures)
+	if g.zoom != 1 && in_view {
+		view_zoom_at(v, p, l.view, mouse, g.zoom)
 	}
-	// Polled every frame, so a pinch begun elsewhere is not kept for later.
-	if f := pinch_poll(&e.pinch); f != 1 && in_view {
-		view_zoom_at(v, p, l.view, mouse, f)
+	// Both of the wheel's axes: a touchpad's two fingers scroll across as
+	// well as along, and raylib's GetMouseWheelMove keeps only the larger.
+	wheel := g.smooth ? g.scroll : rl.GetMouseWheelMoveV()
+	if wheel != 0 && (in_view || in_overview) {
+		// Ctrl and the wheel zoom, as in most editors; and so does a pinch
+		// on Windows' precision touchpads, which it sends as just that.
+		if ctrl {
+			view_zoom_at(v, p, l.view, about, math.pow(f32(ZOOM_WHEEL), wheel.y))
+		} else {
+			if shift {
+				wheel = {wheel.y, wheel.x}
+			}
+			v.left -= wheel.x * WHEEL_ROWS / v.zoom
+			v.row -= wheel.y * WHEEL_ROWS / v.zoom
+		}
 	}
 	if rl.IsMouseButtonDown(.MIDDLE) && in_view {
 		d := rl.GetMouseDelta()
@@ -458,7 +465,7 @@ panel_draw :: proc(e: ^Editor, area, view: rl.Rectangle) {
 		slider(x, &y, w, "Tilt", &v.tilt, 5, 85, "%.0f deg")
 		slider(x, &y, w, "Turn", &v.turn, -180, 180, "%.0f deg")
 		y += 4
-		help(x, &y, w, {"Wheel: scroll.  Shift+wheel: across.", "Ctrl+wheel, a touchpad's pinch: zoom.", "Ctrl+= and Ctrl+-: zoom; Ctrl+0: 1x.", "Middle-drag: pan.  Page Up, Page Down,", "Home, End: along the level.", "Click the strip on the right to go there.", "The tilted view is to look at; sculpt", "from above."})
+		help(x, &y, w, {"Wheel, two fingers: scroll; Shift+wheel", "scrolls across.", "Ctrl+wheel, a touchpad's pinch: zoom.", "Ctrl+= and Ctrl+-: zoom; Ctrl+0: 1x.", "Middle-drag: pan.  Page Up, Page Down,", "Home, End: along the level.", "Click the strip on the right to go there.", "The tilted view is to look at; sculpt", "from above."})
 	case .Paint:
 		paint_panel(e, x, &y, w)
 	case .Models:

@@ -6,6 +6,7 @@ package editor_tests
 // run test runs them under xvfb-run), as tests/terrain's do. The le07 case
 // needs a recovered project (mise run terrain:recover) and skips without.
 
+import "core:c"
 import "core:dynlib"
 import "core:fmt"
 import "core:math"
@@ -241,6 +242,32 @@ zoom_keeps_the_point_under_the_cursor :: proc(t: ^testing.T) {
 	testing.expect_value(t, v.row, 0)
 }
 
+// A motion's scroll axes, as XWayland's pointer has them (valuators 2
+// and 3 after x and y), read as notches: the first value of each is where
+// it is, and then each move is by its increment, down and right negative
+// as GLFW's wheel has them. Another device's are not these.
+@(test)
+smooth_scroll_reads_the_axes :: proc(t: ^testing.T) {
+	when ODIN_OS == .Linux {
+		g: editor.Gestures
+		g.axes[0] = {device = 6, number = 2, horizontal = true, increment = 10}
+		g.axes[1] = {device = 6, number = 3, increment = 120}
+		g.count = 2
+		motion :: proc(g: ^editor.Gestures, source: c.int, mask: u8, values: ..f64) -> [2]f32 {
+			m := [1]u8{mask}
+			return editor.gestures_motion(g, source, m[:], raw_data(values))
+		}
+		testing.expect_value(t, motion(&g, 6, 0b1111, 5, 7, 100, 1000), [2]f32{})
+		testing.expect(t, !g.smooth, "smooth before an axis moved")
+		testing.expect_value(t, motion(&g, 6, 0b1011, 5, 7, 1060), [2]f32{0, -0.5})
+		testing.expect(t, g.smooth, "not smooth once an axis moved")
+		testing.expect_value(t, motion(&g, 6, 0b0100, 80), [2]f32{2, 0})
+		testing.expect_value(t, motion(&g, 6, 0b0011, 9, 9), [2]f32{})
+		testing.expect_value(t, motion(&g, 7, 0b1100, 0, 0), [2]f32{})
+		testing.expect_value(t, motion(&g, 6, 0b1100, 90, 940), [2]f32{-1, 1})
+	}
+}
+
 @(test)
 editor_draws :: proc(t: ^testing.T) {
 	rl.SetTraceLogLevel(.WARNING)
@@ -254,7 +281,7 @@ editor_draws :: proc(t: ^testing.T) {
 	os.make_directory_all(OUT)
 	shot_shows_the_project(t)
 	shot_zoomed(t)
-	pinch_selects(t)
+	gestures_select(t)
 	stroke_and_undo_redraw(t)
 	units_draw_on_the_map(t)
 	materials_through_the_editor(t)
@@ -357,21 +384,22 @@ shot_zoomed :: proc(t: ^testing.T) {
 	}
 }
 
-// Under X (xvfb-run's has XInput 2.4), the pinch is selected on the
-// editor's window, and with no touchpad there is none.
+// Under X (xvfb-run's has XInput 2.4), the pinch and the motion are
+// selected on the editor's window, and with no touchpad there is neither
+// a pinch nor a scroll.
 @(private = "file")
-pinch_selects :: proc(t: ^testing.T) {
+gestures_select :: proc(t: ^testing.T) {
 	when ODIN_OS == .Linux {
 		if lib, ok := dynlib.load_library("libXi.so.6"); ok {
 			dynlib.unload_library(lib)
 		} else {
-			fmt.println("pinch_selects: no libXi, skipped")
+			fmt.println("gestures_select: no libXi, skipped")
 			return
 		}
-		pinch: editor.Pinch
-		defer editor.pinch_destroy(&pinch)
-		if testing.expect(t, editor.pinch_init(&pinch), "no pinch under X with libXi") {
-			testing.expect_value(t, editor.pinch_poll(&pinch), 1)
+		g: editor.Gestures
+		defer editor.gestures_destroy(&g)
+		if testing.expect(t, editor.gestures_init(&g), "no gestures under X with libXi") {
+			testing.expect_value(t, editor.gestures_poll(&g), editor.Gesture_Input{zoom = 1})
 		}
 	}
 }
