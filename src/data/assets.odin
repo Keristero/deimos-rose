@@ -737,7 +737,10 @@ plugin_media_add :: proc(media: ^map[string]string, root, sub, dir, ext: string,
 		if id in media || os.exists(strings.concatenate({root, sub, base}, context.temp_allocator)) {
 			continue
 		}
-		media[strings.clone(id, allocator)] = strings.clone(path, allocator)
+		// Joined as the core tree's paths are, not glob's: on Windows glob
+		// gives back `\`, and a plugin's path would differ from a core one
+		// in its separators alone (CI's Windows test caught it).
+		media[strings.clone(id, allocator)] = strings.concatenate({dir, sub, base}, allocator)
 	}
 }
 
