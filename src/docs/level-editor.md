@@ -286,16 +286,23 @@ on the view's background.
 The pinch and the smooth scroll come from X, not GLFW, which tells of no
 gestures and of scrolling only as whole wheel clicks, so a touchpad's
 scroll would move in steps. The editor opens a connection of its own
-beside GLFW's, asks it for XInput 2.4 and selects the pinch and the
-pointer's motion on the editor's window. The motion carries the pointer's
-scroll axes, which move by fractions of a click; once one has moved, the
-wheel is read from them and GLFW's clicks are left, or a scroll would
-count twice. Under Wayland this is XWayland, which makes X's pinch from
+beside GLFW's, asks it for XInput 2.4 and selects the pinch on the
+editor's window and the pointer's raw motion on the root window. The raw
+motion carries the pointer's scroll axes, which move by fractions of a
+click; once one has moved, the wheel is read from them and GLFW's clicks
+are left, or a scroll would count twice. Raw motion comes wherever the
+pointer is, so only what comes while it is over the window counts. It is
+raw motion and not the window's own motion events because X gives a
+pointer's event on a window to one selection, XInput's first: selecting
+motion there took it from GLFW, raylib's mouse stood still, and the
+panel's buttons stopped answering. A test warps Xvfb's pointer onto the
+window with the gestures selected and checks raylib follows it. Under
+Wayland this is XWayland, which makes X's pinch from
 the compositor's (XWayland 22.1 and later). libX11 and libXi are loaded
 when the editor starts rather than linked, so without them there is just
 GLFW's wheel, and stderr says why. Xvfb has no touchpad and its pointers
 no scroll axes, so the test finds the events selected and reads made-up
-motions' axes; whether real ones arrive needs a touchpad. On Windows a
+raw motions' axes; whether real ones arrive needs a touchpad. On Windows a
 precision touchpad's pinch arrives as Ctrl and the wheel, which zooms as
 well, and its scroll as the wheel in fractions (untried on Windows).
 

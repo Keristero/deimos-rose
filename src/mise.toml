@@ -225,7 +225,8 @@ run = [
   "if command -v xvfb-run >/dev/null; then set -- xvfb-run -a -s '-screen 0 1280x1024x24'; fi; env DISPLAY= WAYLAND_DISPLAY= \"$@\" odin test tests/terrain $DR_COLL $DR_LINK -out:$DR_BUILD/tests-terrain$DR_EXT",
   # And on a D-Bus of its own, where the file dialog's test plays the
   # desktop portal: on the desktop's, the real one would show a dialog.
-  "if command -v xvfb-run >/dev/null; then set -- xvfb-run -a -s '-screen 0 1280x1024x24'; fi; if command -v dbus-run-session >/dev/null; then set -- env DR_PRIVATE_BUS=1 dbus-run-session -- \"$@\"; fi; env DISPLAY= WAYLAND_DISPLAY= \"$@\" odin test tests/editor $DR_COLL $DR_LINK -out:$DR_BUILD/tests-editor$DR_EXT",
+  # DR_XVFB says the display is Xvfb's, where a test may move the pointer.
+  "if command -v xvfb-run >/dev/null; then set -- xvfb-run -a -s '-screen 0 1280x1024x24' env DR_XVFB=1; fi; if command -v dbus-run-session >/dev/null; then set -- env DR_PRIVATE_BUS=1 dbus-run-session -- \"$@\"; fi; env DISPLAY= WAYLAND_DISPLAY= \"$@\" odin test tests/editor $DR_COLL $DR_LINK -out:$DR_BUILD/tests-editor$DR_EXT",
 ]
 
 [tasks.coverage]
