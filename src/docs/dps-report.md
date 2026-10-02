@@ -212,6 +212,15 @@ other passive's Gain differs between the two.
 | Ground Variant 2 2 | Plasma Bomb | 0 / 0 / 3.29 from 0 / 0 | +0.82 | +29.4% |
 | Ground Variant 2 3 | Plasma Bomb | 0 / 0 / 5.45 from 0 / 0 | +1.36 | +48.6% |
 
+A charge passive on an air weapon is measured in the Charge-shots set,
+as below (2026-10-02):
+
+| Passive | Weapon | Change | DPS added | Gain |
+|---|---|---|---|---|
+| Weapon 6 Charge 1 | Discharge Beam | 0 / 0 / 0 / +143.7% | +0.34 | +17.3% |
+| Weapon 6 Charge 2 | Discharge Beam | +13.1% / +13.1% / 0 / +176.4% | +0.65 | +32.8% |
+| Weapon 6 Charge 3 | Discharge Beam | +26.3% / +26.3% / 0 / +191.7% | +0.92 | +46.2% |
+
 The Ground Variants are the bomb's charges since 2026-10-02 (see
 [passive-upgrades.md](passive-upgrades.md)), measured then; the rest of
 the table is the 2026-09-25 run, which they leave as it was. Ahead, taps

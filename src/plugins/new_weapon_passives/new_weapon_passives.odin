@@ -19,6 +19,8 @@ ID: sim.Plugin_ID
 // Discharge Beam (plugins/new_weapons).
 WEAPON_5: passives.Passive
 WEAPON_6: passives.Passive
+// The design's charge passive for Weapon 6 (Passive_Def.charge).
+WEAPON_6_CHARGE: passives.Passive
 
 WEAPON_CHAINGUN :: sim.Res_ID{'a', 'i', 'c', 'g'}
 WEAPON_DISCHARGE_BEAM :: sim.Res_ID{'a', 'i', 'd', 'b'}
@@ -45,6 +47,22 @@ DISCHARGE_BEAM_MODS := []passives.Mod {
 	{.Shot_Width, .Increase, {10, 20, 30}},
 }
 
+// The charged beam chains from target to target in place of piercing
+// straight on (D70), and from level 2 charges higher and faster. In the
+// Charge-shots set the chain alone gains 17%, near the top of level 1's
+// band (+10-20%), as the charged beam kills its way through the wave
+// (+144% there); the smallest charge step on top went over. With the charge, levels 2 and 3 gain 33%
+// and 46%.
+@(private = "file", rodata)
+DISCHARGE_BEAM_CHARGE_MODS := []passives.Mod {
+	{.Chains, .Enables, {1, X, X}},
+	{.Maximum_Charge, .Increase, {X, 20, 40}},
+	{.Charge_Rate, .Increase, {X, 20, 40}},
+}
+
+@(private = "file")
+X :: passives.X
+
 @(private = "file", rodata)
 DEPS := []string{"passives", "new_weapons"}
 
@@ -61,6 +79,7 @@ register :: proc() {
 	// carried them: the icons and the golden runs find them by name.
 	WEAPON_5 = passives.passive_register({name = "weapon_5", label = "CHAINGUN UPGRADE", plugin = ID, levels = 3, weapon = WEAPON_CHAINGUN, mods = CHAINGUN_MODS})
 	WEAPON_6 = passives.passive_register({name = "weapon_6", label = "DISCHARGE BEAM UPGRADE", plugin = ID, levels = 3, weapon = WEAPON_DISCHARGE_BEAM, mods = DISCHARGE_BEAM_MODS})
+	WEAPON_6_CHARGE = passives.passive_register({name = "weapon_6_charge", label = "DISCHARGE BEAM CHARGE", plugin = ID, levels = 3, weapon = WEAPON_DISCHARGE_BEAM, charge = true, mods = DISCHARGE_BEAM_CHARGE_MODS})
 }
 
 @(init)

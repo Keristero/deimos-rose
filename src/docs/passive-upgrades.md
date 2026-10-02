@@ -46,7 +46,7 @@ left room, and what is still provisional. The cross-cutting choice is D36 in
     while that plugin is on, and its ids follow the plugin's in
     registration order.
   - **New Weapon Upgrades** (`plugins/new_weapon_passives`) adds Weapon 5
-    and 6 that way. It needs Passive Upgrades and New Weapons, and is a
+    and 6, and Weapon 6's charge passive, that way. It needs Passive Upgrades and New Weapons, and is a
     companion of both (D66): on wherever they are, so a player can keep
     the new weapons and turn their upgrades off. Its tests are its own
     (`plugins/new_weapon_passives/tests`), as each plugin owns the tests
@@ -95,6 +95,7 @@ The current set:
 | Weapon 1-4 | the weapon's score-bar symbol (`wesy` 0, 1, 3, 2), with the plus |
 | Weapon 5 | the Chaingun's score-bar symbol (`wesy` 4), with the plus |
 | Weapon 6 | the Discharge Beam's red symbol (`wesd` 0, New Weapons' own plate), with the plus |
+| Weapon 6 Charge | the Discharge Beam's symbol, smaller, in Improved Charge's glow, with the plus: a weapon's charge passive |
 
 To add an icon, add an entry named after the new passive and rerun the
 task. `MENU=reward mise run menu-shot` shows the icons in place.
@@ -303,6 +304,16 @@ and 2 are `plbo`'s, the Plasma Bomb, the only ground weapon.
   shot cast as a line rather than flown; the beam's width is scaled by it
   plus the damage's percentage, as "width also scales with damage" asks,
   so level 3 is 90% wider. The reward screen shows the width stat alone.
+- **Weapon 6 Charge** (Discharge Beam), a charge passive from
+  [notes/extra-weapons-and-passives-3.md](../../notes/extra-weapons-and-passives-3.md):
+  the charged beam chains (`Chains`, D70). It goes straight to its first
+  target, then from each kill jumps to the nearest target on screen it
+  has not hit, "until the laser runs out of damage". A target left
+  standing, or one the hit delay protects, stops it too, as it stops a
+  straight beam. The pulses still pierce straight on: the passive counts
+  in the charge's scope only.
+  - "Each level increases max charge and charge speed" is read from level
+    2 (see Tuning).
 
 ## Tuning (2026-09-25)
 
@@ -326,6 +337,7 @@ the Ion Cannon's 4 steps take 20% to lose one.
 | Weapon 4 (Photon Beam) | firing delay -20% | firing delay -40% | firing delay -10%, +1 volley | +18.7 / +32.9 / +45.2% |
 | Weapon 5 (Chaingun) | firing delay -13%, spread +25% | firing delay -20%, spread +50% | firing delay -33%, spread +100% | +11.9 / +23.8 / +49.2% |
 | Weapon 6 (Discharge Beam) | damage +15%, width +10% | damage +30%, width +20% | damage +60%, width +30% | +10.7 / +21.4 / +42.9% |
+| Weapon 6 Charge (Discharge Beam's charge) | chains | max charge +20%, charge rate +20% | max charge +40%, charge rate +40% | +17.3 / +32.8 / +46.2% |
 | Ground Variant 1 (Plasma Bomb's charge) | aimed behind, damage +340% | damage +780% | damage +1370% | +14.9 / +29.8 / +49.8% |
 | Ground Variant 2 (Plasma Bomb's charge) | aimed around, damage +560% | damage +1200% | damage +2050% | +14.9 / +29.4 / +48.6% |
 
@@ -360,7 +372,14 @@ Levels carry what they do not change (the design's `x`).
   kills what it hits and the next column is 40 px away, out of reach of
   any width, so only the single and cluster targets gain: the Gain is
   0.71 times the damage's percentage. The widths are the design's.
-- Charge shots are not tuned. Weapon passives add at most 1% to them,
+- **Weapon 6 Charge** is measured in the Charge-shots set, as an air
+  weapon's charge passive is: the charge is all it changes. The chain
+  alone gains +17.3%, near the top of level 1's band, all of it in the
+  wave (+144%), where the charged beam now kills its way across the
+  columns. The smallest charge step added on top took level 1 over 20%
+  (3% each measured +20.4%), so the charge comes in from level 2. With
+  the chain, levels 2 and 3 have the design's increases.
+- Charge shots are otherwise not tuned. Weapon passives add at most 1% to them,
   except Weapon 6, whose damage bases the release: +13.2 / +26.4 /
   +52.8%, in the primary fire's bands without a change since the charge
   lost its motes.
@@ -402,6 +421,11 @@ Each of these is marked in the code, with what would settle it:
   - the shipped weapons' lanes, the bomb's charge turned round and each
     passive's weapon being in the data. This test is skipped without
     `src/assets`;
+  - New Weapon Upgrades' own (`plugins/new_weapon_passives/tests`):
+    Weapon 6 Charge's release jumping to the nearest target it has not
+    hit, a run for each jump, until a target stands or its damage is
+    spent, while the pulses still pierce straight (skipped without
+    `src/assets`);
   - the ground charges replacing each other, and Ground Variant 1's
     charge from a hold to its bomb behind the ship (skipped without
     `src/assets`);

@@ -22,6 +22,7 @@ import "dr:plugins/new_weapons"
 import "dr:plugins/passives"
 import "dr:prefs"
 import "dr:sim"
+import "dr:sim/lifecycle"
 import "dr:sim/stats"
 import support "dr:tests/support"
 
@@ -136,9 +137,12 @@ offered_from_their_weapons_levels :: proc(t: ^testing.T) {
 	testing.expect(t, passives.passive_available(s, new_weapon_passives.WEAPON_5, 9))
 	testing.expect(t, !passives.passive_available(s, new_weapon_passives.WEAPON_6, 9))
 	testing.expect(t, passives.passive_available(s, new_weapon_passives.WEAPON_6, 10))
+	testing.expect(t, !passives.passive_available(s, new_weapon_passives.WEAPON_6_CHARGE, 9))
+	testing.expect(t, passives.passive_available(s, new_weapon_passives.WEAPON_6_CHARGE, 10))
 	s.session.mods -= {companion()}
 	testing.expect(t, !passives.passive_available(s, new_weapon_passives.WEAPON_5, 9))
 	testing.expect(t, !passives.passive_available(s, new_weapon_passives.WEAPON_6, 10))
+	testing.expect(t, !passives.passive_available(s, new_weapon_passives.WEAPON_6_CHARGE, 10))
 	// Nor the Chaingun's without the Chaingun's plugin.
 	s.session.mods += {companion()}
 	s.session.mods -= {int(chaingun.ID)}
@@ -219,3 +223,122 @@ discharge_beam_passive_hits_harder_and_wider :: proc(t: ^testing.T) {
 		testing.expect(t, abs(shots[0].width - scale(b.release_width, dmg + wide)) < 1e-3)
 	}
 }
+
+// The Discharge Beam in play for player 1, with the stage's own targets
+// taken away so a chain can only reach the test's.
+@(private = "file")
+beam_ready :: proc(t: ^testing.T, f: ^Fixture) -> (h: ^sim.Weapon_Handler, wd: ^sim.Weapon, ok: bool) {
+	db := support.weapon_index(t, &f.defs, new_weapon_passives.WEAPON_DISCHARGE_BEAM)
+	if db < 0 {
+		return
+	}
+	walk := sim.walk_entities(f.s)
+	for e in sim.walk_next(&walk) {
+		if new_weapons.air_shot_can_hit(f.s, e) {
+			lifecycle.entity_delete(e)
+		}
+	}
+	h = sim.player_at(f.s, 0).weapons
+	h.air.weapon = db
+	return h, &f.defs.weapons[db], true
+}
+
+// The Discharge Beam's charge passive: the release goes straight to its
+// first target, then jumps from each kill to the nearest it has not hit
+// (not the next along the line), a run for each, and stops on a target
+// left standing. From level 2 the charge climbs higher.
+@(test)
+discharge_beam_charge_chains_its_release :: proc(t: ^testing.T) {
+	f: Fixture
+	defer vmem.arena_destroy(&f.arena)
+	if !fixture(t, &f) {
+		return
+	}
+	s := f.s
+	h, wd, ok := beam_ready(t, &f)
+	if !ok {
+		return
+	}
+	at := sim.Vec{208, 420}
+	first := support.mine_spawn(t, s, at + {0, -60}, 1)
+	near := support.mine_spawn(t, s, at + {-50, -90}, 1) // 58 px from the first
+	far := support.mine_spawn(t, s, at + {80, -60}, 1) // 80 from the first, 133 from the near
+	wall := support.mine_spawn(t, s, at + {0, -200}, 100) // 121 from the near
+	if first.obj == nil || near.obj == nil || far.obj == nil || wall.obj == nil {
+		return
+	}
+	levels := passives.levels_of(s, 0)
+	levels[new_weapon_passives.WEAPON_6_CHARGE] = 1
+	top := wd.powerup_air_max_power_level
+	testing.expect_value(t, stats.powerup_max_level(s, h, h.air.weapon), top)
+
+	s.effects.count = 0
+	new_weapons.beam_release(s, h, wd, at, top, sim.single(s, sim.Clock).time)
+	testing.expect(t, first.deleted && near.deleted, "the first and the nearest to it die")
+	testing.expect(t, !far.deleted && far.shields == 1, "the far one is passed over")
+	release := new_weapons.beam_def(wd).release_damage
+	testing.expect(t, abs(100 - wall.shields - (release - 2)) < 1e-4, "the wall takes what is left")
+	runs := new_weapons.beam_shots(s)
+	if testing.expect_value(t, len(runs), 3) {
+		testing.expect(t, runs[0].from.x == at.x && runs[0].to == first.loc, "straight up to the first")
+		testing.expect(t, runs[1].from == first.loc && runs[1].to == near.loc)
+		testing.expect(t, runs[2].from == near.loc && runs[2].to == wall.loc)
+		for r in runs {
+			testing.expect(t, r.charged && r.player == 0)
+		}
+	}
+
+	levels[new_weapon_passives.WEAPON_6_CHARGE] = 3
+	testing.expect(t, stats.powerup_max_level(s, h, h.air.weapon) > top, "level 3 charges higher")
+}
+
+// A chain carries its damage as a straight beam does, and stops where it
+// is spent; the passive leaves the pulses piercing straight on.
+@(test)
+discharge_beam_charge_chain_spends_its_damage :: proc(t: ^testing.T) {
+	f: Fixture
+	defer vmem.arena_destroy(&f.arena)
+	if !fixture(t, &f) {
+		return
+	}
+	s := f.s
+	h, wd, ok := beam_ready(t, &f)
+	if !ok {
+		return
+	}
+	at := sim.Vec{208, 420}
+	first := support.mine_spawn(t, s, at + {0, -60}, 1)
+	beside := support.mine_spawn(t, s, at + {50, -60}, 1)
+	next := support.mine_spawn(t, s, at + {0, -150}, 1)
+	if first.obj == nil || beside.obj == nil || next.obj == nil {
+		return
+	}
+	passives.levels_of(s, 0)[new_weapon_passives.WEAPON_6_CHARGE] = 3
+	width := new_weapons.beam_def(wd).width
+	time := sim.single(s, sim.Clock).time
+
+	s.effects.count = 0
+	new_weapons.beam_fire(s, h, wd, at, 2, width, false, time)
+	testing.expect(t, first.deleted && next.deleted && !beside.deleted, "a pulse pierces straight on")
+	testing.expect_value(t, len(new_weapons.beam_shots(s)), 1)
+
+	// On a target beside, on a later step: the charge's chain kills the
+	// first and the one beside, and its 2 damage is spent there.
+	again := support.mine_spawn(t, s, at + {0, -150}, 1)
+	if again.obj == nil {
+		return
+	}
+	first = support.mine_spawn(t, s, at + {0, -60}, 1)
+	if first.obj == nil {
+		return
+	}
+	s.effects.count = 0
+	new_weapons.beam_fire(s, h, wd, at, 2, width, true, time + 2)
+	testing.expect(t, first.deleted && beside.deleted, "the chain jumps to the one beside")
+	testing.expect(t, !again.deleted && again.shields == 1, "and is spent there")
+	runs := new_weapons.beam_shots(s)
+	if testing.expect_value(t, len(runs), 2) {
+		testing.expect_value(t, runs[1].to, beside.loc)
+	}
+}
+

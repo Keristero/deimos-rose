@@ -219,7 +219,9 @@ that plays the wind-up sound.
   and is 6.0 now (see Balance).
 - **Weapon passives.** The Weapon 1–4 passives belong to the original's
   weapons, so none applies. Weapon 6 is the beam's own: more damage and a
-  wider beam ([passive-upgrades.md](passive-upgrades.md)). Improved
+  wider beam ([passive-upgrades.md](passive-upgrades.md)). Weapon 6
+  Charge makes the charged beam chain (see Chaining) and, from level 2,
+  charge higher and faster. Improved
   Charge and Auto Charge work through the ordinary power-up code.
 
 #### Balance
