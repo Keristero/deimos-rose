@@ -19,7 +19,7 @@ entity_hit :: proc(s: ^sim.State, e: sim.Entity, damage: f32, player: i32, time:
 	if e.deleted {
 		return 0
 	}
-	if time <= sim.trunc_i32(s.defs.perm_floats[0xa7]) + e.last_hit {
+	if time < sim.hit_gap(s) + e.last_hit {
 		return 0 // Entity_HitDelay
 	}
 	e.last_hit = time

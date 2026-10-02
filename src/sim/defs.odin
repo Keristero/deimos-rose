@@ -150,6 +150,13 @@ PF_VISIBLE_GAME_HEIGHT :: 0x37
 PF_PLAYER_APPEARS_INITIAL :: 0xa3
 PF_PLAYER_APPEARS_REQUIRED :: 0xa4
 PF_PLAYER_APPEARS_DELTA :: 0xa5
+PF_ENTITY_HIT_DELAY :: 0xa7 // Entity_HitDelay: steps after a hit in which an entity takes no other
+
+// The fewest steps between two hits one entity takes: one more than the
+// hit delay (G_Entity::Hit), so 2 with the original's data.
+hit_gap :: #force_inline proc "contextless" (s: ^State) -> i32 {
+	return trunc_i32(s.defs.perm_floats[PF_ENTITY_HIT_DELAY]) + 1
+}
 
 // Sizes of the original's permanent tables (G_Res_LoadPermData).
 PERM_FLOATS :: 220 // flli "gafl"

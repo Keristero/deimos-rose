@@ -1866,3 +1866,21 @@ been hit" in place of piercing straight on.
   damage is carried the same way, so against one tough target a chained
   beam deals what a straight one does.
 
+### D71 — A release ramps up to the hit delay, not past it
+
+notes/extra-weapons-and-passives-3.md asks for a Chaingun charge upgrade
+whose "firing speed ramps up as it fires".
+
+- **A core stat.** `Release_Ramp` is a percentage each spawn a release
+  has fired adds to its pace (`stats.powerup_release_due`), in the
+  charge's scope. At 0 the release is timed by the original's own test.
+  The Powerup counts the spawns (`released`) and the pace restarts each
+  time it lets go (`weapon_system.powerup_let_go`, now the one place the
+  air and ground power-ups and a release at max let go).
+- **Capped at the hit gap.** One target takes a hit every
+  `sim.hit_gap` steps at most (the original's Entity_HitDelay, now
+  named `PF_ENTITY_HIT_DELAY`). Ramped to a spawn a step, the Chaingun's
+  release lost 20% of its DPS in every DPS report scenario, the wave
+  too. The shots past one target's hits were wasted, and the release
+  was spent sooner. So the ramp stops at a spawn every hit gap.
+

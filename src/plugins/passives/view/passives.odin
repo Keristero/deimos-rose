@@ -34,10 +34,11 @@ passive_icon :: proc(t: ^render.Textures, pa: passives.Passive) -> (rl.Texture2D
 }
 
 Stat_Format :: enum {
-	Percent, // of the base value: 100% is unchanged
-	Count,   // a flat number added
+	Percent,  // of the base value: 100% is unchanged
+	Count,    // a flat number added
 	Seconds,
-	Rate,    // percentage points a second
+	Rate,     // percentage points a second
+	Per_Shot, // percentage points added with each shot
 	Toggle,
 }
 
@@ -76,6 +77,7 @@ STAT_DISPLAY := [sim.Stat]Stat_Display {
 	.Charge_Aim_Behind        = {"AIMS BEHIND", .Toggle, .Ground_Charge},
 	.Charge_Aim_Around        = {"AIMS AROUND", .Toggle, .Ground_Charge},
 	.Chains                   = {"CHAIN BEAM", .Toggle, nil},
+	.Release_Ramp             = {"RELEASE SPEED-UP", .Per_Shot, nil},
 }
 
 // A stat's value for a player holding `levels`, as the reward screen shows
@@ -95,6 +97,8 @@ stat_text :: proc(levels: ^passives.Passive_Levels, stat: sim.Stat, weapon: sim.
 		return fmt.tprintf("%dS", t.extra)
 	case .Rate:
 		return fmt.tprintf("%d%%/S", t.extra)
+	case .Per_Shot:
+		return fmt.tprintf("+%d%%/SHOT", t.percent)
 	case .Toggle:
 		return t.enabled ? "ON" : "OFF"
 	}

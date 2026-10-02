@@ -176,6 +176,29 @@ powerup_level_due :: proc "contextless" (s: ^sim.State, h: ^sim.Weapon_Handler, 
 	return true
 }
 
+// Whether a releasing power-up's next spawn is due. The original fires one
+// every between + 1 steps (release_time + between < time), the first as
+// soon as it lets go. Release_Ramp keeps pace in hundredths after the
+// first, each spawn already fired adding its percentage to the pace, so
+// the release fires faster as it goes: up to one every sim.hit_gap steps,
+// the most hits one target takes. Faster, the Chaingun's ramp measured
+// 20% less DPS in every DPS report scenario: the shots past one target's
+// hits were wasted, and the release spent sooner.
+powerup_release_due :: proc "contextless" (s: ^sim.State, h: ^sim.Weapon_Handler, p: ^sim.Powerup, weapon: i32, time: i32) -> bool {
+	between := sim.weapon_def(s, weapon).powerup_air_time_between_release_spawns
+	pct := charge_stat(s, h.player, weapon, .Release_Ramp).percent
+	if pct == 0 || p.released == 0 {
+		return p.release_time + between < time
+	}
+	need := (between + 1) * 100
+	p.pace += clamp(100 + pct * p.released, 1, max(need / sim.hit_gap(s), 100))
+	if p.pace < need {
+		return false
+	}
+	p.pace -= need
+	return true
+}
+
 // Firing.
 
 // delay_between_launches, scaled by Firing_Delay.

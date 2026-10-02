@@ -124,7 +124,8 @@ Powerup :: struct {
 	level:        i32,
 	percent:      f32,
 	release_time: i32,
-	pace:         i32, // not the original's: see powerup_level_due
+	pace:         i32, // not the original's: see powerup_level_due and powerup_release_due
+	released:     i32, // not the original's: the spawns its release has fired, for powerup_release_due
 }
 
 MAX_AUX :: 8

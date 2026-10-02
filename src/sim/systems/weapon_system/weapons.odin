@@ -241,10 +241,7 @@ weapons_process :: proc(
 	h.air_idle = air || h.air_powerup.state != 0 ? 0 : h.air_idle + 1
 	release := auto_charge ? air && !h.prev_air : !air
 	if release && (h.air_powerup.state == 1 || h.air_powerup.state == 2) {
-		h.air_powerup.state = 3
-		h.air_powerup.time = time
-		powerup_release(s, h.air_powerup.entity, time)
-		result = .Released
+		result = powerup_let_go(s, &h.air_powerup, time)
 	}
 	// A plugin's ground charge (stats.ground_charges) is its own: it
 	// releases apart from the original's power-up, whose release would also
@@ -255,10 +252,7 @@ weapons_process :: proc(
 		ground_charge_process(s, h, at, ground)
 	}
 	if !ground && (h.ground_powerup.state == 1 || h.ground_powerup.state == 2) {
-		h.ground_powerup.state = 3
-		h.ground_powerup.time = time
-		powerup_release(s, h.ground_powerup.entity, time)
-		result = .Released
+		result = powerup_let_go(s, &h.ground_powerup, time)
 	}
 	if !sim.weapon_def(s, h.air.weapon).auto_repeat {
 		air_powerup_process(s, h, time, at, h.air.weapon, auto_charge ? h.air_idle : h.air_held, &result)
@@ -333,6 +327,18 @@ weapons_process :: proc(
 }
 
 // G_EG_ChangeStateOnWeaponPowerupReleaseByUniqueEntityNum.
+// A charging or overloaded power-up lets go, into its release (state 3).
+// The pace and count its release keeps (stats.powerup_release_due) start
+// over; the original keeps neither.
+powerup_let_go :: proc(s: ^sim.State, p: ^sim.Powerup, time: i32) -> sim.Weapon_Result {
+	p.state = 3
+	p.time = time
+	p.pace = 0
+	p.released = 0
+	powerup_release(s, p.entity, time)
+	return .Released
+}
+
 powerup_release :: proc(s: ^sim.State, entity: i32, time: i32) {
 	walk := sim.walk_entities(s)
 	for e in sim.walk_next(&walk) {
@@ -528,10 +534,7 @@ air_powerup_process :: proc(s: ^sim.State, h: sim.Weapons, time: i32, at: sim.Ve
 				p.level = top
 				p.percent = 100
 				if wd.powerup_air_do_release_on_max_power_level {
-					p.state = 3
-					p.time = time
-					powerup_release(s, p.entity, time)
-					result^ = .Released
+					result^ = powerup_let_go(s, p, time)
 				}
 			} else {
 				p.level_time = time
@@ -555,7 +558,7 @@ air_powerup_process :: proc(s: ^sim.State, h: sim.Weapons, time: i32, at: sim.Ve
 			p.release_time = time
 			p.level = 0
 			p.percent = 0
-		} else if p.release_time + wd.powerup_air_time_between_release_spawns < time {
+		} else if stats.powerup_release_due(s, h, p, weapon, time) {
 			if fired && fire.volley != nil {
 				fire.volley(s, h, wd, at)
 			} else {
@@ -566,6 +569,7 @@ air_powerup_process :: proc(s: ^sim.State, h: sim.Weapons, time: i32, at: sim.Ve
 				lifecycle.eg_request_spawn(s, req)
 			}
 			p.release_time = time
+			p.released += 1
 			p.level -= 1
 			p.percent = percent(p.level, top)
 		}

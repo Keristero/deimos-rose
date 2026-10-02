@@ -157,6 +157,16 @@ passive has a recipe entry and, when the assets tree is present, a file.
   - The charge is the handler's own (`ground_charged`, the steps it has
     been held), apart from the original's ground power-up. Its release does not clear an air
     overload, as that power-up's would.
+- **A release's ramp** (`Release_Ramp`). The original's release fires
+  a spawn every `powerup_air_time_between_release_spawns + 1` steps
+  until its levels are spent. With the ramp, each spawn already fired
+  adds the stat's percentage to the release's pace, kept in hundredths
+  as the charge rate's is (`stats.powerup_release_due`). It stops at a
+  spawn every `sim.hit_gap` steps (2), the most hits one target takes:
+  ramped on to one a step, the Chaingun's release lost 20% of its DPS in
+  every scenario, as the extra shots were wasted and the release spent
+  sooner. A release counts its spawns afresh each time it lets go
+  (`weapon_system.powerup_let_go`).
 - **Offering.**
   - There are `min(choosers + 2, available)` options, drawn without repeats:
     three for one player, four for two (the design's first count, one more
