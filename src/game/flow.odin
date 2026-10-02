@@ -835,7 +835,6 @@ draw_banner :: proc(line, sub: cstring) {
 // for them in Extras. Accent Colours turns the colours off; Self Outline
 // is separate, and only ever rings the ship of the player at this machine.
 // The plugins drawn with (Renderer.mods) are set here with them.
-@(private = "file")
 flow_set_accents :: proc(fl: ^Flow, r: ^render.Renderer) {
 	r.accents = {}
 	r.mods = fl.state.session.mods

@@ -580,6 +580,8 @@ run_menu_shot :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, r
 			// as a new level's.
 			flow_effects_sync(&flow, &fx)
 		}
+		// The plugins drawn with, which the effect systems step by.
+		flow_set_accents(&flow, r)
 		for ph in sh.phases {
 			for _ in 0 ..< ph.steps {
 				_ = sim.session_step(state, ph.input)

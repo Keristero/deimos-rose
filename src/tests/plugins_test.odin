@@ -186,7 +186,7 @@ plugins_netplay_only_online :: proc(t: ^testing.T) {
 // label, whatever order the packages registered them in.
 @(test)
 mods_page_lists_a_tree_of_needs :: proc(t: ^testing.T) {
-	want := []string{"extra_prefs", "fps_unlock", "accent", "loadout", "new_weapons", "chaingun", "new_weapon_passives", "passives", "easy_mode", "lighting", "wind", "netplay"}
+	want := []string{"extra_prefs", "fps_unlock", "accent", "loadout", "new_weapons", "chaingun", "new_weapon_passives", "water", "passives", "easy_mode", "lighting", "wind", "netplay"}
 	got := game.mods_order()
 	testing.expect_value(t, len(got), len(want))
 	for id, i in got {

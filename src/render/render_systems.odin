@@ -213,7 +213,7 @@ notices_render :: proc(r: ^Renderer, s: ^sim.State, f: ^Frame) {
 // runs only with its plugin on, in the session or as the player's own. One that keeps its own effects
 // draws them over a layer of its choosing and forgets them when a level
 // starts, as the original's particles are (flow_effects_sync).
-MAX_EFFECT_SYSTEMS :: 8
+MAX_EFFECT_SYSTEMS :: 16
 
 Effect_System :: struct {
 	name:   string,

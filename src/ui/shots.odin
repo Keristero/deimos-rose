@@ -13,7 +13,7 @@ package ui
 
 import "dr:sim"
 
-MAX_SHOTS :: 16
+MAX_SHOTS :: 32
 
 Shot_Phase :: struct {
 	steps: int,

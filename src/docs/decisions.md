@@ -2086,7 +2086,10 @@ using raylib's own capabilities and without costing image quality.
 - **Plugins.** Realtime Lighting (`plugins/lighting`): a half-resolution
   additive light map, a quarter-resolution blurred glow and one composite
   shader. Wind (`plugins/wind`): the level's `Level_Wind` pushes particles.
-  Both are off by default, presentation only, and absent in classic mode.
+  Moving Water (`plugins/water`): an effect system at layer 6 draws one
+  shader quad masked by the media mask (waves, a reflected sky with
+  clouds, a sun glint), so a ship over the river is not tinted. All three
+  are off by default, presentation only, and absent in classic mode.
 - **Provisional:** no sprite has albedo, a normal or an emissive map yet, so
   light brightens by the scene's own colour and does not shade by direction;
   every radius and gain was picked by eye; the wind's direction convention
