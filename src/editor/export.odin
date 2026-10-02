@@ -168,14 +168,22 @@ Export :: struct {
 	written:     map[string]bool,
 }
 
-// Starts exporting a copy of `c` into `dir`.
+// Starts exporting a copy of `c` into `dir`. The copy is the export's own,
+// strings and all: it runs a step a frame (export_step), and Play's
+// campaign is made in the frame's temporary memory, gone by the first.
 export_begin :: proc(x: ^Export, c: ^Campaign, dir: string) {
 	x^ = {}
 	_ = virtual.arena_init_growing(&x.arena)
 	a := virtual.arena_allocator(&x.arena)
 	x.campaign = c^
-	x.campaign.levels = make([dynamic]string, a)
-	append(&x.campaign.levels, ..c.levels[:])
+	x.campaign.name = strings.clone(c.name, a)
+	x.campaign.label = strings.clone(c.label, a)
+	x.campaign.description = strings.clone(c.description, a)
+	x.campaign.plugin_version = strings.clone(c.plugin_version, a)
+	x.campaign.levels = make([dynamic]string, 0, len(c.levels), a)
+	for l in c.levels {
+		append(&x.campaign.levels, strings.clone(l, a))
+	}
 	x.dir = strings.clone(dir, a)
 	x.problems = make([dynamic]Problem, a)
 	x.deps = make(map[string]bool, a)

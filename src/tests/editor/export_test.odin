@@ -7,6 +7,7 @@ package editor_tests
 
 import "core:encoding/json"
 import "core:image/png"
+import "core:mem"
 import "core:os"
 import "core:slice"
 import "core:strings"
@@ -288,6 +289,24 @@ export_writes_a_plugin :: proc(t: ^testing.T) {
 	testing.expect(t, os.exists(dir + "/data/levels/le01.json"))
 	testing.expect(t, os.exists(dir + "/images/im16/fixture_export_le01_mask.png"))
 	testing.expect(t, !os.exists(dir + "/data/levels/le02.json"), "le02's record is left")
+
+	// An export runs a step a frame, past the frame it began in, whose
+	// temporary memory Play's campaign was made in: what it was begun from
+	// is gone, here overwritten, before its first step.
+	scratch: [4096]u8
+	arena: mem.Arena
+	mem.arena_init(&arena, scratch[:])
+	gone := mem.arena_allocator(&arena)
+	g := editor.campaign_make("fixture_export", gone)
+	g.label = strings.clone("Fixture Export", gone)
+	append(&g.levels, strings.clone(a, gone))
+	editor.export_begin(&x, &g, dir)
+	slice.fill(scratch[:], 0xaa)
+	for editor.export_step(&e, &x) {
+	}
+	testing.expectf(t, !editor.export_failed(&x), "the export held on to its campaign: %v", x.problems)
+	editor.export_destroy(&x)
+	testing.expect(t, slice.equal(data.manifest_levels(dir), []string{"Alpha"}), "plugin.json's levels")
 	for what in ([]string{"map", "preview", "mask"}) {
 		testing.expectf(t, !os.exists(strings.concatenate({dir, "/images/im16/fixture_export_le02_", what, ".png"}, context.temp_allocator)), "le02's %s is left", what)
 	}
