@@ -2,8 +2,9 @@ package passives_view
 
 // Easy mode's passive upgrades as the player sees them: names, icons and
 // how each stat reads on the reward screen (plugins/easy_mode/view), and the
-// two effects that show a passive at work in play, an effect system
-// (render/render_systems.odin). The passives themselves are plugins/passives;
+// effects that show a passive at work in play, as effect systems
+// (render/render_systems.odin): two here, and the corrosive clouds
+// (clouds.odin). The passives themselves are plugins/passives;
 // nothing here feeds back into the simulation.
 
 import "core:fmt"
@@ -81,6 +82,8 @@ STAT_DISPLAY := [sim.Stat]Stat_Display {
 	.Overcharge_Projectiles   = {"OVERCHARGE SHOTS", .Toggle, nil},
 	.Shot_Scale               = {"SHOT SIZE", .Percent, nil},
 	.Wears_Down               = {"WEARING SHOTS", .Toggle, nil},
+	.Hit_Cloud                = {"CORROSIVE CLOUDS", .Toggle, nil},
+	.Cloud_Lifetime           = {"CLOUD TIME", .Percent, .Hit_Cloud},
 }
 
 // A stat's value for a player holding `levels`, as the reward screen shows
@@ -122,6 +125,7 @@ stat_text :: proc(levels: ^passives.Passive_Levels, stat: sim.Stat, weapon: sim.
 
 register_passives_view :: proc() {
 	render.effect_system_register({name = "passive_particles", plugin = passives.ID, step = passive_particles_step})
+	register_clouds_view()
 }
 
 @(init)

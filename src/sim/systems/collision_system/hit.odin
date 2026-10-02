@@ -48,14 +48,7 @@ entity_hit :: proc(s: ^sim.State, e: sim.Entity, damage: f32, player: i32, time:
 		st = sim.state_of(s, e)
 	}
 	if e.shields <= 0 {
-		if player >= 0 && player < sim.MAX_PLAYERS {
-			player_score(s, sim.player_at(s, player), u.score, false)
-		}
-		if !e.has_depletion_state {
-			lifecycle.entity_destroy(s, e, player, time)
-		} else {
-			change_state_on_depletion(s, e, time)
-		}
+		entity_depleted(s, e, player, time)
 		return dealt
 	}
 	if !st.do_not_glow_on_collision {
@@ -82,6 +75,38 @@ entity_hit :: proc(s: ^sim.State, e: sim.Entity, damage: f32, player: i32, time:
 		e.collision_count += 1
 	}
 	return dealt
+}
+
+// What emptying `e`'s shields does, from G_Entity::Hit: `player` scores
+// for it, and it is destroyed, or changes to its depletion state.
+@(private = "file")
+entity_depleted :: proc(s: ^sim.State, e: sim.Entity, player: i32, time: i32) {
+	if player >= 0 && player < sim.MAX_PLAYERS {
+		player_score(s, sim.player_at(s, player), sim.unit_of(s, e).score, false)
+	}
+	if !e.has_depletion_state {
+		lifecycle.entity_destroy(s, e, player, time)
+	} else {
+		change_state_on_depletion(s, e, time)
+	}
+}
+
+// Damage that is not a hit, for new content that harms what lingers in
+// it: it neither waits for the target's hit delay nor starts it, so the
+// shots that hit it are not turned away, and it shows nothing of a hit's
+// (no glow, sound, particles, collision spawn or change of state). An
+// entity whose state does not deplete takes none. Emptying its shields
+// does what a hit's would. Returns the shield damage dealt.
+entity_damage :: proc(s: ^sim.State, e: sim.Entity, damage: f32, player: i32, time: i32) -> f32 {
+	if e.deleted || e.shields <= 0 || sim.state_of(s, e).invulnerable_shields_do_not_deplete_on_collision {
+		return 0
+	}
+	before := e.shields
+	e.shields = max(before - damage, 0)
+	if e.shields <= 0 {
+		entity_depleted(s, e, player, time)
+	}
+	return before - e.shields
 }
 
 // G_Entity::Priv_ChangeStateOnShieldDepletion: the first state flagged for it.
@@ -111,19 +136,25 @@ collide_entities :: proc(s: ^sim.State, e, o: sim.Entity, time: i32) {
 }
 
 // `by` hits `target` for `damage`: entity_hit, for the player `by` belongs
-// to. A wearing shot (Wears_Down) takes no hits. It gives no more than it
-// has left, wears down by what the hit dealt, shrinking, and once spent is
-// destroyed, as the hit back would have destroyed it.
+// to, then the plugins' Shot_Hit when `by` is shaped. A wearing shot
+// (Wears_Down) takes no hits. It gives no more than it has left, wears down
+// by what the hit dealt, shrinking, and once spent is destroyed, as the hit
+// back would have destroyed it.
 @(private = "file")
 shot_hit :: proc(s: ^sim.State, by, target: sim.Entity, damage: f32, time: i32) {
 	if target.wear > 0 {
 		return
 	}
 	if by.wear <= 0 {
-		entity_hit(s, target, damage, by.owner_player, time)
+		dealt := entity_hit(s, target, damage, by.owner_player, time)
+		if by.shaped_by != 0 {
+			sim.shot_hit_run(s, by, target, dealt, time)
+		}
 		return
 	}
-	by.wear -= entity_hit(s, target, min(damage, by.wear), by.owner_player, time)
+	dealt := entity_hit(s, target, min(damage, by.wear), by.owner_player, time)
+	sim.shot_hit_run(s, by, target, dealt, time)
+	by.wear -= dealt
 	if by.wear <= stats.WEAR_SPENT {
 		lifecycle.entity_destroy(s, by, target.owner_player, time)
 		return

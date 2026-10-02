@@ -195,6 +195,19 @@ passive has a recipe entry and, when the assets tree is present, a file.
   nearly spent can still be seen. A hit the target's hit delay turns
   away spends nothing. Once spent, it is destroyed as the hit back would
   have destroyed it (collision_system's `shot_hit`).
+- **Corrosive clouds** (`Hit_Cloud`, D74). A shot whose scope has it
+  leaves a cloud where it hits, whether the hit is dealt or turned away
+  by the target's hit delay (the core's `Shot_Hit` hook, run after a
+  shaped shot's hit). It lingers `CLOUD_SECONDS` (2 s), scaled by
+  `Cloud_Lifetime`. A hit within `CLOUD_RADIUS` of a cloud of the same
+  player's keeps that one lingering rather than forming another over it.
+  Each step every air target a player's shot could hit takes
+  `CLOUD_DAMAGE` while inside one, once however many it is in, scored to
+  the cloud's player. That damage is not a hit
+  (`collision_system.entity_damage`): it neither waits for the target's
+  hit delay nor starts it, so it does not turn the shots away, and shows
+  nothing of a hit. The clouds are the session's (`passives.Clouds`), so
+  a rollback restores them, and are gone when the level ends.
 - **Offering.**
   - There are `min(choosers + 2, available)` options, drawn without repeats:
     three for one player, four for two (the design's first count, one more
@@ -503,6 +516,10 @@ Each of these is marked in the code, with what would settle it:
   25% makes its +4 projectiles at level 3's max charge.
 - `WEAR_HITS` = 1, the hits' worth of damage a wearing shot has to give
   at its own size, and `WEAR_MIN_SIZE` = 40%, the least it shrinks to.
+- `CLOUD_RADIUS` = 20 px, picked by eye as a small enemy's size, and
+  `CLOUD_DAMAGE` = 0.01 shields a step, the "small amounts of damage",
+  tuned by the DPS report. The clouds' look (`plugins/passives/view`) is
+  picked by eye.
 - The icons' compositions (see Icons) are a first pass, not a
   designed set.
 

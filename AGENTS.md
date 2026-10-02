@@ -281,6 +281,7 @@ The extension points today:
 | a pause or a screen between levels | `hold_register` | `sim/hooks.odin` |
 | which weapons are flown, and in what order | `weapon_chooser_register`, `weapon_filter_register` | `sim/hooks.odin` |
 | a new way for a weapon to fire | `weapon_fire_register` | `sim/hooks.odin` |
+| something that follows a shot's hit | `shot_hit_register` | `sim/hooks.odin` |
 | a new key on weapon definitions | `weapon_key_register` | `sim/def_keys.odin` |
 | an event for a plugin's view to draw | `effect_kind_register`, `effect_push` | `sim/queue_effects.odin` |
 | something drawn in the frame | `render_system_register` | `render/render_systems.odin` |

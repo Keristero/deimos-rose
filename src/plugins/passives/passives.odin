@@ -558,6 +558,10 @@ ID: sim.Plugin_ID
 DEPS := []string{"extra_prefs"}
 @(private = "file", rodata)
 BEFORE_CALM := []string{"calm"}
+@(private = "file", rodata)
+CLOUDS_AFTER := []string{"entities"}
+@(private = "file", rodata)
+CLOUDS_BEFORE := []string{"sweep"}
 
 register :: proc() {
 	ID = sim.plugin_register({
@@ -574,6 +578,12 @@ register :: proc() {
 	sim.player_stage_register({name = "shield_regen", before = BEFORE_CALM, plugin = ID, run = shield_regen_stage})
 	sim.player_stage_register({name = "risky_reward", before = BEFORE_CALM, plugin = ID, run = risky_reward_stage})
 	sim.stat_provider_register({plugin = ID, total = provide, shapes = shapes})
+	// Corrosive clouds (clouds.odin): left by the shots' hits, they harm
+	// once the entities have moved and hit, ahead of the sweep of the
+	// destroyed.
+	sim.kind_component(.Session, Clouds{}, ID)
+	sim.shot_hit_register({plugin = ID, hit = cloud_hit})
+	sim.system_register({name = "clouds", after = CLOUDS_AFTER, before = CLOUDS_BEFORE, plugin = ID, run = cloud_system})
 }
 
 @(init)

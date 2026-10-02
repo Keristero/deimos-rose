@@ -70,6 +70,15 @@ Weapon_Fire :: struct {
 	volley:  proc(s: ^State, h: ^Weapon_Handler, w: ^Weapon, at: Vec),
 }
 
+// What a plugin does when a player's shot that its weapon shapes (Shaped)
+// hits: new content that follows from the hit, such as something left
+// where it landed. Called after the hit, from collision_system, with the
+// damage it dealt: 0 when the target's hit delay turned it away.
+Shot_Hit :: struct {
+	plugin: Plugin_ID,
+	hit:    proc(s: ^State, shot, target: Entity, dealt: f32, time: i32),
+}
+
 @(private = "file")
 stat_providers: Registry(Stat_Provider, MAX_HOOKS)
 @(private = "file")
@@ -80,6 +89,8 @@ choosers: Registry(Weapon_Chooser, MAX_HOOKS)
 filters: Registry(Weapon_Filter, MAX_HOOKS)
 @(private = "file")
 fires: Registry(Weapon_Fire, MAX_HOOKS)
+@(private = "file")
+shot_hits: Registry(Shot_Hit, MAX_HOOKS)
 
 stat_provider_register :: proc(p: Stat_Provider) {
 	registry_add(&stat_providers, p)
@@ -99,6 +110,19 @@ weapon_filter_register :: proc(f: Weapon_Filter) {
 
 weapon_fire_register :: proc(f: Weapon_Fire) {
 	registry_add(&fires, f)
+}
+
+shot_hit_register :: proc(h: Shot_Hit) {
+	registry_add(&shot_hits, h)
+}
+
+// A shaped shot's hit, for each plugin that is on.
+shot_hit_run :: proc(s: ^State, shot, target: Entity, dealt: f32, time: i32) {
+	for &h in registry_items(&shot_hits) {
+		if mod_on(s, h.plugin) {
+			h.hit(s, shot, target, dealt, time)
+		}
+	}
 }
 
 // How `w` fires, when a plugin fires it: the first registered that does.
@@ -211,6 +235,8 @@ Stat :: enum u8 {
 	Overcharge_Projectiles,   // a release fans out more lanes while its level is over the weapon's own max
 	Shot_Scale,               // how large a flown shot is, and so what it reaches
 	Wears_Down,               // a shot is not stopped by what it hits: it gives a store of damage, shrinking as it does
+	Hit_Cloud,                // a shot's hit leaves a cloud that harms what lingers in it
+	Cloud_Lifetime,           // how long such a cloud lingers
 }
 
 

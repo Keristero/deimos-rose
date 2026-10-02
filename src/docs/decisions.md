@@ -1936,3 +1936,31 @@ of damage to give", each level making them "larger and longer lasting".
 - Without the stats both fields are 0 and every collision is the
   original's two hits: the goldens did not change until the passive was
   offered.
+
+### D74 — A shot's hit can leave something behind; lingering harm is not a hit
+
+notes/extra-weapons-and-passives-3.md asks for a Bacta Gun charge upgrade
+whose hits "create corrosive clouds which linger for (2 seconds base)",
+which "deal small amounts of damage to enemies inside them".
+
+- **A hook after a shot's hit.** `Shot_Hit` (`shot_hit_register`, in
+  `sim/hooks.odin`) is run by collision_system after a shaped player
+  shot's hit, with the damage it dealt: 0 when the target's hit delay
+  turned it away. The core names no cloud: a plugin decides what follows
+  a hit, in the shot's own scope (D67).
+- **Lingering harm is not a hit.** `collision_system.entity_damage`
+  takes shields without the hit's delay, glow, sound, particles or
+  collision spawn, and emptying them does what a hit's would (score,
+  then destruction or the depletion state, now `entity_depleted`, shared
+  with `entity_hit`). Using `entity_hit` for a cloud would start the
+  target's 2-step hit delay each step and turn the shots away, so the
+  cloud would cost more than it gave.
+- **The clouds are plugin state.** Passive Upgrades keeps them in the
+  session (`passives.Clouds`, a ring of `MAX_CLOUDS`), so a rollback
+  restores them, and harms from its own system between the entities and
+  the sweep. Its view reads them from there, so a rollback's clouds draw
+  as they are. Two stats name what the passive grants: `Hit_Cloud` and
+  `Cloud_Lifetime`.
+- Nothing calls a `Shot_Hit` that no plugin registers, and
+  `entity_damage` has no caller in the core: oracle:diff and the goldens
+  did not change until the passive was offered.
