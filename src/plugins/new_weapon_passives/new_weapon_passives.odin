@@ -19,7 +19,8 @@ ID: sim.Plugin_ID
 // Discharge Beam (plugins/new_weapons).
 WEAPON_5: passives.Passive
 WEAPON_6: passives.Passive
-// The design's charge passive for Weapon 6 (Passive_Def.charge).
+// The design's charge passives for Weapon 5 and 6 (Passive_Def.charge).
+WEAPON_5_CHARGE: passives.Passive
 WEAPON_6_CHARGE: passives.Passive
 
 WEAPON_CHAINGUN :: sim.Res_ID{'a', 'i', 'c', 'g'}
@@ -45,6 +46,18 @@ DISCHARGE_BEAM_MODS := []passives.Mod {
 	// kills what it hits, so only the single and cluster targets gain.
 	{.Projectile_Damage, .Increase, {15, 30, 60}},
 	{.Shot_Width, .Increase, {10, 20, 30}},
+}
+
+// The release fires faster with each volley (Release_Ramp), from the
+// data's every 3 steps to every 2, and each level charges higher. In the
+// Charge-shots set the ramp gains 12%. A higher max charge gains nothing
+// there: the charge and its release both grow with it. So, past the
+// design, levels 2 and 3 also charge faster, for 26% and 47%.
+@(private = "file", rodata)
+CHAINGUN_CHARGE_MODS := []passives.Mod {
+	{.Release_Ramp, .Increase, {20, X, X}},
+	{.Maximum_Charge, .Increase, {10, 20, 40}},
+	{.Charge_Rate, .Increase, {X, 20, 60}},
 }
 
 // The charged beam chains from target to target in place of piercing
@@ -79,6 +92,7 @@ register :: proc() {
 	// carried them: the icons and the golden runs find them by name.
 	WEAPON_5 = passives.passive_register({name = "weapon_5", label = "CHAINGUN UPGRADE", plugin = ID, levels = 3, weapon = WEAPON_CHAINGUN, mods = CHAINGUN_MODS})
 	WEAPON_6 = passives.passive_register({name = "weapon_6", label = "DISCHARGE BEAM UPGRADE", plugin = ID, levels = 3, weapon = WEAPON_DISCHARGE_BEAM, mods = DISCHARGE_BEAM_MODS})
+	WEAPON_5_CHARGE = passives.passive_register({name = "weapon_5_charge", label = "CHAINGUN CHARGE", plugin = ID, levels = 3, weapon = WEAPON_CHAINGUN, charge = true, mods = CHAINGUN_CHARGE_MODS})
 	WEAPON_6_CHARGE = passives.passive_register({name = "weapon_6_charge", label = "DISCHARGE BEAM CHARGE", plugin = ID, levels = 3, weapon = WEAPON_DISCHARGE_BEAM, charge = true, mods = DISCHARGE_BEAM_CHARGE_MODS})
 }
 

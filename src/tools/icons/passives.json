@@ -33,6 +33,10 @@
  {"name": "weapon_6", "layers": [
   {"sprite": "wesd", "frame": 0, "fit": 26, "x": 15, "y": 15},
   {"sprite": "edut", "frame": 1, "fit": 11, "x": 26, "y": 26}]},
+ {"name": "weapon_5_charge", "layers": [
+  {"sprite": "phbe", "frame": 1, "fit": 44, "x": 15, "y": 15},
+  {"sprite": "wesy", "frame": 4, "fit": 18, "x": 15, "y": 15},
+  {"sprite": "edut", "frame": 1, "fit": 11, "x": 26, "y": 26}]},
  {"name": "weapon_6_charge", "layers": [
   {"sprite": "phbe", "frame": 1, "fit": 44, "x": 15, "y": 15},
   {"sprite": "wesd", "frame": 0, "fit": 18, "x": 15, "y": 15},

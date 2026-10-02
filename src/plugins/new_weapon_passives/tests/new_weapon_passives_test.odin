@@ -342,3 +342,60 @@ discharge_beam_charge_chain_spends_its_damage :: proc(t: ^testing.T) {
 	}
 }
 
+// The steps between the first volleys of a release, driven the way
+// air_powerup_process drives it.
+@(private = "file")
+release_gaps :: proc(s: ^sim.State, h: ^sim.Weapon_Handler, weapon: i32) -> (gaps: [8]i32) {
+	p := sim.Powerup{state = 3, release_time = -100}
+	n := 0
+	for time in i32(1) ..= 100 {
+		if n == len(gaps) {
+			break
+		}
+		if stats.powerup_release_due(s, h, &p, weapon, time) {
+			if p.released > 0 {
+				gaps[n] = time - p.release_time
+				n += 1
+			}
+			p.release_time = time
+			p.released += 1
+		}
+	}
+	return
+}
+
+// The Chaingun's charge passive: its release's volleys come every 3 steps,
+// as the weapon's data has them, then closer as it fires, down to one
+// every 2, the most hits one target takes. Each level charges higher.
+@(test)
+chaingun_charge_ramps_its_release :: proc(t: ^testing.T) {
+	f: Fixture
+	defer vmem.arena_destroy(&f.arena)
+	if !fixture(t, &f) {
+		return
+	}
+	s := f.s
+	cg := support.weapon_index(t, &f.defs, new_weapon_passives.WEAPON_CHAINGUN)
+	if cg < 0 {
+		return
+	}
+	h := sim.player_at(s, 0).weapons
+	h.air.weapon = cg
+	testing.expect_value(t, f.defs.weapons[cg].powerup_air_time_between_release_spawns, 2)
+	testing.expect_value(t, release_gaps(s, h, cg), [8]i32{3, 3, 3, 3, 3, 3, 3, 3})
+	top := stats.powerup_max_level(s, h, cg)
+
+	levels := passives.levels_of(s, 0)
+	levels[new_weapon_passives.WEAPON_5_CHARGE] = 1
+	testing.expect_value(t, release_gaps(s, h, cg), [8]i32{3, 2, 2, 2, 2, 2, 2, 2})
+	testing.expect(t, stats.powerup_max_level(s, h, cg) > top)
+	levels[new_weapon_passives.WEAPON_5_CHARGE] = 3
+	testing.expect_value(t, release_gaps(s, h, cg), [8]i32{3, 2, 2, 2, 2, 2, 2, 2})
+	// Its shots are left alone, and a passive for another weapon's charge
+	// does not ramp this one.
+	testing.expect_value(t, stats.weapon_stat(s, 0, cg, .Release_Ramp).percent, 0)
+	levels[new_weapon_passives.WEAPON_5_CHARGE] = 0
+	levels[new_weapon_passives.WEAPON_6_CHARGE] = 3
+	testing.expect_value(t, release_gaps(s, h, cg), [8]i32{3, 3, 3, 3, 3, 3, 3, 3})
+}
+

@@ -217,6 +217,9 @@ as below (2026-10-02):
 
 | Passive | Weapon | Change | DPS added | Gain |
 |---|---|---|---|---|
+| Weapon 5 Charge 1 | Chaingun | +17.5% / +17.5% / +18.0% / −2.9% | +0.37 | +12.4% |
+| Weapon 5 Charge 2 | Chaingun | +29.8% / +29.8% / +30.6% / +12.5% | +0.77 | +25.6% |
+| Weapon 5 Charge 3 | Chaingun | +50.9% / +50.9% / +52.4% / +33.2% | +1.41 | +46.8% |
 | Weapon 6 Charge 1 | Discharge Beam | 0 / 0 / 0 / +143.7% | +0.34 | +17.3% |
 | Weapon 6 Charge 2 | Discharge Beam | +13.1% / +13.1% / 0 / +176.4% | +0.65 | +32.8% |
 | Weapon 6 Charge 3 | Discharge Beam | +26.3% / +26.3% / 0 / +191.7% | +0.92 | +46.2% |
