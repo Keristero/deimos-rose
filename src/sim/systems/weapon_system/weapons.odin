@@ -566,6 +566,7 @@ air_powerup_process :: proc(s: ^sim.State, h: sim.Weapons, time: i32, at: sim.Ve
 				req.loc = at
 				req.owner_player = h.player
 				stats.shape_spawn(s, &req, h.player, weapon, charge = true)
+				req.overcharge = u8(min(stats.overcharge_lanes(s, h, weapon, p.level), stats.MAX_LANES))
 				lifecycle.eg_request_spawn(s, req)
 			}
 			p.release_time = time

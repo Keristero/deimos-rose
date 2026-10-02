@@ -168,6 +168,17 @@ passive has a recipe entry and, when the assets tree is present, a file.
   every scenario, as the extra shots were wasted and the release spent
   sooner. A release counts its spawns afresh each time it lets go
   (`weapon_system.powerup_let_go`).
+- **An overcharged release** (`Overcharge_Projectiles`, D72). A release
+  counts its levels down as it fires them. While the level a spawn fires
+  at stands over the weapon's own max power level, the spawn fans out 2
+  more lanes for every 25% of that max it is over (`OVERCHARGE_STEP`,
+  `stats.overcharge_lanes`). Only a higher max charge takes it over. The
+  pairs leave from the outermost lanes, each `OVERCHARGE_FAN` (10°)
+  wider than the last, so the release opens wide and narrows back to
+  the weapon's own lanes as it is spent. The release's spawner carries
+  the count (`Shaped.overcharge`), as it does not know the level it was
+  fired at. A weapon with a release of its own (`weapon_fire_register`)
+  does not fan out.
 - **Offering.**
   - There are `min(choosers + 2, available)` options, drawn without repeats:
     three for one player, four for two (the design's first count, one more

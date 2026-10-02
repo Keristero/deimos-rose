@@ -352,6 +352,7 @@ spawn_entity :: proc(
 	e.shaped_depth = req.shaped_depth
 	e.shaped_charge = req.shaped_charge
 	e.turned = req.turned
+	e.overcharge = req.overcharge
 
 	spawn_location(s, g, e)
 	spawn_velocity(s, g, e, use_heading, h, req.owner, req.speed_scale)

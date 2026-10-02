@@ -364,6 +364,10 @@ Shaped :: struct {
 	// faces north, like every shot of the weapon that fired it, so it is
 	// drawn turned to its heading. Presentation only; no step reads it.
 	turned:        bool,
+	// A release's spawner fired with the charge over the weapon's own max
+	// (stats.overcharge_lanes): the lanes it fans out beyond its own. Not
+	// passed on to what it spawns.
+	overcharge:    u8,
 }
 
 // One pool entity: its components, as G_Entity's fields. A view, passed by
@@ -463,6 +467,7 @@ Spawn_Request :: struct {
 	shaped_depth:  u8,
 	shaped_charge: bool,
 	turned:        bool, // a side-fired shot, drawn turned (Shaped.turned)
+	overcharge:    u8,   // Shaped.overcharge
 }
 
 spawn_request :: proc "contextless" (unit: Res_ID) -> Spawn_Request {

@@ -199,6 +199,29 @@ powerup_release_due :: proc "contextless" (s: ^sim.State, h: ^sim.Weapon_Handler
 	return true
 }
 
+// Overcharge_Projectiles: 2 lanes for every OVERCHARGE_STEP percent of the
+// weapon's own max power level that `level` stands over it, so a release
+// fans out the most as it starts and falls back to its own lanes as its
+// levels are spent. Maximum_Charge is what takes a charge over.
+// Provisional: 25% makes the design's "+4 projectiles at full upgrades"
+// a max charge 50% over.
+OVERCHARGE_STEP :: 25
+// Degrees each overcharge pair fans out beyond the last, from the
+// outermost lanes. Provisional: picked by eye, as a spread wider than the
+// weapon's own.
+OVERCHARGE_FAN :: 10
+
+overcharge_lanes :: proc "contextless" (s: ^sim.State, h: ^sim.Weapon_Handler, weapon: i32, level: i32) -> i32 {
+	if !charge_stat(s, h.player, weapon, .Overcharge_Projectiles).enabled {
+		return 0
+	}
+	base := sim.weapon_def(s, weapon).powerup_air_max_power_level
+	if base <= 0 || level <= base {
+		return 0
+	}
+	return 2 * ((level - base) * 100 / (base * OVERCHARGE_STEP))
+}
+
 // Firing.
 
 // delay_between_launches, scaled by Firing_Delay.

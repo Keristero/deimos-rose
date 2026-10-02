@@ -161,7 +161,8 @@ shaped_spawn_child :: proc(s: ^sim.State, e: sim.Entity, set: ^sim.Spawn_Set_Def
 	}
 	extra := stats.shaped_stat(s, e, .Extra_Projectiles).extra
 	side := stats.shaped_stat(s, e, .Side_Firing_Volley).enabled
-	if extra <= 0 && !side {
+	fan := i32(e.overcharge)
+	if extra <= 0 && !side && fan <= 0 {
 		return false
 	}
 	st := sim.state_of(s, e)
@@ -184,7 +185,7 @@ shaped_spawn_child :: proc(s: ^sim.State, e: sim.Entity, set: ^sim.Spawn_Set_Def
 		alt.heading_degrees = heading
 		spawn_child_set(s, e, &alt, turned)
 	}
-	if extra > 0 && n > 0 {
+	if (extra > 0 || fan > 0) && n > 0 {
 		stats.lanes_sort(base[:n])
 		lanes: [stats.MAX_LANES]stats.Lane
 		m := stats.lanes_extend(base[:n], extra, lanes[:])
@@ -194,6 +195,17 @@ shaped_spawn_child :: proc(s: ^sim.State, e: sim.Entity, set: ^sim.Spawn_Set_Def
 			}
 			a := stats.round_i32(l.angle)
 			emit(s, e, set, stats.round_i32(l.x), stats.round_i32(l.y), stats.wrap_angle(a), set.set_heading || a != 0)
+		}
+		// An overcharged release's pairs, fanned out from the outermost
+		// lanes, each OVERCHARGE_FAN degrees beyond the last.
+		for k in 1 ..= fan / 2 {
+			for l, i in ([2]stats.Lane{lanes[0], lanes[m - 1]}) {
+				if base[l.src].src != i32(me) {
+					continue
+				}
+				a := stats.round_i32(l.angle + f32(i * 2 - 1) * f32(k * stats.OVERCHARGE_FAN))
+				emit(s, e, set, stats.round_i32(l.x), stats.round_i32(l.y), stats.wrap_angle(a), true)
+			}
 		}
 	} else {
 		spawn_child_set(s, e, set)

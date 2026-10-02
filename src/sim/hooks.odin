@@ -208,6 +208,7 @@ Stat :: enum u8 {
 	Charge_Aim_Around,        // while it is charged the crosshair circles the ship
 	Chains,                   // a shot cast as a line jumps from each target it kills to the nearest it has not hit
 	Release_Ramp,             // a charge's release fires faster with each spawn it has fired
+	Overcharge_Projectiles,   // a release fans out more lanes while its level is over the weapon's own max
 }
 
 

@@ -1884,3 +1884,28 @@ whose "firing speed ramps up as it fires".
   too. The shots past one target's hits were wasted, and the release
   was spent sooner. So the ramp stops at a spawn every hit gap.
 
+
+### D72 — Overcharge lanes fan out from the release's level
+
+notes/extra-weapons-and-passives-3.md asks for a Photon Beam charge
+upgrade whose release "gains 2 extra projectiles for every x charge over
+the base amount", falling back to the base "as the charge level
+depletes".
+
+- **A core stat.** `Overcharge_Projectiles` is a toggle in the charge's
+  scope (D67). `stats.overcharge_lanes` turns the level a release fires
+  a spawn at into 2 lanes for every `OVERCHARGE_STEP` (25%) of the
+  weapon's own max power level it stands over. A release counts its
+  levels down, so the count falls with it, and only a higher max charge
+  takes a release over at all.
+- **Carried on the spawn.** The release's spawner is spawned at one
+  level and fires its lanes later, when the handler's level is no longer
+  its own, so the count is a field on it (`Shaped.overcharge`, set from
+  the spawn request) rather than a stat it reads. `shaped_spawn_child`
+  adds the pairs after `Extra_Projectiles`' lanes, from the outermost,
+  each `OVERCHARGE_FAN` degrees wider. They are not passed on to what
+  the lanes spawn.
+- **The default release only.** A weapon whose release a plugin fires
+  (`weapon_fire_register`) has its own volley, and does not fan out.
+  Without the stat the field is 0, and every release is the original's:
+  the goldens did not change until the passive was offered.
