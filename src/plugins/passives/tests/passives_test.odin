@@ -433,3 +433,85 @@ rear_gun_fires_one_volley_to_the_sides :: proc(t: ^testing.T) {
 	testing.expect(t, forward > sideways, "the extra volley must not fire to the sides as well")
 	testing.expect_value(t, len(steps), 1)
 }
+
+// Weapon 4 Charge: a Photon Beam release over the weapon's own max fans out
+// 2 more lanes for every 25% of it, wider than its own spread, and falls
+// back to its own 3 as its levels are spent. Level 3's max is 33 of 22:
+// 4 more at 33, 2 from 32 to 28, none from 27. Skipped without the
+// extracted data.
+@(test)
+photon_beam_charge_fans_out_while_overcharged :: proc(t: ^testing.T) {
+	arena: vmem.Arena
+	defs, loaded := assets_defs(t, &arena)
+	if !loaded {
+		return
+	}
+	defer vmem.arena_destroy(&arena)
+	pb := weapon_index(t, &defs, passives.WEAPON_PHOTON_BEAM)
+	if pb < 0 {
+		return
+	}
+	s := new(sim.State, context.temp_allocator)
+	defer sim.destroy(s)
+	if !play_start(t, s, sim.Session{seed = 1, level_id = defs.levels[0].id, game_type = .Single, mods = session_mods()}, &defs) {
+		return
+	}
+	p := sim.player_at(s, 0)
+	h := p.weapons
+	h.air.weapon = pb
+	p.invulnerable_always, p.invulnerable = true, true
+	passives.levels_of(s, 0)[passives.WEAPON_4_CHARGE] = 3
+	top := stats.powerup_max_level(s, h, pb)
+	if !testing.expect_value(t, top, 33) {
+		return
+	}
+	testing.expect_value(t, stats.overcharge_lanes(s, h, pb, 33), 4)
+	testing.expect_value(t, stats.overcharge_lanes(s, h, pb, 28), 2)
+	testing.expect_value(t, stats.overcharge_lanes(s, h, pb, 27), 0)
+	h.air_powerup = {state = 3, level = top, release_time = -100}
+
+	// The release's shots, by the step they appear on, and the widest
+	// heading among them.
+	seen: [dynamic]i32
+	seen.allocator = context.temp_allocator
+	counts: [dynamic]int
+	counts.allocator = context.temp_allocator
+	widest: i32
+	for _ in 0 ..< 160 {
+		sim.session_step(s, {})
+		n := 0
+		walk := sim.walk_entities(s)
+		for e in sim.walk_next(&walk) {
+			if e.deleted || !s.defs.units[e.unit].player_projectile || e.owner_player != 0 {
+				continue
+			}
+			known := false
+			for k in seen {
+				known ||= k == e.number
+			}
+			if known {
+				continue
+			}
+			append(&seen, e.number)
+			n += 1
+			if len(counts) == 0 {
+				widest = max(widest, abs(i32(stats.signed_angle(e.heading))))
+			}
+		}
+		if n > 0 {
+			append(&counts, n)
+		}
+	}
+	if !testing.expect_value(t, len(counts), 33) {
+		log.infof("%v", counts[:])
+		return
+	}
+	testing.expect_value(t, counts[0], 3 + 4)
+	for c in counts[1:6] {
+		testing.expect_value(t, c, 3 + 2)
+	}
+	for c in counts[6:] {
+		testing.expect_value(t, c, 3)
+	}
+	testing.expect_value(t, widest, 3 + 2 * stats.OVERCHARGE_FAN)
+}

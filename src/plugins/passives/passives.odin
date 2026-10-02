@@ -92,6 +92,7 @@ Own :: enum u8 {
 	Weapon_3,
 	Weapon_4,
 	Ground_Variant_2,
+	Weapon_4_Charge,
 }
 
 // A passive, by its id: this plugin's own first (Own), then other plugins'.
@@ -107,6 +108,7 @@ WEAPON_2 :: Passive(Own.Weapon_2)
 WEAPON_3 :: Passive(Own.Weapon_3)
 WEAPON_4 :: Passive(Own.Weapon_4)
 GROUND_VARIANT_2 :: Passive(Own.Ground_Variant_2)
+WEAPON_4_CHARGE :: Passive(Own.Weapon_4_Charge)
 
 MAX_PASSIVES :: 32
 
@@ -250,6 +252,27 @@ OWN := [Own]Passive_Def {
 			{.Ground_Charge, .Enables, {1, X, X}},
 			{.Charge_Aim_Around, .Enables, {1, X, X}},
 			{.Projectile_Damage, .Increase, {560, 1200, 2050}},
+		},
+	},
+	// The charge passives for the air weapons, from
+	// notes/extra-weapons-and-passives-3.md, tuned in the DPS report's
+	// Charge-shots set.
+	.Weapon_4_Charge = {
+		name   = "weapon_4_charge",
+		label  = "PHOTON BEAM CHARGE",
+		levels = 3,
+		weapon = WEAPON_PHOTON_BEAM,
+		charge = true,
+		mods = {
+			// Over the weapon's own max, a release fans out 2 more lanes
+			// for every 25% of it (stats.overcharge_lanes): 2 at level 1,
+			// 4 at level 3, back to its own 3 as its levels are spent.
+			// The wider lanes mostly miss a single target, so in the
+			// Charge-shots set they gain 0/5/6%; past the design, each
+			// level also charges faster, for 16%, 33% and 48%.
+			{.Overcharge_Projectiles, .Enables, {1, X, X}},
+			{.Maximum_Charge, .Increase, {25, 40, 50}},
+			{.Charge_Rate, .Increase, {20, 40, 80}},
 		},
 	},
 }

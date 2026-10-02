@@ -217,6 +217,9 @@ as below (2026-10-02):
 
 | Passive | Weapon | Change | DPS added | Gain |
 |---|---|---|---|---|
+| Weapon 4 Charge 1 | Photon Beam | +11.1% / +18.9% / 0 / +16.5% | +0.22 | +15.8% |
+| Weapon 4 Charge 2 | Photon Beam | +21.7% / +52.8% / 0 / +29.3% | +0.45 | +32.8% |
+| Weapon 4 Charge 3 | Photon Beam | +30.6% / +77.2% / 0 / +43.0% | +0.65 | +47.7% |
 | Weapon 5 Charge 1 | Chaingun | +17.5% / +17.5% / +18.0% / −2.9% | +0.37 | +12.4% |
 | Weapon 5 Charge 2 | Chaingun | +29.8% / +29.8% / +30.6% / +12.5% | +0.77 | +25.6% |
 | Weapon 5 Charge 3 | Chaingun | +50.9% / +50.9% / +52.4% / +33.2% | +1.41 | +46.8% |

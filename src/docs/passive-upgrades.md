@@ -95,7 +95,8 @@ The current set:
 | Weapon 1-4 | the weapon's score-bar symbol (`wesy` 0, 1, 3, 2), with the plus |
 | Weapon 5 | the Chaingun's score-bar symbol (`wesy` 4), with the plus |
 | Weapon 6 | the Discharge Beam's red symbol (`wesd` 0, New Weapons' own plate), with the plus |
-| Weapon 5 Charge | the Chaingun's symbol, smaller, in Improved Charge's glow, with the plus: a weapon's charge passive |
+| Weapon 4 Charge | the Photon Beam's symbol, smaller, in Improved Charge's glow, with the plus: a weapon's charge passive |
+| Weapon 5 Charge | the same for the Chaingun |
 | Weapon 6 Charge | the same for the Discharge Beam |
 
 To add an icon, add an entry named after the new passive and rerun the
@@ -307,6 +308,18 @@ and 2 are `plbo`'s, the Plasma Bomb, the only ground weapon.
     it.
 - **Weapon 4** (Photon Beam). `firing_delay` scales
   `delay_between_launches`.
+- **Weapon 4 Charge** (Photon Beam), a charge passive from
+  [notes/extra-weapons-and-passives-3.md](../../notes/extra-weapons-and-passives-3.md):
+  "gains 2 extra projectiles for every x charge over the base amount" is
+  2 lanes for every 25% of the base max (see The rules as implemented),
+  which makes the design's "+4 projectiles at full upgrades" a max
+  charge 50% over, level 3's. Level 1's 25% rounds the max from 22 to
+  28, one pair's worth; level 2's 40% makes it 31, still one; level 3's
+  33 is two. "Falls off back to the base amount as the charge level
+  depletes" is the count read from each spawn's level. The design asks
+  for a wide spread pattern, so the pairs fan 10° apart beyond the
+  beam's own 3° lanes. Levels 1 to 3 also charge faster, past the
+  design (see Tuning).
 - **Weapon 5** (Chaingun, `plugins/chaingun`) and **Weapon 6** (Discharge
   Beam, `plugins/new_weapons`) are the plugins' weapons, from
   [notes/extra-weapon-passives-and-base-adjustments.md](../../notes/extra-weapon-passives-and-base-adjustments.md).
@@ -366,6 +379,7 @@ the Ion Cannon's 4 steps take 20% to lose one.
 | Weapon 4 (Photon Beam) | firing delay -20% | firing delay -40% | firing delay -10%, +1 volley | +18.7 / +32.9 / +45.2% |
 | Weapon 5 (Chaingun) | firing delay -13%, spread +25% | firing delay -20%, spread +50% | firing delay -33%, spread +100% | +11.9 / +23.8 / +49.2% |
 | Weapon 6 (Discharge Beam) | damage +15%, width +10% | damage +30%, width +20% | damage +60%, width +30% | +10.7 / +21.4 / +42.9% |
+| Weapon 4 Charge (Photon Beam's charge) | overcharge shots, max charge +25%, charge rate +20% | max charge +40%, charge rate +40% | max charge +50%, charge rate +80% | +15.8 / +32.8 / +47.7% |
 | Weapon 5 Charge (Chaingun's charge) | release ramp +20% a volley, max charge +10% | max charge +20%, charge rate +20% | max charge +40%, charge rate +60% | +12.4 / +25.6 / +46.8% |
 | Weapon 6 Charge (Discharge Beam's charge) | chains | max charge +20%, charge rate +20% | max charge +40%, charge rate +40% | +17.3 / +32.8 / +46.2% |
 | Ground Variant 1 (Plasma Bomb's charge) | aimed behind, damage +340% | damage +780% | damage +1370% | +14.9 / +29.8 / +49.8% |
@@ -402,6 +416,15 @@ Levels carry what they do not change (the design's `x`).
   kills what it hits and the next column is 40 px away, out of reach of
   any width, so only the single and cluster targets gain: the Gain is
   0.71 times the damage's percentage. The widths are the design's.
+- **Weapon 4 Charge** is measured in the Charge-shots set. The
+  overcharge lanes alone, with the max charges, gain -0.4 / +5.0 /
+  +6.1%: the wider lanes miss a lone target, and the release's first
+  few spawns are all that fan out. A 5° fan measured less and a 20° one
+  about the same. As for Weapon 5 Charge, a higher max charge gains
+  nothing alone, so each level also charges faster, past the design.
+  Charge rates of 20/40/80% make +15.8 / +32.8 / +47.7%, the cluster
+  gaining the most (+77.2% at level 3); 30/60/120% took level 3 to
+  +68.6%.
 - **Weapon 5 Charge** is measured in the Charge-shots set. The ramp
   gains +12.4%: its release is spent in 2 steps a volley, not 3, so the
   next charge starts sooner. A higher max charge gains nothing in the
@@ -465,6 +488,9 @@ Each of these is marked in the code, with what would settle it:
     hit, a run for each jump, until a target stands or its damage is
     spent, while the pulses still pierce straight (skipped without
     `src/assets`);
+  - Weapon 4 Charge's release fanning out 4 more lanes from its first
+    spawn at level 3's max of 33, 2 from 32 to 28, and none from 27,
+    the outermost 23° off straight ahead (skipped without `src/assets`);
   - the ground charges replacing each other, and Ground Variant 1's
     charge from a hold to its bomb behind the ship (skipped without
     `src/assets`);
