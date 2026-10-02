@@ -2,7 +2,9 @@ package tests
 
 import "core:testing"
 
-import "dr:game"
+// Every plugin, as the game links them: their render systems are the ones
+// placed against each other here.
+import _ "dr:game"
 import "dr:plugins/accent"
 import "dr:render"
 import "dr:sim"

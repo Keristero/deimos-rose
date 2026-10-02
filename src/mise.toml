@@ -225,7 +225,7 @@ depends = ["build"]
 run = "DR_MENU_SHOT=main_netplay DR_SHOT=docs/images/main-menu $DR_BUILD/deimos$DR_EXT"
 
 [tasks.check]
-description = "Type-check and vet every package"
+description = "Type-check and vet every package, for this OS and for the other one CI builds on"
 depends = ["setup"]
 run = [
   "odin check game $DR_COLL -vet -strict-style",
@@ -259,6 +259,12 @@ run = [
   "odin check tests/terrain $DR_COLL -vet -strict-style -no-entry-point",
   "odin check editor $DR_COLL -vet -strict-style",
   "odin check tests/editor $DR_COLL -vet -strict-style -no-entry-point",
+  "odin check tests $DR_COLL -vet -strict-style -no-entry-point",
+  "odin check tests/data_plugins $DR_COLL -vet -strict-style -no-entry-point",
+  # Every package again as the other OS CI builds on would see it: a
+  # `when ODIN_OS` block or a Linux-only file can leave an import unused
+  # only there, which failed the Windows build (CI run 36967083184).
+  "other=windows_amd64; [ \"$OS\" = Windows_NT ] && other=linux_amd64; for p in game sim sim/*/ sim/systems/*/ data net prefs render ui oracle terrain editor plugins/*/ plugins/*/view/ tools/*/ tests tests/data_plugins tests/terrain tests/editor; do ls $p/*.odin >/dev/null 2>&1 || continue; e=-no-entry-point; grep -qs '^main ::' $p/*.odin && e=; odin check $p $DR_COLL -vet -strict-style $e -target:$other || exit 1; done",
 ]
 
 [tasks.test]

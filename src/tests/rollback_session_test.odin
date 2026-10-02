@@ -215,7 +215,7 @@ rollback_session_frame_advantage_tracks_the_confirmed_remote_frame :: proc(t: ^t
 
 	// Simulate 6 local frames (0..5, sim.frame_of(state) becomes 6) with nothing at
 	// all confirmed from the peer yet -- still predicting throughout.
-	for i in 0 ..< 6 {
+	for _ in 0 ..< 6 {
 		net.rollback_session_advance(&rs, {})
 	}
 	testing.expect_value(t, net.rollback_session_frame_advantage(&rs), 0)
@@ -232,7 +232,7 @@ rollback_session_frame_advantage_tracks_the_confirmed_remote_frame :: proc(t: ^t
 	testing.expect_value(t, net.rollback_session_frame_advantage(&rs), 3)
 
 	// Advancing further without any new confirmation widens the lead.
-	for i in 0 ..< 2 {
+	for _ in 0 ..< 2 {
 		net.rollback_session_advance(&rs, {})
 	}
 	testing.expect_value(t, net.rollback_session_frame_advantage(&rs), 5)
@@ -261,7 +261,7 @@ rollback_session_should_stall_throttles_only_once_over_threshold :: proc(t: ^tes
 	// (rollback_session_frame_advantage_tracks_the_confirmed_remote_frame
 	// above), well under THRESHOLD, so never stalls regardless of how many
 	// frames have been simulated locally.
-	for i in 0 ..< 10 {
+	for _ in 0 ..< 10 {
 		net.rollback_session_advance(&rs, {})
 		testing.expect(t, !net.rollback_session_should_stall(&rs, THRESHOLD, MIN_EVERY))
 	}

@@ -56,7 +56,7 @@ box :: proc(name: string, lo, hi: [3]f32) -> terrain.Model_Mesh {
 @(private = "file")
 model_library_fixture :: proc(t: ^testing.T) {
 	dir :: MODEL_LIBRARY + "/models"
-	os.make_directory_all(dir)
+	dir_make(dir)
 	bushes := terrain.Model_File {
 		name     = "bushes",
 		variants = {box("small", {-1, 0, -1}, {1, 1, 1}), box("big", {-2, 0, -2}, {2, 3, 2})},
@@ -85,7 +85,7 @@ model_library_fixture :: proc(t: ^testing.T) {
 user_dir :: proc(name: string) -> string {
 	dir := fmt.tprintf("%s/%s", OUT, name)
 	os.remove_all(dir)
-	os.make_directory_all(dir)
+	dir_make(dir)
 	return dir
 }
 
@@ -171,7 +171,7 @@ models_through_the_editor :: proc(t: ^testing.T) {
 	testing.expect_value(t, editor.profiles_load(s, MODEL_LIBRARY), 1)
 	path :: OUT + "/scattered/scattered.drproj.json"
 	os.remove_all(OUT + "/scattered")
-	os.make_directory_all(OUT + "/scattered")
+	dir_make(OUT + "/scattered")
 	if !testing.expect(t, editor.editor_new(&e, 300, path)) {
 		return
 	}

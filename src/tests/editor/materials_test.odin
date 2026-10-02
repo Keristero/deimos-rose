@@ -30,7 +30,7 @@ LIBRARY :: OUT + "/library"
 @(private = "file")
 library_fixture :: proc(t: ^testing.T) -> terrain.Picture {
 	dir :: LIBRARY + "/materials"
-	os.make_directory_all(dir)
+	dir_make(dir)
 	stripes := terrain.picture_make(32, 32, 3, 8, context.temp_allocator)
 	for y in 0 ..< 32 {
 		for x in 0 ..< 32 {
@@ -132,7 +132,7 @@ looks_and_properties_undo :: proc(t: ^testing.T) {
 // Every property the Level tab edits is saved and read back.
 @(test)
 properties_save_and_reopen :: proc(t: ^testing.T) {
-	os.make_directory_all(OUT)
+	dir_make(OUT)
 	p := terrain.project_make(8, 8, context.temp_allocator)
 	want: editor.Properties
 	for f in editor.Field {
@@ -188,7 +188,7 @@ materials_through_the_editor :: proc(t: ^testing.T) {
 	editor.editor_init(&e)
 	defer editor.editor_destroy(&e)
 	path :: OUT + "/painted/painted.drproj.json"
-	os.make_directory_all(OUT + "/painted")
+	dir_make(OUT + "/painted")
 	if !testing.expect(t, editor.editor_new(&e, 200, path)) {
 		return
 	}

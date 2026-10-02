@@ -213,9 +213,9 @@ campaign_plays_its_levels_in_order :: proc(t: ^testing.T) {
 	append(&seen, sim.level_def(s).identifier)
 	outcome := sim.Level_Transition.None
 	for _ in 0 ..< 20_000 {
-		for p in sim.players_of(s) {
-			p.invulnerable_always = true
-			p.invulnerable = true
+		for q in sim.players_of(s) {
+			q.invulnerable_always = true
+			q.invulnerable = true
 		}
 		sim.step(s, {})
 		outcome = level_system.level_transition(s)

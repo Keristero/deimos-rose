@@ -321,8 +321,8 @@ loadout_policy :: proc(b: ^loadout.Loadout_Board) -> sim.Buttons {
 	if b.holding {
 		if c, ok := find(b, .Slots, true); ok {
 			target_row, target_col = .Slots, c
-		} else if c, ok := find(b, .Spare, true); ok {
-			target_row, target_col = .Spare, c
+		} else if spare, found := find(b, .Spare, true); found {
+			target_row, target_col = .Spare, spare
 		}
 	} else if c, ok := find(b, .Fresh, false); ok {
 		target_row, target_col = .Fresh, c

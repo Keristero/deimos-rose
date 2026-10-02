@@ -40,7 +40,7 @@ lake :: proc(identifier: string, length: int, allocator := context.allocator) ->
 @(private = "file")
 saved :: proc(t: ^testing.T, p: ^terrain.Project, dir, file: string) -> string {
 	folder := strings.concatenate({EXPORT, "/", dir}, context.temp_allocator)
-	os.make_directory_all(folder)
+	dir_make(folder)
 	path := strings.concatenate({folder, "/", file, terrain.PROJECT_SUFFIX}, context.temp_allocator)
 	testing.expect(t, terrain.project_save(p, path))
 	return editor.absolute(path, context.temp_allocator)
@@ -109,7 +109,7 @@ export_refuses_what_cannot_play :: proc(t: ^testing.T) {
 
 	// A folder holding a plugin the editor did not make is left alone.
 	theirs :: EXPORT + "/refused/plugins/foreign"
-	os.make_directory_all(theirs)
+	dir_make(theirs)
 	manifest :: `{"label": "Someone else's"}`
 	testing.expect(t, os.write_entire_file(theirs + "/plugin.json", transmute([]u8)string(manifest)) == nil)
 	c := editor.campaign_make("foreign", context.temp_allocator)

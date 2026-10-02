@@ -203,7 +203,7 @@ snapshots_depend_only_on_contents :: proc(t: ^testing.T) {
 		pool_padded(a, i)^ = {a = u8(i), b = i32(i) * 3}
 		p := pool_padded(b, i)
 		p^ = {a = u8(i), b = i32(i) * 3}
-		(transmute(^[12]u8)p)[1] = 0xAA // scribble on padding
+		(cast(^[12]u8)p)[1] = 0xAA // scribble on padding
 	}
 	testing.expect_value(t, digest(a), digest(b))
 	sa, sb := snapshot(a), snapshot(b)

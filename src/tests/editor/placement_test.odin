@@ -4,7 +4,6 @@ package editor_tests
 // none of it needs the original data. Drawing one is in editor_draws.
 
 import "core:c"
-import "core:os"
 import "core:slice"
 import "core:strings"
 import "core:testing"
@@ -314,7 +313,7 @@ placements_save_and_reopen :: proc(t: ^testing.T) {
 	p := terrain.project_make(40, 30, context.temp_allocator)
 	append(&p.placements, data.Json_Placement{unit = "plla", layer = "grnd", x = 12, y = 20, heading_degrees = 330}, data.Json_Placement{unit = "bu01", layer = "air ", x = 3, y = 7, is_stationary = true, terrain_effects = true})
 	path :: OUT + "/placements.drproj.json"
-	os.make_directory_all(OUT)
+	dir_make(OUT)
 	testing.expect(t, terrain.project_save(&p, path))
 	q, ok := terrain.project_load(path, context.temp_allocator)
 	if !testing.expect(t, ok) {
