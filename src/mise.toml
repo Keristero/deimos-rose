@@ -381,7 +381,7 @@ depends = ["build"]
 run = "bash tools/oracle/menu_compare.sh"
 
 [tasks."menu-shot"]
-description = "Render one of our own menu screens headlessly, no comparison (MENU=main [OUT=path]; MENU=restarted checks a new game starts with none of the last one's particles; DR_SHOT_HUE=63 sets the accent on preferences_extras; MENU=preferences_mods shows the Mods page, and preferences_mods_end its last rows (DR_PLUGINS=$PWD/tests/fixtures/plugins:$PWD/plugins adds the data plugin fixtures; MENU=level_select_campaigns shows Level Select on the fixture campaign, and netplay_lobby_campaigns the host's lobby); MENU=reward, reward_2p and level_select_easy show easy mode; MENU=loadout, loadout_2p, loadout_placed, chaingun, chaingun_charge, chaingun_release, discharge_windup, discharge and discharge_charge show New Weapons; MENU=rear_gun_side shows the Rear Gun's side volleys) -- for a quick look, or debug MENU cases from run_menu_shot"
+description = "Render one of our own menu screens headlessly, no comparison (MENU=main [OUT=path]; MENU=restarted checks a new game starts with none of the last one's particles; DR_SHOT_HUE=63 sets the accent on preferences_extras; MENU=preferences_extras_sliders shows the Extras page with Realtime Lighting on, MENU=preferences_mods shows the Mods page, and preferences_mods_end its last rows (DR_PLUGINS=$PWD/tests/fixtures/plugins:$PWD/plugins adds the data plugin fixtures; MENU=level_select_campaigns shows Level Select on the fixture campaign, and netplay_lobby_campaigns the host's lobby); MENU=reward, reward_2p and level_select_easy show easy mode; MENU=loadout, loadout_2p, loadout_placed, chaingun, chaingun_charge, chaingun_release, discharge_windup, discharge and discharge_charge show New Weapons; MENU=rear_gun_side shows the Rear Gun's side volleys) -- for a quick look, or debug MENU cases from run_menu_shot"
 depends = ["build"]
 # Wrapped in xvfb-run/DISPLAY= exactly like the shots and menu-shots:compare
 # tasks -- running $DR_BUILD/deimos directly (without this) opens a real
@@ -588,7 +588,7 @@ MASK=$("$PY" -c "import json,sys; print(json.load(open(sys.argv[1]))['media_mask
 """
 
 [tasks."terrain:aerial"]
-description = "Make a level project from LINZ aerial imagery (LAT=-42.43 LON=171.19 ID=greymouth [NAME=...], into work/aerial/ID/): a strip south from the GPS point, its water from OpenStreetMap (water_mask.py --osm, which a mask texture would otherwise give; ODbL), then terrain:recover's pipeline on it. DEVICE=cpu by default; -- args go to recover.py"
+description = "Make a level project from LINZ aerial imagery (LAT=-42.43 LON=171.19 ID=greymouth [NAME=...], into work/aerial/ID/): a strip south from the GPS point, its water from OpenStreetMap (water_mask.py --osm, which a mask texture would otherwise give; ODbL), then terrain:recover's pipeline on it, then populate.py's units on its open ground. DEVICE=cpu by default (Marigold itself only runs on the GPU); -- args go to recover.py"
 depends = ["terrain:build"]
 run = """
 set -e
@@ -601,6 +601,7 @@ OUT="${OUT:-$DR_SRC/../work/aerial/$ID}"
 "$PY" tools/terrain_recover/water_mask.py "$OUT/images/${ID}_map.png" "$OUT/images/${ID}_mask.png" --osm "$LAT" "$LON" --preview "$OUT/water-preview.png"
 "$PY" tools/terrain_recover/recover.py "${ID}_map" --mask "${ID}_mask" --level "$OUT/$ID.json" --renderer "$DR_BUILD/terrain$DR_EXT" \
   --images "$OUT/images" --out "$OUT/project" --device "${DEVICE:-cpu}" "$@"
+"$PY" tools/terrain_recover/populate.py "$OUT/project/$ID.drproj.json" "$OUT/images/${ID}_map.png" "$OUT/images/${ID}_mask.png" --level "$OUT/$ID.json"
 """
 
 [tasks."terrain:relight"]

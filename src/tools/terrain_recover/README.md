@@ -57,8 +57,13 @@ aerial imagery lacks, from OpenStreetMap's water (`natural=water` and
 `OUT/water-preview.png` shows it over the map. Without `--osm` it finds the
 water by colour instead, which shadows can fool. Then `recover.py` runs as
 for the originals, moving the shores to the art's own, with Marigold on the
-CPU (`DEVICE=cuda` to change). The project is in `work/aerial/<id>/project/`.
-Place units in the editor. The sun's angle is not known: pass
+CPU (Marigold itself only runs on the GPU, whatever `DEVICE` is). The project is in `work/aerial/<id>/project/`.
+`populate.py` then fills the project with units after the classic
+levels: strongholds of turrets (emplaced tanks, panzers, swivel guns, popups)
+with a bonus station and a secret on the open grass, harder toward the
+north end, air waves ahead of them, a scroll-pausing script at the middle
+and the end script. Ground units keep 48 px from the screen's edges. Edit
+them in the editor. The sun's angle is not known: pass
 `-- --azimuth A --elevation E`.
 
 ## Setup
