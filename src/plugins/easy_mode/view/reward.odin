@@ -145,7 +145,7 @@ reward_draw :: proc(r: ^render.Renderer, s: ^sim.State, names: ^ui.Player_Names)
 				continue
 			}
 			ui.menu_draw_text(r, passives_view.STAT_DISPLAY[m.stat].label, left + 8, y, dim)
-			change := fmt.tprintf("%s -> %s", passives_view.stat_text(levels, m.stat, def.weapon), passives_view.stat_text(&after, m.stat, def.weapon))
+			change := fmt.tprintf("%s -> %s", passives_view.stat_text(levels, m.stat, def.weapon, def.charge), passives_view.stat_text(&after, m.stat, def.weapon, def.charge))
 			ui.menu_draw_text(r, change, right, y, white, .Right)
 			y += LINE
 		}

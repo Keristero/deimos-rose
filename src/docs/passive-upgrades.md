@@ -102,7 +102,7 @@ for icons that are not passives. The reward screen draws each icon at the
 largest whole multiple of its size, in window pixels, that fits its cell:
 3x at the usual cell size.
 
-`tests/passives_test.odin`'s `every_passive_has_an_icon` checks that every
+`plugins/passives/tests`' `every_passive_has_an_icon` checks that every
 passive has a recipe entry and, when the assets tree is present, a file.
 
 ## The rules as implemented
@@ -119,9 +119,19 @@ passive has a recipe entry and, when the assets tree is present, a file.
   - A percentage of 0 returns the base untouched, which is what keeps
     classic play and the demos exact.
   - Extras sum. Enables is on if any passive held turns it on.
-- **Weapon passives** count only for their own weapon's shots (`stat_total`'s
-  `weapon`). A passive's shots carry `passive_tag` from spawn onwards, so the
-  passive can shape them after they spawn.
+- **Weapon passives** count only for their own weapon (`stat_total`'s
+  `weapon`), and only in their own scope (`passive_applies`):
+  - A weapon passive changes the weapon's shots, and not its charge.
+  - A charge passive (`Passive_Def.charge`) changes how the weapon's
+    charge climbs and what its release fires, and not its shots.
+  - A ship passive counts in both, so Improved Charge raises every
+    weapon's charge.
+  - The scope is the stat providers' (`sim.Stat_Provider`'s `charge`). The
+    core asks for the charge's stats where it charges (`stats.charge_stat`)
+    and tags the shots a release fires with it (`stats.shape_spawn`).
+  - A shot carries its weapon (`shaped_by`) and scope (`shaped_charge`)
+    from spawn onwards, so a passive can shape it after it spawns. A
+    weapon nothing shapes leaves its shots untagged, as the original's.
 - **Offering.**
   - There are `min(choosers + 2, available)` options, drawn without repeats:
     three for one player, four for two (the design's first count, one more
@@ -322,9 +332,11 @@ Each of these is marked in the code, with what would settle it:
 
 ## Verification
 
-- `mise run ci` is green, with 122 tests. The 14 in `tests/passives_test.odin`
+- `mise run ci` is green. The passives' own tests (`plugins/passives/tests`)
+  and the reward screen's and the stats' (`tests/passives_test.odin`)
   cover:
   - the level format and stacking, rounding, and lane extension;
+  - each passive counting in its own scope, shots or charge;
   - the reward screen's option count, navigation, lock, refuse, unlock,
     resume and apply;
   - no screen outside easy mode or after the last level;

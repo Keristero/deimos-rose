@@ -57,6 +57,11 @@ Passive_Def :: struct {
 	// weapon's own shots alone, and it is only offered while the weapon can
 	// be flown (see passive_available).
 	weapon: Res_ID,
+	// A weapon passive for the weapon's charge: its modifiers apply to how
+	// the charge climbs and what its release fires, and not to the shots,
+	// as a passive without it is the other way round (the stat providers'
+	// scopes, sim.Stat_Provider). A ship passive's apply to both.
+	charge: bool,
 	mods:   []Mod,
 }
 
@@ -276,13 +281,14 @@ mod_value :: proc "contextless" (m: Mod, level: u8) -> (v: i16, ok: bool) {
 }
 
 // Every held passive's contribution to `stat`, summed. `weapon` is the
-// weapon the stat is for (NONE for the ship): a weapon passive only counts
-// for its own weapon.
-stat_total :: proc "contextless" (levels: ^Passive_Levels, stat: Stat, weapon: Res_ID) -> (t: Stat_Total) {
+// weapon the stat is for (NONE for the ship), and `charge` whether it is
+// for the weapon's charge or its shots: a weapon passive only counts for
+// its own weapon, in its own scope (Passive_Def.charge).
+stat_total :: proc "contextless" (levels: ^Passive_Levels, stat: Stat, weapon: Res_ID, charge := false) -> (t: Stat_Total) {
 	for i in 0 ..< passive_count() {
 		def := passive_def(Passive(i))
 		lv := levels[i]
-		if lv == 0 || (def.weapon != NONE && def.weapon != weapon) {
+		if lv == 0 || !passive_applies(def, weapon, charge) {
 			continue
 		}
 		for m in def.mods {
@@ -308,6 +314,11 @@ stat_total :: proc "contextless" (levels: ^Passive_Levels, stat: Stat, weapon: R
 	return
 }
 
+
+// Whether a passive's modifiers count for a stat of `weapon` in that scope.
+passive_applies :: #force_inline proc "contextless" (def: ^Passive_Def, weapon: Res_ID, charge: bool) -> bool {
+	return def.weapon == NONE || (def.weapon == weapon && def.charge == charge)
+}
 
 passive_maxed :: #force_inline proc "contextless" (levels: ^Passive_Levels, pa: Passive) -> bool {
 	return levels[pa] >= passive_def(pa).levels
@@ -353,16 +364,18 @@ levels_of :: #force_inline proc "contextless" (s: ^sim.State, player: $I) -> ^Pa
 
 // Everything the passives a player holds add to a stat.
 @(private = "file")
-provide :: proc "contextless" (s: ^sim.State, player: i32, stat: Stat, weapon: Res_ID) -> Stat_Total {
-	return stat_total(levels_of(s, player), stat, weapon)
+provide :: proc "contextless" (s: ^sim.State, player: i32, stat: Stat, weapon: Res_ID, charge: bool) -> Stat_Total {
+	return stat_total(levels_of(s, player), stat, weapon, charge)
 }
 
-// A player's shots of a weapon are shaped while they hold its passive.
+// A player's shots of a weapon are shaped while they hold its passive, and
+// its charge's while they hold its charge passive.
 @(private = "file")
-shapes :: proc "contextless" (s: ^sim.State, player: i32, weapon: Res_ID) -> bool {
+shapes :: proc "contextless" (s: ^sim.State, player: i32, weapon: Res_ID, charge: bool) -> bool {
 	levels := levels_of(s, player)
 	for i in 0 ..< passive_count() {
-		if passive_def(Passive(i)).weapon == weapon && levels[i] > 0 {
+		def := passive_def(Passive(i))
+		if def.weapon == weapon && def.charge == charge && levels[i] > 0 {
 			return true
 		}
 	}

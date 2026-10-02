@@ -127,6 +127,7 @@ spawn_child_set :: proc(s: ^sim.State, e: sim.Entity, set: ^sim.Spawn_Set_Def, t
 	if e.shaped_by != 0 {
 		req.shaped_by = e.shaped_by
 		req.shaped_depth = e.shaped_depth + 1
+		req.shaped_charge = e.shaped_charge
 	}
 	// Only a shot drawn one way needs turning; one with a frame per
 	// direction already shows its heading.
@@ -155,13 +156,11 @@ paced_spawn_control :: proc(s: ^sim.State, e: sim.Entity) {
 // projectile sets -- extending the lanes and firing to the sides -- and
 // returns false for the rest, which spawn as they are.
 shaped_spawn_child :: proc(s: ^sim.State, e: sim.Entity, set: ^sim.Spawn_Set_Def) -> bool {
-	w, ok := stats.shaped_weapon(s, e.shaped_by)
-	if !ok || e.owner_player < 0 || e.owner_player >= sim.MAX_PLAYERS || !stats.unit_is_projectile(s, set.spawn) {
+	if !stats.unit_is_projectile(s, set.spawn) {
 		return false
 	}
-	p := e.owner_player
-	extra := sim.stat_of(s, p, .Extra_Projectiles, w).extra
-	side := sim.stat_of(s, p, .Side_Firing_Volley, w).enabled
+	extra := stats.shaped_stat(s, e, .Extra_Projectiles).extra
+	side := stats.shaped_stat(s, e, .Side_Firing_Volley).enabled
 	if extra <= 0 && !side {
 		return false
 	}

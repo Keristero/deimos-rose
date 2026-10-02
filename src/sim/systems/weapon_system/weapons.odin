@@ -388,7 +388,6 @@ check_spawning_ground :: proc "contextless" (s: ^sim.State, h: sim.Weapons, time
 spawn_ground :: proc(s: ^sim.State, h: sim.Weapons, at: sim.Vec) {
 	wd := sim.weapon_def(s, h.ground.weapon)
 	backwards := stats.ground_fires_backwards(s, h)
-	tag := stats.shot_shaper(s, h.player, h.ground.weapon)
 	spawns: [stats.MAX_LANES + stats.MAX_EXTRA_SPAWNS]stats.Weapon_Spawn
 	for sp in spawns[:stats.weapon_spawns(s, h.ground.weapon, h.player, backwards, spawns[:])] {
 		req := sim.spawn_request(sp.unit)
@@ -396,7 +395,7 @@ spawn_ground :: proc(s: ^sim.State, h: sim.Weapons, at: sim.Vec) {
 		req.loc = {f32(sp.x) + at.x, f32(sp.y) + at.y}
 		req.explicit_heading = sp.set_heading
 		req.heading = sp.angle
-		req.shaped_by = tag
+		stats.shape_spawn(s, &req, h.player, h.ground.weapon)
 		reach := max(sim.trunc_i32(backwards ? h.crosshair.loc.y - h.loc.y : h.loc.y - h.crosshair.loc.y), 0)
 		req.speed_scale = f32(reach) / f32(abs(wd.crosshair_y_offset))
 		lifecycle.eg_request_spawn(s, req)
@@ -412,7 +411,6 @@ spawn_air :: proc(s: ^sim.State, h: sim.Weapons, at: sim.Vec) {
 	if h.air.pending <= 0 {
 		return
 	}
-	tag := stats.shot_shaper(s, h.player, h.air.weapon)
 	spawns: [stats.MAX_LANES + stats.MAX_EXTRA_SPAWNS]stats.Weapon_Spawn
 	for sp in spawns[:stats.weapon_spawns(s, h.air.weapon, h.player, false, spawns[:])] {
 		req := sim.spawn_request(sp.unit)
@@ -420,7 +418,7 @@ spawn_air :: proc(s: ^sim.State, h: sim.Weapons, at: sim.Vec) {
 		req.loc = {f32(sp.x) + at.x, f32(sp.y) + at.y}
 		req.explicit_heading = sp.set_heading
 		req.heading = sp.angle
-		req.shaped_by = tag
+		stats.shape_spawn(s, &req, h.player, h.air.weapon)
 		lifecycle.eg_request_spawn(s, req)
 	}
 	wd := sim.weapon_def(s, h.air.weapon)
@@ -519,7 +517,11 @@ air_powerup_process :: proc(s: ^sim.State, h: sim.Weapons, time: i32, at: sim.Ve
 			if fired && fire.volley != nil {
 				fire.volley(s, h, wd, at)
 			} else {
-				lifecycle.spawn_at(s, wd.powerup_air_release_spawn, at, h.player)
+				req := sim.spawn_request(wd.powerup_air_release_spawn)
+				req.loc = at
+				req.owner_player = h.player
+				stats.shape_spawn(s, &req, h.player, weapon, charge = true)
+				lifecycle.eg_request_spawn(s, req)
 			}
 			p.release_time = time
 			p.level -= 1

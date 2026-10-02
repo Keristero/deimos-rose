@@ -77,12 +77,12 @@ STAT_DISPLAY := [sim.Stat]Stat_Display {
 
 // A stat's value for a player holding `levels`, as the reward screen shows
 // it. Every passive's contribution is in it, not only the one on offer.
-stat_text :: proc(levels: ^passives.Passive_Levels, stat: sim.Stat, weapon: sim.Res_ID) -> string {
+stat_text :: proc(levels: ^passives.Passive_Levels, stat: sim.Stat, weapon: sim.Res_ID, charge := false) -> string {
 	d := STAT_DISPLAY[stat]
-	if needs, ok := d.needs.?; ok && !passives.stat_total(levels, needs, weapon).enabled {
+	if needs, ok := d.needs.?; ok && !passives.stat_total(levels, needs, weapon, charge).enabled {
 		return "--"
 	}
-	t := passives.stat_total(levels, stat, weapon)
+	t := passives.stat_total(levels, stat, weapon, charge)
 	switch d.format {
 	case .Percent:
 		return fmt.tprintf("%d%%", max(100 + t.percent, 0))

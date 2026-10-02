@@ -1766,3 +1766,30 @@ Passive Upgrades on. Off by default, nobody would find it.
   `game/plugins.odin`**, or nothing registers it. A test now says so:
   the new plugin was missing at first, and only a golden run's reward
   pool showed it.
+
+### D67 — A weapon's charge is a stat scope of its own
+
+notes/extra-weapons-and-passives-3.md asks for passives that change each
+weapon's charge attack, beside the passives that already change its shots.
+The two must not leak into each other. The Ion Cannon's passive makes its
+shots start slow, and its charge's bullets must not; a charge passive's
+extra damage must not reach the shots.
+
+- **Two scopes.** A stat provider is asked for a weapon's stat either
+  for its shots or for its charge (`sim.Stat_Provider`'s `charge`). The
+  charge covers how it climbs (Maximum_Charge, Charge_Rate, the overheat)
+  and the shots its release fires.
+- **Tagged at the release.** The shots a release fires are tagged with
+  the scope (`stats.shape_spawn`, `Shaped.shaped_charge`), and what they
+  spawn inherits it, as it inherits the weapon. So the same stat
+  (Projectile_Damage, say) means the shots' in one scope and the
+  charge's in the other.
+- **Passives.** A charge passive (`Passive_Def.charge`) counts in the
+  charge scope only, any other weapon passive in the shots' only, and a
+  ship passive in both (`passives.passive_applies`). No shipped passive
+  changed scope: the weapon passives touch no charge stat, and Improved
+  Charge is a ship passive.
+- **The Discharge Beam's release** is a plugin's own (`Weapon_Fire.release`)
+  and keeps reading its damage and width in the shots' scope. Its passive
+  was tuned with the release sharing them, as plugins/new_weapon_passives
+  records.

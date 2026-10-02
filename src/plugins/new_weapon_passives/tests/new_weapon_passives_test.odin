@@ -164,11 +164,11 @@ chaingun_passive_widens_the_spread :: proc(t: ^testing.T) {
 	passives.levels_of(s, 0)[new_weapon_passives.WEAPON_5] = 3
 	by := stats.shot_shaper(s, 0, cg)
 	testing.expect(t, by != 0)
-	testing.expect_value(t, stats.heading_tolerance(s, 0, by, 8), 16)
-	testing.expect_value(t, stats.heading_tolerance(s, 0, by, 0), 0)
-	testing.expect_value(t, stats.heading_tolerance(s, 0, by, 270), 360)
-	testing.expect_value(t, stats.heading_tolerance(s, 0, stats.shot_shaper(s, 0, ion), 8), 8)
-	testing.expect_value(t, stats.heading_tolerance(s, 0, 0, 8), 8)
+	testing.expect_value(t, stats.heading_tolerance(s, 0, by, false, 8), 16)
+	testing.expect_value(t, stats.heading_tolerance(s, 0, by, false, 0), 0)
+	testing.expect_value(t, stats.heading_tolerance(s, 0, by, false, 270), 360)
+	testing.expect_value(t, stats.heading_tolerance(s, 0, stats.shot_shaper(s, 0, ion), false, 8), 8)
+	testing.expect_value(t, stats.heading_tolerance(s, 0, 0, false, 8), 8)
 }
 
 // The Discharge Beam's passive: its damage scales a pulse and a release;

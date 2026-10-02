@@ -11,6 +11,7 @@ import "core:math"
 import "dr:plugins/new_weapons"
 import "dr:sim"
 import "dr:sim/lifecycle"
+import "dr:sim/stats"
 
 // How far either side of the line of fire the two shots of a volley fly.
 // Provisional: picked by eye against the rice sprite's width.
@@ -36,6 +37,7 @@ aimed_release_spawn :: proc(s: ^sim.State, h: ^sim.Weapon_Handler, wd: ^sim.Weap
 		req.loc = at + across * side
 		req.explicit_heading = true
 		req.heading = heading
+		stats.shape_spawn(s, &req, h.player, h.air.weapon, charge = true)
 		lifecycle.eg_request_spawn(s, req)
 	}
 }

@@ -12,11 +12,14 @@ MAX_HOOKS :: 16
 Stat_Provider :: struct {
 	plugin: Plugin_ID,
 	// What it adds to `stat` for `player`. `weapon` is the weapon the stat
-	// is for, NONE for the ship.
-	total:  proc "contextless" (s: ^State, player: i32, stat: Stat, weapon: Res_ID) -> Stat_Total,
-	// Whether it changes anything about `player`'s shots of `weapon`: they
-	// then carry the weapon (Shaped), to be shaped after they spawn.
-	shapes: proc "contextless" (s: ^State, player: i32, weapon: Res_ID) -> bool,
+	// is for, NONE for the ship. With `charge` the stat is for the weapon's
+	// charge -- how it climbs, and the shots its release fires -- rather
+	// than its shots: a provider may change either alone.
+	total:  proc "contextless" (s: ^State, player: i32, stat: Stat, weapon: Res_ID, charge: bool) -> Stat_Total,
+	// Whether it changes anything about `player`'s shots of `weapon` (of
+	// its charge's release, with `charge`): they then carry the weapon
+	// (Shaped), to be shaped after they spawn.
+	shapes: proc "contextless" (s: ^State, player: i32, weapon: Res_ID, charge: bool) -> bool,
 }
 
 // Something that holds play still: a pause, a screen between levels.
@@ -110,12 +113,12 @@ weapon_fire :: proc "contextless" (w: ^Weapon) -> (^Weapon_Fire, bool) {
 
 // Every provider's contribution to `stat`, summed: percentages and extras
 // add, and a switch is on if any turns it on.
-stat_of :: proc "contextless" (s: ^State, player: i32, stat: Stat, weapon: Res_ID) -> (t: Stat_Total) {
+stat_of :: proc "contextless" (s: ^State, player: i32, stat: Stat, weapon: Res_ID, charge := false) -> (t: Stat_Total) {
 	for &p in registry_items(&stat_providers) {
 		if !mod_on(s, p.plugin) {
 			continue
 		}
-		v := p.total(s, player, stat, weapon)
+		v := p.total(s, player, stat, weapon, charge)
 		t.percent += v.percent
 		t.extra += v.extra
 		t.enabled ||= v.enabled
@@ -123,10 +126,11 @@ stat_of :: proc "contextless" (s: ^State, player: i32, stat: Stat, weapon: Res_I
 	return
 }
 
-// Whether any provider shapes `player`'s shots of `weapon`.
-stat_shapes :: proc "contextless" (s: ^State, player: i32, weapon: Res_ID) -> bool {
+// Whether any provider shapes `player`'s shots of `weapon`, or with
+// `charge` the shots of its charge.
+stat_shapes :: proc "contextless" (s: ^State, player: i32, weapon: Res_ID, charge := false) -> bool {
 	for &p in registry_items(&stat_providers) {
-		if mod_on(s, p.plugin) && p.shapes(s, player, weapon) {
+		if mod_on(s, p.plugin) && p.shapes(s, player, weapon, charge) {
 			return true
 		}
 	}

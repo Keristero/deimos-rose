@@ -44,22 +44,35 @@ player_stat :: #force_inline proc "contextless" (s: ^sim.State, player: i32, sta
 	return sim.stat_of(s, player, stat, weapon)
 }
 
-// A weapon stat for the weapon at index `weapon` in Defs.weapons.
-weapon_stat :: proc "contextless" (s: ^sim.State, player: i32, weapon: i32, stat: sim.Stat) -> sim.Stat_Total {
+// A weapon stat for the weapon at index `weapon` in Defs.weapons: for its
+// shots, or with `charge` for its charge (sim.Stat_Provider).
+weapon_stat :: proc "contextless" (s: ^sim.State, player: i32, weapon: i32, stat: sim.Stat, charge := false) -> sim.Stat_Total {
 	if weapon == sim.NO_WEAPON || player < 0 {
 		return {}
 	}
-	return sim.stat_of(s, player, stat, s.defs.weapons[weapon].id)
+	return sim.stat_of(s, player, stat, s.defs.weapons[weapon].id, charge)
+}
+
+// A stat of the weapon's charge: how it climbs, and what its release fires.
+charge_stat :: #force_inline proc "contextless" (s: ^sim.State, player: i32, weapon: i32, stat: sim.Stat) -> sim.Stat_Total {
+	return weapon_stat(s, player, weapon, stat, true)
 }
 
 // Shots carry the weapon that fired them when a provider shapes it, so that
 // they can be shaped after they spawn (Shaped): 0 for none, else the
 // weapon's index + 1. What a shaped spawner spawns carries it too.
-shot_shaper :: proc "contextless" (s: ^sim.State, player: i32, weapon: i32) -> u8 {
-	if weapon == sim.NO_WEAPON || player < 0 || !sim.stat_shapes(s, player, s.defs.weapons[weapon].id) {
+shot_shaper :: proc "contextless" (s: ^sim.State, player: i32, weapon: i32, charge := false) -> u8 {
+	if weapon == sim.NO_WEAPON || player < 0 || !sim.stat_shapes(s, player, s.defs.weapons[weapon].id, charge) {
 		return 0
 	}
 	return u8(weapon + 1)
+}
+
+// Tags a spawn as `player`'s shot of `weapon`, or with `charge` of its
+// charge's release, when a provider shapes those. Untouched otherwise.
+shape_spawn :: proc "contextless" (s: ^sim.State, req: ^sim.Spawn_Request, player: i32, weapon: i32, charge := false) {
+	req.shaped_by = shot_shaper(s, player, weapon, charge)
+	req.shaped_charge = charge && req.shaped_by != 0
 }
 
 // The weapon a shaped entity's stats are read for.
@@ -68,6 +81,24 @@ shaped_weapon :: #force_inline proc "contextless" (s: ^sim.State, shaped_by: u8)
 		return sim.NONE, false
 	}
 	return s.defs.weapons[shaped_by - 1].id, true
+}
+
+// A stat for a shot as it was tagged (shape_spawn): its weapon's, for the
+// player who fired it, in its scope. ok is false, and the stat zero, for a
+// shot no provider shaped.
+shaped_stat_of :: proc "contextless" (s: ^sim.State, player: i32, shaped_by: u8, charge: bool, stat: sim.Stat) -> (t: sim.Stat_Total, ok: bool) {
+	w: sim.Res_ID
+	w, ok = shaped_weapon(s, shaped_by)
+	if !ok || player < 0 || player >= sim.MAX_PLAYERS {
+		return {}, false
+	}
+	return sim.stat_of(s, player, stat, w, charge), true
+}
+
+// A stat for a shaped entity (shaped_stat_of).
+shaped_stat :: #force_inline proc "contextless" (s: ^sim.State, e: sim.Entity, stat: sim.Stat) -> sim.Stat_Total {
+	t, _ := shaped_stat_of(s, e.owner_player, e.shaped_by, e.shaped_charge, stat)
+	return t
 }
 
 @(private = "file") PF_STEP_HZ :: 0x20
@@ -114,17 +145,16 @@ air_auto_charge :: proc "contextless" (s: ^sim.State, h: ^sim.Weapon_Handler) ->
 
 powerup_max_level :: proc "contextless" (s: ^sim.State, h: ^sim.Weapon_Handler, weapon: i32) -> i32 {
 	base := sim.weapon_def(s, weapon).powerup_air_max_power_level
-	return scale_i32(base, player_stat(s, h.player, .Maximum_Charge, s.defs.weapons[weapon].id).percent)
+	return scale_i32(base, charge_stat(s, h.player, weapon, .Maximum_Charge).percent)
 }
 
 // powerup_air_overload_time, or 0 (never) under Prevent_Overheat.
 powerup_overload_time :: proc "contextless" (s: ^sim.State, h: ^sim.Weapon_Handler, weapon: i32) -> i32 {
 	base := sim.weapon_def(s, weapon).powerup_air_overload_time
-	id := s.defs.weapons[weapon].id
-	if player_stat(s, h.player, .Prevent_Overheat, id).enabled {
+	if charge_stat(s, h.player, weapon, .Prevent_Overheat).enabled {
 		return 0
 	}
-	return scale_i32(base, player_stat(s, h.player, .Overheat_Delay, id).percent)
+	return scale_i32(base, charge_stat(s, h.player, weapon, .Overheat_Delay).percent)
 }
 
 // Whether a charging power-up climbs a level this step. The original climbs
@@ -133,7 +163,7 @@ powerup_overload_time :: proc "contextless" (s: ^sim.State, h: ^sim.Weapon_Handl
 // change to a 2-step interval would otherwise round away.
 powerup_level_due :: proc "contextless" (s: ^sim.State, h: ^sim.Weapon_Handler, p: ^sim.Powerup, weapon: i32, time: i32) -> bool {
 	between := sim.weapon_def(s, weapon).powerup_air_time_between_power_level_changes
-	pct := player_stat(s, h.player, .Charge_Rate, s.defs.weapons[weapon].id).percent
+	pct := charge_stat(s, h.player, weapon, .Charge_Rate).percent
 	if pct == 0 {
 		return p.level_time + between < time
 	}
@@ -382,12 +412,12 @@ weapon_spawns :: proc "contextless" (s: ^sim.State, weapon: i32, player: i32, ba
 // A shaped shot's initialHeadingTolerance, scaled by its weapon's
 // Random_Spread_Range, and at most a full turn. 0 stays 0, so a unit that
 // flies straight draws nothing more.
-heading_tolerance :: proc "contextless" (s: ^sim.State, owner_player: i32, shaped_by: u8, base: i32) -> i32 {
-	w, ok := shaped_weapon(s, shaped_by)
-	if !ok || base == 0 || owner_player < 0 || owner_player >= sim.MAX_PLAYERS {
+heading_tolerance :: proc "contextless" (s: ^sim.State, owner_player: i32, shaped_by: u8, charge: bool, base: i32) -> i32 {
+	t, ok := shaped_stat_of(s, owner_player, shaped_by, charge, .Random_Spread_Range)
+	if !ok || base == 0 {
 		return base
 	}
-	return min(scale_i32(base, sim.stat_of(s, owner_player, .Random_Spread_Range, w).percent), 360)
+	return min(scale_i32(base, t.percent), 360)
 }
 
 // Shaped entities.
@@ -395,11 +425,7 @@ heading_tolerance :: proc "contextless" (s: ^sim.State, owner_player: i32, shape
 // The damage a shaped shot deals, scaled by its weapon's Projectile_Damage.
 // What it spawns is shaped too (a bomb's blast), so that is scaled as well.
 shot_damage :: proc "contextless" (s: ^sim.State, e: sim.Entity, base: f32) -> f32 {
-	w, ok := shaped_weapon(s, e.shaped_by)
-	if !ok || e.owner_player < 0 || e.owner_player >= sim.MAX_PLAYERS {
-		return base
-	}
-	return scale_f32(base, sim.stat_of(s, e.owner_player, .Projectile_Damage, w).percent)
+	return scale_f32(base, shaped_stat(s, e, .Projectile_Damage).percent)
 }
 
 // Accelerating shots leave at the scaled initial speed and speed up evenly
@@ -412,14 +438,12 @@ ACCEL_SECONDS :: 1
 // shape it. A projectile's flight (lifetime, speed); a spawner fired
 // straight from the weapon (depth 0) its volleys.
 shaped_entity_init :: proc(s: ^sim.State, e: sim.Entity, time: i32) {
-	w, ok := shaped_weapon(s, e.shaped_by)
-	if !ok || e.owner_player < 0 || e.owner_player >= sim.MAX_PLAYERS {
+	if _, ok := shaped_weapon(s, e.shaped_by); !ok || e.owner_player < 0 || e.owner_player >= sim.MAX_PLAYERS {
 		return
 	}
-	p := e.owner_player
 	u := sim.unit_of(s, e)
 	if u.player_projectile {
-		if pct := sim.stat_of(s, p, .Projectile_Lifetime, w).percent; pct != 0 && e.timer > 0 {
+		if pct := shaped_stat(s, e, .Projectile_Lifetime).percent; pct != 0 && e.timer > 0 {
 			e.timer = scale_i32(e.timer, pct)
 		}
 		speed := sim.speed_from_vector(e.vel)
@@ -427,8 +451,8 @@ shaped_entity_init :: proc(s: ^sim.State, e: sim.Entity, time: i32) {
 			return
 		}
 		dir := e.vel / speed
-		pct := sim.stat_of(s, p, .Initial_Projectile_Speed, w).percent
-		if sim.stat_of(s, p, .Accelerating_Projectiles, w).enabled {
+		pct := shaped_stat(s, e, .Initial_Projectile_Speed).percent
+		if shaped_stat(s, e, .Accelerating_Projectiles).enabled {
 			start := scale_f32(speed, pct)
 			e.vel = dir * start
 			e.vel_target = dir * speed
@@ -444,9 +468,9 @@ shaped_entity_init :: proc(s: ^sim.State, e: sim.Entity, time: i32) {
 	if e.shaped_depth != 0 || e.state < 0 || len(sim.state_of(s, e).spawn_sets) == 0 {
 		return
 	}
-	extra := max(sim.stat_of(s, p, .Extra_Volley, w).extra, 0)
+	extra := max(shaped_stat(s, e, .Extra_Volley).extra, 0)
 	pace := 100
-	if pct := sim.stat_of(s, p, .Volley_Delay, w).percent; pct != 0 {
+	if pct := shaped_stat(s, e, .Volley_Delay).percent; pct != 0 {
 		pace = 100 * 100 / max(int(100 + pct), 1)
 	}
 	if extra == 0 && pace == 100 {

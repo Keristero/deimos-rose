@@ -355,6 +355,7 @@ Effects :: struct {
 Shaped :: struct {
 	shaped_by:     u8,  // the weapon, as shot_shaper gives it
 	shaped_depth:  u8,  // spawners between it and the weapon
+	shaped_charge: bool, // fired by the weapon's charge: its stats are the charge's
 	spawn_pace:    i32, // 0, or its spawn sets' pace in hundredths of a step
 	pace_acc:      i32,
 	spawn_clock:   i32, // the time its spawn sets run at, when paced
@@ -460,6 +461,7 @@ Spawn_Request :: struct {
 	// shot_shaper) and how many spawners removed from the weapon it is.
 	shaped_by:     u8,
 	shaped_depth:  u8,
+	shaped_charge: bool,
 	turned:        bool, // a side-fired shot, drawn turned (Shaped.turned)
 }
 

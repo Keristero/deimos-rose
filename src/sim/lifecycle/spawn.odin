@@ -333,7 +333,7 @@ spawn_entity :: proc(
 	h := heading
 	if !use_heading {
 		h = u.initial_heading
-	} else if tol := stats.heading_tolerance(s, req.owner_player, req.shaped_by, u.initial_heading_tolerance); tol != 0 {
+	} else if tol := stats.heading_tolerance(s, req.owner_player, req.shaped_by, req.shaped_charge, u.initial_heading_tolerance); tol != 0 {
 		half := halve(tol)
 		h = heading + sim.roll_int(s, -half, half, 0x41aba1)
 		if h < 0 {
@@ -350,6 +350,7 @@ spawn_entity :: proc(
 	e.terrain_effects = req.terrain_effects
 	e.shaped_by = req.shaped_by
 	e.shaped_depth = req.shaped_depth
+	e.shaped_charge = req.shaped_charge
 	e.turned = req.turned
 
 	spawn_location(s, g, e)
@@ -475,7 +476,7 @@ spawn_velocity :: proc "contextless" (
 			sim.unported(s, 0x41ca5c) // G_Entity::GetAngleFromSpriteInfo(owner)
 			return
 		}
-		if tol := stats.heading_tolerance(s, e.owner_player, e.shaped_by, u.initial_heading_tolerance); ok && tol != 0 {
+		if tol := stats.heading_tolerance(s, e.owner_player, e.shaped_by, e.shaped_charge, u.initial_heading_tolerance); ok && tol != 0 {
 			half := halve(tol)
 			a += sim.roll_int(s, -half, half, 0x41caaa)
 			if a < 0 {
