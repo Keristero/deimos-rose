@@ -141,6 +141,17 @@ strokes_undo_exactly :: proc(t: ^testing.T) {
 
 // Past its budget, undo forgets the oldest strokes, and keeps the newest
 // whatever it holds.
+// Reset puts the brush's feel back and leaves the tool in hand and
+// Flatten's target alone.
+@(test)
+brush_reset_keeps_mode_and_target :: proc(t: ^testing.T) {
+	b := editor.Brush{mode = .Flatten, shape = .Rough, radius = 120, strength = 0.1, falloff = 0, target = 30}
+	editor.brush_reset(&b)
+	want := editor.BRUSH_DEFAULT
+	want.mode, want.target = .Flatten, 30
+	testing.expect_value(t, b, want)
+}
+
 @(test)
 undo_keeps_to_its_budget :: proc(t: ^testing.T) {
 	p := hills(128, 96, context.temp_allocator) // whole tiles

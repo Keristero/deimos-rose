@@ -41,6 +41,15 @@ BRUSH_DEFAULT :: Brush {
 	target   = 64,
 }
 
+// Puts the brush's shape, size, strength and falloff back to BRUSH_DEFAULT.
+// The mode is the tool in hand and the target a height taken from the map,
+// so both stay.
+brush_reset :: proc "contextless" (b: ^Brush) {
+	mode, target := b.mode, b.target
+	b^ = BRUSH_DEFAULT
+	b.mode, b.target = mode, target
+}
+
 // Map pixels a full-strength dab raises or lowers the ground.
 RAISE_STEP :: 4
 // A held brush dabs this often, at full weight, when it stays still.

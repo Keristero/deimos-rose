@@ -93,16 +93,10 @@ paint_panel :: proc(e: ^Editor, x: f32, y: ^f32, w: f32) {
 	y^ += ROW
 	help(x, y, w, {"Or drop an image on the window."})
 
-	heading(x, y, w, "Brush")
+	brush_heading(e, x, y, w)
 	rl.GuiToggleGroup({x, y^, (w - 2) / 2, 20}, "Paint;Erase", &pt.mode)
 	y^ += ROW
-	shape := c.int(e.brush.shape)
-	rl.GuiToggleGroup({x, y^, (w - 2 * 2) / 3, 20}, "Round;Square;Rough", &shape)
-	e.brush.shape = Brush_Shape(shape)
-	y^ += ROW
-	slider(x, y, w, "Size", &e.brush.radius, 1, 160, "%.0f px")
-	slider(x, y, w, "Strength", &e.brush.strength, 0, 1)
-	slider(x, y, w, "Falloff", &e.brush.falloff, 0, 1)
+	brush_settings(e, x, y, w)
 	y^ += 4
 
 	heading(x, y, w, "Laid by the ground")

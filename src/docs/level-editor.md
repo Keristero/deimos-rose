@@ -216,7 +216,10 @@ the path typed in above it, as Save saves to it.
 
 - **Terrain:** the brush. Raise, Lower, Flatten toward a target height, or
   Smooth, in a round, square or rough shape, with a size, a strength and a
-  soft edge. Right-click takes the ground's height as the target.
+  soft edge. Right-click takes the ground's height as the target. Reset,
+  at the end of the Brush heading here and in Paint, puts the shape, size,
+  strength and falloff back to their defaults; the mode and the target
+  stay.
 - **Paint** (Stage 8, below): the materials and their brush.
 - **Models** (Stage 8, below): trees, grass and rocks as 3D models, put
   down with a profile's brush.

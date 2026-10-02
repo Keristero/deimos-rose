@@ -436,18 +436,12 @@ panel_draw :: proc(e: ^Editor, area, view: rl.Rectangle) {
 	live := v.live_light
 	switch Tab(e.tab) {
 	case .Terrain:
-		heading(x, &y, w, "Brush")
+		brush_heading(e, x, &y, w)
 		mode := c.int(e.brush.mode)
 		rl.GuiToggleGroup({x, y, (w - 3 * 2) / 4, 20}, "Raise;Lower;Flatten;Smooth", &mode)
 		e.brush.mode = Brush_Mode(mode)
 		y += ROW
-		shape := c.int(e.brush.shape)
-		rl.GuiToggleGroup({x, y, (w - 2 * 2) / 3, 20}, "Round;Square;Rough", &shape)
-		e.brush.shape = Brush_Shape(shape)
-		y += ROW
-		slider(x, &y, w, "Size", &e.brush.radius, 1, 160, "%.0f px")
-		slider(x, &y, w, "Strength", &e.brush.strength, 0, 1)
-		slider(x, &y, w, "Falloff", &e.brush.falloff, 0, 1)
+		brush_settings(e, x, &y, w)
 		slider(x, &y, w, "Target height", &e.brush.target, 0, height_range(e), "%.1f")
 		y += 4
 		help(x, &y, w, {"Drag on the map to sculpt.", "Right-click the map to take its height", "as Flatten's target.", "1-4: the mode.  [ and ]: the size.", "Ctrl+Z, Ctrl+Y: undo, redo.  Ctrl+S: save."})
@@ -556,6 +550,29 @@ height_range :: proc(e: ^Editor) -> f32 {
 heading :: proc(x: f32, y: ^f32, w: f32, text: cstring) {
 	rl.GuiLine({x, y^, w, 16}, text)
 	y^ += 20
+}
+
+// The Brush heading of the Terrain and Paint tabs, with a button at its end
+// that resets the brush (brush_reset).
+brush_heading :: proc(e: ^Editor, x: f32, y: ^f32, w: f32) {
+	rl.GuiLine({x, y^, w - 60, 16}, "Brush")
+	if rl.GuiButton({x + w - 56, y^, 56, 16}, "Reset") {
+		brush_reset(&e.brush)
+		editor_message(e, "Brush reset")
+	}
+	y^ += 20
+}
+
+// The brush's shape, size, strength and falloff, which the Terrain and
+// Paint tabs share.
+brush_settings :: proc(e: ^Editor, x: f32, y: ^f32, w: f32) {
+	shape := c.int(e.brush.shape)
+	rl.GuiToggleGroup({x, y^, (w - 2 * 2) / 3, 20}, "Round;Square;Rough", &shape)
+	e.brush.shape = Brush_Shape(shape)
+	y^ += ROW
+	slider(x, y, w, "Size", &e.brush.radius, 1, 160, "%.0f px")
+	slider(x, y, w, "Strength", &e.brush.strength, 0, 1)
+	slider(x, y, w, "Falloff", &e.brush.falloff, 0, 1)
 }
 
 slider :: proc(x: f32, y: ^f32, w: f32, label: cstring, value: ^f32, lo, hi: f32, format := "%.2f") {
