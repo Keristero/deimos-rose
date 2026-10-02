@@ -1,13 +1,18 @@
 package chaingun_view
 
-// The Chaingun's muzzle flash: a bright flash at the gun, gone within a few
-// steps, with every round it fires, at half strength for the burst's and
-// full for a charge's aimed rounds
+// The Chaingun's muzzle flash: a bright flash, gone within a few steps,
+// with every round it fires, at half strength for the burst's and full for
+// a charge's aimed rounds
 // (notes/extra-weapon-passives-and-base-adjustments.md). New content, and
-// presentation only: an effect system (render/render_systems.odin) that
-// finds the rounds by their entity numbers, which count up through a level,
-// so a step a rollback replays does not flash again. Drawn over the ships, as
-// the gun is inside the ship's outline. core:math/rand is fine here.
+// presentation only: effect systems (render/render_systems.odin) that find
+// the rounds by their entity numbers, which count up through a level, so a
+// step a rollback replays does not flash again. core:math/rand is fine
+// here.
+//
+// The burst's flash is at the gun, in the ship's nose, and drawn over the
+// ships, as the gun is inside the ship's outline. A charge's rounds go any
+// way, so their flash is centred on the ship and drawn under it
+// (notes/extra-weapons-and-passives-3.md), showing round its edges.
 //
 // Provisional: every number here was picked by eye.
 
@@ -27,6 +32,10 @@ import "dr:sim"
 @(private = "file") FLASH_LIFE :: 3 // steps from full to gone
 @(private = "file") FLASH_BURST :: 0.5 // the burst's strength against the charge's
 @(private = "file") FLASH_RADIUS :: 12 // px, at full strength
+// A charge's flash, under the ship, is wider and reaches further out, so
+// it shows past the ship's outline (about 16 px from its centre).
+@(private = "file") FLASH_UNDER_RADIUS :: 26
+@(private = "file") FLASH_UNDER_REACH :: 14 // px from the centre its streak and sparks start
 @(private = "file") FLASH_GUN :: sim.Vec{0, -18} // from the ship: its nose
 @(private = "file") FLASH_SPARKS :: 3 // at full strength
 @(private = "file") FLASH_SPARK_SPEED :: 5
@@ -40,9 +49,11 @@ Flash :: struct {
 	age:    i32,
 	power:  f32, // 1 full
 	dir:    sim.Vec, // the round's
+	under:  bool, // a charge's: under the ship, at its centre
 }
 
-// A spark thrown forward, kept from the gun so it follows the ship.
+// A spark thrown out with a flash, kept from where the flash is so it
+// follows the ship.
 @(private = "file")
 Spark :: struct {
 	player: int,
@@ -50,18 +61,19 @@ Spark :: struct {
 	vel:    sim.Vec,
 	age:    i32,
 	power:  f32,
+	under:  bool,
 }
 
-// Where each player's gun was the step before and this step.
+// Where each player's ship was the step before and this step.
 @(private = "file")
-Gun :: struct {
+Ship :: struct {
 	prev, loc: sim.Vec,
 	live:      bool,
 }
 
 @(private = "file") flashes: [dynamic]Flash
 @(private = "file") sparks: [dynamic]Spark
-@(private = "file") guns: [sim.MAX_PLAYERS]Gun
+@(private = "file") ships: [sim.MAX_PLAYERS]Ship
 @(private = "file") seen: i32 // the highest entity number looked at
 
 register_flash :: proc() {
@@ -69,9 +81,15 @@ register_flash :: proc() {
 		name   = "chaingun_flash",
 		plugin = chaingun.ID,
 		step   = flash_step,
-		draw   = flash_draw,
+		draw   = flash_draw_over,
 		layer  = render.layer_of(sim.res_id("play"), true), // over the ships
 		clear  = flash_clear,
+	})
+	render.effect_system_register({
+		name   = "chaingun_flash_under",
+		plugin = chaingun.ID,
+		draw   = flash_draw_under,
+		layer  = render.layer_of(sim.res_id("plwe"), true), // over the rounds, under the ships
 	})
 }
 
@@ -84,7 +102,7 @@ register_flash_step :: proc "contextless" () {
 flash_clear :: proc() {
 	clear(&flashes)
 	clear(&sparks)
-	guns = {}
+	ships = {}
 	seen = 0
 }
 
@@ -116,11 +134,10 @@ flash_step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles) {
 	resize(&sparks, n)
 	for pl, i in sim.players_of(s) {
 		if pl.obj == nil || pl.state != .Playing {
-			guns[i].live = false
+			ships[i].live = false
 			continue
 		}
-		gun := pl.loc + FLASH_GUN
-		guns[i] = {prev = guns[i].live ? guns[i].loc : gun, loc = gun, live = true}
+		ships[i] = {prev = ships[i].live ? ships[i].loc : pl.loc, loc = pl.loc, live = true}
 	}
 
 	round := sim.unit_index(s.defs, CHAINGUN_ROUND)
@@ -133,44 +150,69 @@ flash_step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles) {
 			continue
 		}
 		pi := int(e.owner_player)
-		if pi < 0 || pi >= sim.MAX_PLAYERS || !guns[pi].live {
+		if pi < 0 || pi >= sim.MAX_PLAYERS || !ships[pi].live {
 			continue
 		}
-		power: f32 = e.unit == i32(aimed) ? 1 : FLASH_BURST
+		charge := e.unit == i32(aimed)
 		dir := sim.Vec{0, -1}
 		if l := math.sqrt(e.vel.x * e.vel.x + e.vel.y * e.vel.y); l > 0 {
 			dir = e.vel / l
 		}
-		flash_add(pi, power, dir)
+		flash_add(pi, charge ? 1 : FLASH_BURST, dir, charge)
 	}
 	// A new level numbers its entities from the start again.
 	seen = top < seen ? top : max(seen, top)
 }
 
-// One flash a player a step, the strongest of the rounds fired on it, and
-// sparks for each round.
+// One flash of each kind a player a step, the strongest of the rounds fired
+// on it, and sparks for each round.
 @(private = "file")
-flash_add :: proc(player: int, power: f32, dir: sim.Vec) {
+flash_add :: proc(player: int, power: f32, dir: sim.Vec, under: bool) {
 	found := false
 	for &f in flashes {
-		if f.player == player && f.age == 0 {
+		if f.player == player && f.age == 0 && f.under == under {
 			f.power = max(f.power, power)
 			found = true
 		}
 	}
 	if !found {
-		append(&flashes, Flash{player = player, power = power, dir = dir})
+		append(&flashes, Flash{player = player, power = power, dir = dir, under = under})
 	}
 	for _ in 0 ..< int(math.round(FLASH_SPARKS * power)) {
 		a := (rand.float32() - 0.5) * 1.2 // radians either side of the round
 		c, sn := math.cos(a), math.sin(a)
 		d := sim.Vec{dir.x * c - dir.y * sn, dir.x * sn + dir.y * c}
-		append(&sparks, Spark{player = player, vel = d * FLASH_SPARK_SPEED * (0.6 + 0.8 * rand.float32()), power = power})
+		append(&sparks, Spark {
+			player = player,
+			at     = under ? d * FLASH_UNDER_REACH : {},
+			vel    = d * FLASH_SPARK_SPEED * (0.6 + 0.8 * rand.float32()),
+			power  = power,
+			under  = under,
+		})
 	}
 }
 
 @(private = "file")
-flash_draw :: proc(r: ^render.Renderer, scale, side, t: f32) {
+flash_draw_over :: proc(r: ^render.Renderer, scale, side, t: f32) {
+	flash_draw(scale, side, t, false)
+}
+
+@(private = "file")
+flash_draw_under :: proc(r: ^render.Renderer, scale, side, t: f32) {
+	flash_draw(scale, side, t, true)
+}
+
+// Where a flash of the kind is, between the ship's last two steps.
+@(private = "file")
+flash_origin :: proc(sh: Ship, t: f32, under: bool) -> sim.Vec {
+	at := sh.prev + (sh.loc - sh.prev) * t
+	return under ? at : at + FLASH_GUN
+}
+
+// The flashes and sparks of one kind: the burst's over the ships, or a
+// charge's under them.
+@(private = "file")
+flash_draw :: proc(scale, side, t: f32, under: bool) {
 	if len(flashes) == 0 && len(sparks) == 0 {
 		return
 	}
@@ -185,33 +227,33 @@ flash_draw :: proc(r: ^render.Renderer, scale, side, t: f32) {
 	rl.BeginBlendMode(.ADDITIVE)
 	for f in flashes {
 		k := 1 - (f32(f.age) + t) / FLASH_LIFE // 1 as it fires .. 0 gone
-		g := guns[f.player]
-		if k <= 0 || !g.live {
+		sh := ships[f.player]
+		if f.under != under || k <= 0 || !sh.live {
 			continue
 		}
-		gun := g.prev + (g.loc - g.prev) * t
+		gun := flash_origin(sh, t, under)
 		c := screen(gun + f.dir * 2, scale, side)
 		a := f.power * k
 		// A glow in rings, each smaller and brighter, adding up to white.
-		radius := FLASH_RADIUS * (0.5 + 0.5 * f.power) * (0.6 + 0.4 * k) * scale
+		radius := (under ? FLASH_UNDER_RADIUS : FLASH_RADIUS) * (0.5 + 0.5 * f.power) * (0.6 + 0.4 * k) * scale
 		for ring in 0 ..< FLASH_RINGS {
 			u := f32(ring) / FLASH_RINGS
 			rl.DrawCircleV(c, radius * (1 - u), with_alpha(ring == 0 ? FLASH_OUTER : FLASH_INNER, a * 0.5))
 		}
-		rl.DrawLineEx(c, screen(gun + f.dir * (4 + 8 * f.power * k), scale, side), 2 * scale, with_alpha(FLASH_INNER, a))
+		reach: f32 = under ? FLASH_UNDER_REACH : 4
+		rl.DrawLineEx(c, screen(gun + f.dir * (reach + 8 * f.power * k), scale, side), 2 * scale, with_alpha(FLASH_INNER, a))
 		rl.DrawCircleV(c, (1.5 + 2 * f.power) * scale, with_alpha({255, 255, 255, 255}, a))
 	}
 	for k in sparks {
-		g := guns[k.player]
-		if !g.live {
+		sh := ships[k.player]
+		if k.under != under || !sh.live {
 			continue
 		}
 		fade := 1 - (f32(k.age) + t) / FLASH_LIFE
 		if fade <= 0 {
 			continue
 		}
-		gun := g.prev + (g.loc - g.prev) * t
-		head := gun + k.at + k.vel * t
+		head := flash_origin(sh, t, under) + k.at + k.vel * t
 		rl.DrawLineEx(screen(head - k.vel * 0.6, scale, side), screen(head, scale, side), 1 * scale, with_alpha(FLASH_INNER, k.power * fade))
 	}
 	rl.EndBlendMode()

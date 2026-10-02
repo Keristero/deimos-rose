@@ -98,16 +98,21 @@ Gun's green by `tools/recolour` (see Content).
   - fires two parallel `cgpb` rounds at that point, 3 px either side of
     the line of fire. These rounds do not spin; they have one frame per
     direction.
-- **Muzzle flash.** Every round fired flashes at the ship's nose, bright
-  white fading to orange, gone within 3 steps, with a few sparks thrown
-  along the round's heading: at full strength for a charge's aimed
-  rounds and half for the burst's
+- **Muzzle flash.** Every round fired flashes, bright white fading to
+  orange, gone within 3 steps, with a few sparks thrown along the round's
+  heading: at full strength for a charge's aimed rounds and half for the
+  burst's
   ([notes/extra-weapon-passives-and-base-adjustments.md](../../notes/extra-weapon-passives-and-base-adjustments.md)).
-  It is presentation only, an effect system in
-  `plugins/chaingun/view/flash.odin`. It finds each new round by its
-  entity number, which counts up through a level, so a step a rollback
-  replays does not flash again, and draws over the ships. Several rounds
-  on one step make one flash, the strongest.
+  The burst's flashes at the ship's nose, drawn over the ship. A charge's
+  rounds can leave in any direction, so their flash is centred on the
+  ship and drawn under it, wider (26 px) so it shows round the outline,
+  with its streak and sparks starting 14 px out along the round's heading
+  ([notes/extra-weapons-and-passives-3.md](../../notes/extra-weapons-and-passives-3.md)).
+  It is presentation only, two effect systems in
+  `plugins/chaingun/view/flash.odin`, one for each layer. They find each
+  new round by its entity number, which counts up through a level, so a
+  step a rollback replays does not flash again. Several rounds of one
+  kind on one step make one flash, the strongest.
 
   With nothing to aim at, the volley flies straight ahead. It keeps firing
   until the charge is spent, one volley per level.
