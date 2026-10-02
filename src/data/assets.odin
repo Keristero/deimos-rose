@@ -144,10 +144,15 @@ LIGHTING_MEASURED :: Level_Lighting {
 // notes/level-editor-plan.md): im16 image ids, empty when not exported.
 Level_Layers :: struct {
 	albedo:      string `json:"albedo"`,
+	// The ground's surface normal per map pixel, RGB for -1..1, at the map's
+	// size (terrain/specular.odin).
 	normal:      string `json:"normal"`,
 	height:      string `json:"height"`,
 	shadow_mask: string `json:"shadow_mask"`,
 	hd_map:      string `json:"hd_map"`,
+	// How glossy the ground is, one grey byte per map pixel at the map's
+	// size (terrain/specular.odin): the lighting's highlights.
+	specular:    string `json:"specular"`,
 }
 
 Json_Frame :: struct {
@@ -523,7 +528,7 @@ level_media_append :: proc(media: ^[dynamic]Level_Media, dir: string, campaign: 
 			continue
 		}
 		layers := lv.layers
-		for &l in ([]^string{&layers.albedo, &layers.normal, &layers.height, &layers.shadow_mask, &layers.hd_map}) {
+		for &l in ([]^string{&layers.albedo, &layers.normal, &layers.height, &layers.shadow_mask, &layers.hd_map, &layers.specular}) {
 			l^ = strings.clone(l^, allocator)
 		}
 		append(media, Level_Media {

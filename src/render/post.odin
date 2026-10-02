@@ -27,6 +27,8 @@ Post_Frame :: struct {
 	side:      f32, // the view's sideways scroll
 	t:         f32, // how far between steps, 1 when not interpolating
 	particles: ^Particles,
+	state:     ^sim.State,
+	view_top:  f32, // the map row at the play field's top, fractional when interpolating
 	// The size of the whole canvas the play field sits in, in pixels.
 	width, height: i32,
 }

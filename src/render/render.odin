@@ -674,7 +674,7 @@ present :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, scale: f32) 
 	}
 	rl.EndScissorMode()
 	if post {
-		post_end(r, &Post_Frame{scale = scale, side = r.side_scroll, t = t, particles = particles, width = canvas_w, height = canvas_h})
+		post_end(r, &Post_Frame{scale = scale, side = r.side_scroll, t = t, particles = particles, state = s, view_top = r.view_top, width = canvas_w, height = canvas_h})
 	}
 	level_end_draw(r, s, scale) // layer 0xf text, over the sprites
 	scorebar_draw(r, s, scale)

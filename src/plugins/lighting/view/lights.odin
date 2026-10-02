@@ -30,6 +30,7 @@ import "core:math"
 
 import rl "vendor:raylib"
 
+import "dr:data"
 import "dr:plugins/lighting"
 import "dr:render"
 import "dr:sim"
@@ -41,6 +42,10 @@ import "dr:sim"
 @(private = "file") LIGHT_REACH :: 1.0
 @(private = "file") LIGHT_MIN_RADIUS :: 14
 @(private = "file") FALLOFF_SIZE :: 128
+// How glossy ground is in a level with no specular mask (terrain.MATERIAL_GLOSS_DEFAULT).
+@(private = "file") SPECULAR_DEFAULT :: 0.2
+// How bright a highlight is on the glossiest ground under a full light.
+@(private = "file") SPECULAR_GAIN :: 1.6
 @(private = "file") SPARK_MIN_LUMA :: 0.55 // a spark casts light when it is at least this bright
 
 @(private = "file")
@@ -60,6 +65,18 @@ State :: struct {
 	composite:  rl.Shader,
 	lights_loc: i32,
 	glow_loc:   i32,
+	spec_loc:   i32,
+	normal_loc: i32,
+	texel_loc:  i32,
+	spec_gain:  i32,
+	canvas_loc: i32,
+	field_loc:  i32,
+	map_loc:    i32,
+	// The ground's gloss where a level has no specular mask: one pixel.
+	plain:      rl.Texture2D,
+	flat:       rl.Texture2D, // and its normal where it has none: facing straight up
+	// The specular textures given their filter (they are cached by the renderer).
+	filtered:   map[u32]bool,
 	light_k:    i32,
 	glow_k:     i32,
 	// Each shining frame's colour, found once from its plate.
@@ -112,12 +129,22 @@ void main() {
 
 @(private = "file")
 COMPOSITE_SHADER :: `#version 330
+#define LIGHT_LEAN 6.0       // how far the light map's slope leans a light's direction
+#define NORMAL_GAIN 4.0      // how strongly the ground's slope shades under a light
+#define SPECULAR_POWER 14.0  // how tight a highlight is
 in vec2 fragTexCoord;
 uniform sampler2D texture0; // the scene
 uniform sampler2D lights;
 uniform sampler2D glow;
+uniform sampler2D specular; // how glossy the ground is, in the map's own pixels
+uniform sampler2D normals;  // which way it faces, in the same pixels
+uniform vec2 lightPx;       // a light map texel, in texture coordinates
 uniform float lightGain;
 uniform float glowGain;
+uniform float specGain;
+uniform vec2 canvas;        // the canvas's size, in pixels
+uniform vec4 field;         // the play field in canvas pixels: left, top, width, height
+uniform vec4 mapRect;       // the map's pixels showing: left, top, width, height, over the map's size
 out vec4 finalColor;
 void main() {
 	vec3 scene = texture(texture0, fragTexCoord).rgb;
@@ -126,6 +153,32 @@ void main() {
 	// The light shows the colour it falls on, and a little of its own where
 	// that is dark, so a spark over black ground still lights something.
 	vec3 lit = scene * (1.0 + 0.9 * light) + 0.05 * light;
+
+	// The ground, where the play field is: its normal and gloss at the map's
+	// pixel. Light maps do not keep where each light is, but the way they
+	// brighten does: the gradient of their brightness points to the light,
+	// and a light is this far above the ground, so the ground's slope
+	// shades by how it faces that way (as much as it faces away from flat),
+	// and a highlight is where it faces half way between the light and the
+	// eye above.
+	vec2 px = vec2(fragTexCoord.x * canvas.x, (1.0 - fragTexCoord.y) * canvas.y);
+	vec2 f = (px - field.xy) / field.zw;
+	if (f.x >= 0.0 && f.x <= 1.0 && f.y >= 0.0 && f.y <= 1.0) {
+		vec2 uv = mapRect.xy + f * mapRect.zw;
+		float gloss = texture(specular, uv).r;
+		vec3 n = normalize(texture(normals, uv).rgb * 2.0 - 1.0);
+		float bright = dot(light, vec3(0.333));
+		float gx = dot(texture(lights, fragTexCoord + vec2(lightPx.x, 0.0)).rgb - texture(lights, fragTexCoord - vec2(lightPx.x, 0.0)).rgb, vec3(0.333));
+		float gy = dot(texture(lights, fragTexCoord + vec2(0.0, lightPx.y)).rgb - texture(lights, fragTexCoord - vec2(0.0, lightPx.y)).rgb, vec3(0.333));
+		// Texture rows run up the screen, the map's down: the map's y is -gy.
+		vec2 toward = vec2(gx, -gy);
+		vec3 l = normalize(vec3(toward * LIGHT_LEAN / max(bright, 0.02), 1.0));
+		float shade = dot(n, l) - l.z; // 0 on flat ground
+		lit += scene * light * clamp(shade * NORMAL_GAIN, -0.6, 0.9);
+		float detail = 0.5 + 1.0 * dot(scene, vec3(0.299, 0.587, 0.114));
+		float glint = pow(max(dot(n, normalize(l + vec3(0.0, 0.0, 1.0))), 0.0), SPECULAR_POWER);
+		lit += gloss * specGain * light * light * detail * glint;
+	}
 	finalColor = vec4(lit + halo, 1.0);
 }
 `
@@ -139,6 +192,21 @@ ensure :: proc(f: ^render.Post_Frame) {
 		st.composite = rl.LoadShaderFromMemory(nil, COMPOSITE_SHADER)
 		st.lights_loc = rl.GetShaderLocation(st.composite, "lights")
 		st.glow_loc = rl.GetShaderLocation(st.composite, "glow")
+		st.spec_loc = rl.GetShaderLocation(st.composite, "specular")
+		st.normal_loc = rl.GetShaderLocation(st.composite, "normals")
+		st.texel_loc = rl.GetShaderLocation(st.composite, "lightPx")
+		st.spec_gain = rl.GetShaderLocation(st.composite, "specGain")
+		st.canvas_loc = rl.GetShaderLocation(st.composite, "canvas")
+		st.field_loc = rl.GetShaderLocation(st.composite, "field")
+		st.map_loc = rl.GetShaderLocation(st.composite, "mapRect")
+		st.filtered = make(map[u32]bool)
+		gloss := rl.GenImageColor(1, 1, {u8(SPECULAR_DEFAULT * 255), 0, 0, 255})
+		rl.ImageFormat(&gloss, .UNCOMPRESSED_GRAYSCALE)
+		st.plain = rl.LoadTextureFromImage(gloss)
+		rl.UnloadImage(gloss)
+		up := rl.GenImageColor(1, 1, {128, 128, 255, 255})
+		st.flat = rl.LoadTextureFromImage(up)
+		rl.UnloadImage(up)
 		st.light_k = rl.GetShaderLocation(st.composite, "lightGain")
 		st.glow_k = rl.GetShaderLocation(st.composite, "glowGain")
 		st.colours = make(map[Colour_Key]rl.Color)
@@ -195,6 +263,9 @@ destroy :: proc() {
 	}
 	unload_targets()
 	rl.UnloadTexture(st.falloff)
+	rl.UnloadTexture(st.plain)
+	rl.UnloadTexture(st.flat)
+	delete(st.filtered)
 	rl.UnloadShader(st.blur)
 	rl.UnloadShader(st.composite)
 	for _, img in st.plates {
@@ -378,12 +449,53 @@ prepare :: proc(r: ^render.Renderer, f: ^render.Post_Frame) {
 	}
 }
 
+// A level's layer image, filtered smooth and clamped at its edge once.
+@(private = "file")
+layer_texture :: proc(r: ^render.Renderer, id: string) -> (tex: rl.Texture2D, ok: bool) {
+	if id == "" {
+		return
+	}
+	tex, ok = render.im16_texture(&r.textures, &r.textures.images, id)
+	if ok && !st.filtered[tex.id] {
+		st.filtered[tex.id] = true
+		rl.SetTextureFilter(tex, .BILINEAR)
+		rl.SetTextureWrap(tex, .CLAMP)
+	}
+	return
+}
+
 @(private = "file")
 apply :: proc(r: ^render.Renderer, f: ^render.Post_Frame, src: rl.Texture2D) {
 	// Gains: the sliders, scaled so full is strong but not blinding.
 	light_gain := f32(r.setting[LIGHT_STRENGTH]) / 100 * 1.0
 	glow_gain := f32(r.setting[GLOW_STRENGTH]) / 100 * 1.8
+	// The ground's gloss: the level's specular mask, at the map's pixels.
+	spec, normals, map_rect := st.plain, st.flat, [4]f32{0, 0, 1, 1}
+	if s := f.state; s != nil {
+		level := sim.level_def(s)
+		if media := data.assets_level_media(&r.textures.assets, level.campaign, level.id); media != nil {
+			if tex, ok := layer_texture(r, media.layers.specular); ok {
+				spec = tex
+				mw, mh := f32(tex.width), f32(tex.height)
+				map_rect = {max(f.side + 32, 0) / mw, f.view_top / mh, f32(sim.view_width(s.defs)) / mw, f32(sim.view_height(s.defs)) / mh}
+			}
+			if tex, ok := layer_texture(r, media.layers.normal); ok {
+				normals = tex
+			}
+		}
+	}
+	spec_gain := f32(r.setting[LIGHT_STRENGTH]) / 100 * SPECULAR_GAIN
+	canvas := [2]f32{f32(f.width), f32(f.height)}
+	field := [4]f32{render.VIEW_X * f.scale, 0, render.PLAY_W * f.scale, render.PLAY_H * f.scale}
 	rl.BeginShaderMode(st.composite)
+	rl.SetShaderValue(st.composite, st.spec_gain, &spec_gain, .FLOAT)
+	rl.SetShaderValue(st.composite, st.canvas_loc, &canvas, .VEC2)
+	rl.SetShaderValue(st.composite, st.field_loc, &field, .VEC4)
+	rl.SetShaderValue(st.composite, st.map_loc, &map_rect, .VEC4)
+	rl.SetShaderValueTexture(st.composite, st.spec_loc, spec)
+	rl.SetShaderValueTexture(st.composite, st.normal_loc, normals)
+	texel := [2]f32{1 / f32(st.light.texture.width), 1 / f32(st.light.texture.height)}
+	rl.SetShaderValue(st.composite, st.texel_loc, &texel, .VEC2)
 	rl.SetShaderValue(st.composite, st.light_k, &light_gain, .FLOAT)
 	rl.SetShaderValue(st.composite, st.glow_k, &glow_gain, .FLOAT)
 	rl.SetShaderValueTexture(st.composite, st.lights_loc, st.light.texture)

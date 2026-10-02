@@ -10,6 +10,18 @@ still open. The extension point and its reasons are in decisions.md D78.
   the Extras page (default 60 and 50, plugin off by default). Lights come
   from `Item.emit` and bright particles, each in its sprite's colour, up to
   96 a frame; the glow is the same things blurred.
+- Ground layers for the lighting, exported with every level (`layers.specular`
+  and `layers.normal`, full-resolution PNGs beside the map, from
+  `terrain/specular.odin`): a **specular mask** (a material's `gloss`, else a
+  guess from the colour; trees dull it; ground under the water is wet, the
+  shore damp) and a **normal mask** (from the heights and canopy, unsmoothed).
+  The lighting shades the ground by the normal against where a light is (taken
+  from the light map's slope, since the map does not keep each light) and adds
+  a highlight in the light's colour where the ground is glossy and faces
+  halfway to the eye. A level without them gets flat ground of default gloss.
+  `plugins/recovered_levels` is re-exported (`mise run terrain:mod`) with them
+  (about 40 MB of normals, 14 MB of specular). Verify: `deimos -campaign
+  recovered_levels` with `MENU=lighting`.
 - `plugins/wind` (+ `view/`): WIND STRENGTH slider; blows the visual
   particles by the level's wind.
 - `plugins/water` (+ `view/`): WATER STRENGTH slider (default 60, off by
@@ -25,6 +37,9 @@ still open. The extension point and its reasons are in decisions.md D78.
 - Export resolution 0.5x to 2x and the High Resolution mode (editor export).
 - HD textures and their masks (the best local model; `tools/hd_upscale` uses
   FLUX on a GPU, so it runs on the project owner's machine).
+- A gloss control per material in the paint panel (the field exists in the
+  project; nothing sets it yet), and a smoothing pass on the normals if
+  the heights' grain shows under light (tried, set aside).
 - Sprite albedo, emissive and normal recovery, units "more metallic" than
   terrain; enemy fire's emissive textures (their shots do not shine yet).
 - Water: ripples from ground shots, refraction of the bed and a

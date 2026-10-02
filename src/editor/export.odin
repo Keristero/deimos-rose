@@ -471,7 +471,7 @@ level_image :: proc(campaign: string, place: int, what: string, allocator := con
 	return fmt.aprintf("%s_%s_%s", campaign, level_id(place), what, allocator = allocator)
 }
 
-// The level's map, preview and media mask as im16 images, and its record.
+// The level's map, preview, media mask, and the specular and normal masks as im16 images, and its record.
 @(private = "file")
 level_write :: proc(e: ^Editor, x: ^Export, p: ^terrain.Project) -> bool {
 	c := &x.campaign
@@ -495,12 +495,17 @@ level_write :: proc(e: ^Editor, x: ^Export, p: ^terrain.Project) -> bool {
 	}
 	preview := terrain.preview_make(pic, terrain.preview_crop_clamp(p.preview, p.width, p.length), context.temp_allocator)
 	mask := terrain.media_mask_make(p, context.temp_allocator)
+	specular := terrain.specular_mask_make(p, context.temp_allocator)
+	normal := terrain.normal_mask_make(p, context.temp_allocator)
 	l := p.level
 	l.id = level_id(place)
 	l.background = {0, 0, p.width, p.length}
 	l.background_image = level_image(c.name, place, "map")
 	l.preview_image = level_image(c.name, place, "preview")
 	l.media_mask = level_image(c.name, place, "mask")
+	// The lighting's layers: how glossy the ground is and which way it faces (terrain/specular.odin).
+	l.layers.specular = level_image(c.name, place, "specular")
+	l.layers.normal = level_image(c.name, place, "normal")
 	l.placements = p.placements[:]
 	if l.name == "" {
 		l.name = l.identifier
@@ -515,10 +520,10 @@ level_write :: proc(e: ^Editor, x: ^Export, p: ^terrain.Project) -> bool {
 			x.written[strings.clone(slashed(here), virtual.arena_allocator(&x.arena))] = true
 		}
 	}
-	for img in ([3]struct {
+	for img in ([5]struct {
 			id:  string,
 			pic: terrain.Picture,
-		}{{l.background_image, pic}, {l.preview_image, preview}, {l.media_mask, mask}}) {
+		}{{l.background_image, pic}, {l.preview_image, preview}, {l.media_mask, mask}, {l.layers.specular, specular}, {l.layers.normal, normal}}) {
 		path := strings.concatenate({images, "/", img.id, ".png"}, context.temp_allocator)
 		if !terrain.png_write(path, img.pic) {
 			return false

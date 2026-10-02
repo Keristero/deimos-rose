@@ -24,7 +24,8 @@ PROJECT_FORMAT :: "deimos-rising.level-project"
 // 2 added the scenery models; a version 1 project has none. 3 added the
 // preview's crop; an older project's is preview_crop_default. 4 added the
 // audio it brings: an older editor would drop it on saving, so it refuses.
-PROJECT_VERSION :: 4
+// 5 added a material's gloss, which an older editor would also drop.
+PROJECT_VERSION :: 5
 PROJECT_SUFFIX :: ".drproj.json"
 // Heights are stored in 1/32 of a map pixel: up to 2048 pixels high.
 HEIGHT_UNIT :: f32(1) / 32
@@ -39,6 +40,9 @@ Material :: struct {
 	image:  string   `json:"image"`, // beside the project; empty for flat colour
 	tile:   f32      `json:"tile"`,  // map pixels the image covers
 	tags:   []string `json:"tags"`,  // "original-derived" for one taken from the originals
+	// How much light it throws back, 0..1, for the specular mask (see
+	// specular.odin); 0 is not set, and means MATERIAL_GLOSS_DEFAULT.
+	gloss:  f32      `json:"gloss"`,
 }
 
 // A material laid automatically where the ground is steep (slope in height

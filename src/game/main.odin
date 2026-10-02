@@ -570,6 +570,11 @@ run_menu_shot :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, r
 		ps.saved.classic, ps.launch.classic, r.classic = false, false, false
 		others := sh.alone ? sim.Mods{} : prefs.defaults().mods
 		ps.saved.mods = sim.mods_switch_on(others, {int(sh.plugin)})
+		// -campaign <name> plays the scenario on that campaign's level.
+		if id, found := launch_campaign(ps.launch); found && id != sim.CORE {
+			ps.saved.mods = sim.mods_switch_on(ps.saved.mods, {int(id)})
+			flow_campaign_set(&flow, id)
+		}
 		flow_start_session(&flow, 0x1234_5678, sh.co_op ? .Co_Op : .Single, sh.level)
 		if err := sh.setup(state, name); err != "" {
 			fmt.eprintfln("%s: %s", name, err)

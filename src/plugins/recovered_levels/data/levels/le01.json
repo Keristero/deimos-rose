@@ -395,9 +395,10 @@
   "skybox": "",
   "layers": {
     "albedo": "",
-    "normal": "",
+    "normal": "recovered_levels_le01_normal",
     "height": "",
     "shadow_mask": "",
-    "hd_map": ""
+    "hd_map": "",
+    "specular": "recovered_levels_le01_specular"
   }
 }
