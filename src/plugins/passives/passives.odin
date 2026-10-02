@@ -97,6 +97,7 @@ Own :: enum u8 {
 	Weapon_4_Charge,
 	Weapon_3_Charge,
 	Weapon_2_Charge,
+	Weapon_1_Charge,
 }
 
 // A passive, by its id: this plugin's own first (Own), then other plugins'.
@@ -115,6 +116,7 @@ GROUND_VARIANT_2 :: Passive(Own.Ground_Variant_2)
 WEAPON_4_CHARGE :: Passive(Own.Weapon_4_Charge)
 WEAPON_3_CHARGE :: Passive(Own.Weapon_3_Charge)
 WEAPON_2_CHARGE :: Passive(Own.Weapon_2_Charge)
+WEAPON_1_CHARGE :: Passive(Own.Weapon_1_Charge)
 
 MAX_PASSIVES :: 32
 
@@ -319,6 +321,26 @@ OWN := [Own]Passive_Def {
 			{.Hit_Cloud, .Enables, {1, X, X}},
 			{.Cloud_Lifetime, .Increase, {X, 50, 100}},
 			{.Charge_Rate, .Increase, {X, 20, 50}},
+		},
+	},
+	.Weapon_1_Charge = {
+		name   = "weapon_1_charge",
+		label  = "ION CANNON CHARGE",
+		levels = 3,
+		weapon = WEAPON_ION_CANNON,
+		charge = true,
+		mods = {
+			// The release's shots also hit the ground targets they fly
+			// over (Hits_Ground), for less damage, the penalty shrinking
+			// each level (Ground_Damage: 40%, 55%, 70% of it). In the
+			// Charge-shots set what they deal to a ground target is all
+			// the gain, the air scenarios being unchanged: 16% at level 1.
+			// The ground damage alone gains in proportion: 50%, 65% and
+			// 80% of it made 20%, 25% and 31%. A faster charge takes
+			// levels 2 and 3 into their bands: 36% and 57%.
+			{.Hits_Ground, .Enables, {1, X, X}},
+			{.Ground_Damage, .Decrease, {60, 45, 30}},
+			{.Charge_Rate, .Increase, {X, 20, 40}},
 		},
 	},
 }

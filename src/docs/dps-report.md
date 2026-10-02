@@ -225,6 +225,9 @@ as below (2026-10-02):
 
 | Passive | Weapon | Change | DPS added | Gain |
 |---|---|---|---|---|
+| Weapon 1 Charge 1 | Ion Cannon | 0 / 0 / 0 / 0, ground 1.13 from 0 | +0.28 | +15.6% |
+| Weapon 1 Charge 2 | Ion Cannon | +11.7% / +11.7% / 0 / +11.7%, ground 1.74 from 0 | +0.65 | +35.7% |
+| Weapon 1 Charge 3 | Ion Cannon | +23.5% / +23.5% / 0 / +23.4%, ground 2.45 from 0 | +1.04 | +57.1% |
 | Weapon 2 Charge 1 | Bacta Gun | +7.9% / +7.9% / 0 / +66.9% | +0.41 | +19.2% |
 | Weapon 2 Charge 2 | Bacta Gun | +19.6% / +19.5% / 0 / +87.7% | +0.69 | +32.6% |
 | Weapon 2 Charge 3 | Bacta Gun | +36.8% / +36.7% / 0 / +105.7% | +1.06 | +50.0% |

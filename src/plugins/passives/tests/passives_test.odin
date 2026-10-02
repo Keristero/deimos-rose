@@ -677,3 +677,71 @@ bacta_gun_charge_leaves_clouds :: proc(t: ^testing.T) {
 		}
 	}
 }
+
+// Weapon 1 Charge: the Ion Cannon's release also hits the ground target it
+// flies over, for 40% of its damage at level 1 and 70% at level 3. Without
+// the passive its shots pass over it.
+@(test)
+ion_cannon_charge_hits_ground :: proc(t: ^testing.T) {
+	arena: vmem.Arena
+	defs, loaded := assets_defs(t, &arena)
+	if !loaded {
+		return
+	}
+	defer vmem.arena_destroy(&arena)
+	ic := weapon_index(t, &defs, passives.WEAPON_ION_CANNON)
+	if ic < 0 {
+		return
+	}
+	for level in ([]u8{0, 1, 3}) {
+		s := new(sim.State, context.temp_allocator)
+		defer sim.destroy(s)
+		if !play_start(t, s, sim.Session{seed = 1, level_id = defs.levels[0].id, game_type = .Single, mods = session_mods()}, &defs) {
+			return
+		}
+		p := sim.player_at(s, 0)
+		h := p.weapons
+		h.air.weapon = ic
+		p.invulnerable_always, p.invulnerable = true, true
+		passives.levels_of(s, 0)[passives.WEAPON_1_CHARGE] = level
+		tank, ok := support.unit_spawn(t, s, sim.res_id("tala"), p.loc + {0, -70}, stationary = true)
+		if !ok {
+			return
+		}
+		tank.shields = 100
+		// One level: a release of one spawner.
+		h.air_powerup = {state = 3, level = 1, release_time = -100}
+
+		// What the tank takes each step, and the release's shaped shots:
+		// their share against the ground and their damage.
+		share, damage: f32 = -1, 0
+		taken: [dynamic]f32
+		taken.allocator = context.temp_allocator
+		for _ in 0 ..< 40 {
+			before := tank.shields
+			sim.session_step(s, {})
+			if before != tank.shields {
+				append(&taken, before - tank.shields)
+			}
+			walk := sim.walk_entities(s)
+			for e in sim.walk_next(&walk) {
+				if !e.deleted && e.shaped_charge && sim.unit_of(s, e).player_projectile {
+					share, damage = e.ground, sim.unit_of(s, e).damage
+				}
+			}
+		}
+		if level == 0 {
+			// Unshaped without a passive: its shots pass over.
+			testing.expect_value(t, len(taken), 0)
+			continue
+		}
+		if !testing.expect(t, share >= 0, "the release fires") {
+			continue
+		}
+		want: f32 = level == 1 ? 0.4 : 0.7
+		testing.expect(t, abs(share - want) < 0.001, "its share of the damage")
+		if testing.expect_value(t, len(taken), 1) {
+			testing.expect(t, abs(taken[0] - damage * want) < 0.001, "the tank takes the share")
+		}
+	}
+}

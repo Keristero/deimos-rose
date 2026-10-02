@@ -12,10 +12,14 @@ package passives_view
 //   - bacta_gun_charge: the Bacta Gun at Weapon 2 Charge's level 3, the
 //     charge held to its top and let go, so the release's hits leave
 //     corrosive clouds (Hit_Cloud) on the stage's first wave.
+//   - ion_cannon_charge: the Ion Cannon at Weapon 1 Charge's level 3, the
+//     same, with two Laser Tanks parked ahead, so the release's shots hit
+//     them as they fly over (Hits_Ground).
 
 
 import "dr:plugins/passives"
 import "dr:sim"
+import "dr:sim/lifecycle"
 import "dr:sim/systems/player_system"
 import "dr:sim/systems/weapon_system"
 import "dr:ui"
@@ -30,6 +34,8 @@ shot_loadout :: proc(name: string) -> (weapon: passives.Res_ID, passive: passive
 		return passives.WEAPON_REAR_GUN, passives.WEAPON_3_CHARGE
 	case "bacta_gun_charge":
 		return passives.WEAPON_BACTA_GUN, passives.WEAPON_2_CHARGE
+	case "ion_cannon_charge":
+		return passives.WEAPON_ION_CANNON, passives.WEAPON_1_CHARGE
 	}
 	return {}, {}
 }
@@ -46,6 +52,17 @@ weapon_shot :: proc(s: ^sim.State, name: string) -> string {
 			for _ in 0 ..< 120 {
 				_ = sim.session_step(s, {})
 			}
+			if name == "ion_cannon_charge" {
+				// Far ahead: the ground scrolls them down to the release.
+				for ahead in ([]f32{240, 300}) {
+					req := sim.spawn_request(sim.res_id("tala"))
+					req.loc = p.loc - {0, ahead}
+					req.stationary = true
+					if !sim.ref_valid(s, lifecycle.eg_request_spawn(s, req)) {
+						return "no Laser Tank"
+					}
+				}
+			}
 			return ""
 		}
 	}
@@ -60,15 +77,17 @@ REAR_GUN_PHASES := []ui.Shot_Phase{{4, {{.Fire_Air}, {}}}}
 @(private = "file", rodata)
 REAR_GUN_CHARGE_PHASES := []ui.Shot_Phase{{66, {{.Fire_Air}, {}}}, {20, {}}}
 
-// The charge reaches its top of 20 levels in under 15 + 20 * 4 steps, at
-// level 3's faster charge; its release fires one shot a step.
+// The Bacta Gun's and the Ion Cannon's charges reach their top of 20
+// levels in under 15 + 20 * 4 steps, at level 3's faster charge; their
+// releases fire one volley a step.
 @(private = "file", rodata)
-BACTA_GUN_CHARGE_PHASES := []ui.Shot_Phase{{96, {{.Fire_Air}, {}}}, {30, {}}}
+FULL_CHARGE_PHASES := []ui.Shot_Phase{{96, {{.Fire_Air}, {}}}, {30, {}}}
 
 register_shots :: proc() {
 	ui.shot_register({name = "rear_gun_side", plugin = passives.ID, level = 2, alone = true, setup = weapon_shot, phases = REAR_GUN_PHASES})
 	ui.shot_register({name = "rear_gun_charge", plugin = passives.ID, level = 2, alone = true, setup = weapon_shot, phases = REAR_GUN_CHARGE_PHASES})
-	ui.shot_register({name = "bacta_gun_charge", plugin = passives.ID, level = 2, alone = true, setup = weapon_shot, phases = BACTA_GUN_CHARGE_PHASES})
+	ui.shot_register({name = "bacta_gun_charge", plugin = passives.ID, level = 2, alone = true, setup = weapon_shot, phases = FULL_CHARGE_PHASES})
+	ui.shot_register({name = "ion_cannon_charge", plugin = passives.ID, level = 2, alone = true, setup = weapon_shot, phases = FULL_CHARGE_PHASES})
 }
 
 @(init)
