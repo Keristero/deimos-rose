@@ -57,6 +57,9 @@ project_round_trips :: proc(t: ^testing.T) {
 	p.level.id, p.level.name = "le99", "Test"
 	p.level.water = {height = 9.5, colour = {20, 40, 90}, visible = true}
 	p.level.lighting.sun_elevation_degrees = 35
+	tune, _ := os.read_entire_file("tests/fixtures/audio/tone.ogg", context.temp_allocator)
+	append(&p.audio, terrain.Audio_File{"my-tune", ".ogg", tune})
+	p.level.music = "my-tune"
 
 	path :: OUT + "/round.drproj.json"
 	testing.expect(t, terrain.project_save(&p, path))
@@ -73,6 +76,11 @@ project_round_trips :: proc(t: ^testing.T) {
 	testing.expect_value(t, q.level.lighting.sun_elevation_degrees, f32(35))
 	testing.expect_value(t, q.level.lighting.ambient, data.LIGHTING_MEASURED.ambient)
 	testing.expect_value(t, q.canopy_material, 1)
+	testing.expect_value(t, q.level.music, "my-tune")
+	if testing.expect_value(t, len(q.audio), 1) {
+		testing.expect_value(t, q.audio[0].ext, ".ogg")
+		testing.expect(t, len(tune) > 0 && string(q.audio[0].bytes) == string(tune), "the music changed")
+	}
 	for v, i in p.heights {
 		if f32(terrain.height_quantise(v)) * terrain.HEIGHT_UNIT != q.heights[i] {
 			testing.expectf(t, false, "height %d: %v then %v", i, v, q.heights[i])
@@ -90,6 +98,16 @@ project_round_trips :: proc(t: ^testing.T) {
 	second_h, _ := os.read_entire_file(OUT + "/round.height.png", context.temp_allocator)
 	testing.expect(t, string(first) == string(second), "the JSON changed")
 	testing.expect(t, string(first_h) == string(second_h), "the heightmap changed")
+}
+
+// An audio id is a file name the same everywhere, whatever it came from.
+@(test)
+audio_names_are_file_names :: proc(t: ^testing.T) {
+	testing.expect_value(t, terrain.audio_name("/home/me/Music/Big Theme (v2).OGG", context.temp_allocator), "big-theme--v2-")
+	testing.expect_value(t, terrain.audio_name("C:\\tunes\\boss_1.mp3", context.temp_allocator), "boss_1")
+	testing.expect_value(t, terrain.audio_name(".wav", context.temp_allocator), "music")
+	testing.expect_value(t, terrain.audio_extension("a.Mp3"), ".mp3")
+	testing.expect_value(t, terrain.audio_extension("a.flac"), "")
 }
 
 // Through 15-bit colour and back, as the originals' images went: black

@@ -7,8 +7,9 @@ package terrain
 // and the materials' images under the names they give. The level's own
 // record (its placements, lighting, water and wind, D54) is inside, as the
 // game reads it. The scenery models' files are under models/, each as a
-// GLB (model.odin), and the models put on the map are inside. Maps,
-// masks and previews are exports of a project, not part of it.
+// GLB (model.odin), and the models put on the map are inside. The audio
+// it brings, its music, is under audio/ (audio.odin). Maps, masks and
+// previews are exports of a project, not part of it.
 
 import "core:encoding/json"
 import "core:image"
@@ -21,8 +22,9 @@ import "dr:data"
 
 PROJECT_FORMAT :: "deimos-rising.level-project"
 // 2 added the scenery models; a version 1 project has none. 3 added the
-// preview's crop; an older project's is preview_crop_default.
-PROJECT_VERSION :: 3
+// preview's crop; an older project's is preview_crop_default. 4 added the
+// audio it brings: an older editor would drop it on saving, so it refuses.
+PROJECT_VERSION :: 4
 PROJECT_SUFFIX :: ".drproj.json"
 // Heights are stored in 1/32 of a map pixel: up to 2048 pixels high.
 HEIGHT_UNIT :: f32(1) / 32
@@ -83,6 +85,8 @@ Project :: struct {
 	models:          [dynamic]Model,
 	model_files:     [dynamic]Model_File,
 	instances:       [dynamic]Instance,
+	// The audio the level brings, its imported music.
+	audio:           [dynamic]Audio_File,
 	// Where the level's preview is cut from the map, its top left in map
 	// pixels (preview.odin).
 	preview:         [2]int,
@@ -99,6 +103,7 @@ project_make :: proc(width, length: int, allocator := context.allocator) -> (p: 
 	p.models = make([dynamic]Model, allocator)
 	p.model_files = make([dynamic]Model_File, allocator)
 	p.instances = make([dynamic]Instance, allocator)
+	p.audio = make([dynamic]Audio_File, allocator)
 	p.level.background = {0, 0, width, length}
 	p.level.lighting = data.LIGHTING_MEASURED
 	p.preview = preview_crop_default(width, length)
@@ -128,6 +133,7 @@ Json_Project :: struct {
 	models:          []Model         `json:"models"`,
 	instances:       []Instance      `json:"instances"`,
 	preview:         [2]int          `json:"preview"`,
+	audio:           []string        `json:"audio"`, // audio/<id><ext>
 }
 
 // Saves to `path` (…/<name>.drproj.json) and its side files beside it,
@@ -155,6 +161,7 @@ project_save :: proc(p: ^Project, path: string) -> bool {
 		preview         = p.preview,
 	}
 	j.level.placements = p.placements[:]
+	j.audio = make([]string, len(p.audio), context.temp_allocator)
 	full: string
 	j.height, full = side(dir, stem, "height")
 	h := picture_make(p.width, p.length, 1, 16, context.temp_allocator)
@@ -200,6 +207,15 @@ project_save :: proc(p: ^Project, path: string) -> bool {
 		at := side_path(dir, model_file_path(f.name))
 		os.make_directory_all(at[:strings.last_index_byte(at, '/')])
 		if !model_file_write(at, f) {
+			return false
+		}
+	}
+	// The audio, every file imported: the level may choose another later.
+	for f, k in p.audio {
+		j.audio[k] = audio_file_path(f)
+		at := side_path(dir, j.audio[k])
+		os.make_directory_all(at[:strings.last_index_byte(at, '/')])
+		if os.write_entire_file(at, f.bytes) != nil {
 			return false
 		}
 	}
@@ -276,6 +292,12 @@ project_load :: proc(path: string, allocator := context.allocator) -> (p: Projec
 	for i in j.instances {
 		if i.model >= 0 && i.model < len(p.models) {
 			append(&p.instances, i)
+		}
+	}
+	for name in j.audio {
+		f := audio_file_read(dir, name, allocator) or_return
+		if audio_find(&p, f.id) < 0 {
+			append(&p.audio, f)
 		}
 	}
 	return p, true

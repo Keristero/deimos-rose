@@ -769,6 +769,34 @@ assets_audio_path :: proc(a: ^Assets, id: string) -> string {
 	return strings.concatenate({a.root, "/audio/", id, ".wav"}, context.temp_allocator)
 }
 
+// One of the original game's music tracks: its audio id, and the name
+// assets/manifest.json records for it ("Music 3").
+Music_Track :: struct {
+	id, name: string,
+}
+
+// The original game's music, Music.pak's tracks, as tools/extract listed
+// them in `root`/manifest.json; none without it. The rest of the audio is
+// sound effects.
+assets_music :: proc(root: string, allocator := context.allocator) -> []Music_Track {
+	Json_Manifest :: struct {
+		entries: []struct {
+			fourcc, name, kind, source: string,
+		},
+	}
+	m: Json_Manifest
+	if !read_json(strings.concatenate({root, "/manifest.json"}, context.temp_allocator), &m, context.temp_allocator) {
+		return nil
+	}
+	tracks := make([dynamic]Music_Track, 0, 4, allocator)
+	for en in m.entries {
+		if en.kind == "audio" && en.source == "Music.pak" {
+			append(&tracks, Music_Track{strings.clone(en.fourcc, allocator), strings.clone(en.name, allocator)})
+		}
+	}
+	return tracks[:]
+}
+
 @(private = "file")
 res_id_less :: proc(a, b: sim.Res_ID) -> bool {
 	for k in 0 ..< len(a) {

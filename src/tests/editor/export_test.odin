@@ -311,3 +311,68 @@ export_writes_a_plugin :: proc(t: ^testing.T) {
 		testing.expectf(t, !os.exists(strings.concatenate({dir, "/images/im16/fixture_export_le02_", what, ".png"}, context.temp_allocator)), "le02's %s is left", what)
 	}
 }
+
+// The audio a level brings goes into the plugin with it, its id carrying
+// the campaign's name, and the level's too where two levels bring one
+// name and different files; and it goes when no level brings it. Draws:
+// called from editor_draws.
+audio_exports_with_the_level :: proc(t: ^testing.T) {
+	os.remove_all(EXPORT + "/audio")
+	ogg, _ := os.read_entire_file(TONE, context.temp_allocator)
+	mp3, _ := os.read_entire_file(TONE_MP3, context.temp_allocator)
+	brings :: proc(p: ^terrain.Project, ext: string, bytes: []u8) {
+		append(&p.audio, terrain.Audio_File{"song", ext, bytes})
+		p.level.music = "song"
+	}
+	alpha := lake("Alpha", 1000, context.temp_allocator)
+	brings(&alpha, ".ogg", ogg)
+	beta := lake("Beta", 1000, context.temp_allocator)
+	brings(&beta, ".mp3", mp3)
+	gamma := lake("Gamma", 1000, context.temp_allocator)
+	brings(&gamma, ".ogg", ogg)
+	a, b, g := saved(t, &alpha, "audio", "alpha"), saved(t, &beta, "audio", "beta"), saved(t, &gamma, "audio", "gamma")
+
+	e: editor.Editor
+	editor.editor_init(&e)
+	defer editor.editor_destroy(&e)
+	c := editor.campaign_make("fixture_audio", context.temp_allocator)
+	c.label = "Fixture Audio"
+	append(&c.levels, a, b, g)
+	dir :: EXPORT + "/audio/plugins/fixture_audio"
+	x: editor.Export
+	ok := editor.export_run(&e, &x, &c, dir)
+	testing.expectf(t, ok && len(x.problems) == 0, "not exported cleanly: %v", x.problems)
+	editor.export_destroy(&x)
+	if !ok {
+		return
+	}
+	music :: proc(dir, id: string) -> string {
+		blob, _ := os.read_entire_file(strings.concatenate({dir, "/data/levels/", id, ".json"}, context.temp_allocator), context.temp_allocator)
+		l: data.Json_Level
+		_ = json.unmarshal(blob, &l, allocator = context.temp_allocator)
+		return l.music
+	}
+	testing.expect_value(t, music(dir, "le01"), "fixture_audio_song")
+	testing.expect_value(t, music(dir, "le02"), "fixture_audio_le02_song")
+	testing.expect_value(t, music(dir, "le03"), "fixture_audio_song")
+	song, _ := os.read_entire_file(dir + "/audio/fixture_audio_song.ogg", context.temp_allocator)
+	testing.expect(t, len(ogg) > 0 && string(song) == string(ogg), "Alpha's song")
+	other, _ := os.read_entire_file(dir + "/audio/fixture_audio_le02_song.mp3", context.temp_allocator)
+	testing.expect(t, len(mp3) > 0 && string(other) == string(mp3), "Beta's song")
+
+	// The game finds them as a plugin's.
+	media: map[string]string
+	defer delete(media)
+	for ext in data.AUDIO_EXTENSIONS {
+		data.plugin_media_add(&media, EXPORT + "/audio/nothing", "/audio/", dir, ext, ".wav", context.temp_allocator)
+	}
+	testing.expect(t, "fixture_audio_song" in media && "fixture_audio_le02_song" in media, "not a plugin's audio")
+
+	// Again without Beta: its song goes, Alpha's stays.
+	clear(&c.levels)
+	append(&c.levels, a, g)
+	testing.expect(t, editor.export_run(&e, &x, &c, dir))
+	editor.export_destroy(&x)
+	testing.expect(t, os.exists(dir + "/audio/fixture_audio_song.ogg"))
+	testing.expect(t, !os.exists(dir + "/audio/fixture_audio_le02_song.mp3"), "Beta's song is left")
+}

@@ -244,14 +244,18 @@ view there. The overview's box is the part in view, its width as well
 as its rows when zoomed in. Ctrl+wheel, a touchpad's pinch, and Ctrl+=
 and Ctrl+- zoom about the mouse, and Ctrl+0 goes back to 1x. Ctrl+Z, Ctrl+Y and
 Ctrl+S undo, redo and save; F5 plays the level (Stage 9); 1-4 pick the brush, `[` and `]` size it, `L`
-and `T` toggle the light and the tilt. A project dropped on the window
-opens.
+and `T` toggle the light and the tilt. A file dropped on the window is
+taken by its kind (D77): a project or campaign opens, a model is
+imported into the Models tab's library, an image becomes a material, and
+a `.wav`, `.ogg` or `.mp3` becomes the level's music. The tab that shows
+it opens.
 
 ### The file dialog
 
-Open, the Paint tab's Add an image and the Models tab's Import a model
-show the system's own file dialog, starting in the project's folder, and
-take its file as a dropped one is taken. While it is open the editor
+Open, the Paint tab's Add an image, the Models tab's Import a model and
+the Level tab's Import... show the system's own file dialog, starting in
+the project's folder, and take its file as a dropped one is taken. Each
+offers the files its kind takes. While it is open the editor
 draws but takes no input.
 
 On Linux it is the desktop portal's (`org.freedesktop.portal.FileChooser`
@@ -398,7 +402,9 @@ helpers follow, below.
   (`editorPreviewSpriteFace_ID` not `none`), by name: 134 of the
   originals' 386, among them all 114 types the twelve levels place, and
   any data plugin's. Both, Ground and Air filter the palette and the map.
-  The chosen unit is shown as it will look.
+  A plugin's unit has its plugin's name at the right of its row, as
+  every asset list in the editor says where an asset is from (D77). The
+  chosen unit is shown as it will look, and says its plugin.
 - **On the map:** a click on a unit selects it, and a drag moves it. A
   click elsewhere puts down the palette's unit and selects it, and the
   same drag positions it. Right-click a unit to make its kind the
@@ -524,7 +530,9 @@ material is either a plain colour or an image tinted by its colour.
   `materials/` when the project is saved, so a project stands alone, and
   Stage 9's export takes the folder with it.
 - **The library:** materials to start a level from. Add from the library
-  copies one into the project as a dropped image is copied.
+  copies one into the project as a dropped image is copied. In the
+  level's list, a material from an image not in the library says
+  `imported`.
 - **The brush:** Paint moves every weight toward the chosen material, and
   Erase takes that material away. Both use the Terrain brush's shapes,
   size, strength and falloff. Keys 1 and 2 pick Paint or Erase.
@@ -605,12 +613,14 @@ The Level tab edits:
 - the level record's name and identifier;
 - its description and copyright, the words the originals' campaign
   screens had;
-- its music, briefing and sky;
+- its music, from a list (below), and its briefing and sky, by id;
 - the air and ground weapons a player starts it with (D54), from the
   weapons of each kind, or none for what the level's number brings.
 
 A text box's change counts once it is left, and undoes as a setting. The
 wind stays in the Water tab, where Stage 7 put it.
+
+The weapons from a plugin say so after their names.
 
 The description, copyright and briefing were in the originals' records
 and in `plugins/classic_levels/data/levels/`, but the game's level
@@ -855,7 +865,8 @@ model, is imported:
    colour, texture and alpha cutout.
 2. It is brought under 60,000 triangles (below).
 3. It is kept in the user's data, `editor/models/<name>.glb`, so it is in
-   the library for every level after.
+   the library for every level after. The library's list and the
+   level's say `imported` beside it.
 
 A file with several models at its root, as Poly Haven lays out a set,
 is one model with variants. Models are life size, at 3 map pixels a
@@ -1028,13 +1039,15 @@ bar, so the editor stays responsive. Each level becomes:
 - `<campaign>_leNN_preview.png`, the preview (below);
 - `<campaign>_leNN_mask.png`, the water mask at 1/5 scale: pure blue,
   which the game reads as 0x001f, where most of a 5x5 cell is under the
-  water, white elsewhere, and all white when the water is hidden.
+  water, white elsewhere, and all white when the water is hidden;
+- `audio/<campaign>_<id>.<ext>`, the music it brings, if it brings it
+  (below), and its record names it so.
 
 Last comes `plugin.json`: the levels by identifier, the dependencies the
 units and start weapons need, and `"made_with": "deimos-rising level
 editor"`. An export never writes into a folder holding a plugin without
 that mark, so Classic Levels cannot be overwritten. Exporting again
-removes the records and images of levels since taken out.
+removes the records, images and music of levels since taken out.
 
 The level open is exported as it is in the editor, unsaved changes and
 all. The other levels are loaded from their files.
@@ -1052,8 +1065,9 @@ What stops an export:
 - a folder holding a plugin the editor did not make.
 
 What it warns of, and writes anyway: no label, no name, no music or
-music that is not installed, a sky that is not installed, a level
-shorter than its preview.
+music in neither the game, a plugin nor the level, a sky that is not
+installed, a level shorter than its preview. A plugin's music makes
+that plugin a dependency.
 
 **Play**, or F5, exports the level open alone, as the campaign
 `editor_play`, into `editor-play/` in the user's data. Then it starts the
@@ -1162,3 +1176,64 @@ or drag on the map, or use "Where the view is" and "The level's start".
   Export lists a plugin's units' plugin as a dependency, and the
   `tests/editor` case checks the core's, but no check has played a
   plugin's unit yet.
+
+## Stage 9: music and where assets are from
+
+The Level tab chooses the level's music from a list (D77):
+- None;
+- the game's three tracks, `ammu`, `inmu` and `mu03`, from Music.pak, by
+  the names the extraction gave them in `manifest.json`;
+- a plugin's music: its audio that a level of it plays, which says its
+  plugin;
+- the level's own, which says `this level`.
+
+Import..., or a `.wav`, `.ogg` or `.mp3` dropped on the window, brings a
+file into the level and makes it the music, as one edit that undoes as
+one. It must be one the game decodes. Its id is its file's name, lower
+case and dashed as a material's is, with `-2`, `-3` after it when the
+game, a plugin or the level has that id already. The same file imported
+again is chosen again, not copied. Listen plays the chosen track, and
+Stop, or choosing another, stops it. Remove takes away the level's own,
+and the music with it when it was that.
+
+The project keeps the files as they were, in `audio/<id>.<ext>` beside
+it, so it stands alone (project version 4: an older editor would drop
+them on saving, so it refuses one). Export copies each into the plugin's
+`audio/` as `<campaign>_<id>`. Plugins' audio ids are one namespace, as
+image ids are; when two levels bring different files under one id, the
+second is `<campaign>_leNN_<id>`.
+
+Every list of assets in the editor, the units palette, the Paint tab's
+materials and library, the Models tab's models and library and the
+music, has a column at its right that says where each is from: a
+plugin's name, `this level`, or `imported`. The game's own say nothing.
+A name too long for the room left ends in `...`.
+
+### Verified
+
+- `tests/terrain`: a project's audio and music save and read back, with
+  a `.ogg` from `tests/fixtures/audio`; audio ids are file names.
+- `tests/editor`:
+  - files go to the kind their names say, and each dialog offers that
+    kind's;
+  - an import makes the music, the same file twice is one, a file the
+    game cannot decode is refused, and a plugin's id is left to it; each
+    import and a removal undo and redo as one;
+  - the game's music is Music.pak's audio in `manifest.json`;
+  - three levels' tracks export under the campaign's name and their
+    records name them: two with the same file share it, the third, with
+    another under the same id, gets its own. The game's plugin reader
+    finds both, and the third's is swept when its level is taken out.
+- The game, given the exported fixture, streams its track as the
+  level's music.
+- By eye, under xvfb: the Level tab's list with the game's tracks and an
+  imported one, chosen; the units palette with a scratch plugin's units,
+  their source column cut short to fit.
+
+### Still open
+
+- A compiled plugin's units, weapons and music (chaingun, new_weapons)
+  are not in the editor's lists, as before: the editor reads data
+  plugins only.
+- Only music is imported as audio. A sound effect is a plugin's, and
+  the editor places nothing that plays one.

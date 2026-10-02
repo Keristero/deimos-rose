@@ -4,6 +4,7 @@ package terrain_tests
 // fitted look's shape, the crop kept in the project and found again from
 // a preview; and the media mask an export makes beside it.
 
+import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:testing"
@@ -119,7 +120,7 @@ preview_crop_saves_with_the_project :: proc(t: ^testing.T) {
 
 	// Version 2 had no crop: whatever the file holds, it is the default.
 	blob, _ := os.read_entire_file(path, context.temp_allocator)
-	old, replaced := strings.replace(string(blob), `"version": 3`, `"version": 2`, 1, context.temp_allocator)
+	old, replaced := strings.replace(string(blob), fmt.tprintf(`"version": %d`, terrain.PROJECT_VERSION), `"version": 2`, 1, context.temp_allocator)
 	testing.expect(t, replaced, "the project's version is not where it was")
 	testing.expect(t, os.write_entire_file(path, transmute([]u8)old) == nil)
 	q, ok = terrain.project_load(path, context.temp_allocator)

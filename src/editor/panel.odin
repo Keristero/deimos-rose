@@ -107,6 +107,7 @@ guarded :: proc(e: ^Editor, action: Pending) -> bool {
 editor_frame :: proc(e: ^Editor) {
 	l := layout(f32(rl.GetScreenWidth()), f32(rl.GetScreenHeight()))
 	campaign_update(e, view_rows(&e.view, l.view))
+	listen_update(e)
 	editor_input(e, l)
 	view_prepare(e, l.view)
 	rl.BeginDrawing()
@@ -140,37 +141,6 @@ editor_draw :: proc(e: ^Editor, l: Layout) {
 	instances_settle(e, rl.IsMouseButtonDown(.LEFT))
 }
 
-// A file dropped on the window or chosen in the dialog: a project opens
-// (`guard`ed, unless that was done when the dialog was asked for); a model
-// goes into the library; an image becomes a material.
-@(private = "file")
-take_file :: proc(e: ^Editor, path: string, guard: bool) {
-	lower := strings.to_lower(path, context.temp_allocator)
-	switch {
-	case strings.has_suffix(path, terrain.PROJECT_SUFFIX):
-		if !guard || guarded(e, .Open) {
-			open_reporting(e, path)
-		}
-	case strings.has_suffix(path, CAMPAIGN_SUFFIX):
-		campaign_open_reporting(e, path)
-		e.tab = c.int(Tab.Campaign)
-	case strings.has_suffix(lower, ".glb") || strings.has_suffix(lower, ".gltf") || strings.has_suffix(lower, ".obj"):
-		if k := editor_model_import(e, path); k >= 0 {
-			e.tab = c.int(Tab.Models)
-			editor_message(e, "Model %s imported", e.scenery.library[k].file.name)
-		} else {
-			editor_message(e, "Cannot read %s as a model", path)
-		}
-	case editor_material_add_file(e, path):
-		e.tab = c.int(Tab.Paint)
-		editor_message(e, "Material %s added", e.project.materials[len(e.project.materials) - 1].name)
-	case len(e.project.materials) >= terrain.MAX_MATERIALS:
-		editor_message(e, "A level has at most %d materials", terrain.MAX_MATERIALS)
-	case:
-		editor_message(e, "Cannot read %s as an image", path)
-	}
-}
-
 // The file dialog's answer, when it comes. While it is open the editor
 // takes no other input, as a modal dialog's window does not.
 @(private = "file")
@@ -194,7 +164,7 @@ dialog_input :: proc(e: ^Editor) -> (open: bool) {
 			editor_message(e, "Cannot add %s: not a level project", path)
 		}
 	case path != "":
-		take_file(e, path, false)
+		editor_import(e, path, false)
 	}
 	return e.dialog.open
 }
@@ -295,7 +265,7 @@ editor_input :: proc(e: ^Editor, l: Layout) {
 	if rl.IsFileDropped() {
 		files := rl.LoadDroppedFiles()
 		for i in 0 ..< files.count {
-			take_file(e, strings.clone(string(files.paths[i]), context.temp_allocator), true)
+			editor_import(e, strings.clone(string(files.paths[i]), context.temp_allocator), true)
 		}
 		rl.UnloadDroppedFiles(files)
 	}

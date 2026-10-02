@@ -115,13 +115,14 @@ entries_panel :: proc(e: ^Editor, x: f32, y: ^f32, w: f32) {
 	for en in pr.entries {
 		total += max(en.chance, 0)
 	}
-	names := make([]cstring, len(pr.entries), context.temp_allocator)
+	rows := make([]Asset_Row, len(pr.entries), context.temp_allocator)
 	for en, i in pr.entries {
-		missing := library_find(s, en.model) < 0 ? "  (not in the library)" : ""
-		names[i] = fmt.ctprintf("%s%s%s  %.0f%%%s", en.model, en.variant != "" ? " / " : "", en.variant, total > 0 ? 100 * max(en.chance, 0) / total : 0, missing)
+		l := library_find(s, en.model)
+		missing := l < 0 ? "  (not in the library)" : ""
+		rows[i] = {fmt.tprintf("%s%s%s  %.0f%%%s", en.model, en.variant != "" ? " / " : "", en.variant, total > 0 ? 100 * max(en.chance, 0) / total : 0, missing), l >= 0 && s.library[l].imported ? "imported" : ""}
 	}
-	active, focus := c.int(s.entry), c.int(-1)
-	rl.GuiListViewEx({x, y^, w, MODELS_LIST_HEIGHT}, raw_data(names), c.int(len(names)), &s.entry_scroll, &active, &focus)
+	active := c.int(s.entry)
+	asset_list({x, y^, w, MODELS_LIST_HEIGHT}, rows, &s.entry_scroll, &active)
 	if int(active) < len(pr.entries) {
 		s.entry = int(active)
 	}
@@ -172,13 +173,12 @@ library_panel :: proc(e: ^Editor, x: f32, y: ^f32, w: f32, bottom: f32) {
 		help(x, y, w, {"No library: `mise run models:library`.", "Import a .glb, .gltf or .obj, or drop one", "on the window."})
 		return
 	}
-	names := make([]cstring, len(s.library), context.temp_allocator)
+	rows := make([]Asset_Row, len(s.library), context.temp_allocator)
 	for m, i in s.library {
-		names[i] = fmt.ctprintf("%s%s  %d", m.file.name, m.imported ? " (imported)" : "", len(m.file.variants))
+		rows[i] = {fmt.tprintf("%s  %d", m.file.name, len(m.file.variants)), m.imported ? "imported" : ""}
 	}
-	focus := c.int(-1)
 	h := clamp(bottom - y^ - ROW - 60, MODELS_LIST_HEIGHT, 3 * MODELS_LIST_HEIGHT)
-	rl.GuiListViewEx({x, y^, w, h}, raw_data(names), c.int(len(names)), &s.library_scroll, &s.library_pick, &focus)
+	asset_list({x, y^, w, h}, rows, &s.library_scroll, &s.library_pick)
 	y^ += h + 4
 	if s.profile < 0 || s.library_pick < 0 || Models_Mode(s.mode) != .Scatter {
 		rl.GuiDisable()

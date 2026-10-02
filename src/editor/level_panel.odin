@@ -1,22 +1,26 @@
 package editor
 
 // The level's own properties (Stage 8): its names, its words for the
-// campaign's screens, its music, briefing and sky, and the weapons a
-// player starts it with (D54); and where its preview is cut from the map
-// (Stage 9), shown as Level Select will show it. Part of the settings, so
-// a change undoes as one; a text box's change counts once it is left.
+// campaign's screens, its briefing and sky, and the weapons a player
+// starts it with (D54); its music, the game's, a plugin's or one it brings
+// (D77); and where its preview is cut from the map (Stage 9), shown as
+// Level Select will show it. Part of the settings, so a change undoes as
+// one; a text box's change counts once it is left.
 
 import "core:c"
+import "core:fmt"
 import "core:mem/virtual"
 import "core:strings"
 
 import rl "vendor:raylib"
 
+import "dr:data"
 import "dr:sim"
 import "dr:terrain"
 
 Properties :: struct {
 	text:         [Field]string,
+	music:        string, // an audio id, empty for none
 	start_air:    string, // weapon ids, empty for what the level's number brings
 	start_ground: string,
 	preview:      [2]int, // the preview's crop, its top left in map pixels
@@ -27,7 +31,6 @@ Field :: enum c.int {
 	Identifier,
 	Description,
 	Copyright,
-	Music,
 	Briefing,
 	Skybox,
 }
@@ -38,20 +41,25 @@ FIELD_LABELS := [Field]cstring {
 	.Identifier  = "Identifier",
 	.Description = "Description",
 	.Copyright   = "Copyright",
-	.Music       = "Music",
 	.Briefing    = "Briefing",
 	.Skybox      = "Sky",
 }
 
-// Each text box's own copy, and which one is being typed in, or -1; and
-// the preview as made from the map, made again when the map or the crop
-// changes while the tab is open.
+// Each text box's own copy, and which one is being typed in, or -1; the
+// preview as made from the map, made again when the map or the crop
+// changes while the tab is open; and the track being listened to, with
+// the sound device opened for it the first time.
 Level_Panel :: struct {
 	buffers:       [Field][256]u8,
 	editing:       c.int,
 	preview:       rl.Texture2D,
 	preview_at:    [2]int,
 	preview_stale: bool,
+	music_scroll:  c.int,
+	music_row:     c.int, // the row chosen when last drawn
+	listening:     rl.Music,
+	listening_to:  string, // its id, the panel's own copy
+	sound:         bool,
 }
 
 @(private = "file")
@@ -66,8 +74,6 @@ field_of :: proc(p: ^terrain.Project, f: Field) -> ^string {
 		return &l.description
 	case .Copyright:
 		return &l.copyright
-	case .Music:
-		return &l.music
 	case .Briefing:
 		return &l.briefing
 	case .Skybox:
@@ -80,6 +86,7 @@ properties_of :: proc(p: ^terrain.Project) -> (s: Properties) {
 	for f in Field {
 		s.text[f] = field_of(p, f)^
 	}
+	s.music = p.level.music
 	s.start_air, s.start_ground = p.level.start_weapons.air, p.level.start_weapons.ground
 	s.preview = p.preview
 	return
@@ -89,6 +96,7 @@ properties_set :: proc(p: ^terrain.Project, s: Properties) {
 	for f in Field {
 		field_of(p, f)^ = s.text[f]
 	}
+	p.level.music = s.music
 	p.level.start_weapons = {s.start_air, s.start_ground}
 	p.preview = s.preview
 }
@@ -122,11 +130,12 @@ level_panel :: proc(e: ^Editor, x: f32, y: ^f32, w: f32, bottom: f32, view: rl.R
 		y^ += ROW
 	}
 	y^ += 4
+	music_panel(e, x, y, w)
 	heading(x, y, w, "Start weapons")
 	start_weapon(e, x, y, w, "Air", sim.WEP_AIR, &e.project.level.start_weapons.air)
 	start_weapon(e, x, y, w, "Ground", sim.WEP_GROUND, &e.project.level.start_weapons.ground)
 	y^ += 4
-	help(x, y, w, {"Enter, or a click elsewhere, keeps what", "was typed.  The start weapons replace", "what the level's number brings; a", "plugin's weapon needs its plugin on.", "Music, briefing and sky are ids: an", "audio id, a briefing id, an im16 image."})
+	help(x, y, w, {"Enter, or a click elsewhere, keeps what", "was typed.  The start weapons replace", "what the level's number brings; a", "plugin's weapon needs its plugin on.", "Briefing and sky are ids: a briefing", "id, an im16 image."})
 	heading(x, y, w, "Preview")
 	// As large as fits, up to Level Select's own size.
 	k := clamp((bottom - y^ - 4) / terrain.PREVIEW_HEIGHT, 0.25, 1)
@@ -181,6 +190,138 @@ level_panel_destroy :: proc(lp: ^Level_Panel) {
 		rl.UnloadTexture(lp.preview)
 	}
 	lp.preview = {}
+	listen_stop(lp)
+	if lp.sound {
+		rl.CloseAudioDevice()
+		lp.sound = false
+	}
+}
+
+// The level's music: none, the game's tracks, the plugins' levels', and
+// the audio the level brings; and buttons to bring more, to listen, and
+// to take one of its own away.
+@(private = "file")
+music_panel :: proc(e: ^Editor, x: f32, y: ^f32, w: f32) {
+	lp, p := &e.level_panel, &e.project
+	heading(x, y, w, "Music")
+	rows := make([dynamic]Asset_Row, context.temp_allocator)
+	ids := make([dynamic]string, context.temp_allocator)
+	append(&rows, Asset_Row{"None", ""})
+	append(&ids, "")
+	for m in e.units.music {
+		append(&rows, Asset_Row{m.name != "" ? fmt.tprintf("%s  %s", m.id, m.name) : m.id, m.plugin})
+		append(&ids, m.id)
+	}
+	for f in p.audio {
+		append(&rows, Asset_Row{f.id, "this level"})
+		append(&ids, f.id)
+	}
+	active := c.int(-1)
+	for id, i in ids {
+		if id == p.level.music {
+			active = c.int(i)
+		}
+	}
+	if active < 0 {
+		// Typed in an older editor, or a plugin's that is not here.
+		active = c.int(len(ids))
+		append(&rows, Asset_Row{fmt.tprintf("%s  (not found)", p.level.music), ""})
+		append(&ids, p.level.music)
+	}
+	shown := clamp(len(rows), 4, 6)
+	if active != lp.music_row {
+		// Chosen otherwise, by an import or an undo: brought into view.
+		if active < lp.music_scroll {
+			lp.music_scroll = active
+		} else if active >= lp.music_scroll + c.int(shown) {
+			lp.music_scroll = active - c.int(shown) + 1
+		}
+	}
+	before := active
+	h := asset_list_height(shown)
+	asset_list({x, y^, w, h}, rows[:], &lp.music_scroll, &active)
+	if active != before && active >= 0 && int(active) < len(ids) {
+		p.level.music = ids[active] // the catalogue's or the project's, as long as it is chosen
+	}
+	lp.music_row = active
+	y^ += h + 4
+
+	bw := (w - 2 * 4) / 3
+	if rl.GuiButton({x, y^, bw, 20}, "Import...") && !editor_dialog(e, .Audio) {
+		editor_message(e, "No file dialog here: drop the file on the window")
+	}
+	if p.level.music == "" {
+		rl.GuiDisable()
+	}
+	listening := lp.listening.frameCount != 0
+	if rl.GuiButton({x + bw + 4, y^, bw, 20}, listening ? "Stop" : "Listen") {
+		if listening {
+			listen_stop(lp)
+		} else {
+			listen_start(e, p.level.music)
+		}
+	}
+	rl.GuiEnable()
+	if terrain.audio_find(p, p.level.music) < 0 {
+		rl.GuiDisable()
+	}
+	if rl.GuiButton({x + 2 * (bw + 4), y^, bw, 20}, "Remove") {
+		editor_audio_remove(e, p.level.music)
+	}
+	rl.GuiEnable()
+	y^ += ROW
+	help(x, y, w, {"Or drop a .wav, .ogg or .mp3 on the window:", "the level brings it, into its campaign."})
+}
+
+// Plays the track `id`, the level's own or one the game finds.
+@(private = "file")
+listen_start :: proc(e: ^Editor, id: string) {
+	lp := &e.level_panel
+	listen_stop(lp)
+	if !lp.sound {
+		rl.InitAudioDevice()
+		lp.sound = true
+	}
+	if !rl.IsAudioDeviceReady() {
+		editor_message(e, "No sound device")
+		return
+	}
+	if k := terrain.audio_find(&e.project, id); k >= 0 {
+		f := e.project.audio[k]
+		lp.listening = rl.LoadMusicStreamFromMemory(strings.clone_to_cstring(f.ext, context.temp_allocator), raw_data(f.bytes), c.int(len(f.bytes)))
+	} else {
+		lp.listening = rl.LoadMusicStream(strings.clone_to_cstring(data.assets_audio_path(&e.units.assets, id), context.temp_allocator))
+	}
+	if lp.listening.frameCount == 0 {
+		lp.listening = {}
+		editor_message(e, "Cannot play %s", id)
+		return
+	}
+	rl.PlayMusicStream(lp.listening)
+	lp.listening_to = strings.clone(id)
+}
+
+listen_stop :: proc(lp: ^Level_Panel) {
+	if lp.listening.frameCount != 0 {
+		rl.StopMusicStream(lp.listening)
+		rl.UnloadMusicStream(lp.listening)
+	}
+	lp.listening = {}
+	delete(lp.listening_to)
+	lp.listening_to = ""
+}
+
+// Each frame: the track listened to plays on, until another is chosen.
+listen_update :: proc(e: ^Editor) {
+	lp := &e.level_panel
+	if lp.listening.frameCount == 0 {
+		return
+	}
+	if lp.listening_to != e.project.level.music {
+		listen_stop(lp)
+		return
+	}
+	rl.UpdateMusicStream(lp.listening)
 }
 
 // Keeps what is being typed, if anything.
@@ -194,7 +335,8 @@ level_panel_leave :: proc(e: ^Editor) {
 }
 
 // A combo box of the weapons of `type`, the originals' and the plugins',
-// and none: a click takes the next.
+// and none: a click takes the next. A plugin's says whose it is, as the
+// asset lists do.
 @(private = "file")
 start_weapon :: proc(e: ^Editor, x: f32, y: ^f32, w: f32, label: cstring, type: sim.Res_ID, id: ^string) {
 	sb := strings.builder_make(context.temp_allocator)
@@ -213,6 +355,11 @@ start_weapon :: proc(e: ^Editor, x: f32, y: ^f32, w: f32, label: cstring, type: 
 		append(&ids, wid)
 		strings.write_byte(&sb, ';')
 		strings.write_string(&sb, wp.name != "" ? wp.name : wid)
+		if wp.plugin != sim.CORE {
+			strings.write_string(&sb, "  (")
+			strings.write_string(&sb, sim.registered_plugins()[wp.plugin].name)
+			strings.write_byte(&sb, ')')
+		}
 	}
 	rl.GuiLabel({x, y^, 76, 20}, label)
 	before := active

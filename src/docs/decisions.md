@@ -2014,3 +2014,47 @@ decodes WAV, Ogg Vorbis and MP3 (its FLAC decoder is not built in).
 - `plugin_audio_kinds_decode` loads a quarter second of each from
   `tests/fixtures/audio`, made with ffmpeg, so a raylib built without one
   fails on CI's Linux and Windows runs.
+
+### D77 — A level brings its own music, and every asset list says where each is from
+
+The project owner asked for "an interface for importing assets into the
+plugin for adding music, and a music selector", one import for every
+kind of asset, and in all asset lists "another column that indicates
+when an asset comes from a plugin rather than the base game". F5's Play
+had also stopped working, fixed first.
+
+- **The music is the level's.** An imported file is kept beside the
+  project, `audio/<id>.<ext>` as it was (`terrain.Audio_File`), and
+  listed in the project; export copies it into the plugin. The owner
+  chose this over the user's data, which the models use (Stage 8): a
+  track is one level's, and a project then stands alone as with its
+  materials. PROJECT_VERSION is 4, so an older editor refuses the
+  project rather than save it without its audio.
+- **One way in.** A drop, a file dialog and each tab's Import go through
+  `editor_import`, by the file's kind (`file_kind`, from one table of
+  extensions the dialogs' filters are made from too).
+- **Ids are file names.** Lower case letters, digits, - and _, so the id
+  is the same file name in the project, the plugin and on every
+  filesystem; `-2`, `-3` after one the game, a plugin or the level has.
+  Plugins' audio ids are one namespace, the first found winning (D51),
+  so export names a track `<campaign>_<id>`, and `<campaign>_leNN_<id>`
+  when two levels bring different files under one id. A record's music
+  is rewritten to match. Exporting again sweeps `audio/<campaign>_*`
+  that no level wrote, as it does the images.
+- **What the list offers.** The game's music is Music.pak's audio in
+  `manifest.json` (`data.assets_music`): `ammu`, `inmu` and `mu03`.
+  Nothing marks a plugin's audio as music, so a plugin's music is its
+  audio that a level of it plays, not the ids its sounds use; a level
+  using one depends on its plugin. Music in none of these is still a
+  warning, as before: the level plays, silent.
+- **Undo.** An import or removal is one edit with the music, the files'
+  headers kept and their bytes in the project's arena.
+- **The Source column** (`asset_list`) is drawn over raygui's list view,
+  to the right, as wide as the widest source: a plugin's folder name, as
+  its dependencies name it, `this level`, or `imported`. The game's own
+  rows leave it empty. The units palette, Paint's two lists, Models'
+  two lists and the music use it. The Campaign tab's list of levels is
+  not of assets and stays plain.
+- Classic mode, `sim/` and the goldens are unchanged; the game reads the
+  exported track as any plugin's audio (D76).
+

@@ -135,6 +135,7 @@ editor_new :: proc(e: ^Editor, length: int, path: string) -> bool {
 // Makes `p`, held in `arena`, the project open.
 @(private = "file")
 editor_take :: proc(e: ^Editor, p: terrain.Project, arena: ^virtual.Arena) {
+	listen_stop(&e.level_panel) // it may stream from the last project's memory
 	arena_free(e.arena)
 	e.project, e.arena, e.has_project = p, arena, true
 	history_clear(&e.history)
@@ -290,7 +291,10 @@ editor_changed :: proc(e: ^Editor, c: Change) {
 			e.paint.material = len(e.project.materials) - 1
 		}
 	}
-	if c.map_ || c.settings || c.materials {
+	if c.audio {
+		listen_stop(&e.level_panel)
+	}
+	if c.map_ || c.settings || c.materials || c.audio {
 		e.settings = settings_of(&e.project)
 		e.dirty = true
 		e.view_stale, e.overview_stale = true, true

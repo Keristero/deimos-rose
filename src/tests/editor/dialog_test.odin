@@ -66,7 +66,7 @@ dialog_asks_the_portal :: proc(t: ^testing.T) {
 // for 0, `uri`; what the dialog then has.
 @(private = "file")
 ask :: proc(t: ^testing.T, db: ^editor.Dbus, portal: rawptr, d: ^editor.File_Dialog, response: u32, uri: string) -> (path: string, done, failed: bool) {
-	if !testing.expect(t, editor.dialog_start(d, .Project, "Open a level", editor.DIALOG_FILTERS[.Project], "/tmp")) {
+	if !testing.expect(t, editor.dialog_start(d, .Project, "Open a level", editor.dialog_filter(.Project), "/tmp")) {
 		return
 	}
 	testing.expect(t, d.open)

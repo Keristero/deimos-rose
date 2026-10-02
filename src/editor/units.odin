@@ -22,6 +22,10 @@ Catalogue :: struct {
 	assets:  data.Assets,
 	// Indices into defs.units that can be placed, by name.
 	palette: [dynamic]int,
+	// The data plugin each unit of defs.units is from, "" for the game's.
+	plugin:  [dynamic]string,
+	// The music a level can have: the game's, then the plugins' levels'.
+	music:   [dynamic]Music_Option,
 	// Each sprite plate's texture, loaded when first drawn.
 	plates:  map[sim.Res_ID]Plate,
 	// The bases the original maps have baked under these units, by unit
@@ -57,6 +61,58 @@ catalogue_load :: proc(c: ^Catalogue, root: string) {
 	c.assets = data.assets_open(root)
 	catalogue_index(c)
 	bases_load(c, root)
+	music_load(c, root)
+}
+
+// A track a level's music can be: its audio id, its name, and the plugin
+// it is from. Its own copies, freed with the catalogue.
+Music_Option :: struct {
+	id, name, plugin: string,
+}
+
+// The game's music, by the names it has, then the tracks the plugins'
+// levels play. A plugin's other sounds are its effects (data.Assets.sounds).
+@(private = "file")
+music_load :: proc(c: ^Catalogue, root: string) {
+	for t in data.assets_music(root, context.temp_allocator) {
+		append(&c.music, Music_Option{strings.clone(t.id), strings.clone(t.name), ""})
+	}
+	effects := make(map[string]bool, len(c.assets.sounds), context.temp_allocator)
+	for id in c.assets.sounds {
+		effects[id] = true
+	}
+	ids := make([dynamic]string, context.temp_allocator)
+	for id in c.assets.plugin_audio {
+		if !effects[id] {
+			append(&ids, id)
+		}
+	}
+	slice.sort(ids[:])
+	for id in ids {
+		append(&c.music, Music_Option{strings.clone(id), "", catalogue_audio_plugin(c, id)})
+	}
+}
+
+// The plugin whose content folder a plugin's sound is in; "" for the
+// game's, or none.
+catalogue_audio_plugin :: proc(c: ^Catalogue, id: string) -> string {
+	path := c.assets.plugin_audio[id]
+	for i in 1 ..< len(sim.registered_plugins()) {
+		if dir, found := data.plugin_content_dir(sim.Plugin_ID(i)); found && strings.has_prefix(path, strings.concatenate({dir, "/"}, context.temp_allocator)) {
+			return sim.registered_plugins()[i].name
+		}
+	}
+	return ""
+}
+
+// The music option `id`, if it is one.
+catalogue_music :: proc(c: ^Catalogue, id: string) -> (m: Music_Option, ok: bool) {
+	for o in c.music {
+		if o.id == id {
+			return o, true
+		}
+	}
+	return
 }
 
 // The baked bases, from root/bases; none when they have not been measured.
@@ -105,6 +161,31 @@ catalogue_index :: proc(c: ^Catalogue) {
 	for en in entries {
 		append(&c.palette, en.index)
 	}
+	resize(&c.plugin, len(c.defs.units))
+	for &u, i in c.defs.units {
+		c.plugin[i] = unit_plugin(c, string(u.id[:]))
+	}
+}
+
+// The data plugin a unit is from, or "" for the game's own: units do not
+// record it, but each is a record in its plugin's content folder.
+@(private = "file")
+unit_plugin :: proc(c: ^Catalogue, id: string) -> string {
+	file := strings.concatenate({"/data/unde/", id, ".json"}, context.temp_allocator)
+	if c.assets.root != "" && os.exists(strings.concatenate({c.assets.root, file}, context.temp_allocator)) {
+		return ""
+	}
+	for i in 1 ..< len(sim.registered_plugins()) {
+		if dir, found := data.plugin_content_dir(sim.Plugin_ID(i)); found && os.exists(strings.concatenate({dir, file}, context.temp_allocator)) {
+			return sim.registered_plugins()[i].name
+		}
+	}
+	return ""
+}
+
+// The plugin defs.units[i] is from, as catalogue_index found it.
+catalogue_plugin :: proc(c: ^Catalogue, i: int) -> string {
+	return i >= 0 && i < len(c.plugin) ? c.plugin[i] : ""
 }
 
 // Frees the textures; the defs and assets live as long as the editor.
@@ -124,6 +205,12 @@ catalogue_destroy :: proc(c: ^Catalogue) {
 	}
 	delete(c.bases)
 	delete(c.palette)
+	delete(c.plugin)
+	for m in c.music {
+		delete(m.id)
+		delete(m.name)
+	}
+	delete(c.music)
 }
 
 catalogue_unit :: proc(c: ^Catalogue, id: string) -> ^sim.Unit {

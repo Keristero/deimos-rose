@@ -14,6 +14,7 @@ package editor
 
 import "core:encoding/json"
 import "core:fmt"
+import "core:hash"
 import "core:mem/virtual"
 import "core:os"
 import "core:path/filepath"
@@ -166,6 +167,15 @@ Export :: struct {
 	derived:     string,
 	// The files written, so a re-export clears what it no longer makes.
 	written:     map[string]bool,
+	// The audio the levels brought, by the id it was given (level_audio).
+	audio:       map[string]Audio_Written,
+}
+
+@(private = "file")
+Audio_Written :: struct {
+	ext:   string,
+	bytes: int,
+	sum:   u32,
 }
 
 // Starts exporting a copy of `c` into `dir`. The copy is the export's own,
@@ -188,6 +198,7 @@ export_begin :: proc(x: ^Export, c: ^Campaign, dir: string) {
 	x.problems = make([dynamic]Problem, a)
 	x.deps = make(map[string]bool, a)
 	x.written = make(map[string]bool, a)
+	x.audio = make(map[string]Audio_Written, a)
 	x.identifiers = make([]string, len(c.levels), a)
 	switch {
 	case !data.plugin_name_valid(c.name):
@@ -344,12 +355,12 @@ level_check :: proc(e: ^Editor, x: ^Export, p: ^terrain.Project) {
 		problem(x, place, false, "%s has no name: Level Select shows its identifier", who)
 	}
 	for pl in p.placements {
-		u, found := unit_find(&e.units, pl.unit)
-		if !found {
+		u := unit_find(&e.units, pl.unit)
+		if u < 0 {
 			problem(x, place, true, "%s: unit %s at %d, %d is in neither the game nor a plugin", who, pl.unit, pl.x, pl.y)
 			continue
 		}
-		if dep := unit_plugin(&e.units, string(u.id[:])); dep != "" {
+		if dep := catalogue_plugin(&e.units, u); dep != "" {
 			x.deps[strings.clone(dep, a)] = true
 		}
 	}
@@ -370,10 +381,17 @@ level_check :: proc(e: ^Editor, x: ^Export, p: ^terrain.Project) {
 			problem(x, place, true, "%s starts with weapon %s, which is in neither the game nor a plugin", who, id)
 		}
 	}
-	if l.music == "" {
+	switch {
+	case l.music == "":
 		problem(x, place, false, "%s has no music", who)
-	} else if e.units.assets.root != "" && !os.exists(data.assets_audio_path(&e.units.assets, l.music)) {
-		problem(x, place, false, "%s's music, %s, is not in the game or a plugin", who, l.music)
+	case terrain.audio_find(p, l.music) >= 0:
+		// The level brings it: exported with it.
+	case e.units.assets.root != "" && !os.exists(data.assets_audio_path(&e.units.assets, l.music)):
+		problem(x, place, false, "%s's music, %s, is not in the game, a plugin or the level", who, l.music)
+	case:
+		if dep := catalogue_audio_plugin(&e.units, l.music); dep != "" {
+			x.deps[strings.clone(dep, a)] = true
+		}
 	}
 	if l.skybox != "" && e.units.assets.root != "" && !os.exists(data.assets_image_path(&e.units.assets, l.skybox)) {
 		problem(x, place, false, "%s's sky, %s, is not in the game or a plugin", who, l.skybox)
@@ -431,29 +449,14 @@ derived_asset :: proc(p: ^terrain.Project) -> string {
 	return ""
 }
 
-unit_find :: proc(c: ^Catalogue, id: string) -> (u: ^sim.Unit, found: bool) {
-	for &u in c.defs.units {
+// The place in defs.units of the unit `id`, or -1.
+unit_find :: proc(c: ^Catalogue, id: string) -> int {
+	for &u, i in c.defs.units {
 		if string(u.id[:]) == id {
-			return &u, true
+			return i
 		}
 	}
-	return nil, false
-}
-
-// The data plugin a unit is from, or "" for the game's own: units do not
-// record it, but each is a record in its plugin's content folder.
-@(private = "file")
-unit_plugin :: proc(c: ^Catalogue, id: string) -> string {
-	file := strings.concatenate({"/data/unde/", id, ".json"}, context.temp_allocator)
-	if c.assets.root != "" && os.exists(strings.concatenate({c.assets.root, file}, context.temp_allocator)) {
-		return ""
-	}
-	for i in 1 ..< len(sim.registered_plugins()) {
-		if dir, found := data.plugin_content_dir(sim.Plugin_ID(i)); found && os.exists(strings.concatenate({dir, file}, context.temp_allocator)) {
-			return sim.registered_plugins()[i].name
-		}
-	}
-	return ""
+	return -1
 }
 
 // A level's id in the campaign: le01 for the first.
@@ -502,6 +505,16 @@ level_write :: proc(e: ^Editor, x: ^Export, p: ^terrain.Project) -> bool {
 	if l.name == "" {
 		l.name = l.identifier
 	}
+	if k := terrain.audio_find(p, l.music); k >= 0 {
+		l.music = level_audio(x, p.audio[k]) or_return
+	} else if l.music != "" {
+		// An earlier export's track, from this plugin, chosen again: it stays.
+		path := data.assets_audio_path(&e.units.assets, l.music)
+		here := strings.concatenate({x.dir, "/audio/", filepath.base(path)}, context.temp_allocator)
+		if absolute(path, context.temp_allocator) == absolute(here, context.temp_allocator) {
+			x.written[strings.clone(slashed(here), virtual.arena_allocator(&x.arena))] = true
+		}
+	}
 	for img in ([3]struct {
 			id:  string,
 			pic: terrain.Picture,
@@ -519,6 +532,31 @@ level_write :: proc(e: ^Editor, x: ^Export, p: ^terrain.Project) -> bool {
 	}
 	x.written[strings.clone(slashed(path), virtual.arena_allocator(&x.arena))] = true
 	return true
+}
+
+// Writes audio a level brings into the plugin's audio/, and gives its id
+// there. Plugins' audio ids are one namespace, the first plugin's winning,
+// so it carries the campaign's name; and two levels bringing one name,
+// different files, the level's too.
+@(private = "file")
+level_audio :: proc(x: ^Export, f: terrain.Audio_File) -> (id: string, ok: bool) {
+	a := virtual.arena_allocator(&x.arena)
+	kept := Audio_Written{f.ext, len(f.bytes), hash.crc32(f.bytes)}
+	id = fmt.tprintf("%s_%s", x.campaign.name, f.id)
+	if was, seen := x.audio[id]; seen && was != kept {
+		id = fmt.tprintf("%s_%s_%s", x.campaign.name, level_id(x.at), f.id)
+	}
+	dir := strings.concatenate({x.dir, "/audio"}, context.temp_allocator)
+	path := strings.concatenate({dir, "/", id, f.ext}, context.temp_allocator)
+	if !(id in x.audio) {
+		os.make_directory_all(dir)
+		if os.write_entire_file(path, f.bytes) != nil {
+			return "", false
+		}
+		x.audio[strings.clone(id, a)] = kept
+	}
+	x.written[strings.clone(slashed(path), a)] = true
+	return id, true
 }
 
 @(private = "file")
@@ -546,8 +584,9 @@ manifest_write :: proc(x: ^Export) -> bool {
 }
 
 // What an earlier export wrote that this one did not: the records of
-// levels since taken out, which would still be found by identifier, and
-// their images. Only the editor's own files, in a folder it made.
+// levels since taken out, which would still be found by identifier, their
+// images and the audio they brought. Only the editor's own files, in a
+// folder it made.
 @(private = "file")
 stale_clear :: proc(x: ^Export) {
 	sweep :: proc(x: ^Export, pattern: string) {
@@ -563,6 +602,7 @@ stale_clear :: proc(x: ^Export) {
 	}
 	sweep(x, strings.concatenate({x.dir, "/data/levels/le[0-9][0-9].json"}, context.temp_allocator))
 	sweep(x, strings.concatenate({x.dir, "/images/im16/", x.campaign.name, "_le[0-9][0-9]_*.png"}, context.temp_allocator))
+	sweep(x, strings.concatenate({x.dir, "/audio/", x.campaign.name, "_*"}, context.temp_allocator))
 }
 
 // Where Play exports to: a plugins folder of its own in the user's data,

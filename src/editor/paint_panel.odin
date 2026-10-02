@@ -15,14 +15,13 @@ import "dr:terrain"
 paint_panel :: proc(e: ^Editor, x: f32, y: ^f32, w: f32) {
 	p, pt := &e.project, &e.paint
 	heading(x, y, w, "Materials")
-	names := make([]cstring, len(p.materials), context.temp_allocator)
+	rows := make([]Asset_Row, len(p.materials), context.temp_allocator)
 	for m, i in p.materials {
-		names[i] = fmt.ctprintf("%s%s", m.name, m.image == "" ? "  (colour)" : "")
+		rows[i] = {fmt.tprintf("%s%s", m.name, m.image == "" ? "  (colour)" : ""), material_source(e, m)}
 	}
 	active := c.int(pt.material)
-	focus := c.int(-1)
 	list := rl.Rectangle{x, y^, w - 24, 4 * 18 + 8}
-	rl.GuiListViewEx(list, raw_data(names), c.int(len(names)), &pt.list_scroll, &active, &focus)
+	asset_list(list, rows, &pt.list_scroll, &active)
 	if int(active) < len(p.materials) {
 		pt.material = int(active)
 	}
@@ -62,13 +61,12 @@ paint_panel :: proc(e: ^Editor, x: f32, y: ^f32, w: f32) {
 
 	heading(x, y, w, "Library")
 	if len(e.library.entries) > 0 {
-		lnames := make([]cstring, len(e.library.entries), context.temp_allocator)
+		lrows := make([]Asset_Row, len(e.library.entries), context.temp_allocator)
 		for en, i in e.library.entries {
-			lnames[i] = fmt.ctprintf("%s", en.name)
+			lrows[i].name = en.name
 		}
-		lfocus := c.int(-1)
 		lrect := rl.Rectangle{x, y^, w, 4 * 18 + 8}
-		rl.GuiListViewEx(lrect, raw_data(lnames), c.int(len(lnames)), &pt.library_scroll, &pt.library_pick, &lfocus)
+		asset_list(lrect, lrows, &pt.library_scroll, &pt.library_pick)
 		y^ += lrect.height + 4
 		if full || pt.library_pick < 0 {
 			rl.GuiDisable()
@@ -107,6 +105,21 @@ paint_panel :: proc(e: ^Editor, x: f32, y: ^f32, w: f32) {
 	}
 	y^ += 4
 	help(x, y, w, {"Drag on the map to paint the chosen", "material.  Steep lays one by the slope,", "By water by the height over the water."})
+}
+
+// Where a project's material is from: the library's are the game's, the
+// images dropped on the window imported. A colour says so in its name.
+@(private = "file")
+material_source :: proc(e: ^Editor, m: terrain.Material) -> string {
+	if m.image == "" {
+		return ""
+	}
+	for en in e.library.entries {
+		if m.image == strings.concatenate({MATERIALS_DIR, "/", en.image}, context.temp_allocator) {
+			return ""
+		}
+	}
+	return "imported"
 }
 
 // A rule: which material, and the range it comes in over.

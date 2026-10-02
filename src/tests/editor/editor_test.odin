@@ -303,6 +303,7 @@ editor_draws :: proc(t: ^testing.T) {
 	materials_through_the_editor(t)
 	models_through_the_editor(t)
 	export_writes_a_plugin(t)
+	audio_exports_with_the_level(t)
 	le07_sculpt_relight_save_reopen(t)
 }
 

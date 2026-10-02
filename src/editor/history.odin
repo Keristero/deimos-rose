@@ -10,7 +10,9 @@ package editor
 // units the list of them before it, a few hundred records, so a copy is
 // cheaper to reason about than a diff, and so for the models put down, a
 // few thousand of 28 bytes; and a material added or taken away the
-// materials before it. A model added to the project stays when what put
+// materials before it, and audio the level's audio and settings before it
+// (its music goes with it): the files' bytes stay in the project's memory,
+// so only their few headers are kept. A model added to the project stays when what put
 // it down is undone: it is in no instance, and costs a file, not a look.
 
 import "core:mem"
@@ -85,6 +87,7 @@ Edit :: struct {
 	placements: Maybe([]data.Json_Placement),
 	instances:  Maybe([]terrain.Instance),
 	materials:  Maybe(Materials),
+	audio:      Maybe([]terrain.Audio_File),
 }
 
 History :: struct {
@@ -187,6 +190,12 @@ history_instances :: proc(h: ^History, before: []terrain.Instance) {
 	history_push(h, e)
 }
 
+// Records a change of the level's audio, and with it the settings, from
+// `before` and `settings`.
+history_audio :: proc(h: ^History, settings: Settings, before: []terrain.Audio_File) {
+	history_push(h, {settings = settings, audio = slice.clone(before)})
+}
+
 // Records a change of the materials from `before`: into the stroke open,
 // when a change of the map goes with it, or as an edit of its own.
 history_materials :: proc(h: ^History, before: Materials) {
@@ -198,7 +207,7 @@ history_materials :: proc(h: ^History, before: Materials) {
 }
 
 // What an undo or redo changed: the region of the map, the settings, the
-// units, the models put down, the materials.
+// units, the models put down, the materials, the level's audio.
 Change :: struct {
 	area:       terrain.Rect,
 	map_:       bool,
@@ -206,6 +215,7 @@ Change :: struct {
 	placements: bool,
 	instances:  bool,
 	materials:  bool,
+	audio:      bool,
 }
 
 history_undo :: proc(h: ^History, p: ^terrain.Project) -> (c: Change, ok: bool) {
@@ -258,6 +268,13 @@ history_move :: proc(h: ^History, p: ^terrain.Project, from, to: ^[dynamic]Edit)
 		e.materials = materials_of(p)
 		materials_set(p, m)
 		c.materials = true
+	}
+	if au, has := e.audio.?; has {
+		e.audio = slice.clone(p.audio[:])
+		clear(&p.audio)
+		append(&p.audio, ..au)
+		delete(au)
+		c.audio = true
 	}
 	append(to, e)
 	return c, true
@@ -318,6 +335,9 @@ edit_destroy :: proc(e: ^Edit) {
 	}
 	if is, has := e.instances.?; has {
 		delete(is)
+	}
+	if au, has := e.audio.?; has {
+		delete(au)
 	}
 }
 

@@ -53,23 +53,18 @@ units_panel :: proc(e: ^Editor, x: f32, y: ^f32, w: f32, bottom: f32) {
 	}
 
 	shown := palette_shown(e)
-	sb := strings.builder_make(context.temp_allocator)
+	rows := make([]Asset_Row, len(shown), context.temp_allocator)
 	active := c.int(-1)
 	for i, k in shown {
 		u := &e.units.defs.units[i]
-		if k > 0 {
-			strings.write_byte(&sb, ';')
-		}
-		// raygui splits the list on ';'.
-		name, _ := strings.replace_all(u.name != "" ? u.name : "?", ";", ",", context.temp_allocator)
-		fmt.sbprintf(&sb, "%s  %s", string(u.id[:]), name)
+		rows[k] = {fmt.tprintf("%s  %s", string(u.id[:]), u.name != "" ? u.name : "?"), catalogue_plugin(&e.units, i)}
 		if i == e.palette_unit {
 			active = c.int(k)
 		}
 	}
 	list_h := clamp(bottom - y^ - SELECTED_HEIGHT, PALETTE_HEIGHT_MIN, PALETTE_HEIGHT_MAX)
 	was := active
-	rl.GuiListView({x, y^, w, list_h}, strings.to_cstring(&sb), &e.palette_scroll, &active)
+	asset_list({x, y^, w, list_h}, rows, &e.palette_scroll, &active)
 	if active != was {
 		e.palette_unit = active >= 0 && int(active) < len(shown) ? shown[active] : -1
 	}
@@ -83,7 +78,8 @@ units_panel :: proc(e: ^Editor, x: f32, y: ^f32, w: f32, bottom: f32) {
 		sprite, frame := unit_look(u, 0)
 		unit_draw(e, sprite, frame, {box.x + 20, box.y + 20}, min(1, 40 / unit_largest(e, sprite, frame)), rl.WHITE)
 		rl.GuiLabel({x + 48, y^, w - 48, 20}, fmt.ctprintf("%s  %s", string(u.id[:]), u.name))
-		rl.GuiLabel({x + 48, y^ + 18, w - 48, 20}, u.is_ground_based ? "On the ground" : "In the air")
+		from := catalogue_plugin(&e.units, e.palette_unit)
+		rl.GuiLabel({x + 48, y^ + 18, w - 48, 20}, fmt.ctprintf("%s%s%s", u.is_ground_based ? "On the ground" : "In the air", from != "" ? ", from " : "", from))
 		y^ += 44
 	}
 
