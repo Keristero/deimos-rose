@@ -151,7 +151,7 @@ entities_render :: proc(r: ^Renderer, s: ^sim.State, f: ^Frame) {
 			continue
 		}
 		turn := e.turned ? f32(e.heading) : 0
-		draw_object(r, s, e.obj, u.casts_shadows, before, shot_accent(r, s, e), turn)
+		draw_object(r, s, e.obj, u.casts_shadows, before, shot_accent(r, s, e), turn, e.owner_player >= 0)
 	}
 }
 
@@ -210,7 +210,7 @@ notices_render :: proc(r: ^Renderer, s: ^sim.State, f: ^Frame) {
 // Effect systems: presentation stepped once a sim step, after the
 // simulation's own particles, like particles_step -- a plugin's effects in
 // play, such as the passives' motes and sparks or the Discharge Beam. Each
-// runs only in a session with its plugin on. One that keeps its own effects
+// runs only with its plugin on, in the session or as the player's own. One that keeps its own effects
 // draws them over a layer of its choosing and forgets them when a level
 // starts, as the original's particles are (flow_effects_sync).
 MAX_EFFECT_SYSTEMS :: 8
@@ -234,9 +234,16 @@ effect_system_register :: proc(sys: Effect_System) {
 	sim.registry_add(&effect_systems, sys)
 }
 
+// A system runs in a session with its plugin on, or when the player has a
+// presentation plugin of their own on (Renderer.mods; plugins registered
+// with session false, which the session never carries).
+effect_on :: proc(r: ^Renderer, s: ^sim.State, id: sim.Plugin_ID) -> bool {
+	return sim.mod_on(s, id) || int(id) in r.mods
+}
+
 effect_systems_step :: proc(r: ^Renderer, s: ^sim.State, p: ^Particles) {
 	for &sys in sim.registry_items(&effect_systems) {
-		if sim.mod_on(s, sys.plugin) && sys.step != nil {
+		if sys.step != nil && effect_on(r, s, sys.plugin) {
 			sys.step(r, s, p)
 		}
 	}
@@ -246,7 +253,7 @@ effect_systems_step :: proc(r: ^Renderer, s: ^sim.State, p: ^Particles) {
 // from the last step to this one.
 effect_systems_draw :: proc(r: ^Renderer, s: ^sim.State, layer: int, scale, side, t: f32) {
 	for &sys in sim.registry_items(&effect_systems) {
-		if sys.draw != nil && sys.layer == layer && sim.mod_on(s, sys.plugin) {
+		if sys.draw != nil && sys.layer == layer && effect_on(r, s, sys.plugin) {
 			sys.draw(r, scale, side, t)
 		}
 	}

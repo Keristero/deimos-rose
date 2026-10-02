@@ -842,10 +842,12 @@ flow_set_accents :: proc(fl: ^Flow, r: ^render.Renderer) {
 	if fl.mode == .Attract || prefs_classic(fl.prefs) {
 		return
 	}
+	// The player's own presentation plugins, with the session's; a session
+	// plugin they have on that this session lacks stays off.
+	own := prefs_mods(fl.prefs)
+	r.mods += own - sim.mods_session(own)
+	r.setting = fl.prefs.saved.settings
 	colours := prefs_mod_on(fl.prefs, accent.ID)
-	if colours {
-		r.mods += {int(accent.ID)}
-	}
 	outline := setting_on(fl.prefs, accent_view.SELF_OUTLINE)
 	if fl.session_named {
 		local := fl.netplay_active ? fl.netplay.rs.local_player : -1

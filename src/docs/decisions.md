@@ -2058,3 +2058,38 @@ had also stopped working, fixed first.
 - Classic mode, `sim/` and the goldens are unchanged; the game reads the
   exported track as any plugin's audio (D76).
 
+
+### D78 — Post passes: the play field is drawn into a texture when a plugin wants to change it
+
+The project owner asked for a new rendering pipeline for realtime
+lighting, a glow, water and wind (notes/realtime-lighting-and-effects.md),
+using raylib's own capabilities and without costing image quality.
+
+- **The extension point** is `render.post_pass_register` (`render/post.odin`).
+  A pass has `enabled`, `prepare` and `apply`. With no pass enabled the play
+  field is drawn straight to the canvas as before, at no cost. With one or
+  more, it is drawn into a scene texture, every pass's `prepare` runs, then
+  the `apply`s are chained through two textures, the last to the canvas under
+  the play field's scissor. The split is because raylib's render textures do
+  not nest: a pass makes its own light and blur targets in `prepare`, when
+  none is bound, and only reads and draws in `apply`. Order is by
+  `after`/`before`, as the render systems' is.
+- **What a pass reads.** `Item.emit` (0..1, how much a drawn thing shines),
+  set from the object in `draw_object`: the weapon layers, a player's shots
+  and what is in its glow flash. And `Renderer.setting`, the saved settings,
+  so a pass reads its sliders without the game's types.
+- **Player's own presentation plugins.** A plugin registered with `session`
+  false is never in a session's mods, so `flow_set_accents` adds the player's
+  own to `Renderer.mods` (never a session plugin they have on that the
+  session lacks), and effect systems run for either.
+- **Settings.** `prefs.Percent`, a 0..100 slider on the Extras page.
+- **Plugins.** Realtime Lighting (`plugins/lighting`): a half-resolution
+  additive light map, a quarter-resolution blurred glow and one composite
+  shader. Wind (`plugins/wind`): the level's `Level_Wind` pushes particles.
+  Both are off by default, presentation only, and absent in classic mode.
+- **Provisional:** no sprite has albedo, a normal or an emissive map yet, so
+  light brightens by the scene's own colour and does not shade by direction;
+  every radius and gain was picked by eye; the wind's direction convention
+  (degrees clockwise from up) and unit are assumed. The other items of the
+  note are listed in [realtime-effects.md](realtime-effects.md).
+- Classic mode, `sim/` and the goldens are unchanged.

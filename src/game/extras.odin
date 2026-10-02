@@ -169,6 +169,14 @@ extras_page_update :: proc(r: ^render.Renderer, x: ^Extras_Page, ps: ^Prefs_Stat
 			continue
 		}
 		switch settings[id].kind {
+		case .Percent:
+			v := ps.saved.settings[id]
+			if ui.percent_slider_update(&v, extras_slider_rect(y), true) {
+				ps.saved.settings[id] = v // saved once the drag ends, like a hue
+			}
+			if rl.IsMouseButtonReleased(.LEFT) || rl.IsKeyReleased(.LEFT) || rl.IsKeyReleased(.RIGHT) {
+				prefs_state_save(ps)
+			}
 		case .Toggle:
 			if ui.text_button_update(r, &x.toggles[id], mouse, dt) {
 				setting_set(ps, id, 1 - ps.saved.settings[id])
@@ -207,6 +215,8 @@ extras_page_draw :: proc(r: ^render.Renderer, x: ^Extras_Page, ps: ^Prefs_State)
 		switch settings[id].kind {
 		case .Toggle:
 			ui.text_button_draw(r, &x.toggles[id])
+		case .Percent:
+			ui.percent_slider_draw(ps.saved.settings[id], extras_slider_rect(y), classic)
 		case .Hue:
 			ui.hue_slider_draw(ps.saved.settings[id], extras_slider_rect(y), classic)
 		}

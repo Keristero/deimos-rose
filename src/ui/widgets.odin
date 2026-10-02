@@ -42,6 +42,38 @@ hue_slider_draw :: proc(hue: int, rect: rl.Rectangle, dim := false) {
 	rl.DrawRectangleLinesEx({x - 3, (rect.y - 3) * s, 7, (rect.height + 6) * s}, 2, rl.WHITE)
 }
 
+// A 0..100 slider on a plain bar: the mouse drags it, and Left and Right
+// move it a step. Returns whether `v` changed.
+@(private = "file") PERCENT_KEY_STEP :: 5
+
+percent_slider_update :: proc(v: ^int, rect: rl.Rectangle, keys: bool) -> bool {
+	before := v^
+	if keys && (rl.IsKeyPressed(.LEFT) || rl.IsKeyPressedRepeat(.LEFT)) {
+		v^ = max(v^ - PERCENT_KEY_STEP, 0)
+	}
+	if keys && (rl.IsKeyPressed(.RIGHT) || rl.IsKeyPressedRepeat(.RIGHT)) {
+		v^ = min(v^ + PERCENT_KEY_STEP, 100)
+	}
+	if rl.IsMouseButtonDown(.LEFT) {
+		m := menu_mouse_pos()
+		grab := rl.Rectangle{rect.x - 4, rect.y - 6, rect.width + 8, rect.height + 12}
+		if rl.CheckCollisionPointRec(m, grab) {
+			v^ = int(clamp((m.x - rect.x) / rect.width, 0, 1) * 100 + 0.5)
+		}
+	}
+	return v^ != before
+}
+
+percent_slider_draw :: proc(v: int, rect: rl.Rectangle, dim := false) {
+	s := f32(render.WINDOW_SCALE)
+	body := rl.Color{90, 90, 90, 255}
+	fill := dim ? rl.Color{110, 140, 150, 255} : rl.Color{120, 210, 230, 255}
+	rl.DrawRectangleRec({rect.x * s, rect.y * s, rect.width * s, rect.height * s}, body)
+	rl.DrawRectangleRec({rect.x * s, rect.y * s, rect.width * s * f32(v) / 100, rect.height * s}, fill)
+	x := (rect.x + f32(v) * rect.width / 100) * s
+	rl.DrawRectangleLinesEx({x - 3, (rect.y - 3) * s, 7, (rect.height + 6) * s}, 2, rl.WHITE)
+}
+
 // A column of rows too many for the screen: the mouse wheel and Page
 // Up/Down move it a row at a time. `first` is the first row shown.
 Scroll_Rows :: struct {

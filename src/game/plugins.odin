@@ -9,6 +9,10 @@ package game
 
 import _ "dr:plugins/accent"
 import _ "dr:plugins/accent/view"
+import _ "dr:plugins/lighting"
+import _ "dr:plugins/lighting/view"
+import _ "dr:plugins/wind"
+import _ "dr:plugins/wind/view"
 import _ "dr:plugins/chaingun"
 import _ "dr:plugins/chaingun/view"
 import _ "dr:plugins/easy_mode"

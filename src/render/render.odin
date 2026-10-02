@@ -27,6 +27,7 @@ import "core:strings"
 
 import rl "vendor:raylib"
 
+import "dr:prefs"
 import "dr:sim"
 import "dr:sim/lifecycle"
 
@@ -104,6 +105,10 @@ Item :: struct {
 	// turns a sprite -- a unit that faces a way has a frame for it -- so
 	// only what the port adds sets it.
 	rotation: f32,
+	// How much the sprite shines of its own accord, 0..1: a shot, a muzzle
+	// flash, a glowing object. Post passes read it (post.odin), for a glow
+	// and for the light it casts. Drawing ignores it.
+	emit:     f32,
 }
 
 // Accents (Extras, never in classic mode): drawn through
@@ -268,6 +273,11 @@ Renderer :: struct {
 	// and the render systems this renderer runs, rebuilt when they change.
 	mods:            sim.Mods,
 	render_schedule: Render_Schedule,
+	// The post passes' scene and chain (post.odin), and the mods' settings as
+	// saved, by Setting_ID, which flow sets each frame; a pass reads its own
+	// only while its plugin is on, so classic mode never sees them.
+	post:            Post_State,
+	setting:         [prefs.MAX_SETTINGS]int,
 }
 
 // Past this many pixels in one step, something jumped (a respawn, a new
@@ -309,6 +319,7 @@ renderer_destroy :: proc(r: ^Renderer) {
 	if r.canvas.id != 0 {
 		rl.UnloadRenderTexture(r.canvas)
 	}
+	post_destroy(r)
 	textures_unload(&r.textures)
 	for &l in r.layers {
 		delete(l)
@@ -409,7 +420,7 @@ Draw_Accent :: struct {
 }
 
 // `turn` draws the frame rotated by that many degrees clockwise.
-draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shadow: bool, prev: ^sim.Game_Object = nil, accent := Draw_Accent{}, turn: f32 = 0) {
+draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shadow: bool, prev: ^sim.Game_Object = nil, accent := Draw_Accent{}, turn: f32 = 0, player_shot := false) {
 	if r.dump {
 		_, _, ok := frame_rect(&r.textures, o.sprite, o.frame)
 		if !ok || o.visibility <= 0 {
@@ -473,7 +484,7 @@ draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shad
 		push_item(r, layer, Item {
 			texture = tex, src = src, dst = dst, tint = {255, 255, 255, alpha},
 			effect = accent.recolour ? .Recolour : .None, hue = accent.hue, sat = ACCENT_SATURATION,
-			lighten = accent.lighten, rotation = turn,
+			lighten = accent.lighten, rotation = turn, emit = emission_of(o, player_shot),
 		})
 	}
 	if accent.trim {
@@ -510,6 +521,26 @@ draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shad
 			rotation = turn,
 		})
 	}
+}
+
+// How much an object shines of its own accord: the player's shots and the
+// effects round them (muzzle flashes, hits) in the original's own draw
+// layers for them ("plwe", "plef"), and anything in its glow flash.
+// Provisional: an enemy's fire has no layer of its own, so it waits for the
+// emissive textures the plan adds (notes/realtime-lighting-and-effects.md).
+emission_of :: proc "contextless" (o: ^sim.Game_Object, player_shot: bool) -> f32 {
+	switch o.draw_layer {
+	case sim.res_id("plwe"), sim.res_id("plef"):
+		return 1
+	case sim.res_id("play"), sim.res_id("plsh"), sim.res_id("plui"), sim.res_id("hud "), sim.res_id("atmo"):
+		return 0
+	}
+	// What a player spawned that is not marked into the ground: their
+	// shots, which are drawn with the air or ground units' layers.
+	if player_shot && !o.draw_to_terrain {
+		return 1
+	}
+	return o.glowing ? 0.6 : 0
 }
 
 // A shot from a ground weapon takes its owner's accent: the units the
@@ -627,6 +658,9 @@ present :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, scale: f32) 
 	// Every blit in the original clips to the 416x480 play field
 	// (U_PixelScale16_*: x to 0..0x1a0, y to 0..0x1e0), so a unit waiting
 	// just off the left edge is not drawn in the border beside it.
+	// With a post pass on, the field is drawn into the scene texture first.
+	canvas_w, canvas_h := i32(SCREEN_W * scale), i32(SCREEN_H * scale)
+	post := post_begin(r, canvas_w, canvas_h)
 	rl.BeginScissorMode(i32(VIEW_X * scale), 0, i32(PLAY_W * scale), i32(PLAY_H * scale))
 	run(r, 0, 1, scale)
 	draw_terrain(r, s, scale)
@@ -639,6 +673,9 @@ present :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, scale: f32) 
 		effect_systems_draw(r, s, l, scale, r.side_scroll, t)
 	}
 	rl.EndScissorMode()
+	if post {
+		post_end(r, &Post_Frame{scale = scale, side = r.side_scroll, t = t, particles = particles, width = canvas_w, height = canvas_h})
+	}
 	level_end_draw(r, s, scale) // layer 0xf text, over the sprites
 	scorebar_draw(r, s, scale)
 	if r.replay {

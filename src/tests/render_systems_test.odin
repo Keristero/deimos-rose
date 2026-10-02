@@ -6,6 +6,10 @@ import "core:testing"
 // placed against each other here.
 import _ "dr:game"
 import "dr:plugins/accent"
+import lighting_view "dr:plugins/lighting/view"
+import "dr:plugins/wind"
+import wind_view "dr:plugins/wind/view"
+import "dr:prefs"
 import "dr:render"
 import "dr:sim"
 
@@ -61,4 +65,23 @@ render_schedule_leaves_the_outline_to_its_plugin :: proc(t: ^testing.T) {
 	testing.expect(t, !has_outline(&sched, registered), "the outline is drawn with no plugins on")
 	render.render_schedule_build(&sched, {int(accent.ID)})
 	testing.expect(t, has_outline(&sched, registered), "the outline is not drawn with Accent Color on")
+}
+
+// A presentation plugin of the player's own (Renderer.mods) runs its effect
+// systems though the session does not carry it; nothing runs without it.
+@(test)
+effect_systems_run_for_the_players_own_plugins :: proc(t: ^testing.T) {
+	r: render.Renderer
+	s: sim.State
+	testing.expect(t, !render.effect_on(&r, &s, wind.ID), "off with neither the session nor the player")
+	r.mods = {int(wind.ID)}
+	testing.expect(t, render.effect_on(&r, &s, wind.ID))
+}
+
+// The Percent settings of the post-pass plugins stay in 0..100.
+@(test)
+percent_settings_are_clamped :: proc(t: ^testing.T) {
+	testing.expect_value(t, prefs.setting_clean(lighting_view.LIGHT_STRENGTH, 250), 100)
+	testing.expect_value(t, prefs.setting_clean(lighting_view.GLOW_STRENGTH, -3), 0)
+	testing.expect_value(t, prefs.setting_clean(wind_view.STRENGTH, 40), 40)
 }

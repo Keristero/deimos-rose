@@ -16,6 +16,7 @@ MAX_SETTINGS :: 32
 Setting_Kind :: enum {
 	Toggle, // 0 or 1
 	Hue,    // degrees, 0..359
+	Percent, // 0..100, a slider
 }
 
 Setting :: struct {
@@ -57,6 +58,8 @@ setting_clean :: proc(id: Setting_ID, v: int) -> int {
 		return v != 0 ? 1 : 0
 	case .Hue:
 		return hue_wrap(v)
+	case .Percent:
+		return clamp(v, 0, 100)
 	}
 	return v
 }
