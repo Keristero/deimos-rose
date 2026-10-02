@@ -1120,6 +1120,7 @@ and could only be records and sprites. Now:
   a plugin able to replace an original image would change classic mode.
   A plugin that wants another look for an original ships it under a new
   id and points its own records at that.
+  A plugin's sounds may be `.ogg` or `.mp3` as well (D76).
 
 `assets/extra` is gone. The recoloured plates, rebuilt with `mise run
 assets:extra` into the new folders, are byte-identical to the moved ones.
@@ -1992,3 +1993,24 @@ reduced but the penalty goes down each level".
 - Without the stat the share is 0 and every shot's candidates and
   damage are the original's: the goldens did not change until the
   passive was offered.
+
+### D76 — A plugin's audio may be compressed
+
+The level editor is to import music into the levels it exports, and a
+track kept as WAV is about 10 MB a minute: `mu03`, 196 s, is 34 MB. D6
+kept the extracted audio WAV because nothing in Odin's vendored libraries
+encodes Vorbis, but the game only has to decode, and raylib as built
+decodes WAV, Ogg Vorbis and MP3 (its FLAC decoder is not built in).
+
+- **What.** A plugin's `audio/` may hold `<id>.wav`, `<id>.ogg` or
+  `<id>.mp3` (`data.AUDIO_EXTENSIONS`). An id with more than one is the
+  first of those; the first plugin with an id still keeps it.
+- **The core tree stays WAV**, as extracted. A plugin's file is not taken
+  for an id the core has a `.wav` of, whatever its own extension, so
+  images and sounds still add and never replace (D51).
+- **Nothing else changes.** Plugin audio was already loaded by path, as a
+  stream for music and decoded whole for a sound effect, and both of
+  raylib's loaders take all three.
+- `plugin_audio_kinds_decode` loads a quarter second of each from
+  `tests/fixtures/audio`, made with ffmpeg, so a raylib built without one
+  fails on CI's Linux and Windows runs.

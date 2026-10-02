@@ -328,8 +328,10 @@ assets_open :: proc(root: string, allocator := context.allocator) -> (a: Assets)
 	for i in 1 ..< len(sim.registered_plugins()) {
 		if dir, found := plugin_content_dir(sim.Plugin_ID(i)); found {
 			append(&indexes, Index{strings.concatenate({dir, "/sprites/index.json"}, context.temp_allocator), dir})
-			plugin_media_add(&a.plugin_images, root, "/images/im16/", dir, ".png", allocator)
-			plugin_media_add(&a.plugin_audio, root, "/audio/", dir, ".wav", allocator)
+			plugin_media_add(&a.plugin_images, root, "/images/im16/", dir, ".png", allocator = allocator)
+			for ext in AUDIO_EXTENSIONS {
+				plugin_media_add(&a.plugin_audio, root, "/audio/", dir, ext, ".wav", allocator)
+			}
 		}
 	}
 	for index in indexes {
@@ -358,7 +360,7 @@ assets_open :: proc(root: string, allocator := context.allocator) -> (a: Assets)
 	media := make([dynamic]Level_Media, 0, 12, allocator)
 	if dir, found := classic_levels_dir(); found {
 		level_media_append(&media, dir, sim.CORE, allocator)
-		plugin_media_add(&a.plugin_images, root, "/images/im16/", dir, ".png", allocator)
+		plugin_media_add(&a.plugin_images, root, "/images/im16/", dir, ".png", allocator = allocator)
 	}
 	for i in 1 ..< len(sim.registered_plugins()) {
 		if sim.registered_plugins()[i].name == CLASSIC_LEVELS {
@@ -723,9 +725,15 @@ extra_defs_load :: proc(defs: ^sim.Defs, allocator := context.allocator) -> (rep
 	return report, defs.content != {}
 }
 
-// Every `<dir><sub>*<ext>` whose id the core tree (`root`) has no file
-// for, into `media` by id. The first plugin with an id keeps it.
-plugin_media_add :: proc(media: ^map[string]string, root, sub, dir, ext: string, allocator := context.allocator) {
+// What a plugin's audio/ may hold, in the order one id's files are taken.
+// The core tree's are all .wav (extracted from the originals); a plugin's
+// music can stay compressed. raylib, as built, decodes these, not FLAC.
+AUDIO_EXTENSIONS :: [?]string{".wav", ".ogg", ".mp3"}
+
+// Every `<dir><sub>*<ext>` whose id the core tree (`root`) has no
+// `<id><core_ext>` for (`ext` if not given), into `media` by id. The first
+// plugin with an id keeps it.
+plugin_media_add :: proc(media: ^map[string]string, root, sub, dir, ext: string, core_ext := "", allocator := context.allocator) {
 	paths, err := filepath.glob(strings.concatenate({dir, sub, "*", ext}, context.temp_allocator), context.temp_allocator)
 	if err != nil {
 		return
@@ -734,7 +742,7 @@ plugin_media_add :: proc(media: ^map[string]string, root, sub, dir, ext: string,
 	for path in paths {
 		base := filepath.base(path)
 		id := base[:len(base) - len(ext)]
-		if id in media || os.exists(strings.concatenate({root, sub, base}, context.temp_allocator)) {
+		if id in media || os.exists(strings.concatenate({root, sub, id, core_ext != "" ? core_ext : ext}, context.temp_allocator)) {
 			continue
 		}
 		// Joined as the core tree's paths are, not glob's: on Windows glob
