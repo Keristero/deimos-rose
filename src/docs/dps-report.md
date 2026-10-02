@@ -217,6 +217,9 @@ as below (2026-10-02):
 
 | Passive | Weapon | Change | DPS added | Gain |
 |---|---|---|---|---|
+| Weapon 3 Charge 1 | Rear Gun | +16.3% / +24.7% / 0 / +7.8% | +0.37 | +15.9% |
+| Weapon 3 Charge 2 | Rear Gun | +29.8% / +41.6% / 0 / +20.4% | +0.70 | +30.1% |
+| Weapon 3 Charge 3 | Rear Gun | +47.7% / +64.2% / 0 / +40.5% | +1.18 | +50.3% |
 | Weapon 4 Charge 1 | Photon Beam | +11.1% / +18.9% / 0 / +16.5% | +0.22 | +15.8% |
 | Weapon 4 Charge 2 | Photon Beam | +21.7% / +52.8% / 0 / +29.3% | +0.45 | +32.8% |
 | Weapon 4 Charge 3 | Photon Beam | +30.6% / +77.2% / 0 / +43.0% | +0.65 | +47.7% |

@@ -95,7 +95,8 @@ The current set:
 | Weapon 1-4 | the weapon's score-bar symbol (`wesy` 0, 1, 3, 2), with the plus |
 | Weapon 5 | the Chaingun's score-bar symbol (`wesy` 4), with the plus |
 | Weapon 6 | the Discharge Beam's red symbol (`wesd` 0, New Weapons' own plate), with the plus |
-| Weapon 4 Charge | the Photon Beam's symbol, smaller, in Improved Charge's glow, with the plus: a weapon's charge passive |
+| Weapon 3 Charge | the Rear Gun's symbol, smaller, in Improved Charge's glow, with the plus: a weapon's charge passive |
+| Weapon 4 Charge | the same for the Photon Beam |
 | Weapon 5 Charge | the same for the Chaingun |
 | Weapon 6 Charge | the same for the Discharge Beam |
 
@@ -320,6 +321,16 @@ and 2 are `plbo`'s, the Plasma Bomb, the only ground weapon.
     side shot is drawn turned to its heading (`Shaped.turned`); a shot
     with a frame per direction is left alone. `MENU=rear_gun_side` shows
     it.
+- **Weapon 3 Charge** (Rear Gun), a charge passive from
+  [notes/extra-weapons-and-passives-3.md](../../notes/extra-weapons-and-passives-3.md):
+  the release's bubbles wear (see The rules as implemented). "Run out of
+  damage to give" is read as the bubble's own damage: a bare bubble
+  gives it in one hit and bursts, a wearing one spreads it over its
+  hits, shrinking, and a larger one has more to give. "Each level makes
+  the bubbles larger and longer lasting" is `Shot_Scale` and
+  `Projectile_Lifetime` at every level. The bubble inflates from 30% as
+  it leaves, so it reaches the larger size as it would have reached its
+  own. `MENU=rear_gun_charge` shows a release at level 3.
 - **Weapon 4** (Photon Beam). `firing_delay` scales
   `delay_between_launches`.
 - **Weapon 4 Charge** (Photon Beam), a charge passive from
@@ -393,6 +404,7 @@ the Ion Cannon's 4 steps take 20% to lose one.
 | Weapon 4 (Photon Beam) | firing delay -20% | firing delay -40% | firing delay -10%, +1 volley | +18.7 / +32.9 / +45.2% |
 | Weapon 5 (Chaingun) | firing delay -13%, spread +25% | firing delay -20%, spread +50% | firing delay -33%, spread +100% | +11.9 / +23.8 / +49.2% |
 | Weapon 6 (Discharge Beam) | damage +15%, width +10% | damage +30%, width +20% | damage +60%, width +30% | +10.7 / +21.4 / +42.9% |
+| Weapon 3 Charge (Rear Gun's charge) | wearing shots, size +10%, life +20% | size +25%, life +40% | size +45%, life +60% | +15.9 / +30.1 / +50.3% |
 | Weapon 4 Charge (Photon Beam's charge) | overcharge shots, max charge +25%, charge rate +20% | max charge +40%, charge rate +40% | max charge +50%, charge rate +80% | +15.8 / +32.8 / +47.7% |
 | Weapon 5 Charge (Chaingun's charge) | release ramp +20% a volley, max charge +10% | max charge +20%, charge rate +20% | max charge +40%, charge rate +60% | +12.4 / +25.6 / +46.8% |
 | Weapon 6 Charge (Discharge Beam's charge) | chains | max charge +20%, charge rate +20% | max charge +40%, charge rate +40% | +17.3 / +32.8 / +46.2% |
@@ -430,6 +442,16 @@ Levels carry what they do not change (the design's `x`).
   kills what it hits and the next column is 40 px away, out of reach of
   any width, so only the single and cluster targets gain: the Gain is
   0.71 times the damage's percentage. The widths are the design's.
+- **Weapon 3 Charge** is measured in the Charge-shots set. The wear
+  alone gains +8.6%: a bubble no longer bursts on a target it cannot
+  hurt yet (inside its hit delay), nor spends its whole hit on one
+  nearly dead. Size is the lever: 20% more of it adds about 18 points,
+  in the single, cluster and wave scenarios alike, as a larger bubble
+  gives more and reaches more. The release fires ahead only, so behind
+  stays at nothing. The longer life gains nothing there, where every
+  bubble hits before it would expire. A first reading gave a bubble 4
+  hits' damage to give; level 1 measured +238%, so a bubble gives its
+  own damage, and no more.
 - **Weapon 4 Charge** is measured in the Charge-shots set. The
   overcharge lanes alone, with the max charges, gain -0.4 / +5.0 /
   +6.1%: the wider lanes miss a lone target, and the release's first
@@ -507,6 +529,10 @@ Each of these is marked in the code, with what would settle it:
     hit, a run for each jump, until a target stands or its damage is
     spent, while the pulses still pierce straight (skipped without
     `src/assets`);
+  - Weapon 3 Charge's bubble 45% larger at level 3, giving a tough
+    mine its 0.8 and then the 0.36 it has left, shrinking, and gone,
+    where a bare bubble hits once and bursts (skipped without
+    `src/assets`);
   - Weapon 4 Charge's release fanning out 4 more lanes from its first
     spawn at level 3's max of 33, 2 from 32 to 28, and none from 27,
     the outermost 23° off straight ahead (skipped without `src/assets`);
@@ -522,7 +548,9 @@ Each of these is marked in the code, with what would settle it:
   - `MENU=reward`, one player with two options;
   - `MENU=reward_2p`, with player 1 locked inside player 2's dull border on
     the same option;
-  - `MENU=level_select_easy`.
+  - `MENU=level_select_easy`;
+  - `MENU=rear_gun_charge`, a Rear Gun release at Weapon 3 Charge's
+    level 3, its bubbles flying out larger.
 
 ## Open
 

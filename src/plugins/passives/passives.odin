@@ -92,7 +92,10 @@ Own :: enum u8 {
 	Weapon_3,
 	Weapon_4,
 	Ground_Variant_2,
+	// The air weapons' charge passives, in the order they were added, so
+	// that the ids before them stay as they were.
 	Weapon_4_Charge,
+	Weapon_3_Charge,
 }
 
 // A passive, by its id: this plugin's own first (Own), then other plugins'.
@@ -109,6 +112,7 @@ WEAPON_3 :: Passive(Own.Weapon_3)
 WEAPON_4 :: Passive(Own.Weapon_4)
 GROUND_VARIANT_2 :: Passive(Own.Ground_Variant_2)
 WEAPON_4_CHARGE :: Passive(Own.Weapon_4_Charge)
+WEAPON_3_CHARGE :: Passive(Own.Weapon_3_Charge)
 
 MAX_PASSIVES :: 32
 
@@ -273,6 +277,27 @@ OWN := [Own]Passive_Def {
 			{.Overcharge_Projectiles, .Enables, {1, X, X}},
 			{.Maximum_Charge, .Increase, {25, 40, 50}},
 			{.Charge_Rate, .Increase, {20, 40, 80}},
+		},
+	},
+	.Weapon_3_Charge = {
+		name   = "weapon_3_charge",
+		label  = "REAR GUN CHARGE",
+		levels = 3,
+		weapon = WEAPON_REAR_GUN,
+		charge = true,
+		mods = {
+			// The release's bubbles wear down in place of bursting on
+			// their first hit (Wears_Down): each gives its damage times its
+			// size, so a larger one gives more as well as reaching more.
+			// The wear alone gains 9% in the Charge-shots set: a bubble no
+			// longer bursts on a target it cannot hurt (inside its hit
+			// delay), nor spends a whole hit on one nearly dead. The sizes
+			// make it 16%, 30% and 50%. The longer life gains nothing
+			// there, where every bubble hits before it would expire; in
+			// play it reaches further.
+			{.Wears_Down, .Enables, {1, X, X}},
+			{.Shot_Scale, .Increase, {10, 25, 45}},
+			{.Projectile_Lifetime, .Increase, {20, 40, 60}},
 		},
 	},
 }

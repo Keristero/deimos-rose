@@ -515,3 +515,86 @@ photon_beam_charge_fans_out_while_overcharged :: proc(t: ^testing.T) {
 	}
 	testing.expect_value(t, widest, 3 + 2 * stats.OVERCHARGE_FAN)
 }
+
+// Weapon 3 Charge: a Rear Gun bubble is not stopped by what it hits. It
+// gives its damage times its size over its hits, shrinking as it does, and
+// is destroyed once it is spent. At level 3 it is 45% larger, so a tough
+// mine takes its 0.8 and then the 0.36 it has left; a bare bubble's one
+// hit is all it deals, as the mine's hit back destroys it. Skipped without
+// the extracted data.
+@(test)
+rear_gun_charge_bubbles_wear_down :: proc(t: ^testing.T) {
+	arena: vmem.Arena
+	defs, loaded := assets_defs(t, &arena)
+	if !loaded {
+		return
+	}
+	defer vmem.arena_destroy(&arena)
+	rg := weapon_index(t, &defs, passives.WEAPON_REAR_GUN)
+	if rg < 0 {
+		return
+	}
+	bubble := sim.res_id("rgpb")
+	for level in ([]u8{0, 3}) {
+		s := new(sim.State, context.temp_allocator)
+		defer sim.destroy(s)
+		if !play_start(t, s, sim.Session{seed = 1, level_id = defs.levels[0].id, game_type = .Single, mods = session_mods()}, &defs) {
+			return
+		}
+		p := sim.player_at(s, 0)
+		h := p.weapons
+		h.air.weapon = rg
+		p.invulnerable_always, p.invulnerable = true, true
+		passives.levels_of(s, 0)[passives.WEAPON_3_CHARGE] = level
+		mine := support.mine_spawn(t, s, p.loc + {0, -70}, 100)
+		if mine.obj == nil {
+			return
+		}
+		// One level: a release of one bubble.
+		h.air_powerup = {state = 3, level = 1, release_time = -100}
+
+		// The size it grows to as it flies (its scale's target: it
+		// inflates from 30% as it leaves), and the mine's shields after
+		// each step.
+		biggest, last: f32
+		number: i32 = -1
+		gone := false
+		taken: [dynamic]f32
+		taken.allocator = context.temp_allocator
+		for _ in 0 ..< 40 {
+			before := mine.shields
+			sim.session_step(s, {})
+			if before != mine.shields {
+				append(&taken, before - mine.shields)
+			}
+			found := false
+			walk := sim.walk_entities(s)
+			for e in sim.walk_next(&walk) {
+				if e.deleted || s.defs.units[e.unit].id != bubble || (number >= 0 && e.number != number) {
+					continue
+				}
+				number, found = e.number, true
+				biggest = max(biggest, e.scale_target)
+				last = e.scale_target
+				if level == 3 && len(taken) == 0 {
+					testing.expect(t, abs(e.wear - 0.8 * 1.45) < 0.001, "it has its damage times its size to give")
+				}
+			}
+			gone ||= number >= 0 && !found
+		}
+		testing.expect(t, gone, "the bubble is gone")
+		if level == 0 {
+			testing.expect_value(t, len(taken), 1)
+			testing.expect(t, len(taken) == 1 && abs(taken[0] - 0.8) < 0.001, "a bare bubble hits once")
+			testing.expect(t, abs(biggest - 1) < 0.001, "at its own size")
+			continue
+		}
+		if !testing.expect_value(t, len(taken), 2) {
+			log.infof("%v", taken[:])
+			continue
+		}
+		testing.expect(t, abs(taken[0] - 0.8) < 0.001 && abs(taken[1] - 0.36) < 0.001, "it gives its damage, then what it has left")
+		testing.expect(t, abs(biggest - 1.45) < 0.001, "45% larger")
+		testing.expect(t, last < biggest, "and shrinks as it gives")
+	}
+}
