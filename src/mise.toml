@@ -209,6 +209,7 @@ run = [
   "odin check tools/materials $DR_COLL -vet -strict-style",
   "odin check tools/bases $DR_COLL -vet -strict-style",
   "odin check tools/models $DR_COLL -vet -strict-style",
+  "odin check tools/preview_fit $DR_COLL -vet -strict-style",
   "odin check tests/terrain $DR_COLL -vet -strict-style -no-entry-point",
   "odin check editor $DR_COLL -vet -strict-style",
   "odin check tests/editor $DR_COLL -vet -strict-style -no-entry-point",
@@ -473,6 +474,11 @@ run = "bash ../tools/extract_addons.sh"
 description = "Build the level project tool (tools/terrain)"
 depends = ["setup"]
 run = "odin build tools/terrain $DR_COLL $DR_LINK -o:speed -out:$DR_BUILD/terrain$DR_EXT"
+
+[tasks."preview:fit"]
+description = "Fit the look of the originals' level previews (a blur, colour mix, tone and vignette over a 3x downscaled crop) from plugins/classic_levels, into terrain/preview_look.odin, which exported previews use; SHOTS=DIR also writes each original beside the fitted look's preview; CPU only"
+depends = ["setup"]
+run = "odin run tools/preview_fit $DR_COLL $DR_LINK -o:speed -out:$DR_BUILD/preview_fit$DR_EXT -- ${SHOTS:+-shots=$SHOTS}"
 
 [tasks."terrain:render"]
 description = "Draw a level project headlessly (PROJECT=path/le07.drproj.json [OUT=path/stem] [OUTPUT=lit|albedo|normal|height|shadow|occlusion|all, default all] [SCALE=1]; extra flags pass through, e.g. -- -quantise)"
