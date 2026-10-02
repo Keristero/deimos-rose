@@ -219,7 +219,7 @@ beam_chain_next :: proc "contextless" (s: ^sim.State, at: sim.Vec, hit: []i32) -
 	best: f32
 	walk := sim.walk_entities(s)
 	outer: for e in sim.walk_next(&walk) {
-		if !air_shot_can_hit(s, e) || e.shields <= 0 || e.loc.x < 0 || e.loc.x > width || e.loc.y < 0 || e.loc.y > height {
+		if !collision_system.air_shot_can_hit(s, e) || e.shields <= 0 || e.loc.x < 0 || e.loc.x > width || e.loc.y < 0 || e.loc.y > height {
 			continue
 		}
 		for n in hit {
@@ -254,7 +254,7 @@ beam_targets :: proc "contextless" (s: ^sim.State, from: sim.Vec, width: f32, ou
 	n := 0
 	walk := sim.walk_entities(s)
 	for e in sim.walk_next(&walk) {
-		if n >= len(out) || !air_shot_can_hit(s, e) || e.shields <= 0 {
+		if n >= len(out) || !collision_system.air_shot_can_hit(s, e) || e.shields <= 0 {
 			continue
 		}
 		b := lifecycle.object_bounds(e.obj)

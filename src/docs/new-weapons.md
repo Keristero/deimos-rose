@@ -146,8 +146,8 @@ that plays the wind-up sound.
   muzzle flash, `dbmf`, which plays the zap, and calls `beam_fire`. It
   casts a line straight up from the muzzle
   and takes every target on it, nearest first. A target is on the line if
-  a player's air shot could hit it (`air_shot_can_hit`, shared with the
-  Chaingun's aiming) and its hit circle comes within half the beam's width
+  a player's air shot could hit it (`collision_system.air_shot_can_hit`,
+  shared with the Chaingun's aiming) and its hit circle comes within half the beam's width
   of the line.
   - The first target takes the pulse's 3.0 damage through `entity_hit`,
     as a shot would. The line is 7 px wide.

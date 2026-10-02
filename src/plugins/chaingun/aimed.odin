@@ -8,10 +8,10 @@ package chaingun
 
 import "core:math"
 
-import "dr:plugins/new_weapons"
 import "dr:sim"
 import "dr:sim/lifecycle"
 import "dr:sim/stats"
+import "dr:sim/systems/collision_system"
 
 // How far either side of the line of fire the two shots of a volley fly.
 // Provisional: picked by eye against the rice sprite's width.
@@ -49,7 +49,7 @@ aimed_target :: proc "contextless" (s: ^sim.State, at: sim.Vec) -> (target: sim.
 	best: f32
 	walk := sim.walk_entities(s)
 	for e in sim.walk_next(&walk) {
-		if !new_weapons.air_shot_can_hit(s, e) {
+		if !collision_system.air_shot_can_hit(s, e) {
 			continue
 		}
 		if e.loc.x < 0 || e.loc.x > width || e.loc.y < 0 || e.loc.y > height {

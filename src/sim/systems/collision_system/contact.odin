@@ -83,6 +83,17 @@ shot_hits :: proc "contextless" (s: ^sim.State, shot, target: i32) -> bool {
 	return sim.prefab_is(s, shot, player_projectile) || sim.prefab_is(s, target, player_projectile)
 }
 
+// Whether a player's air shot can hit `e`: the candidates entity_collisions
+// would test a player projectile against, bar the overlap itself. For what
+// finds its targets itself: the Discharge Beam's line and the Chaingun's
+// aim (plugins/new_weapons, plugins/chaingun).
+air_shot_can_hit :: proc "contextless" (s: ^sim.State, e: sim.Entity) -> bool {
+	if e.deleted || !e.hittable || e.state < 0 || e.appear_delay >= 1 {
+		return false
+	}
+	return sim.prefab_is(s, sim.prefab_of(s, e), air_shot_targets)
+}
+
 // FUN_0041b920: collisions between a "harmless to players" entity (player
 // shots and their kin) and the entities it can hit, in group order.
 entity_collisions :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) {

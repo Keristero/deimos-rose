@@ -12,7 +12,7 @@ import "dr:sim"
 // the firing hook that reads it, and its screenshot scenarios (view/).
 //
 // It needs New Weapons, which hands the new weapons over through the
-// loadout and gives the aim its targets (new_weapons.air_shot_can_hit).
+// loadout and gives the aim its targets (collision_system.air_shot_can_hit).
 
 ID: sim.Plugin_ID
 

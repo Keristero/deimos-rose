@@ -24,6 +24,7 @@ import "dr:prefs"
 import "dr:sim"
 import "dr:sim/lifecycle"
 import "dr:sim/stats"
+import "dr:sim/systems/collision_system"
 import support "dr:tests/support"
 
 @(init)
@@ -234,7 +235,7 @@ beam_ready :: proc(t: ^testing.T, f: ^Fixture) -> (h: ^sim.Weapon_Handler, wd: ^
 	}
 	walk := sim.walk_entities(f.s)
 	for e in sim.walk_next(&walk) {
-		if new_weapons.air_shot_can_hit(f.s, e) {
+		if collision_system.air_shot_can_hit(f.s, e) {
 			lifecycle.entity_delete(e)
 		}
 	}
