@@ -2,6 +2,9 @@
     "label": "Recovered Levels",
     "description": "The original twelve sectors on maps redrawn from their recovered 3D terrain",
     "version": "1",
+    "deps": [
+
+    ],
     "default_on": false,
     "levels": [
         "Lucena",
@@ -16,5 +19,7 @@
         "Leonidas",
         "Thebes",
         "Yamato"
-    ]
+    ],
+    "original_free": false,
+    "made_with": "deimos-rising level editor"
 }

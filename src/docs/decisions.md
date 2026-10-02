@@ -1699,3 +1699,32 @@ Stage 9's export and Play (docs/level-editor.md).
 
 The game is unchanged. `oracle:diff` is exact, and tests/golden is
 unchanged.
+
+### D65 — Recovered Levels is an editor campaign, exported as any other
+
+Recovered Levels was packaged by a script of its own
+(`tools/terrain_mod/package.py`), which drew each recovered project's map
+and copied the original's record with only its map changed. The record
+named the original's preview and mask, but the game reads a campaign's
+masks only from the campaign's own folder (data.levels_append), so the
+levels played with no water.
+
+- **It is now a campaign file**,
+  `tools/terrain_mod/recovered_levels.drcampaign.json`, and
+  `terrain:mod` is the editor's `-export`. Recovered Levels gets what
+  every editor campaign gets, and fixes to the export reach it too: a
+  media mask from the project's water, a preview, the checks, and a
+  `plugin.json` the editor marks as its own.
+- **The preview crop is the original's.** `terrain preview` sets each
+  project's crop where its original preview was cut from its original
+  map, with `terrain.preview_locate`, the template match
+  `tools/preview_fit` uses. `terrain:recover-all` runs it, so a crop
+  chosen later in the editor is not overwritten by `terrain:mod`.
+- **Level ids follow play order** (`le01` is Lucena), as in every
+  editor campaign (D53, D64), and no longer the originals' numbers. The
+  game numbers levels by play order, and high scores and `-level` find
+  them by identifier. Only `-level` given an id (`le01`) now names
+  another level.
+
+The maps are pixel for pixel the ones the script drew. The masks match the
+originals' at 0.945–0.981 IoU. The game is unchanged.

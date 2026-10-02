@@ -1,8 +1,8 @@
 package terrain_tests
 
 // Level previews (Stage 9): where the crop goes, the 3x average, the
-// fitted look's shape, and the crop kept in the project; and the media
-// mask an export makes beside it.
+// fitted look's shape, the crop kept in the project and found again from
+// a preview; and the media mask an export makes beside it.
 
 import "core:os"
 import "core:strings"
@@ -70,6 +70,29 @@ preview_look_darkens_the_edges :: proc(t: ^testing.T) {
 	for c in 0 ..< 3 {
 		testing.expect(t, look.tone[c][8] > look.tone[c][4] && look.tone[c][12] > look.tone[c][8], "the tone rises")
 	}
+}
+
+// A preview made with the look is found where it was cut, to the pixel,
+// though the crop is at no multiple of the 3x downscale: how
+// `terrain preview` gives a recovered level its original's crop. The map
+// is noise in blocks of 5, so only one place matches.
+@(test)
+preview_locate_finds_the_crop :: proc(t: ^testing.T) {
+	m := terrain.picture_make(480, 1200, 3, 8, context.temp_allocator)
+	for y in 0 ..< m.height {
+		for x in 0 ..< m.width {
+			h := u32(x / 5) * 0x9e3779b1 ~ u32(y / 5) * 0x85ebca77
+			h = (h ~ h >> 15) * 0x2c1b3c6d
+			h ~= h >> 13
+			px := m.pixels[(y * m.width + x) * 3:][:3]
+			px[0], px[1], px[2] = u8(h), u8(h >> 8), u8(h >> 16)
+		}
+	}
+	at := [2]int{37, 211}
+	shown := terrain.preview_make(m, at, context.temp_allocator)
+	found, score := terrain.preview_locate(m, shown)
+	testing.expect_value(t, found, at)
+	testing.expectf(t, score > 0.9, "match %v", score)
 }
 
 // The crop is the project's: saved, opened again where it was, and kept

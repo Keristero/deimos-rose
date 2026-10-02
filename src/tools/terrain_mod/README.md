@@ -1,12 +1,15 @@
 # Terrain mod
 
-`package.py` packages the level projects recovered in `work/recovered/`
-as a campaign plugin, Recovered Levels (`plugins/recovered_levels`, off by
-default). Each project is drawn lit, with its occlusion, by `tools/terrain`
-as the level's map, `images/im16/rlNN.png`. The original's level record is
-copied with only its `background_image` changed, so the units, previews,
-masks and music are the originals'. It needs only Python's standard
-library.
+`recovered_levels.drcampaign.json` is the Recovered Levels campaign
+(`plugins/recovered_levels`, off by default): the level projects recovered
+in `work/recovered/`, in the originals' play order, as a level-editor
+campaign. `mise run terrain:mod` exports it through the editor's own
+export (`deimos-editor -export`), as the Campaign tab would. Each project
+is drawn lit, with its occlusion, as its map. Its preview is cut from the
+map where the original's was cut from the original map (`terrain:preview`,
+which `terrain:recover-all` runs). Its media mask is made from its water.
+Its record is the project's, which the recovery copied from the
+original's: the same units, music and briefing.
 
 ```sh
 cd src
@@ -15,6 +18,10 @@ mise run terrain:mod                  # into plugins/recovered_levels
 OUT=/tmp/mod mise run terrain:mod     # or elsewhere
 ```
 
-It takes about 20 s for the twelve. Turn the plugin on in the Mods page
+The campaign can also be opened in the editor's Campaign tab
+(`-campaign=tools/terrain_mod/recovered_levels.drcampaign.json`). Its
+levels are named relative to it, so it needs `work/` beside `src/`.
+
+It takes about 40 s for the twelve. Turn the plugin on in the Mods page
 and it is a campaign on Level Select, or play one level straight away:
 `deimos -campaign recovered_levels -level Leonidas`.

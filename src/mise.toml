@@ -553,6 +553,15 @@ headless "$DR_BUILD/terrain$DR_EXT" compare "$PROJECT" $ORIGINAL $MASK -images="
   -out="${OUT:-${PROJECT%.drproj.json}.compare.png}" -fit "$@"
 """
 
+[tasks."terrain:preview"]
+description = "Set a recovered level project's preview crop to where its original preview was cut from its original map, both by the level's image ids in the Classic Levels plugin, and save it (PROJECT=path/le07.drproj.json); no window"
+depends = ["terrain:build"]
+run = """
+set -e
+[ -n "$PROJECT" ] || { echo "terrain:preview: set PROJECT=path/to/level.drproj.json" >&2; exit 2; }
+"$DR_BUILD/terrain$DR_EXT" preview "$PROJECT" -images="$DR_PLUGINS/classic_levels/images/im16"
+"""
+
 [tasks."terrain:recover"]
 description = "Recover a level project from an original map (LEVEL=le07 into work/terrain/LEVEL/, or OUT=dir): Marigold V2 heights refined against the shadows (-- --seed depth-anything for the fallback), water from the mask and moved to the art's shoreline, the canopy split off, the renderer's light divided out of the colour; in the terrain:marigold-setup venv"
 depends = ["terrain:build"]
@@ -584,7 +593,7 @@ MASK=$("$PY" -c "import json,sys; print(json.load(open(sys.argv[1]))['media_mask
 """
 
 [tasks."terrain:recover-all"]
-description = "Recover every Classic Levels map into work/recovered/LEVEL/, bake its occlusion, refit its colour to it (terrain:relight), and score them all (terrain:report); LEVELS='le01 le07' for some"
+description = "Recover every Classic Levels map into work/recovered/LEVEL/, bake its occlusion, refit its colour to it (terrain:relight), crop its preview where the original's was (terrain:preview), and score them all (terrain:report); LEVELS='le01 le07' for some"
 depends = ["terrain:build"]
 run = '''
 set -e
@@ -595,6 +604,7 @@ for L in $LEVELS; do
   LEVEL="$L" OUT="$DIR/$L" mise run terrain:recover
   PROJECT="$DIR/$L/$L.drproj.json" mise run terrain:occlusion
   LEVEL="$L" OUT="$DIR/$L" mise run terrain:relight
+  PROJECT="$DIR/$L/$L.drproj.json" mise run terrain:preview
 done
 LEVELS="$LEVELS" mise run terrain:report
 '''
@@ -632,45 +642,11 @@ cat "$REPORT"
 '''
 
 [tasks."terrain:mod"]
-description = "Package the levels recovered in work/recovered/ as the Recovered Levels campaign plugin (plugins/recovered_levels): each drawn lit with its occlusion as its map, the original's record otherwise; OUT=dir for elsewhere"
-depends = ["terrain:build"]
+description = "Export the levels recovered in work/recovered/ as the Recovered Levels campaign plugin (plugins/recovered_levels) through the level editor's export: tools/terrain_mod/recovered_levels.drcampaign.json, each map drawn lit with its occlusion, its preview cut where the original's was (terrain:preview), its media mask from its water; OUT=dir for elsewhere"
 run = '''
 set -e
-headless() {
-  if command -v xvfb-run >/dev/null; then set -- xvfb-run -a -s "-screen 0 1280x1024x24" "$@"; fi
-  env DISPLAY= WAYLAND_DISPLAY= "$@"
-}
-headless python3 tools/terrain_mod/package.py --recovered "$DR_SRC/../work/recovered" \
-  --classic "$DR_SRC/plugins/classic_levels" --renderer "$DR_BUILD/terrain$DR_EXT" --out "${OUT:-$DR_SRC/plugins/recovered_levels}"
+CAMPAIGN="$DR_SRC/tools/terrain_mod/recovered_levels.drcampaign.json" TO="${OUT:-$DR_SRC/plugins/recovered_levels}" mise run editor:export
 '''
-
-[tasks."levels:bases"]
-description = "Measure which units' bases the original maps have baked in: crops the map under every ground placement of the twelve levels, at x and x-32, groups them by unit, prints how well each type's crops agree against the ground beside them, and writes each baked base (the crops' median where they agree) into assets/bases for the level editor (OUT=dir for elsewhere)"
-depends = ["setup"]
-run = """
-odin build tools/bases $DR_COLL $DR_LINK -o:speed -out:$DR_BUILD/bases$DR_EXT
-"$DR_BUILD/bases$DR_EXT" "${OUT:-$DR_ASSETS/bases}"
-"""
-
-[tasks."models:fetch"]
-description = "Download the level editor's scenery models (tools/models/sources.json, Poly Haven, CC0) into ~/.cache/deimos-rising/models: each one's 1k glTF, its textures, its leaves' alpha and its info; what is there already is kept"
-run = "python3 tools/models/fetch.py tools/models/sources.json \"$DR_MODELS_CACHE\""
-
-[tasks."models:library"]
-description = "Build the level editor's model library from models:fetch's cache into assets/models: each model as a GLB, its leaves' alpha merged, under terrain.MODEL_TRIANGLES, listed with its tags and authors, and tools/models/profiles.json's sample brushes beside them (OUT=dir for elsewhere)"
-depends = ["setup"]
-run = """
-odin build tools/models $DR_COLL $DR_LINK -o:speed -out:$DR_BUILD/models$DR_EXT
-"$DR_BUILD/models$DR_EXT" tools/models/sources.json tools/models/profiles.json "$DR_MODELS_CACHE" "${OUT:-$DR_ASSETS/models}"
-"""
-
-[tasks."materials:library"]
-description = "Quilt the level editor's material library from the recovered levels' unlit colour (work/recovered, terrain:recover-all) into assets/materials, tagged original-derived: tools/materials/library.json says which ground from where (OUT=dir for elsewhere)"
-depends = ["setup"]
-run = """
-odin build tools/materials $DR_COLL $DR_LINK -o:speed -out:$DR_BUILD/materials$DR_EXT
-"$DR_BUILD/materials$DR_EXT" tools/materials/library.json "$DR_SRC/../work/recovered" "${OUT:-$DR_ASSETS/materials}"
-"""
 
 [tasks."terrain:occlusion"]
 description = "Bake a level project's occlusion layer, how open to the sky each pixel is, from its colour with Flux 2 [klein] (PROJECT=...; in the hd:setup venv)"

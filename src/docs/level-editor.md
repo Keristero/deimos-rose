@@ -185,11 +185,14 @@ or next to it, so the heights cast their shadows where the art's fall.
   0.1–3.5%. The IoU without occlusion was then 0.800–0.964, and with it
   0.714–0.890.
 
-`mise run terrain:mod` packages the twelve as a mod, Recovered Levels
-(`plugins/recovered_levels`, off by default): each project drawn lit, with
-its occlusion, as the level's map, and the original's level record
-otherwise. It is a campaign on Level Select beside Classic Levels.
-`terrain:mod` draws the maps again after a relight.
+`mise run terrain:mod` exports the twelve as a mod, Recovered Levels
+(`plugins/recovered_levels`, off by default), through the editor's own
+export (Stage 9, D65): `tools/terrain_mod/recovered_levels.drcampaign.json`
+is the campaign, which the Campaign tab opens too. Each level has its map
+drawn lit with its occlusion, its preview cut where the original's was
+(`terrain:preview`), and its media mask made from its water. It is a
+campaign on Level Select beside Classic Levels. `terrain:mod` draws the
+maps again after a relight.
 
 Each level's scores are in `work/recovered/leNN/compare.txt` and
 `compare-occlusion.txt`, with side-by-sides. `work/` is not committed: it
@@ -1156,6 +1159,3 @@ or drag on the map, or use "Where the view is" and "The level's start".
   Export lists a plugin's units' plugin as a dependency, and the
   `tests/editor` case checks the core's, but no check has played a
   plugin's unit yet.
-- `tools/terrain_mod` still packages Recovered Levels with the
-  originals' previews and masks. It could export through the editor
-  now.

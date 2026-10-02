@@ -7,6 +7,7 @@ package terrain
 // by tools/preview_fit (preview_look.odin).
 
 import "core:math"
+import "core:slice"
 
 PREVIEW_WIDTH :: 146
 PREVIEW_HEIGHT :: 306
@@ -61,7 +62,8 @@ preview_curve :: proc "contextless" (knots: []f32, v, top: f32) -> f32 {
 }
 
 // Where a crop goes by default: the map's middle across, and the start of
-// the level, its bottom, as most of the originals' were.
+// the level, its bottom, which the player sees first. The originals' were
+// anywhere (preview_look.odin lists them): only three are at the bottom.
 preview_crop_default :: proc(width, length: int) -> [2]int {
 	return preview_crop_clamp({(width - PREVIEW_CROP_WIDTH) / 2, length - PREVIEW_CROP_HEIGHT}, width, length)
 }
@@ -120,6 +122,116 @@ preview_make_with :: proc(m: Picture, at: [2]int, look: Preview_Look, allocator 
 		}
 	}
 	return pic
+}
+
+// Where `preview` was cut from the RGB map `m`, as preview_crop takes it:
+// the best normalised correlation of its luminance with the map's,
+// downscaled 3x at each of the 9 phases, over the preview's middle, where
+// the vignette is faint; and that correlation. A coarse pass on every
+// third pixel, then the best few again on all of them. Finds the
+// originals' crops for tools/preview_fit and for their recovered projects
+// (`terrain preview`).
+preview_locate :: proc(m, preview: Picture) -> (at: [2]int, score: f32) {
+	D :: PREVIEW_DOWNSCALE
+	Candidate :: struct {
+		at:    [2]int,
+		score: f32,
+	}
+	Point :: struct {
+		x, y: int,
+		v:    f32,
+	}
+	points :: proc(lum: []f32, step: int) -> []Point {
+		out := make([dynamic]Point, context.temp_allocator)
+		mean: f32
+		for y := 0; y < PREVIEW_HEIGHT; y += step {
+			for x := 0; x < PREVIEW_WIDTH; x += step {
+				if d := preview_distance(x, y); d.x < 0.6 && d.y < 0.6 {
+					v := lum[y * PREVIEW_WIDTH + x]
+					append(&out, Point{x, y, v})
+					mean += v
+				}
+			}
+		}
+		mean /= f32(len(out))
+		norm: f32
+		for &q in out {
+			q.v -= mean
+			norm += q.v * q.v
+		}
+		norm = math.sqrt(norm)
+		for &q in out {
+			q.v /= norm
+		}
+		return out[:]
+	}
+	// The map's luminance downscaled at each phase.
+	Small :: struct {
+		w, h: int,
+		v:    []f32,
+	}
+	full := luminance(m, context.temp_allocator)
+	smalls: [D][D]Small
+	for py in 0 ..< D {
+		for px in 0 ..< D {
+			s := &smalls[py][px]
+			s.w, s.h = (m.width - px) / D, (m.height - py) / D
+			s.v = make([]f32, s.w * s.h, context.temp_allocator)
+			for row in 0 ..< s.h {
+				for col in 0 ..< s.w {
+					sum: f32
+					for dy in 0 ..< D {
+						for dx in 0 ..< D {
+							sum += full[(py + row * D + dy) * m.width + px + col * D + dx]
+						}
+					}
+					s.v[row * s.w + col] = sum / (D * D)
+				}
+			}
+		}
+	}
+	ncc :: proc(s: ^Small, pts: []Point, ox, oy: int) -> f32 {
+		mean, dot, sq: f32
+		for q in pts {
+			mean += s.v[(oy + q.y) * s.w + ox + q.x]
+		}
+		mean /= f32(len(pts))
+		for q in pts {
+			v := s.v[(oy + q.y) * s.w + ox + q.x] - mean
+			dot += v * q.v
+			sq += v * v
+		}
+		return sq > 0 ? dot / math.sqrt(sq) : 0
+	}
+	lum := luminance(preview, context.temp_allocator)
+	coarse := points(lum, 3)
+	fine := points(lum, 1)
+	best := make([dynamic]Candidate, context.temp_allocator)
+	for py in 0 ..< D {
+		for px in 0 ..< D {
+			s := &smalls[py][px]
+			for oy in 0 ..= s.h - PREVIEW_HEIGHT {
+				for ox in 0 ..= s.w - PREVIEW_WIDTH {
+					c := ncc(s, coarse, ox, oy)
+					if len(best) < 8 || c > best[len(best) - 1].score {
+						append(&best, Candidate{{px + ox * D, py + oy * D}, c})
+						slice.sort_by(best[:], proc(a, b: Candidate) -> bool {return a.score > b.score})
+						if len(best) > 8 {
+							pop(&best)
+						}
+					}
+				}
+			}
+		}
+	}
+	score = -1
+	for c in best {
+		s := &smalls[c.at.y % D][c.at.x % D]
+		if f := ncc(s, fine, c.at.x / D, c.at.y / D); f > score {
+			at, score = c.at, f
+		}
+	}
+	return
 }
 
 // A separable Gaussian over an RGB float image, its edges repeated.

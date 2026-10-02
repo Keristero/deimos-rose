@@ -5,6 +5,7 @@ package terrain_tool
 //
 //   terrain render  <project> <out> [-output=lit|albedo|normal|height|shadow|occlusion|all] [-scale=N] [-quantise] [-from=ROW] [-to=ROW] [-smoothing=SIGMA] [-no-occlusion]
 //   terrain compare <project> [<original.png> <mask.png>] [-images=DIR] [-out=side.png] [-from=ROW] [-to=ROW] [-fit] [-smoothing=SIGMA] [-no-occlusion]
+//   terrain preview <project> [-images=DIR]
 //
 // render writes <out>.png, or <out>.<output>.png for each with -output=all.
 // compare finds the original map and mask by the level's image ids in
@@ -17,6 +18,10 @@ package terrain_tool
 // (terrain.GEOMETRY_SMOOTHING when not given; 0 for none).
 // -no-occlusion draws the project without its occlusion layer: the
 // originals had none, so it is how a recovery is scored against them.
+// preview sets a recovered level's preview crop to where its original
+// preview was cut from its original map, both found by the level's image
+// ids in -images, and saves the project: its exported preview then shows
+// what the original's did. It needs no window.
 
 import "core:fmt"
 import "core:math"
@@ -40,15 +45,20 @@ main :: proc() {
 			append(&plain, a)
 		}
 	}
-	if len(plain) < 1 || (plain[0] == "render" && len(plain) != 3) || (plain[0] == "compare" && len(plain) != 2 && len(plain) != 4) {
+	if len(plain) < 1 || (plain[0] == "render" && len(plain) != 3) || (plain[0] == "compare" && len(plain) != 2 && len(plain) != 4) || (plain[0] == "preview" && len(plain) != 2) {
 		fmt.eprintln("usage: terrain render <project> <out> [-output=lit|albedo|normal|height|shadow|occlusion|all] [-scale=N] [-quantise] [-from=ROW] [-to=ROW] [-smoothing=SIGMA] [-no-occlusion]")
 		fmt.eprintln("       terrain compare <project> [<original.png> <mask.png>] [-images=DIR] [-out=side.png] [-from=ROW] [-to=ROW] [-fit] [-smoothing=SIGMA] [-no-occlusion]")
+		fmt.eprintln("       terrain preview <project> [-images=DIR]")
 		os.exit(2)
 	}
 	p, ok := terrain.project_load(plain[1])
 	if !ok {
 		fmt.eprintfln("terrain: cannot load %s", plain[1])
 		os.exit(1)
+	}
+	images := flags["images"] or_else "."
+	if plain[0] == "preview" {
+		os.exit(preview(&p, plain[1], images) ? 0 : 1)
 	}
 	if "no-occlusion" in flags {
 		p.occlusion = nil
@@ -94,7 +104,6 @@ main :: proc() {
 		if len(plain) == 4 {
 			original, mask = plain[2], plain[3]
 		} else {
-			images := flags["images"] or_else "."
 			original = fmt.tprintf("%s/%s.png", images, p.level.background_image)
 			mask = fmt.tprintf("%s/%s.png", images, p.level.media_mask)
 		}
@@ -126,6 +135,29 @@ render :: proc(r: ^terrain.Renderer, p: ^terrain.Project, o: terrain.Render_Opti
 		}
 		fmt.println("wrote", path)
 	}
+	return true
+}
+
+preview :: proc(p: ^terrain.Project, path, images: string) -> bool {
+	map_path := fmt.tprintf("%s/%s.png", images, p.level.background_image)
+	preview_path := fmt.tprintf("%s/%s.png", images, p.level.preview_image)
+	m, mok := terrain.picture_load(map_path, 3, context.temp_allocator)
+	if !mok || m.width != p.width || m.height != p.length || m.depth != 8 {
+		fmt.eprintfln("terrain: %s is not a %dx%d image", map_path, p.width, p.length)
+		return false
+	}
+	shown, sok := terrain.picture_load(preview_path, 3, context.temp_allocator)
+	if !sok || shown.width != terrain.PREVIEW_WIDTH || shown.height != terrain.PREVIEW_HEIGHT || shown.depth != 8 {
+		fmt.eprintfln("terrain: %s is not a %dx%d preview", preview_path, terrain.PREVIEW_WIDTH, terrain.PREVIEW_HEIGHT)
+		return false
+	}
+	at, score := terrain.preview_locate(m, shown)
+	p.preview = terrain.preview_crop_clamp(at, p.width, p.length)
+	if !terrain.project_save(p, path) {
+		fmt.eprintfln("terrain: cannot save %s", path)
+		return false
+	}
+	fmt.printfln("%s: preview at (%d, %d), match %.3f", path, p.preview.x, p.preview.y, score)
 	return true
 }
 

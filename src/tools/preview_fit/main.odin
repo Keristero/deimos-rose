@@ -8,9 +8,9 @@ package preview_fit
 // Each original preview is a 438x918 crop of its map downscaled 3x, then
 // given a vignette and a warmer, softer tone (notes/
 // headless-3d-to-2d-findings.md). This finds each crop by template
-// matching, then fits, over the previews that match well, the look
-// terrain.Preview_Look describes: a blur, a colour mix, a tone curve for
-// each channel and a vignette across and down,
+// matching (terrain.preview_locate), then fits, over the previews that
+// match well, the look terrain.Preview_Look describes: a blur, a colour
+// mix, a tone curve for each channel and a vignette across and down,
 //
 //   out_c = across(|x|) * down(|y|) * tone_c(mix(blur(crop / 3))_c)
 //
@@ -30,7 +30,6 @@ import "dr:terrain"
 
 PREVIEW_W :: terrain.PREVIEW_WIDTH
 PREVIEW_H :: terrain.PREVIEW_HEIGHT
-DOWN :: terrain.PREVIEW_DOWNSCALE
 // A preview whose best match scores less was cut from another render of
 // its map (jup2, jup3 in the findings) and is left out of the fit. The
 // first fit put le07 (jup2) at 0.921 and the rest at 0.963 or more.
@@ -76,7 +75,9 @@ main :: proc() {
 		os.exit(1)
 	}
 	for &l in levels {
-		l.x, l.y, l.score = locate(l.m, l.p)
+		at: [2]int
+		at, l.score = terrain.preview_locate(l.m, l.p)
+		l.x, l.y = at.x, at.y
 	}
 
 	look, rmse := fit_all(levels)
@@ -120,118 +121,6 @@ levels_load :: proc(classic: string) -> []Level {
 		append(&levels, Level{id = r.id, map_name = r.background_image, preview_name = r.preview_image, m = m, p = p})
 	}
 	return levels[:]
-}
-
-luma :: proc(px: []u8) -> f32 {
-	return 0.299 * f32(px[0]) + 0.587 * f32(px[1]) + 0.114 * f32(px[2])
-}
-
-// The preview's place in the map: the best normalised correlation of its
-// luminance with the map's, downscaled 3x at each of the 9 phases, over
-// the preview's middle, where the vignette is faint. A coarse pass on
-// every third pixel, then the best few again on all of them.
-locate :: proc(m, p: terrain.Picture) -> (x, y: int, score: f32) {
-	Candidate :: struct {
-		x, y:  int,
-		score: f32,
-	}
-	Point :: struct {
-		x, y: int,
-		v:    f32,
-	}
-	points :: proc(p: terrain.Picture, step: int) -> []Point {
-		out := make([dynamic]Point, context.temp_allocator)
-		mean: f32
-		for y := 0; y < p.height; y += step {
-			for x := 0; x < p.width; x += step {
-				if d := terrain.preview_distance(x, y); d.x < 0.6 && d.y < 0.6 {
-					v := luma(p.pixels[(y * p.width + x) * 3:])
-					append(&out, Point{x, y, v})
-					mean += v
-				}
-			}
-		}
-		mean /= f32(len(out))
-		norm: f32
-		for &q in out {
-			q.v -= mean
-			norm += q.v * q.v
-		}
-		norm = math.sqrt(norm)
-		for &q in out {
-			q.v /= norm
-		}
-		return out[:]
-	}
-	// The map's luminance downscaled at phase (px, py).
-	Small :: struct {
-		w, h: int,
-		v:    []f32,
-	}
-	full := make([]f32, m.width * m.height, context.temp_allocator)
-	for i in 0 ..< len(full) {
-		full[i] = luma(m.pixels[i * 3:])
-	}
-	smalls: [DOWN][DOWN]Small
-	for py in 0 ..< DOWN {
-		for px in 0 ..< DOWN {
-			s := &smalls[py][px]
-			s.w, s.h = (m.width - px) / DOWN, (m.height - py) / DOWN
-			s.v = make([]f32, s.w * s.h, context.temp_allocator)
-			for row in 0 ..< s.h {
-				for col in 0 ..< s.w {
-					sum: f32
-					for dy in 0 ..< DOWN {
-						for dx in 0 ..< DOWN {
-							sum += full[(py + row * DOWN + dy) * m.width + px + col * DOWN + dx]
-						}
-					}
-					s.v[row * s.w + col] = sum / (DOWN * DOWN)
-				}
-			}
-		}
-	}
-	ncc :: proc(s: ^Small, pts: []Point, ox, oy: int) -> f32 {
-		mean, dot, sq: f32
-		for q in pts {
-			mean += s.v[(oy + q.y) * s.w + ox + q.x]
-		}
-		mean /= f32(len(pts))
-		for q in pts {
-			v := s.v[(oy + q.y) * s.w + ox + q.x] - mean
-			dot += v * q.v
-			sq += v * v
-		}
-		return sq > 0 ? dot / math.sqrt(sq) : 0
-	}
-	coarse := points(p, 3)
-	fine := points(p, 1)
-	best := make([dynamic]Candidate, context.temp_allocator)
-	for py in 0 ..< DOWN {
-		for px in 0 ..< DOWN {
-			s := &smalls[py][px]
-			for oy in 0 ..= s.h - PREVIEW_H {
-				for ox in 0 ..= s.w - PREVIEW_W {
-					c := ncc(s, coarse, ox, oy)
-					if len(best) < 8 || c > best[len(best) - 1].score {
-						append(&best, Candidate{px + ox * DOWN, py + oy * DOWN, c})
-						slice.sort_by(best[:], proc(a, b: Candidate) -> bool {return a.score > b.score})
-						if len(best) > 8 {
-							pop(&best)
-						}
-					}
-				}
-			}
-		}
-	}
-	score = -1
-	for c in best {
-		s := &smalls[c.y % DOWN][c.x % DOWN]
-		if f := ncc(s, fine, c.x / DOWN, c.y / DOWN); f > score {
-			x, y, score = c.x, c.y, f
-		}
-	}
-	return
 }
 
 // The look fitted to the well matched previews at each blur, and the best.
@@ -473,19 +362,19 @@ compare :: proc(a, b: terrain.Picture) -> (rmse, corr: f32) {
 		d := f64(a.pixels[i]) - f64(b.pixels[i])
 		sum += d * d
 	}
-	la := make([]f64, n, context.temp_allocator)
-	lb := make([]f64, n, context.temp_allocator)
+	la := terrain.luminance(a, context.temp_allocator)
+	lb := terrain.luminance(b, context.temp_allocator)
 	for i in 0 ..< n {
-		la[i], lb[i] = f64(luma(a.pixels[i * 3:])), f64(luma(b.pixels[i * 3:]))
-		ma += la[i]
-		mb += lb[i]
+		ma += f64(la[i])
+		mb += f64(lb[i])
 	}
 	ma, mb = ma / f64(n), mb / f64(n)
 	dot, sa, sb: f64
 	for i in 0 ..< n {
-		dot += (la[i] - ma) * (lb[i] - mb)
-		sa += (la[i] - ma) * (la[i] - ma)
-		sb += (lb[i] - mb) * (lb[i] - mb)
+		da, db := f64(la[i]) - ma, f64(lb[i]) - mb
+		dot += da * db
+		sa += da * da
+		sb += db * db
 	}
 	return f32(math.sqrt(sum / f64(n * 3))), f32(dot / math.sqrt(sa * sb))
 }

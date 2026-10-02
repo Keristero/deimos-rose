@@ -1,0 +1,25 @@
+{
+  "format": "deimos-rising.campaign",
+  "version": 1,
+  "name": "recovered_levels",
+  "label": "Recovered Levels",
+  "description": "The original twelve sectors on maps redrawn from their recovered 3D terrain",
+  "plugin_version": "1",
+  "default_on": false,
+  "classic_colour": false,
+  "original_free": false,
+  "levels": [
+    "../../../work/recovered/le07/le07.drproj.json",
+    "../../../work/recovered/le06/le06.drproj.json",
+    "../../../work/recovered/le02/le02.drproj.json",
+    "../../../work/recovered/le08/le08.drproj.json",
+    "../../../work/recovered/le11/le11.drproj.json",
+    "../../../work/recovered/le04/le04.drproj.json",
+    "../../../work/recovered/le12/le12.drproj.json",
+    "../../../work/recovered/le03/le03.drproj.json",
+    "../../../work/recovered/le05/le05.drproj.json",
+    "../../../work/recovered/le01/le01.drproj.json",
+    "../../../work/recovered/le10/le10.drproj.json",
+    "../../../work/recovered/le09/le09.drproj.json"
+  ]
+}
