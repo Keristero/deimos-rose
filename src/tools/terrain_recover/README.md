@@ -55,7 +55,12 @@ the strip, which runs 3600 m south and 480 m wide, a metre to a map pixel.
 aerial imagery lacks, from OpenStreetMap's water (`natural=water` and
 `waterway=riverbank`, through Overpass; credit OpenStreetMap, ODbL), and
 `OUT/water-preview.png` shows it over the map. Without `--osm` it finds the
-water by colour instead, which shadows can fool. Then `recover.py` runs as
+water by colour instead, which shadows can fool. Then `elevation.py` fetches LINZ's 1 m LiDAR DEM and DSM for the strip (CC BY 4.0)
+and `recover.py --lidar` builds the heights from them: the ground is the DEM,
+trees stand as high as the DSM says, and each building's roof is Marigold's
+depth taken above the ground around it and scaled to the DSM's height, half
+of it Marigold's shape and half the DSM's. There is no shadow fit or
+refinement. Otherwise `recover.py` runs as
 for the originals, moving the shores to the art's own, with Marigold on the
 CPU (Marigold itself only runs on the GPU, whatever `DEVICE` is). The project is in `work/aerial/<id>/project/`.
 `populate.py` then fills the project with units after the classic

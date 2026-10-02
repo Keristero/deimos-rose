@@ -627,6 +627,7 @@ def main():
     ap.add_argument("--iters", type=int, default=REFINE_ITERS, help="refinement steps (0: the seed as it is)")
     ap.add_argument("--curvature", type=float, default=REFINE_CURVATURE, help="weight of the change's curvature along the sun")
     ap.add_argument("--shading", type=float, default=REFINE_SHADING, help="weight of the Lambert shading's fit to the art's light")
+    ap.add_argument("--lidar", help="a folder with dem.npy and dsm.npy (elevation.py): the ground is the DEM's, the trees' height the DSM's, and the buildings' roofs Marigold's depth scaled to the DSM's; no shadow fit or refinement")
     ap.add_argument("--relight", action="store_true", help="only the colour, of the project already in --out, divided by its light with its occlusion layer (terrain:occlusion) fitted to the art; no model runs")
     args = ap.parse_args()
     if args.relight:
@@ -653,21 +654,34 @@ def main():
         seed = {"model": DEPTH_MODEL, "revision": DEPTH_REVISION, "device": args.device}
         depth = seed_depth_anything(rgb8, out / "cache", args.device)
 
-    # The height range whose shadows fit the art's best, at half size.
-    half = lambda a: a[::2, ::2]
-    fits = {}
-    for r in RANGES:
-        fits[r] = float(iou(cast_shadows(half(depth) * r / 2, args.azimuth, args.elevation), half(detected), half(land)))
-        print(f"height range {r:4d} px: cast-shadow IoU {fits[r]:.3f}", flush=True)
-    # The shortest range about as good as the best: past some range the
-    # score barely moves, and taller only lengthens the small objects'
-    # shadows, which depth already makes too tall.
-    best = min(r for r in RANGES if fits[r] >= max(fits.values()) - 0.01)
-    H = depth * best
+    canopy = None
+    if args.lidar:
+        dem = fill_gaps(np.load(Path(args.lidar) / "dem.npy"))
+        dsm = fill_gaps(np.load(Path(args.lidar) / "dsm.npy"))
+        if dem.shape != (h, w):
+            raise SystemExit(f"the elevation is {dem.shape[::-1]}, the map {(w, h)}: fetch it for the same strip")
+        rise = np.maximum(dsm - dem, 0)
+        canopy = canopy_mask(rgb8, out / "cache", args.device)
+        trees = (canopy > 0.5) & land
+        H = dem + building_heights(depth, rise, trees, land)
+        fits, best = {}, 0
+        seed = {"model": "LINZ LiDAR DEM and DSM, 1 m, with marigold-v2 depth for the roofs", **{k: v for k, v in seed.items() if k != "model"}}
+    else:
+        # The height range whose shadows fit the art's best, at half size.
+        half = lambda a: a[::2, ::2]
+        fits = {}
+        for r in RANGES:
+            fits[r] = float(iou(cast_shadows(half(depth) * r / 2, args.azimuth, args.elevation), half(detected), half(land)))
+            print(f"height range {r:4d} px: cast-shadow IoU {fits[r]:.3f}", flush=True)
+        # The shortest range about as good as the best: past some range the
+        # score barely moves, and taller only lengthens the small objects'
+        # shadows, which depth already makes too tall.
+        best = min(r for r in RANGES if fits[r] >= max(fits.values()) - 0.01)
+        H = depth * best
 
     # Water is level, and the stitched depth drifts along the map: take out
     # the drift of the ground under the water, row by row, smoothed.
-    if water.any():
+    if water.any() and not args.lidar:
         rows = water.sum(1)
         under = np.array([np.percentile(H[y][water[y]], 90) if rows[y] else 0 for y in range(h)], np.float32)
         wsum = ndi.gaussian_filter1d(rows.astype(np.float32), 150, mode="nearest")
@@ -687,11 +701,21 @@ def main():
     if water.any():
         H = np.where(water, np.minimum(H, level_h - 0.5), np.maximum(H, floor))
 
-    H, history = refine(H, detected, land, rgb, args.device, args.azimuth, args.elevation, floor, args.iters, args.curvature, args.shading)
+    if args.lidar:
+        history = []  # the LiDAR is not fitted to the art's shadows
+    else:
+        H, history = refine(H, detected, land, rgb, args.device, args.azimuth, args.elevation, floor, args.iters, args.curvature, args.shading)
     water_colour = [int(v) for v in np.median(rgb8[water], 0)] if water.any() else [0, 0, 0]
 
-    canopy = canopy_mask(rgb8, out / "cache", args.device)
-    ground, cover, canopy_height = split_canopy(H, canopy, land)
+    if args.lidar:
+        # Trees stand as far above the ground as the DSM says; the ground is
+        # H (DEM and buildings) and the cover the share of the tallest.
+        top = float(np.percentile(rise[trees], 99)) if trees.any() else 0.0
+        cover = (np.where(trees, np.clip(rise / max(top, 1e-6), 0, 1), 0) * 255 + 0.5).astype(np.uint8)
+        ground, canopy_height = H, top
+    else:
+        canopy = canopy_mask(rgb8, out / "cache", args.device)
+        ground, cover, canopy_height = split_canopy(H, canopy, land)
 
     level = json.loads(Path(args.level).read_text())
     level["lighting"] = {
@@ -760,6 +784,40 @@ def main():
     }
     (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     print(f"wrote {out / (stem + '.drproj.json')} (height range {best} px, water at {level_h:.1f})")
+
+
+ROOF_MIN_RISE = 2.0  # the DSM above the DEM, in metres, that makes a building
+ROOF_BLEND = 0.5  # the share of a roof that is Marigold's shape (the rest is the DSM's)
+
+
+def fill_gaps(a):
+    """An elevation grid with its NaN gaps filled from around them."""
+    known = ~np.isnan(a)
+    return fill(np.where(known, a, 0), known) if not known.all() else a
+
+
+def building_heights(depth, rise, trees, land):
+    """The buildings' height above the ground: where the DSM stands over the
+    DEM and it is not canopy. Marigold's depth gives each roof's shape,
+    taken above the ground around the building and scaled so its median is
+    the DSM's; the roof is ROOF_BLEND of it and the rest the DSM itself."""
+    built = ndi.binary_opening((rise > ROOF_MIN_RISE) & ~trees & land, iterations=1)
+    labels, n = ndi.label(built)
+    out = np.zeros(depth.shape, np.float32)
+    for i, box in enumerate(ndi.find_objects(labels), 1):
+        y0, y1 = max(box[0].start - 8, 0), min(box[0].stop + 8, depth.shape[0])
+        x0, x1 = max(box[1].start - 8, 0), min(box[1].stop + 8, depth.shape[1])
+        mine = labels[y0:y1, x0:x1] == i
+        if mine.sum() < 12:
+            continue
+        ring = ndi.binary_dilation(mine, iterations=6) & ~ndi.binary_dilation(mine, iterations=2) & ~built[y0:y1, x0:x1] & land[y0:y1, x0:x1]
+        d, r = depth[y0:y1, x0:x1], rise[y0:y1, x0:x1]
+        base = np.median(d[ring]) if ring.any() else d[mine].min()
+        shape = np.maximum(d - base, 0)
+        target, have = np.median(r[mine]), np.median(shape[mine])
+        scaled = shape * np.clip(target / have, 0.2, 5.0) if have > 1e-6 else r
+        out[y0:y1, x0:x1][mine] = np.minimum(ROOF_BLEND * scaled[mine] + (1 - ROOF_BLEND) * r[mine], 1.5 * r[mine].max())
+    return out
 
 
 def art(args, out: Path):

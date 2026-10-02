@@ -160,10 +160,14 @@ def main():
     ap.add_argument("project")
     ap.add_argument("map")
     ap.add_argument("mask")
+    ap.add_argument("--force", action="store_true", help="replace placements the project already has (by default they are kept: they may be edited)")
     ap.add_argument("--level", help="also write the placements into this level record (the project's level is always written)")
     args = ap.parse_args()
     path = Path(args.project)
     project = json.loads(path.read_text())
+    if project["level"].get("placements") and not args.force:
+        print(f"{path} already has {len(project['level']['placements'])} placements: kept (--force replaces them)")
+        return
     project["_dir"] = path.parent
     placements = place(project, np.asarray(Image.open(args.map).convert("RGB")), np.asarray(Image.open(args.mask).convert("RGB")))
     del project["_dir"]

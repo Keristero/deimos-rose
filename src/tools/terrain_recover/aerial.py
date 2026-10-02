@@ -23,7 +23,10 @@ from water_mask import cells_of, mask_image, osm_water
 COLLECTION = "https://nz-imagery.s3.ap-southeast-2.amazonaws.com/west-coast/west-coast_2024-2026_0.2m/rgb/2193/"
 
 
-def fetch(lat, lon, width, length, metres, collection):
+def fetch(lat, lon, width, length, metres, collection, bands=3):
+    """The strip from COLLECTION's tiles, (LENGTH, WIDTH, BANDS) uint8 for
+    imagery, (LENGTH, WIDTH) float32 for one band of elevation, whose gaps
+    are NaN."""
     import rasterio
     from pyproj import Transformer
     from rasterio.enums import Resampling
@@ -35,7 +38,7 @@ def fetch(lat, lon, width, length, metres, collection):
     x0, x1 = cx - width * metres / 2, cx + width * metres / 2
     y0, y1 = cy - length * metres, cy
     coll = requests.get(collection + "collection.json", timeout=60).json()
-    out = np.zeros((length, width, 3), np.uint8)
+    out = np.zeros((length, width, bands), np.uint8) if bands == 3 else np.full((length, width, 1), np.nan, np.float32)
     got = np.zeros((length, width), bool)
 
     def item_of(link):
@@ -66,12 +69,16 @@ def fetch(lat, lon, width, length, metres, collection):
             px0, px1 = round((ix0 - x0) / metres), round((ix1 - x0) / metres)
             py0, py1 = round((y1 - iy1) / metres), round((y1 - iy0) / metres)
             win = from_bounds(ix0, iy0, ix1, iy1, ds.transform)
-            data = ds.read([1, 2, 3], window=win, out_shape=(3, py1 - py0, px1 - px0), resampling=Resampling.average)
-            out[py0:py1, px0:px1] = np.moveaxis(data, 0, -1)
+            if bands == 3:
+                data = ds.read([1, 2, 3], window=win, out_shape=(3, py1 - py0, px1 - px0), resampling=Resampling.average)
+                out[py0:py1, px0:px1] = np.moveaxis(data, 0, -1)
+            else:
+                data = ds.read(1, window=win, out_shape=(py1 - py0, px1 - px0), resampling=Resampling.bilinear, masked=True)
+                out[py0:py1, px0:px1, 0] = data.astype(np.float32).filled(np.nan)
             got[py0:py1, px0:px1] = True
     if not got.all():
         raise SystemExit(f"the imagery covers {got.mean():.0%} of the strip")
-    return out
+    return out if bands == 3 else out[..., 0]
 
 
 def main():
@@ -113,8 +120,12 @@ def main():
         "skybox": "",
         "layers": {"albedo": "", "normal": "", "height": "", "shadow_mask": "", "hd_map": "", "specular": ""},
     }
-    (out / f"{args.id}.json").write_text(json.dumps(level, indent=2) + "\n")
+    record = out / f"{args.id}.json"
+    if record.exists():  # a rerun keeps the placements already made or edited
+        level["placements"] = json.loads(record.read_text()).get("placements", [])
+    record.write_text(json.dumps(level, indent=2) + "\n")
     print(f"wrote {images}/{args.id}_map.png, {args.id}_mask.png and {out / (args.id + '.json')}")
 
 
-main()
+if __name__ == "__main__":
+    main()
