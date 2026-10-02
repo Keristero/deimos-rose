@@ -80,7 +80,7 @@ depends = ["build:editor"]
 run = 'exec "$DR_BUILD/deimos-editor$DR_EXT" "$@"'
 
 [tasks."editor:shot"]
-description = "Draw one frame of the level editor headlessly ([PROJECT=path/level.drproj.json, a new level otherwise] [OUT=build/editor.png]); extra flags pass through, e.g. -- -tab=light -row=1500 -zoom=2 -tilt=50"
+description = "Draw one frame of the level editor headlessly ([PROJECT=path/level.drproj.json, a new level otherwise] [OUT=build/editor.png]); extra flags pass through, e.g. -- -tab=light -row=1500 -left=100 -zoom=2 -tilt=50"
 depends = ["build:editor"]
 run = """
 set -e

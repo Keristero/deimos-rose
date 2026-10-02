@@ -258,7 +258,9 @@ editor_input :: proc(e: ^Editor, l: Layout) {
 		e.dragging_overview = false
 	}
 	if e.dragging_overview {
+		// Centred on the point, both ways; view_prepare clamps.
 		s, r := overview_fit(p, l.overview)
+		v.left = (mouse.x - r.x) / s - view_cols(v, l.view) / 2
 		v.row = (mouse.y - r.y) / s - rows / 2
 	}
 

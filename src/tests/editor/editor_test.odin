@@ -388,9 +388,34 @@ shot_zoomed :: proc(t: ^testing.T) {
 	}
 }
 
-// Under X (xvfb-run's has XInput 2.4), the pinch and the motion are
-// selected on the editor's window, and with no touchpad there is neither
-// a pinch nor a scroll.
+// The overview's box is the view's part of the map, across as well as
+// along: the whole width when the map fits, a slice of it panned when
+// zoomed in.
+@(test)
+overview_box_follows_the_pan :: proc(t: ^testing.T) {
+	p := terrain.Project {
+		width  = 480,
+		length = 3600,
+	}
+	l := editor.layout(1280, 900)
+	s, r := editor.overview_fit(&p, l.overview)
+	v := editor.View {
+		zoom = 1,
+		row  = 1000,
+	}
+	near :: proc(a, b: f32) -> bool {return abs(a - b) < 0.01}
+	b := editor.overview_box(&v, &p, l.view, s, r)
+	testing.expectf(t, near(b.x, r.x) && near(b.width, r.width), "fitting, the box %v, the map %v", b, r)
+	testing.expectf(t, near(b.y, r.y + 1000 * s) && near(b.height, l.view.height * s), "fitting, the box %v", b)
+	v.zoom, v.left = 4, 200
+	b = editor.overview_box(&v, &p, l.view, s, r)
+	testing.expectf(t, near(b.x, r.x + 200 * s) && near(b.width, l.view.width / 4 * s), "zoomed in, the box %v, the map %v", b, r)
+	testing.expectf(t, near(b.height, l.view.height / 4 * s), "zoomed in, the box %v", b)
+	testing.expect(t, b.x + b.width <= r.x + r.width + 0.01, "the box past the map's right")
+}
+
+// Under X (xvfb-run's has XInput 2.4), the pinch and the raw motion are
+// selected, and with no touchpad there is neither a pinch nor a scroll.
 @(private = "file")
 gestures_select :: proc(t: ^testing.T) {
 	when ODIN_OS == .Linux {

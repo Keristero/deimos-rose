@@ -231,8 +231,10 @@ the path typed in above it, as Save saves to it.
 
 The wheel and a touchpad's two fingers scroll up and down the level and
 across it when it is wider than the view (Shift turns the wheel across),
-middle-drag pans, and clicking the overview goes there. Ctrl+wheel, a touchpad's pinch, and Ctrl+= and Ctrl+- zoom about the
-mouse, and Ctrl+0 goes back to 1x. Ctrl+Z, Ctrl+Y and
+middle-drag pans, and clicking or dragging on the overview centres the
+view there. The overview's box is the part in view, its width as well
+as its rows when zoomed in. Ctrl+wheel, a touchpad's pinch, and Ctrl+=
+and Ctrl+- zoom about the mouse, and Ctrl+0 goes back to 1x. Ctrl+Z, Ctrl+Y and
 Ctrl+S undo, redo and save; 1-4 pick the brush, `[` and `]` size it, `L`
 and `T` toggle the light and the tilt. A project dropped on the window
 opens.

@@ -106,6 +106,11 @@ view_rows :: proc(v: ^View, area: rl.Rectangle) -> f32 {
 	return area.height / v.zoom
 }
 
+// Map columns the view has room for.
+view_cols :: proc(v: ^View, area: rl.Rectangle) -> f32 {
+	return area.width / v.zoom
+}
+
 // The renderer's output pixels a map pixel for the view: 2 when zoomed in
 // past 1x, so the models layer's 2 texels a pixel show; else 1, scaled
 // down from there.
@@ -117,7 +122,7 @@ view_scale :: proc(v: ^View) -> int {
 view_clamp :: proc(v: ^View, p: ^terrain.Project, area: rl.Rectangle) {
 	v.zoom = clamp(v.zoom, ZOOM_MIN, ZOOM_MAX)
 	v.row = clamp(v.row, 0, max(f32(p.length) - view_rows(v, area), 0))
-	v.left = clamp(v.left, 0, max(f32(p.width) - area.width / v.zoom, 0))
+	v.left = clamp(v.left, 0, max(f32(p.width) - view_cols(v, area), 0))
 }
 
 // Where map pixel (0, row) is drawn, and so every other.
@@ -237,8 +242,8 @@ view_draw :: proc(e: ^Editor, l: Layout) {
 		if e.show_units {
 			units_overview(e, s, r)
 		}
-		rows := min(view_rows(v, area), f32(p.length) - v.row)
-		rl.DrawRectangleLinesEx({r.x - 1, r.y + v.row * s - 1, r.width + 2, rows * s + 2}, 1, {255, 220, 90, 255})
+		b := overview_box(v, p, area, s, r)
+		rl.DrawRectangleLinesEx({b.x - 1, b.y - 1, b.width + 2, b.height + 2}, 1, {255, 220, 90, 255})
 	}
 }
 
@@ -262,6 +267,15 @@ overview_fit :: proc(p: ^terrain.Project, area: rl.Rectangle) -> (s: f32, r: rl.
 	s = min((area.width - 8) / f32(p.width), (area.height - 8) / f32(p.length))
 	w, h := f32(p.width) * s, f32(p.length) * s
 	return s, {area.x + math.floor((area.width - w) / 2), area.y + math.floor((area.height - h) / 2), w, h}
+}
+
+// The part of the map in view, where the overview draws it (`s` and `r`
+// from overview_fit): across as well as along, zoomed in, as the view
+// pans both ways.
+overview_box :: proc(v: ^View, p: ^terrain.Project, area: rl.Rectangle, s: f32, r: rl.Rectangle) -> rl.Rectangle {
+	cols := min(view_cols(v, area), f32(p.width) - v.left)
+	rows := min(view_rows(v, area), f32(p.length) - v.row)
+	return {r.x + v.left * s, r.y + v.row * s, cols * s, rows * s}
 }
 
 @(private = "file")
