@@ -3,12 +3,10 @@ package tests
 // Where and how a level starts (D54): a level's own start weapons, and
 // starting further up its map for -row.
 
-import "core:os"
 import "core:slice"
 import "core:testing"
 import vmem "core:mem/virtual"
 
-import "dr:data"
 import "dr:plugins/loadout"
 import "dr:sim"
 import "dr:sim/systems/level_system"
@@ -55,14 +53,13 @@ level_start_weapons_replace_the_level_rule :: proc(t: ^testing.T) {
 // start, and has every other still to meet.
 @(test)
 level_starts_at_a_row :: proc(t: ^testing.T) {
-	if !os.exists("assets/data/idli/gaob.json") {
+	arena: vmem.Arena
+	defs, loaded := assets_defs(t, &arena, "assets/data/idli/gaob.json")
+	if !loaded {
 		return
 	}
-	arena: vmem.Arena
-	testing.expect(t, vmem.arena_init_growing(&arena) == nil)
 	defer vmem.arena_destroy(&arena)
 	alloc := vmem.arena_allocator(&arena)
-	defs, _ := data.assets_defs_load("assets", alloc)
 	level := sim.level_by_id(&defs, sim.CORE, sim.level_id("le07"))
 	if !testing.expect(t, level != nil) {
 		return

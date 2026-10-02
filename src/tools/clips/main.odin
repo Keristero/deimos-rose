@@ -103,13 +103,9 @@ clip :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, root, id, 
 	fl: game.Flow
 	game.flow_init(&fl, root, defs, state, r, &ps)
 	defer game.flow_destroy(&fl)
-	particles: render.Particles
-	render.particles_init(&particles)
-	defer render.particles_destroy(&particles)
-	blurs: render.Blurs
-	render.blurs_init(&blurs)
-	defer render.blurs_destroy(&blurs)
-	notices: render.Notices
+	fx: render.Effects
+	render.effects_init(&fx)
+	defer render.effects_destroy(&fx)
 
 	game.flow_start_session(&fl, SEED, .Single, max(int(wd.minimum_level_available) - 1, 0))
 	loadout.loadout_of(state).shown = sim.single(state, sim.Level_Info).played
@@ -146,14 +142,14 @@ clip :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, root, id, 
 		}
 		_ = sim.session_step(state, {b, {}})
 		p.shields = 100
-		game.flow_effects_sync(&fl, &particles, &blurs, &notices)
-		game.flow_effects_step(&fl, r, &particles, &blurs, &notices)
+		game.flow_effects_sync(&fl, &fx)
+		game.flow_effects_step(&fl, r, &fx)
 		if k < 0 {
 			continue
 		}
 		rl.BeginTextureMode(r.canvas)
 		rl.ClearBackground(rl.Color{0, 0, 0, 255})
-		game.flow_draw(&fl, r, &particles, &blurs, &notices, render.WINDOW_SCALE)
+		game.flow_draw(&fl, r, &fx, render.WINDOW_SCALE)
 		rl.EndTextureMode()
 		img := rl.LoadImageFromTexture(r.canvas.texture)
 		rl.ImageFlipVertical(&img) // render textures are bottom-up

@@ -120,19 +120,27 @@ high_scores_view_draw :: proc(r: ^render.Renderer, hs: ^High_Scores) {
 	case .Fading_Out:
 		alpha = 1 - clamp(hs.t / HIGH_SCORES_FADE_SECONDS, 0, 1)
 	}
+	row_color := high_scores_header_draw(r, alpha)
+	y := f32(HIGH_SCORES_ROW0_Y)
+	for e in hs.table {
+		high_scores_row_draw(r, e.name, e.score, e.sector, i32(y), row_color)
+		y += HIGH_SCORES_ROW_GAP
+	}
+}
+
+// The table's column heads, at `alpha` as the screen fades, for the viewer
+// and the name entry; and the rows' colour at that alpha.
+high_scores_header_draw :: proc(r: ^render.Renderer, alpha: f32) -> (row: rl.Color) {
 	a := u8(alpha * 255)
 	header := rl.Color{ui.HIGH_SCORES_HEADER_RGB[0], ui.HIGH_SCORES_HEADER_RGB[1], ui.HIGH_SCORES_HEADER_RGB[2], a}
-	row_color := rl.Color{HIGH_SCORES_ROW_RGB[0], HIGH_SCORES_ROW_RGB[1], HIGH_SCORES_ROW_RGB[2], a}
-
 	ui.menu_draw_text(r, "Name", HIGH_SCORES_NAME_X, HIGH_SCORES_HEADER_Y, header)
 	ui.menu_draw_text(r, "Score", HIGH_SCORES_SCORE_X, HIGH_SCORES_HEADER_Y, header)
 	ui.menu_draw_text(r, "Sector", HIGH_SCORES_SECTOR_X, HIGH_SCORES_HEADER_Y, header)
-	y := f32(HIGH_SCORES_ROW0_Y)
+	return {HIGH_SCORES_ROW_RGB[0], HIGH_SCORES_ROW_RGB[1], HIGH_SCORES_ROW_RGB[2], a}
+}
 
-	for e in hs.table {
-		ui.menu_draw_text(r, e.name, HIGH_SCORES_NAME_X, i32(y), row_color)
-		ui.menu_draw_text(r, fmt.tprintf("%d", e.score), HIGH_SCORES_SCORE_X, i32(y), row_color)
-		ui.menu_draw_text(r, e.sector, HIGH_SCORES_SECTOR_X, i32(y), row_color)
-		y += HIGH_SCORES_ROW_GAP
-	}
+high_scores_row_draw :: proc(r: ^render.Renderer, name: string, score: int, sector: string, y: i32, color: rl.Color) {
+	ui.menu_draw_text(r, name, HIGH_SCORES_NAME_X, y, color)
+	ui.menu_draw_text(r, fmt.tprintf("%d", score), HIGH_SCORES_SCORE_X, y, color)
+	ui.menu_draw_text(r, sector, HIGH_SCORES_SECTOR_X, y, color)
 }

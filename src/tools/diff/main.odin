@@ -121,11 +121,7 @@ main :: proc() {
 	// plays the players' films too, from Data/Local/film, so one trace
 	// may hold any of them.
 	films: map[u32]string
-	entries: []os.File_Info
-	if dir, oerr := os.open(films_dir); oerr == nil {
-		entries, _ = os.read_directory(dir, -1, context.allocator)
-		os.close(dir)
-	}
+	entries, _ := os.read_all_directory_by_path(films_dir, context.allocator)
 	for e in entries {
 		if !strings.has_suffix(e.name, ".film") {
 			continue

@@ -1,7 +1,5 @@
 package tests
 
-import "core:log"
-import "core:os"
 import "core:testing"
 import vmem "core:mem/virtual"
 
@@ -12,7 +10,6 @@ import "dr:plugins/loadout"
 import "dr:plugins/new_weapons"
 import "dr:plugins/passives"
 import "dr:sim"
-import "dr:sim/lifecycle"
 import "dr:sim/stats"
 import "dr:sim/systems/player_system"
 import "dr:sim/systems/weapon_system"
@@ -674,23 +671,14 @@ Assets_Fixture :: struct {
 // once the ship is in play. The caller sets context.allocator to the arena.
 @(private = "file")
 cw_assets_fixture :: proc(t: ^testing.T, f: ^Assets_Fixture, easy: bool) -> bool {
-	if !os.exists("assets/data/index.json") || !os.exists("plugins/new_weapons/data") {
-		log.info("skipped: needs the extracted assets tree")
-		return false
-	}
-	testing.expect(t, vmem.arena_init_growing(&f.arena) == nil)
+	f.defs = assets_defs(t, &f.arena, "plugins/new_weapons/data") or_return
 	alloc := vmem.arena_allocator(&f.arena)
 	context.allocator = alloc
-	f.defs, _ = data.assets_defs_load("assets", alloc)
 	if _, ok := data.extra_defs_load(&f.defs, alloc); !testing.expect(t, ok) {
 		return false
 	}
 	f.s = new(sim.State)
-	sim.init(f.s, sim.Session{seed = 1, level_id = f.defs.levels[0].id, game_type = .Single, mods = session_mods(easy, true)}, &f.defs)
-	for i := 0; i < 300 && sim.player_at(f.s, 0).state != .Playing; i += 1 {
-		sim.session_step(f.s, {})
-	}
-	return testing.expect(t, sim.player_at(f.s, 0).state == .Playing, "the ship must be in play")
+	return play_start(t, f.s, sim.Session{seed = 1, level_id = f.defs.levels[0].id, game_type = .Single, mods = session_mods(easy, true)}, &f.defs)
 }
 
 @(private = "file")
@@ -728,23 +716,6 @@ cw_new_of :: proc(s: ^sim.State, seen: ^map[i32]bool, id: sim.Res_ID, out: ^[dyn
 		}
 	}
 	return
-}
-
-// A stationary mine at `loc` with `shields`, hittable at once.
-@(private = "file")
-cw_mine :: proc(t: ^testing.T, s: ^sim.State, loc: sim.Vec, shields: f32) -> sim.Entity {
-	req := sim.spawn_request(sim.res_id("mine"))
-	req.loc = loc
-	req.stationary = true
-	r := lifecycle.eg_request_spawn(s, req)
-	if !testing.expect(t, sim.ref_valid(s, r), "the mine must spawn") {
-		return {}
-	}
-	e := sim.entity_at(s, r.index)
-	e.loc = loc // the unit spawns at a random offset
-	e.appear_delay = 0
-	e.shields = shields
-	return e
 }
 
 // The Bacta Gun lists its seven-shot fan out of order (3, 6, 9, then -3,
@@ -993,8 +964,8 @@ aimed_volley_ignores_enemies_off_screen :: proc(t: ^testing.T) {
 	context.allocator = vmem.arena_allocator(&f.arena)
 	s := f.s
 	at := sim.Vec{208, 40}
-	above := cw_mine(t, s, {208, -20}, 1)
-	below := cw_mine(t, s, {208, 240}, 1)
+	above := mine_spawn(t, s, {208, -20}, 1)
+	below := mine_spawn(t, s, {208, 240}, 1)
 	if above.obj == nil || below.obj == nil {
 		return
 	}
@@ -1019,8 +990,8 @@ discharge_beam_spent_on_a_kill_stops_there :: proc(t: ^testing.T) {
 	}
 	wd := &f.defs.weapons[db]
 	at := sim.Vec{208, 420}
-	near := cw_mine(t, s, at + {0, -80}, 1)
-	far := cw_mine(t, s, at + {0, -160}, 1)
+	near := mine_spawn(t, s, at + {0, -80}, 1)
+	far := mine_spawn(t, s, at + {0, -160}, 1)
 	if near.obj == nil || far.obj == nil {
 		return
 	}

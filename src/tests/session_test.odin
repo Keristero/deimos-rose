@@ -1,11 +1,8 @@
 package tests
 
-import "core:log"
-import "core:os"
 import "core:testing"
 import vmem "core:mem/virtual"
 
-import "dr:data"
 import "dr:sim"
 import "dr:sim/systems/level_system"
 
@@ -92,16 +89,13 @@ every_level_is_played_in_full_real_data :: proc(t: ^testing.T) {
 	// per D29), from level 1 to ALL LEVELS COMPLETE. Every level's map is
 	// 3600 rows, so none can finish in under ~3000 steps; before the fix,
 	// levels 2..12 each lasted a single step.
-	if !os.exists("assets/data/index.json") {
-		log.info("skipped: needs the extracted assets tree")
+	arena: vmem.Arena
+	defs, loaded := assets_defs(t, &arena)
+	if !loaded {
 		return
 	}
-	arena: vmem.Arena
-	testing.expect(t, vmem.arena_init_growing(&arena) == nil)
 	defer vmem.arena_destroy(&arena)
 	alloc := vmem.arena_allocator(&arena)
-
-	defs, _ := data.assets_defs_load("assets", alloc)
 	if !testing.expect(t, len(defs.levels) > 1, "the level list must load") {
 		return
 	}

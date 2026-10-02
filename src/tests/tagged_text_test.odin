@@ -7,11 +7,11 @@ import "core:testing"
 
 import "dr:data"
 
-// Canonical encoder for synthetic fixtures. The transform is not injective --
-// decode(c) == decode(c ~ 0xff) -- so we simply pick the lowest byte that
-// decodes to each value rather than pretend to reproduce the original stream.
-@(private = "file")
-encode :: proc(plain: string, allocator := context.allocator) -> []byte {
+// Canonical encoder for synthetic fixtures, here and in definition_test.
+// The transform is not injective -- decode(c) == decode(c ~ 0xff) -- so we
+// simply pick the lowest byte that decodes to each value rather than
+// pretend to reproduce the original stream.
+tagged_encode :: proc(plain: string, allocator := context.allocator) -> []byte {
 	table: [128]u8
 	seen: [128]bool
 	for c in 0 ..= 255 {
@@ -31,7 +31,7 @@ encode :: proc(plain: string, allocator := context.allocator) -> []byte {
 @(test)
 tagged_encode_decode_round_trips :: proc(t: ^testing.T) {
 	plain := "#name_STR <Kepler Massif>\r#numObjects_INT <46>\r"
-	enc := encode(plain)
+	enc := tagged_encode(plain)
 	defer delete(enc)
 	dec := data.tagged_decode(enc)
 	defer delete(dec)
@@ -40,7 +40,7 @@ tagged_encode_decode_round_trips :: proc(t: ^testing.T) {
 
 @(test)
 tagged_decode_drops_trailing_nul :: proc(t: ^testing.T) {
-	enc := encode("ab\x00")
+	enc := tagged_encode("ab\x00")
 	defer delete(enc)
 	dec := data.tagged_decode(enc)
 	defer delete(dec)
@@ -112,7 +112,7 @@ level_parses_a_synthetic_resource :: proc(t: ^testing.T) {
 	fmt.sbprint(&sb, "#headingDegrees_INT <0>\r#isStationary_BOOL <FALSE>\r")
 	fmt.sbprint(&sb, "#enableTerrainEffects_BOOL <TRUE>\r")
 
-	enc := encode(strings.to_string(sb))
+	enc := tagged_encode(strings.to_string(sb))
 	defer delete(enc)
 
 	lv, err := data.level_parse(enc)
@@ -131,7 +131,7 @@ level_rejects_a_count_mismatch :: proc(t: ^testing.T) {
 	text := "#name_STR <T>\r#indentifier_STR <T>\r#description_STR <>\r#copyright_STR <>\r" +
 		"#background_RECT <0, 0, 1, 1>\r#backgroundImage_ID <cam1>\r#previewImage_ID <cap1>\r" +
 		"#music_ID <mu03>\r#mediaMask_ID <cat1>\r#briefing_ID <none>\r#numObjects_INT <5>\r"
-	enc := encode(text)
+	enc := tagged_encode(text)
 	defer delete(enc)
 	_, err := data.level_parse(enc)
 	testing.expect_value(t, err, data.Level_Error.Placement_Count_Mismatch)
@@ -176,12 +176,7 @@ every_record_decodes_to_ascii :: proc(t: ^testing.T) {
 	count := 0
 	for d in dirs {
 		dir := fmt.tprintf("%s/records/%s", ASSETS, d)
-		handle, oerr := os.open(dir)
-		if oerr != nil {
-			continue
-		}
-		defer os.close(handle)
-		entries, rerr := os.read_directory(handle, -1, context.temp_allocator)
+		entries, rerr := os.read_all_directory_by_path(dir, context.temp_allocator)
 		if rerr != nil {
 			continue
 		}
@@ -206,12 +201,7 @@ every_record_decodes_to_ascii :: proc(t: ^testing.T) {
 // sprite plates (stored under an uppercased code) match level references.
 @(private = "file")
 ids_in :: proc(dir, suffix: string, out: ^map[string]bool) {
-	handle, oerr := os.open(dir)
-	if oerr != nil {
-		return
-	}
-	defer os.close(handle)
-	entries, rerr := os.read_directory(handle, -1, context.temp_allocator)
+	entries, rerr := os.read_all_directory_by_path(dir, context.temp_allocator)
 	if rerr != nil {
 		return
 	}

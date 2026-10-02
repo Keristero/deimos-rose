@@ -181,29 +181,26 @@ export_begin :: proc(x: ^Export, c: ^Campaign, dir: string) {
 	x.deps = make(map[string]bool, a)
 	x.written = make(map[string]bool, a)
 	x.identifiers = make([]string, len(c.levels), a)
-	problem := proc(x: ^Export, format: string, args: ..any) {
-		append(&x.problems, Problem{-1, true, fmt.aprintf(format, ..args, allocator = virtual.arena_allocator(&x.arena))})
-	}
 	switch {
 	case !data.plugin_name_valid(c.name):
 		// The game's own rule: it passes over any other folder.
-		problem(x, "The campaign's name, %q, is its folder: lower case letters, digits and _ only", c.name)
+		problem(x, -1, true, "The campaign's name, %q, is its folder: lower case letters, digits and _ only", c.name)
 	case c.name == data.CLASSIC_LEVELS:
-		problem(x, "%s is the original's campaign: name it something else", c.name)
+		problem(x, -1, true, "%s is the original's campaign: name it something else", c.name)
 	}
 	if len(c.levels) == 0 {
-		problem(x, "The campaign has no levels")
+		problem(x, -1, true, "The campaign has no levels")
 	} else if len(c.levels) > CAMPAIGN_LEVELS_MAX {
-		problem(x, "A campaign has at most %d levels", CAMPAIGN_LEVELS_MAX)
+		problem(x, -1, true, "A campaign has at most %d levels", CAMPAIGN_LEVELS_MAX)
 	}
 	if blob, err := os.read_entire_file(strings.concatenate({dir, "/", data.PLUGIN_MANIFEST}, context.temp_allocator), context.temp_allocator); err == nil {
 		j: Json_Exported
 		if json.unmarshal(blob, &j, allocator = context.temp_allocator) != nil || j.made_with != MADE_WITH {
-			problem(x, "%s holds a plugin the editor did not make: export somewhere else", dir)
+			problem(x, -1, true, "%s holds a plugin the editor did not make: export somewhere else", dir)
 		}
 	}
 	if c.label == "" {
-		append(&x.problems, Problem{-1, false, "No label: Level Select shows the name"})
+		problem(x, -1, false, "No label: Level Select shows the name")
 	}
 	if len(x.problems) > 0 && export_failed(x) {
 		x.stage = .Done
@@ -240,7 +237,6 @@ export_progress :: proc(x: ^Export) -> f32 {
 // One step: a level checked or written, or the plugin's manifest. False
 // once it is done, written or not.
 export_step :: proc(e: ^Editor, x: ^Export) -> bool {
-	a := virtual.arena_allocator(&x.arena)
 	switch x.stage {
 	case .Done:
 		return false
@@ -248,17 +244,17 @@ export_step :: proc(e: ^Editor, x: ^Export) -> bool {
 		if x.at < len(x.campaign.levels) {
 			p, arena, ok := project_for(e, x.campaign.levels[x.at])
 			if !ok {
-				append(&x.problems, Problem{x.at, true, fmt.aprintf("Cannot open %s", x.campaign.levels[x.at], allocator = a)})
+				problem(x, x.at, true, "Cannot open %s", x.campaign.levels[x.at])
 			} else {
 				level_check(e, x, p)
-				project_done(arena)
+				arena_free(arena)
 			}
 			x.at += 1
 			return true
 		}
 		identifiers_check(x)
 		if x.campaign.original_free && x.derived != "" {
-			append(&x.problems, Problem{-1, true, fmt.aprintf("Marked free of the originals, but %s comes from them", x.derived, allocator = a)})
+			problem(x, -1, true, "Marked free of the originals, but %s comes from them", x.derived)
 		}
 		if export_failed(x) {
 			x.stage = .Done
@@ -270,25 +266,30 @@ export_step :: proc(e: ^Editor, x: ^Export) -> bool {
 		if x.at < len(x.campaign.levels) {
 			p, arena, ok := project_for(e, x.campaign.levels[x.at])
 			if !ok || !level_write(e, x, p) {
-				append(&x.problems, Problem{x.at, true, fmt.aprintf("Cannot write %s's files into %s", x.identifiers[x.at], x.dir, allocator = a)})
+				problem(x, x.at, true, "Cannot write %s's files into %s", x.identifiers[x.at], x.dir)
 				x.stage = .Done
-				if ok {
-					project_done(arena)
-				}
+				arena_free(arena)
 				return false
 			}
-			project_done(arena)
+			arena_free(arena)
 			x.at += 1
 			return true
 		}
 		if !manifest_write(x) {
-			append(&x.problems, Problem{-1, true, fmt.aprintf("Cannot write %s/%s", x.dir, data.PLUGIN_MANIFEST, allocator = a)})
+			problem(x, -1, true, "Cannot write %s/%s", x.dir, data.PLUGIN_MANIFEST)
 		}
 		stale_clear(x)
 		x.stage = .Done
 		return false
 	}
 	return false
+}
+
+// Records a problem with the level at `place`, or -1 for the campaign's
+// own, its words kept in the export's memory.
+@(private = "file")
+problem :: proc(x: ^Export, place: int, fatal: bool, format: string, args: ..any) {
+	append(&x.problems, Problem{place, fatal, fmt.aprintf(format, ..args, allocator = virtual.arena_allocator(&x.arena))})
 }
 
 // The whole export at once: for the command line and the tests.
@@ -300,31 +301,19 @@ export_run :: proc(e: ^Editor, x: ^Export, c: ^Campaign, dir: string) -> bool {
 }
 
 // A level's project: the one open when it is that file, as it is in the
-// editor, else loaded into an arena of its own, which project_done frees.
+// editor, else loaded into an arena of its own, which arena_free frees.
 @(private = "file")
 project_for :: proc(e: ^Editor, path: string) -> (p: ^terrain.Project, arena: ^virtual.Arena, ok: bool) {
 	if e.has_project && absolute(editor_path(e), context.temp_allocator) == path {
 		return &e.project, nil, true
 	}
-	arena = new(virtual.Arena)
-	if virtual.arena_init_growing(arena) != nil {
-		free(arena)
-		return nil, nil, false
-	}
+	arena = arena_new() or_return
 	p = new(terrain.Project, virtual.arena_allocator(arena))
 	if p^, ok = terrain.project_load(path, virtual.arena_allocator(arena)); !ok {
-		project_done(arena)
+		arena_free(arena)
 		return nil, nil, false
 	}
 	return p, arena, true
-}
-
-@(private = "file")
-project_done :: proc(arena: ^virtual.Arena) {
-	if arena != nil {
-		virtual.arena_destroy(arena)
-		free(arena)
-	}
 }
 
 // What would keep a level from playing, and what it needs: its units and
@@ -334,9 +323,6 @@ project_done :: proc(arena: ^virtual.Arena) {
 level_check :: proc(e: ^Editor, x: ^Export, p: ^terrain.Project) {
 	a := virtual.arena_allocator(&x.arena)
 	place := x.at
-	problem := proc(x: ^Export, place: int, fatal: bool, format: string, args: ..any) {
-		append(&x.problems, Problem{place, fatal, fmt.aprintf(format, ..args, allocator = virtual.arena_allocator(&x.arena))})
-	}
 	l := &p.level
 	x.identifiers[place] = strings.clone(l.identifier, a)
 	if l.identifier == "" {
@@ -401,7 +387,7 @@ identifiers_check :: proc(x: ^Export) {
 	for id, i in x.identifiers {
 		for other in x.identifiers[:i] {
 			if id != "" && id == other {
-				append(&x.problems, Problem{i, true, fmt.aprintf("Two levels are both %s: identifiers are unique in a campaign", id, allocator = virtual.arena_allocator(&x.arena))})
+				problem(x, i, true, "Two levels are both %s: identifiers are unique in a campaign", id)
 				break
 			}
 		}

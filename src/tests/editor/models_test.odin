@@ -231,17 +231,6 @@ models_through_the_editor :: proc(t: ^testing.T) {
 	editor.editor_stroke_end(&e)
 	testing.expect(t, len(p.instances) <= want)
 
-	drawn :: proc(e: ^editor.Editor) -> string {
-		pic, _ := terrain.render(&e.renderer, &e.project, {output = .Lit}, context.temp_allocator)
-		return string(pic.pixels)
-	}
-	fresh :: proc(t: ^testing.T, p: ^terrain.Project) -> string {
-		r: terrain.Renderer
-		testing.expect(t, terrain.renderer_init(&r, p))
-		defer terrain.renderer_destroy(&r)
-		pic, _ := terrain.render(&r, p, {output = .Lit}, context.temp_allocator)
-		return string(pic.pixels)
-	}
 	scattered := drawn(&e)
 	placed := make([]terrain.Instance, len(p.instances), context.temp_allocator)
 	copy(placed, p.instances[:])

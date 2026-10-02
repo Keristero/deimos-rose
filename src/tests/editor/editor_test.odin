@@ -61,6 +61,22 @@ same :: proc(p: ^terrain.Project, s: Snapshot) -> bool {
 	return string(transmute([]u8)p.heights) == string(transmute([]u8)s.heights) && string(p.water) == string(s.water)
 }
 
+// The project as the editor's renderer draws it, lit, after its partial
+// uploads; and as a renderer made for it afresh draws it, which those
+// uploads must match.
+drawn :: proc(e: ^editor.Editor) -> string {
+	pic, _ := terrain.render(&e.renderer, &e.project, {output = .Lit}, context.temp_allocator)
+	return string(pic.pixels)
+}
+
+fresh :: proc(t: ^testing.T, p: ^terrain.Project) -> string {
+	r: terrain.Renderer
+	testing.expect(t, terrain.renderer_init(&r, p))
+	defer terrain.renderer_destroy(&r)
+	pic, _ := terrain.render(&r, p, {output = .Lit}, context.temp_allocator)
+	return string(pic.pixels)
+}
+
 // Strokes of every mode and shape, across tile edges and the water line,
 // undo to the bytes they started from and redo to the bytes they left.
 @(test)
@@ -505,17 +521,6 @@ stroke_and_undo_redraw :: proc(t: ^testing.T) {
 	defer editor.editor_destroy(&e)
 	if !testing.expect(t, editor.editor_open(&e, path)) {
 		return
-	}
-	fresh :: proc(t: ^testing.T, p: ^terrain.Project) -> string {
-		r: terrain.Renderer
-		testing.expect(t, terrain.renderer_init(&r, p))
-		defer terrain.renderer_destroy(&r)
-		pic, _ := terrain.render(&r, p, {output = .Lit}, context.temp_allocator)
-		return string(pic.pixels)
-	}
-	drawn :: proc(e: ^editor.Editor) -> string {
-		pic, _ := terrain.render(&e.renderer, &e.project, {output = .Lit}, context.temp_allocator)
-		return string(pic.pixels)
 	}
 	before := drawn(&e)
 	e.brush.mode, e.brush.strength = .Lower, 1

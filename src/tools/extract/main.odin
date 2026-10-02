@@ -71,28 +71,16 @@ Stats :: struct {
 // A plate is a grid of boxes; each frame is one box trimmed of its
 // background. The cut is simulation data -- frame size decides collision
 // bounds -- so it is verified against the original in Phase 4, and baked here
-// so the game does not rescan 125 plates at startup.
-Frame_Rect :: struct {
-	x, y, w, h: int,
-}
-
-Sprite_Index_Entry :: struct {
-	fourcc: string       `json:"fourcc"`,
-	dir:    string       `json:"dir"`,
-	image:  string       `json:"image"`,
-	width:  int          `json:"width"`,
-	height: int          `json:"height"`,
-	frames: []Frame_Rect `json:"frames"`,
-}
-
+// so the game does not rescan 125 plates at startup. The sprites are the
+// game's data.Json_Sprite_Index, with what made them besides.
 Sprite_Index :: struct {
-	generator: string               `json:"generator"`,
-	totals:    map[string]int       `json:"totals"`,
-	sprites:   []Sprite_Index_Entry `json:"sprites"`,
+	generator: string             `json:"generator"`,
+	totals:    map[string]int     `json:"totals"`,
+	sprites:   []data.Json_Sprite `json:"sprites"`,
 }
 
 g_entries: [dynamic]Manifest_Entry
-g_sprites: [dynamic]Sprite_Index_Entry
+g_sprites: [dynamic]data.Json_Sprite
 g_stats: Stats
 // The images a level names, and where the plugin that holds them goes.
 g_level_images: map[string]bool
@@ -355,11 +343,11 @@ index_frames :: proc(code: string, rn: data.Res_Name, rel: string, plate: []byte
 		fmt.eprintfln("  frame index: %v is not a plate (%v)", code, perr)
 		return
 	}
-	frames := make([]Frame_Rect, len(cut))
+	frames := make([]data.Json_Frame, len(cut))
 	for f, i in cut {
 		frames[i] = {f.x, f.y, f.width, f.height}
 	}
-	append(&g_sprites, Sprite_Index_Entry {
+	append(&g_sprites, data.Json_Sprite {
 		fourcc = strings.clone(code),
 		dir    = strings.clone(rn.dir),
 		image  = strings.clone(rel),
@@ -435,7 +423,7 @@ record :: proc(
 }
 
 write_sprite_index :: proc(out: string) {
-	slice.sort_by(g_sprites[:], proc(a, b: Sprite_Index_Entry) -> bool {
+	slice.sort_by(g_sprites[:], proc(a, b: data.Json_Sprite) -> bool {
 		if a.dir != b.dir {
 			return a.dir < b.dir
 		}

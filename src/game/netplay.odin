@@ -1237,7 +1237,7 @@ netplay_should_stall :: proc(nl: ^Netplay) -> bool {
 
 // Called from flow.odin's .Playing branch of flow_step, once per fixed sim
 // tick, instead of the single-player gather_input()+sim.step path.
-netplay_playing_step :: proc(fl: ^Flow, r: ^render.Renderer, particles: ^render.Particles, blurs: ^render.Blurs, notices: ^render.Notices, nl: ^Netplay) {
+netplay_playing_step :: proc(fl: ^Flow, r: ^render.Renderer, fx: ^render.Effects, nl: ^Netplay) {
 	if netplay_should_stall(nl) {
 		return
 	}
@@ -1254,9 +1254,9 @@ netplay_playing_step :: proc(fl: ^Flow, r: ^render.Renderer, particles: ^render.
 		}
 		fmt.eprintfln("netplay: play %s at frame %d, level %d", held ? "held" : "resumed", sim.frame_of(fl.state), sim.single(fl.state, sim.Level_Info).number)
 	}
-	flow_effects_sync(fl, particles, blurs, notices)
+	flow_effects_sync(fl, fx)
 	// While paused nothing moves; existing particles and ghosts freeze too.
-	flow_effects_step(fl, r, particles, blurs, notices)
+	flow_effects_step(fl, r, fx)
 	render.sounds_step(&r.textures, fl.state)
 	// Sounds a rollback found the first run of a frame missed: the peer's
 	// charge shots, among others.

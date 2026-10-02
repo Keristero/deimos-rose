@@ -30,25 +30,6 @@ Entry :: struct {
 	frames:   int    `json:"frames"`,
 }
 
-Frame_Rect :: struct {
-	x, y, w, h: int,
-}
-
-Sprite_Index_Entry :: struct {
-	fourcc: string       `json:"fourcc"`,
-	dir:    string       `json:"dir"`,
-	image:  string       `json:"image"`,
-	width:  int          `json:"width"`,
-	height: int          `json:"height"`,
-	frames: []Frame_Rect `json:"frames"`,
-}
-
-Sprite_Index :: struct {
-	generator: string               `json:"generator"`,
-	totals:    map[string]int       `json:"totals"`,
-	sprites:   []Sprite_Index_Entry `json:"sprites"`,
-}
-
 Manifest :: struct {
 	generator: string         `json:"generator"`,
 	game:      string         `json:"game"`,
@@ -190,7 +171,7 @@ verify_sprite_index :: proc(assets: string) {
 		fail("sprite index unreadable: %v", path)
 		return
 	}
-	idx: Sprite_Index
+	idx: data.Json_Sprite_Index
 	if jerr := json.unmarshal(blob, &idx, allocator = context.temp_allocator); jerr != nil {
 		fail("sprite index parse: %v", jerr)
 		return
@@ -220,7 +201,7 @@ verify_sprite_index :: proc(assets: string) {
 		fmt.printfln("no %v; skipping the comparison with the original", dump)
 		return
 	}
-	by_id := make(map[string][]Frame_Rect, len(idx.sprites), context.temp_allocator)
+	by_id := make(map[string][]data.Json_Frame, len(idx.sprites), context.temp_allocator)
 	for s in idx.sprites {
 		by_id[strings.to_lower(s.fourcc, context.temp_allocator)] = s.frames
 	}

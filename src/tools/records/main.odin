@@ -25,79 +25,56 @@ TAGGED :: []string {
 	"coli", "flli", "idli", "leve", "plde", "reli", "stli", "tefo", "unde", "wede",
 }
 
-Field :: struct {
-	key:   string `json:"key"`,
-	value: string `json:"value"`,
-}
-
 Generic :: struct {
-	id:     string  `json:"id"`,
-	type:   string  `json:"type"`,
-	fields: []Field `json:"fields"`,
-}
-
-Json_Placement :: struct {
-	unit:            string `json:"unit"`,
-	layer:           string `json:"layer"`,
-	x:               int    `json:"x"`,
-	y:               int    `json:"y"`,
-	heading_degrees: int    `json:"heading_degrees"`,
-	is_stationary:   bool   `json:"is_stationary"`,
-	terrain_effects: bool   `json:"terrain_effects"`,
+	id:     string            `json:"id"`,
+	type:   string            `json:"type"`,
+	fields: []data.Json_Field `json:"fields"`,
 }
 
 Json_Level :: struct {
-	id:               string           `json:"id"`,
-	name:             string           `json:"name"`,
-	identifier:       string           `json:"identifier"`,
-	description:      string           `json:"description"`,
-	copyright:        string           `json:"copyright"`,
-	background:       [4]int           `json:"background"`,
-	background_image: string           `json:"background_image"`,
-	preview_image:    string           `json:"preview_image"`,
-	music:            string           `json:"music"`,
-	media_mask:       string           `json:"media_mask"`,
-	briefing:         string           `json:"briefing"`,
-	placements:       []Json_Placement `json:"placements"`,
-}
-
-Json_Rule :: struct {
-	name:      string `json:"name"`,
-	unit:      string `json:"unit"`,
-	range:     int    `json:"range"`,
-	condition: string `json:"condition"`,
-	action:    string `json:"action"`,
+	id:               string                `json:"id"`,
+	name:             string                `json:"name"`,
+	identifier:       string                `json:"identifier"`,
+	description:      string                `json:"description"`,
+	copyright:        string                `json:"copyright"`,
+	background:       [4]int                `json:"background"`,
+	background_image: string                `json:"background_image"`,
+	preview_image:    string                `json:"preview_image"`,
+	music:            string                `json:"music"`,
+	media_mask:       string                `json:"media_mask"`,
+	briefing:         string                `json:"briefing"`,
+	placements:       []data.Json_Placement `json:"placements"`,
 }
 
 Json_Spawn_Set :: struct {
-	name:            string  `json:"name"`,
-	spawn:           string  `json:"spawn"`,
-	x_offset:        int     `json:"x_offset"`,
-	y_offset:        int     `json:"y_offset"`,
-	absolute_coords: bool    `json:"absolute_coords"`,
-	repeat_spawns:   bool    `json:"repeat_spawns"`,
-	rate_min:        int     `json:"rate_min"`,
-	rate_max:        int     `json:"rate_max"`,
-	fields:          []Field `json:"fields"`,
+	name:            string            `json:"name"`,
+	spawn:           string            `json:"spawn"`,
+	x_offset:        int               `json:"x_offset"`,
+	y_offset:        int               `json:"y_offset"`,
+	absolute_coords: bool              `json:"absolute_coords"`,
+	repeat_spawns:   bool              `json:"repeat_spawns"`,
+	rate_min:        int               `json:"rate_min"`,
+	rate_max:        int               `json:"rate_max"`,
+	fields:          []data.Json_Field `json:"fields"`,
 }
 
 Json_State :: struct {
-	name:       string           `json:"name"`,
-	spawn_sets: []Json_Spawn_Set `json:"spawn_sets"`,
-	rules:      []Json_Rule      `json:"rules"`,
-	fields:     []Field          `json:"fields"`,
+	name:       string            `json:"name"`,
+	spawn_sets: []Json_Spawn_Set  `json:"spawn_sets"`,
+	rules:      []data.Json_Rule  `json:"rules"`,
+	fields:     []data.Json_Field `json:"fields"`,
 }
 
 // Unit definitions keep their nesting: header, then states, each with its own
 // spawn sets and rules. Weapon and player definitions are flat and carry no
 // states at all.
 Json_Definition :: struct {
-	id:     string       `json:"id"`,
-	type:   string       `json:"type"`,
-	name:   string       `json:"name"`,
-	family: string       `json:"family"`,
-	states: []Json_State `json:"states"`,
-	header: []Field      `json:"header"`,
+	id:     string            `json:"id"`,
+	type:   string            `json:"type"`,
+	name:   string            `json:"name"`,
+	family: string            `json:"family"`,
+	states: []Json_State      `json:"states"`,
+	header: []data.Json_Field `json:"header"`,
 }
 
 Index :: struct {
@@ -122,14 +99,9 @@ main :: proc() {
 
 	for type in TAGGED {
 		dir := fmt.tprintf("%s/records/%s", assets, type)
-		handle, oerr := os.open(dir)
-		if oerr != nil {
-			fmt.eprintfln("skip %v: not extracted", type)
-			continue
-		}
-		defer os.close(handle)
-		entries, rerr := os.read_directory(handle, -1, context.temp_allocator)
+		entries, rerr := os.read_all_directory_by_path(dir, context.temp_allocator)
 		if rerr != nil {
+			fmt.eprintfln("skip %v: not extracted", type)
 			continue
 		}
 		slice.sort_by(entries, proc(a, b: os.File_Info) -> bool { return a.name < b.name })
@@ -207,9 +179,9 @@ emit_level :: proc(out, id: string, raw: []byte) -> int {
 		media_mask       = fc(lv.media_mask),
 		briefing         = fc(lv.briefing),
 	}
-	ps := make([]Json_Placement, len(lv.placements), context.temp_allocator)
+	ps := make([]data.Json_Placement, len(lv.placements), context.temp_allocator)
 	for p, i in lv.placements {
-		ps[i] = Json_Placement {
+		ps[i] = data.Json_Placement {
 			unit            = fc(p.unit),
 			layer           = fc(p.layer),
 			x               = p.x,
@@ -229,10 +201,10 @@ fc :: proc(f: data.FourCC) -> string {
 	return strings.clone(data.fourcc_string(&f), context.temp_allocator)
 }
 
-to_fields :: proc(tags: []data.Tag) -> []Field {
-	out := make([]Field, len(tags), context.temp_allocator)
+to_fields :: proc(tags: []data.Tag) -> []data.Json_Field {
+	out := make([]data.Json_Field, len(tags), context.temp_allocator)
 	for t, i in tags {
-		out[i] = Field{key = t.key, value = t.value}
+		out[i] = data.Json_Field{key = t.key, value = t.value}
 	}
 	return out
 }
@@ -261,9 +233,9 @@ emit_definition :: proc(assets, type, id: string, raw: []byte) -> bool {
 				fields          = to_fields(ss.fields),
 			}
 		}
-		rules := make([]Json_Rule, len(s.rules), context.temp_allocator)
+		rules := make([]data.Json_Rule, len(s.rules), context.temp_allocator)
 		for r, j in s.rules {
-			rules[j] = Json_Rule {
+			rules[j] = data.Json_Rule {
 				name      = r.name,
 				unit      = fc(r.unit),
 				range     = r.range,
@@ -298,12 +270,8 @@ emit_generic :: proc(assets, type, id: string, raw: []byte) -> bool {
 		}
 	}
 	tags := data.tagged_parse(text, context.temp_allocator)
-	fields := make([]Field, len(tags), context.temp_allocator)
-	for tg, i in tags {
-		fields[i] = Field{key = tg.key, value = tg.value}
-	}
 	write_json(fmt.tprintf("%s/data/%s/%s.json", assets, type, id),
-		Generic{id = id, type = type, fields = fields})
+		Generic{id = id, type = type, fields = to_fields(tags)})
 	return true
 }
 

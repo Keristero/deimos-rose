@@ -39,35 +39,14 @@ netplay_peers_agree_through_the_reward_screen :: proc(t: ^testing.T) {
 	defer net.rollback_session_destroy(&rs[0], context.temp_allocator)
 	defer net.rollback_session_destroy(&rs[1], context.temp_allocator)
 
-	Delivery :: struct {
-		at:  int,
-		buf: [128]byte,
-		n:   int,
-	}
-	LATENCY :: 4
-	WINDOW :: 8
-	queues: [2][dynamic]Delivery // to each peer
-	for &q in queues {
-		q = make([dynamic]Delivery, context.temp_allocator)
-	}
+	link := link_make(4, context.temp_allocator)
 
 	r := sim.rand_init(77)
 	opened, closed := 0, 0
 	was_open := false
 	FRAMES :: 6000
 	for tick in 0 ..< FRAMES {
-		for &q, k in queues {
-			w := 0
-			for &d in q {
-				if d.at > tick {
-					q[w] = d
-					w += 1
-				} else if pkt, ok := net.decode_input(d.buf[:d.n]); ok {
-					net.rollback_session_receive(&rs[k], pkt)
-				}
-			}
-			resize(&q, w)
-		}
+		link_deliver(&link, rs[:], tick)
 		for k in 0 ..< 2 {
 			// Short presses, often, so the reward screen sees moves, locks
 			// and changes, and the peer mispredicts them.
@@ -81,13 +60,7 @@ netplay_peers_agree_through_the_reward_screen :: proc(t: ^testing.T) {
 			if tick % 5 == 4 && tick < FRAMES - 1 {
 				continue // dropped
 			}
-			win: [WINDOW]sim.Buttons
-			start, count := net.rollback_session_local_window(&rs[k], WINDOW, win[:])
-			if count > 0 {
-				d := Delivery{at = tick + LATENCY}
-				d.n = net.encode_input(d.buf[:], u8(k), start, win[:count])
-				append(&queues[1 - k], d)
-			}
+			link_send(&link, rs[:], k, tick)
 		}
 		for s in ([]^sim.State{state_a, state_b}) {
 			reward_view_reads(t, s)

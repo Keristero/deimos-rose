@@ -21,7 +21,7 @@ Notices :: struct {
 	remaining: i32,
 }
 
-// Call once per sim.step, alongside particles_step/blurs_step.
+// Call once per sim.step, with the other effects (effects_step).
 notices_step :: proc(n: ^Notices, s: ^sim.State) {
 	for ev in s.notices.events[:s.notices.count] {
 		n.text = ev.text

@@ -1,8 +1,6 @@
 package tests
 
-import "core:log"
 import vmem "core:mem/virtual"
-import "core:os"
 import "core:testing"
 
 import "dr:data"
@@ -51,13 +49,8 @@ Fx :: struct {
 // turn the stages on are built from them there.
 @(private = "file")
 fx_open :: proc(t: ^testing.T, f: ^Fx, edit: proc(d: ^sim.Defs) = nil, mods := sim.Mods{}) -> bool {
-	if !os.exists("assets/data/index.json") {
-		log.info("skipped: needs the extracted assets tree")
-		return false
-	}
-	testing.expect(t, vmem.arena_init_growing(&f.arena) == nil)
+	f.defs = assets_defs(t, &f.arena) or_return
 	context.allocator = vmem.arena_allocator(&f.arena) // the state's world goes in the arena too
-	f.defs, _ = data.assets_defs_load("assets", context.allocator)
 	mi := sim.unit_index(&f.defs, MINE_UNIT)
 	if !testing.expect(t, mi >= 0, "no mine in the assets") {
 		return false
@@ -98,27 +91,7 @@ fx_open :: proc(t: ^testing.T, f: ^Fx, edit: proc(d: ^sim.Defs) = nil, mods := s
 	}
 	f.events = {events = make([]sim.Event, 1 << 14)}
 	f.s = new(sim.State)
-	sim.init(f.s, sim.Session{seed = 1, level_id = f.defs.levels[0].id, game_type = .Single, mods = mods}, &f.defs, events = &f.events)
-	for i := 0; i < 300 && sim.player_at(f.s, 0).state != .Playing; i += 1 {
-		sim.session_step(f.s, {})
-	}
-	return testing.expect(t, sim.player_at(f.s, 0).state == .Playing, "the ship must be in play")
-}
-
-// An entity of `unit` at `loc`, appeared.
-@(private = "file")
-fx_spawn :: proc(t: ^testing.T, s: ^sim.State, unit: sim.Res_ID, loc: sim.Vec, owner := sim.NO_REF) -> (sim.Entity, bool) {
-	req := sim.spawn_request(unit)
-	req.loc = loc
-	req.owner = owner
-	r := lifecycle.eg_request_spawn(s, req)
-	if !testing.expectf(t, sim.ref_valid(s, r), "%v must spawn", unit) {
-		return {}, false
-	}
-	e := sim.entity_at(s, r.index)
-	e.loc = loc
-	e.appear_delay = 0
-	return e, true
+	return play_start(t, f.s, sim.Session{seed = 1, level_id = f.defs.levels[0].id, game_type = .Single, mods = mods}, &f.defs, events = &f.events)
 }
 
 // The live entities of `unit` numbered `from` or later: those spawned since
@@ -161,8 +134,8 @@ rules_watch_for_entities_of_a_unit :: proc(t: ^testing.T) {
 	}
 	context.allocator = vmem.arena_allocator(&f.arena)
 	s := f.s
-	me, ok1 := fx_spawn(t, s, SUBJECT, {100, 100})
-	other, ok2 := fx_spawn(t, s, OTHER, {150, 100}) // 50 away
+	me, ok1 := unit_spawn(t, s, SUBJECT, {100, 100})
+	other, ok2 := unit_spawn(t, s, OTHER, {150, 100}) // 50 away
 	if !ok1 || !ok2 {
 		return
 	}
@@ -210,7 +183,7 @@ rules_watch_for_destroyable_entities :: proc(t: ^testing.T) {
 	}
 	context.allocator = vmem.arena_allocator(&f.arena)
 	s := f.s
-	me, ok := fx_spawn(t, s, SUBJECT, {100, 100})
+	me, ok := unit_spawn(t, s, SUBJECT, {100, 100})
 	if !ok {
 		return
 	}
@@ -232,7 +205,7 @@ rules_watch_for_destroyable_entities :: proc(t: ^testing.T) {
 	testing.expect(t, holds(s, me, rules, GROUND, now))
 	testing.expect(t, holds(s, me, rules, EITHER, now))
 
-	other, ok2 := fx_spawn(t, s, OTHER, {200, 100})
+	other, ok2 := unit_spawn(t, s, OTHER, {200, 100})
 	if !ok2 {
 		return
 	}
@@ -264,7 +237,7 @@ rules_measure_the_range_to_the_nearest_player :: proc(t: ^testing.T) {
 	context.allocator = vmem.arena_allocator(&f.arena)
 	s := f.s
 	sim.player_at(s, 0).loc = {208, 330} // whole, so the distance below is exact
-	me, ok := fx_spawn(t, s, SUBJECT, {208, 230})
+	me, ok := unit_spawn(t, s, SUBJECT, {208, 230})
 	if !ok {
 		return
 	}
@@ -304,8 +277,8 @@ rules_compare_the_entitys_look_and_the_count_of_a_unit :: proc(t: ^testing.T) {
 	}
 	context.allocator = vmem.arena_allocator(&f.arena)
 	s := f.s
-	me, ok1 := fx_spawn(t, s, SUBJECT, {100, 100})
-	_, ok2 := fx_spawn(t, s, OTHER, {200, 100})
+	me, ok1 := unit_spawn(t, s, SUBJECT, {100, 100})
+	_, ok2 := unit_spawn(t, s, OTHER, {200, 100})
 	if !ok1 || !ok2 {
 		return
 	}
@@ -380,7 +353,7 @@ rotation_pauses_while_a_volley_spawns :: proc(t: ^testing.T) {
 	}
 	context.allocator = vmem.arena_allocator(&f.arena)
 	s := f.s
-	me, ok := fx_spawn(t, s, SUBJECT, {100, 100})
+	me, ok := unit_spawn(t, s, SUBJECT, {100, 100})
 	if !ok {
 		return
 	}
@@ -431,7 +404,7 @@ spawn_offsets_scale_with_the_parent :: proc(t: ^testing.T) {
 	}
 	context.allocator = vmem.arena_allocator(&f.arena)
 	s := f.s
-	me, ok := fx_spawn(t, s, SUBJECT, {150, 150})
+	me, ok := unit_spawn(t, s, SUBJECT, {150, 150})
 	if !ok {
 		return
 	}
@@ -481,7 +454,7 @@ a_paced_spawner_runs_its_spawn_sets_on_its_own_clock :: proc(t: ^testing.T) {
 	}
 	context.allocator = vmem.arena_allocator(&f.arena)
 	s := f.s
-	me, ok := fx_spawn(t, s, SUBJECT, {100, 100})
+	me, ok := unit_spawn(t, s, SUBJECT, {100, 100})
 	if !ok {
 		return
 	}
@@ -624,7 +597,7 @@ state_particles_repeat_up_to_the_most_bursts :: proc(t: ^testing.T) {
 	}
 	context.allocator = vmem.arena_allocator(&f.arena)
 	s := f.s
-	me, ok := fx_spawn(t, s, SUBJECT, {100, 100})
+	me, ok := unit_spawn(t, s, SUBJECT, {100, 100})
 	if !ok {
 		return
 	}
@@ -656,11 +629,11 @@ an_entity_can_follow_its_owners_look :: proc(t: ^testing.T) {
 	}
 	context.allocator = vmem.arena_allocator(&f.arena)
 	s := f.s
-	owner, ok1 := fx_spawn(t, s, SUBJECT, {100, 100})
+	owner, ok1 := unit_spawn(t, s, SUBJECT, {100, 100})
 	if !ok1 {
 		return
 	}
-	child, ok2 := fx_spawn(t, s, OTHER, {100, 100}, sim.Entity_Ref{owner.pool_index, owner.number})
+	child, ok2 := unit_spawn(t, s, OTHER, {100, 100}, sim.Entity_Ref{owner.pool_index, owner.number})
 	if !ok2 {
 		return
 	}
@@ -691,7 +664,7 @@ a_state_can_destroy_its_entity_while_the_background_scrolls :: proc(t: ^testing.
 	}
 	context.allocator = vmem.arena_allocator(&f.arena)
 	s := f.s
-	me, ok := fx_spawn(t, s, SUBJECT, {100, 100})
+	me, ok := unit_spawn(t, s, SUBJECT, {100, 100})
 	if !ok {
 		return
 	}
@@ -730,7 +703,7 @@ reaching_range_of_a_player_sets_off_the_reaction :: proc(t: ^testing.T) {
 	}
 	context.allocator = vmem.arena_allocator(&f.arena)
 	s := f.s
-	me, ok := fx_spawn(t, s, SUBJECT, {100, 100})
+	me, ok := unit_spawn(t, s, SUBJECT, {100, 100})
 	if !ok {
 		return
 	}
@@ -795,7 +768,7 @@ holding_to_a_target_is_capped_at_the_hold_speed :: proc(t: ^testing.T) {
 	}
 	context.allocator = vmem.arena_allocator(&f.arena)
 	s := f.s
-	me, ok := fx_spawn(t, s, SUBJECT, {100, 100})
+	me, ok := unit_spawn(t, s, SUBJECT, {100, 100})
 	if !ok {
 		return
 	}
@@ -829,11 +802,11 @@ an_orbit_wraps_its_angle_both_ways :: proc(t: ^testing.T) {
 	}
 	context.allocator = vmem.arena_allocator(&f.arena)
 	s := f.s
-	owner, ok1 := fx_spawn(t, s, OTHER, {200, 200})
+	owner, ok1 := unit_spawn(t, s, OTHER, {200, 200})
 	if !ok1 {
 		return
 	}
-	me, ok2 := fx_spawn(t, s, SUBJECT, {230, 200}, sim.Entity_Ref{owner.pool_index, owner.number})
+	me, ok2 := unit_spawn(t, s, SUBJECT, {230, 200}, sim.Entity_Ref{owner.pool_index, owner.number})
 	if !ok2 {
 		return
 	}

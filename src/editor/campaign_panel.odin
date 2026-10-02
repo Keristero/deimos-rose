@@ -66,56 +66,40 @@ campaign_panel_destroy :: proc(cp: ^Campaign_Panel) {
 	if cp.has_export {
 		export_destroy(&cp.export)
 	}
-	campaign_arena_free(cp)
-}
-
-@(private = "file")
-campaign_arena_free :: proc(cp: ^Campaign_Panel) {
-	if cp.arena != nil {
-		virtual.arena_destroy(cp.arena)
-		free(cp.arena)
-	}
+	arena_free(cp.arena)
 	cp.arena = nil
 }
 
 // A new campaign, in place of the one open.
 campaign_new :: proc(cp: ^Campaign_Panel) {
-	campaign_arena_free(cp)
-	cp.arena = new(virtual.Arena)
-	_ = virtual.arena_init_growing(cp.arena)
+	arena_free(cp.arena)
+	cp.arena, _ = arena_new()
 	a := virtual.arena_allocator(cp.arena)
 	cp.campaign = campaign_make("my_campaign", a)
 	cp.campaign.label = "My campaign"
 	cp.labels = make([dynamic]string, a)
 	cp.selected, cp.editing, cp.dir_typed = -1, -1, false
-	cp.path = {}
-	copy(cp.path[:len(cp.path) - 1], "untitled" + CAMPAIGN_SUFFIX)
+	box_set(cp.path[:], "untitled" + CAMPAIGN_SUFFIX)
 }
 
 campaign_path :: proc(cp: ^Campaign_Panel) -> string {
-	return string(cstring(raw_data(cp.path[:])))
+	return box_text(cp.path[:])
 }
 
 // Opens the campaign at `path`, in place of the one open.
 campaign_open :: proc(e: ^Editor, path: string) -> bool {
 	cp := &e.campaign_panel
-	arena := new(virtual.Arena)
-	if virtual.arena_init_growing(arena) != nil {
-		free(arena)
-		return false
-	}
+	arena := arena_new() or_return
 	c, ok := campaign_load(path, virtual.arena_allocator(arena))
 	if !ok {
-		virtual.arena_destroy(arena)
-		free(arena)
+		arena_free(arena)
 		return false
 	}
-	campaign_arena_free(cp)
+	arena_free(cp.arena)
 	cp.arena, cp.campaign = arena, c
 	cp.labels = make([dynamic]string, virtual.arena_allocator(arena))
 	cp.selected, cp.editing, cp.dir_typed = -1, -1, false
-	cp.path = {}
-	copy(cp.path[:len(cp.path) - 1], path)
+	box_set(cp.path[:], path)
 	campaign_relabel(cp)
 	return true
 }
@@ -125,8 +109,7 @@ campaign_save_to :: proc(e: ^Editor, path: string) -> bool {
 	if !strings.has_suffix(path, CAMPAIGN_SUFFIX) || !campaign_save(&cp.campaign, path) {
 		return false
 	}
-	cp.path = {}
-	copy(cp.path[:len(cp.path) - 1], path)
+	box_set(cp.path[:], path)
 	return true
 }
 
@@ -207,7 +190,7 @@ editor_play :: proc(e: ^Editor) {
 // Where the campaign exports to.
 campaign_dir :: proc(cp: ^Campaign_Panel) -> string {
 	if cp.dir_typed {
-		return string(cstring(raw_data(cp.dir[:])))
+		return box_text(cp.dir[:])
 	}
 	return campaign_default_dir(&cp.campaign, context.temp_allocator)
 }
@@ -284,7 +267,7 @@ campaign_panel_leave :: proc(e: ^Editor) {
 	cp := &e.campaign_panel
 	if cp.editing >= 0 {
 		f := Campaign_Field(cp.editing)
-		field_of(cp, f)^ = strings.clone(string(cstring(raw_data(cp.buffers[f][:]))), virtual.arena_allocator(cp.arena))
+		field_of(cp, f)^ = strings.clone(box_text(cp.buffers[f][:]), virtual.arena_allocator(cp.arena))
 		cp.editing = -1
 	}
 	cp.path_edit, cp.dir_edit = false, false
@@ -326,8 +309,7 @@ campaign_panel :: proc(e: ^Editor, x: f32, y: ^f32, w: f32, bottom: f32) {
 	for f in Campaign_Field {
 		buf := &cp.buffers[f]
 		if cp.editing != c.int(f) {
-			buf^ = {}
-			copy(buf[:len(buf) - 1], field_of(cp, f)^)
+			box_set(buf[:], field_of(cp, f)^)
 		}
 		rl.GuiLabel({x, y^, 76, 20}, CAMPAIGN_LABELS[f])
 		if rl.GuiTextBox({x + 76, y^, w - 76, 20}, cstring(raw_data(buf[:])), c.int(len(buf) - 1), cp.editing == c.int(f)) {
@@ -400,8 +382,7 @@ campaign_panel :: proc(e: ^Editor, x: f32, y: ^f32, w: f32, bottom: f32) {
 
 	heading(x, y, w, "Export")
 	if !cp.dir_typed && !cp.dir_edit {
-		cp.dir = {}
-		copy(cp.dir[:len(cp.dir) - 1], campaign_dir(cp))
+		box_set(cp.dir[:], campaign_dir(cp))
 	}
 	rl.GuiLabel({x, y^, 76, 20}, "To")
 	if rl.GuiTextBox({x + 76, y^, w - 76, 20}, cstring(raw_data(cp.dir[:])), c.int(len(cp.dir) - 1), cp.dir_edit) {

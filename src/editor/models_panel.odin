@@ -79,13 +79,12 @@ profiles_panel :: proc(e: ^Editor, x: f32, y: ^f32, w: f32) {
 	pr := &s.profiles[s.profile]
 	// The name, taken when the box is left.
 	if !s.name_edit {
-		s.name = {}
-		copy(s.name[:len(s.name) - 1], pr.name)
+		box_set(s.name[:], pr.name)
 	}
 	rl.GuiLabel({x, y^, 96, 20}, "Name")
 	if rl.GuiTextBox({x + 96, y^, w - 96, 20}, cstring(raw_data(s.name[:])), c.int(len(s.name) - 1), s.name_edit) {
 		s.name_edit = !s.name_edit
-		if name := string(cstring(raw_data(s.name[:]))); !s.name_edit && name != "" && name != pr.name {
+		if name := box_text(s.name[:]); !s.name_edit && name != "" && name != pr.name {
 			pr.name = strings.clone(name, scenery_allocator(s))
 			s.profiles_dirty = true
 		}

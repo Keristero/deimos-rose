@@ -486,7 +486,7 @@ flow_finish_session :: proc(fl: ^Flow) {
 // sim.single(s, sim.Game_Status).game_over { l.started = true; return }"). Reacting to game_over directly
 // means the game-over screen appears the moment play actually ends, rather
 // than only after (and if) the level happens to finish scrolling.
-flow_step :: proc(fl: ^Flow, r: ^render.Renderer, particles: ^render.Particles, blurs: ^render.Blurs, notices: ^render.Notices) {
+flow_step :: proc(fl: ^Flow, r: ^render.Renderer, fx: ^render.Effects) {
 	switch fl.mode {
 	case .Title, .Level_Select, .Credits, .High_Scores, .Score_Entry, .Preferences, .Netplay_Lobby, .Paused:
 	// nothing to step
@@ -496,7 +496,7 @@ flow_step :: proc(fl: ^Flow, r: ^render.Renderer, particles: ^render.Particles, 
 			// means don't step -- matches .Paused above, which also still
 			// draws the last frame without advancing it.
 			if fl.netplay.link_state == .Live {
-				netplay_playing_step(fl, r, particles, blurs, notices, &fl.netplay)
+				netplay_playing_step(fl, r, fx, &fl.netplay)
 			}
 		} else {
 			// Player 2 is only in play in a local 2 Player session
@@ -510,7 +510,7 @@ flow_step :: proc(fl: ^Flow, r: ^render.Renderer, particles: ^render.Particles, 
 			// kind of pause), never the sim's netplay pause.
 			input[0] -= {.Pause}
 			input[1] -= {.Pause}
-			flow_sim_step(fl, r, particles, blurs, notices, input, nil, true)
+			flow_sim_step(fl, r, fx, input, nil, true)
 		}
 		pause_notice_step(fl)
 		// The step itself moved to the next level if there was one
@@ -535,7 +535,7 @@ flow_step :: proc(fl: ^Flow, r: ^render.Renderer, particles: ^render.Particles, 
 	case .Attract:
 		// Plain sim.step: a demo that finishes its level moves on to the
 		// next demo (below), not to the next level.
-		flow_sim_step(fl, r, particles, blurs, notices, {}, &fl.sim_film, false)
+		flow_sim_step(fl, r, fx, {}, &fl.sim_film, false)
 		if sim.demo_over(fl.state, &fl.sim_film) {
 			flow_load_demo(fl, (fl.demo_index + 1) % DEMO_COUNT)
 		}
@@ -597,14 +597,14 @@ flow_music_update :: proc(fl: ^Flow, r: ^render.Renderer) {
 }
 
 @(private = "file")
-flow_sim_step :: proc(fl: ^Flow, r: ^render.Renderer, particles: ^render.Particles, blurs: ^render.Blurs, notices: ^render.Notices, input: sim.Frame_Input, film: ^sim.Film, session: bool) {
+flow_sim_step :: proc(fl: ^Flow, r: ^render.Renderer, fx: ^render.Effects, input: sim.Frame_Input, film: ^sim.Film, session: bool) {
 	if session {
 		_ = sim.session_step(fl.state, input, film)
 	} else {
 		sim.step(fl.state, input, film)
 	}
-	flow_effects_sync(fl, particles, blurs, notices)
-	flow_effects_step(fl, r, particles, blurs, notices)
+	flow_effects_sync(fl, fx)
+	flow_effects_step(fl, r, fx)
 	render.sounds_step(&r.textures, fl.state)
 }
 
@@ -619,14 +619,12 @@ flow_player_names :: proc(fl: ^Flow) -> (names: ui.Player_Names) {
 // The presentation effects' step, after a sim step. They freeze with the
 // game: under the netplay pause and the reward and loadout screens, which
 // all stop the sim's clock while it keeps stepping.
-flow_effects_step :: proc(fl: ^Flow, r: ^render.Renderer, particles: ^render.Particles, blurs: ^render.Blurs, notices: ^render.Notices) {
+flow_effects_step :: proc(fl: ^Flow, r: ^render.Renderer, fx: ^render.Effects) {
 	if sim.session_frozen(fl.state) {
 		return
 	}
-	render.particles_step(particles, fl.state)
-	render.effect_systems_step(r, fl.state, particles)
-	render.blurs_step(blurs, fl.state)
-	render.notices_step(notices, fl.state)
+	render.effects_step(fx, fl.state)
+	render.effect_systems_step(r, fl.state, &fx.particles)
 }
 
 // After every sim.init: whatever the last session left on screen is not
@@ -644,15 +642,12 @@ flow_session_began :: proc(fl: ^Flow) {
 // begins. Call it after a sim step and before the effects take that step's
 // events, so a new level's first effects survive. flow_draw calls it too,
 // for a session started with no step yet taken.
-flow_effects_sync :: proc(fl: ^Flow, particles: ^render.Particles, blurs: ^render.Blurs, notices: ^render.Notices) {
+flow_effects_sync :: proc(fl: ^Flow, fx: ^render.Effects) {
 	if fl.effects_level == sim.single(fl.state, sim.Level_Info).played {
 		return
 	}
 	fl.effects_level = sim.single(fl.state, sim.Level_Info).played
-	clear(&particles.live)
-	render.effect_systems_clear()
-	clear(&blurs.live)
-	notices^ = {}
+	render.effects_clear(fx)
 }
 
 // Called from the main menu's 1 Player/2 Player buttons (game/menu_main.odin).
@@ -755,9 +750,9 @@ flow_load_demo :: proc(fl: ^Flow, index: int) -> bool {
 // pipeline to draw into, which Title doesn't have, so these overlays go
 // through raylib's own font directly instead -- the same shortcut
 // draw_debug already takes for its dev overlay.
-flow_draw :: proc(fl: ^Flow, r: ^render.Renderer, particles: ^render.Particles, blurs: ^render.Blurs, notices: ^render.Notices, scale: f32) {
+flow_draw :: proc(fl: ^Flow, r: ^render.Renderer, fx: ^render.Effects, scale: f32) {
 	if sim.level_def(fl.state) != nil {
-		flow_effects_sync(fl, particles, blurs, notices)
+		flow_effects_sync(fl, fx)
 	}
 	switch fl.mode {
 	case .Title:
@@ -785,8 +780,8 @@ flow_draw :: proc(fl: ^Flow, r: ^render.Renderer, particles: ^render.Particles, 
 	}
 	flow_set_accents(fl, r)
 	r.replay = fl.mode == .Attract
-	render.build_frame(r, fl.state, blurs, notices)
-	render.present(r, fl.state, particles, scale)
+	render.build_frame(r, fl.state, &fx.blurs, &fx.notices)
+	render.present(r, fl.state, &fx.particles, scale)
 	if fl.mode == .Playing || fl.mode == .Paused {
 		names := flow_player_names(fl)
 		ui.overlays_draw(r, fl.state, &names)

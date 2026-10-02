@@ -1,11 +1,8 @@
 package tests
 
-import "core:log"
-import "core:os"
 import "core:testing"
 import vmem "core:mem/virtual"
 
-import "dr:data"
 import "dr:plugins/passives"
 import "dr:sim"
 import "dr:sim/lifecycle"
@@ -31,40 +28,21 @@ Hit_Fixture :: struct {
 // prefabs built from them see the change.
 @(private = "file")
 hit_fixture :: proc(t: ^testing.T, f: ^Hit_Fixture, mods := sim.Mods{}, edit: proc(d: ^sim.Defs) = nil) -> bool {
-	if !os.exists("assets/data/index.json") {
-		log.info("skipped: needs the extracted assets tree")
-		return false
-	}
-	testing.expect(t, vmem.arena_init_growing(&f.arena) == nil)
+	f.defs = assets_defs(t, &f.arena) or_return
 	alloc := vmem.arena_allocator(&f.arena)
-	f.defs, _ = data.assets_defs_load("assets", alloc)
 	if edit != nil {
 		edit(&f.defs)
 	}
 	f.s = new(sim.State, alloc)
 	context.allocator = alloc
-	sim.init(f.s, sim.Session{seed = 1, level_id = f.defs.levels[0].id, game_type = .Single, mods = mods}, &f.defs)
-	for i := 0; i < 300 && sim.player_at(f.s, 0).state != .Playing; i += 1 {
-		sim.session_step(f.s, {})
-	}
-	return testing.expect(t, sim.player_at(f.s, 0).state == .Playing, "the ship must be in play")
+	return play_start(t, f.s, sim.Session{seed = 1, level_id = f.defs.levels[0].id, game_type = .Single, mods = mods}, &f.defs)
 }
 
-// A stationary unit at `loc`, there at once (no appear delay).
+// A stationary unit at `loc` (unit_spawn), and its reference.
 @(private = "file")
 hit_spawn :: proc(t: ^testing.T, s: ^sim.State, id: string, loc: sim.Vec, owner := sim.NO_REF) -> (sim.Entity, sim.Entity_Ref) {
-	req := sim.spawn_request(sim.res_id(id))
-	req.loc = loc
-	req.stationary = true
-	req.owner = owner
-	r := lifecycle.eg_request_spawn(s, req)
-	if !testing.expectf(t, sim.ref_valid(s, r), "%s must spawn", id) {
-		return {}, r
-	}
-	e := sim.entity_at(s, r.index)
-	e.loc = loc // some units spawn at a random offset
-	e.appear_delay = 0
-	return e, r
+	e, ok := unit_spawn(t, s, sim.res_id(id), loc, owner, stationary = true)
+	return e, ok ? sim.Entity_Ref{e.pool_index, e.number} : sim.NO_REF
 }
 
 // Makes every state of unit `id` pass its hits on to its owner, or stop:

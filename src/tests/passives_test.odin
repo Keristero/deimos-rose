@@ -316,7 +316,6 @@ rollback_session_converges_through_the_reward_screen :: proc(t: ^testing.T) {
 
 	FRAMES :: 1400
 	LATENCY :: 6
-	WINDOW :: 8
 	inputs := [2][]sim.Buttons{make([]sim.Buttons, FRAMES, context.temp_allocator), make([]sim.Buttons, FRAMES, context.temp_allocator)}
 	r := sim.rand_init(91)
 	for i in 0 ..< FRAMES {
@@ -338,27 +337,12 @@ rollback_session_converges_through_the_reward_screen :: proc(t: ^testing.T) {
 	}
 	defer for p in 0 ..< 2 { net.rollback_session_destroy(&rs[p], context.temp_allocator) }
 
-	Delivery :: struct {
-		deliver_at: int,
-		pkt:        net.Input_Packet,
-	}
-	queues := [2][dynamic]Delivery{make([dynamic]Delivery, context.temp_allocator), make([dynamic]Delivery, context.temp_allocator)}
+	link := link_make(LATENCY, context.temp_allocator)
 	reward_frames := 0
 	max_level: i32 = 0
 
 	for i in 0 ..< FRAMES + LATENCY + 1 {
-		for p in 0 ..< 2 {
-			w := 0
-			for d in queues[p] {
-				if d.deliver_at <= i {
-					net.rollback_session_receive(&rs[p], d.pkt)
-				} else {
-					queues[p][w] = d
-					w += 1
-				}
-			}
-			resize(&queues[p], w)
-		}
+		link_deliver(&link, rs[:], i)
 		if i >= FRAMES {
 			continue
 		}
@@ -369,14 +353,7 @@ rollback_session_converges_through_the_reward_screen :: proc(t: ^testing.T) {
 			if i % 5 == 4 && i < FRAMES - 1 {
 				continue
 			}
-			win: [WINDOW]sim.Buttons
-			start, count := net.rollback_session_local_window(&rs[p], WINDOW, win[:])
-			if count > 0 {
-				buf: [64]byte
-				n := net.encode_input(buf[:], u8(p), start, win[:count])
-				pkt, _ := net.decode_input(buf[:n])
-				append(&queues[1 - p], Delivery{i + LATENCY, pkt})
-			}
+			link_send(&link, rs[:], p, i)
 		}
 		if sim.single(states[0], easy_mode.Reward).active {
 			reward_frames += 1
@@ -404,14 +381,12 @@ rollback_session_converges_through_the_reward_screen :: proc(t: ^testing.T) {
 // add, and the backwards plasma bomb. Skipped without the assets tree.
 @(test)
 weapon_passives_shape_the_real_weapons :: proc(t: ^testing.T) {
-	if !os.exists("assets/data/index.json") {
-		log.info("skipped: needs the extracted assets tree")
+	arena: vmem.Arena
+	defs, loaded := assets_defs(t, &arena)
+	if !loaded {
 		return
 	}
-	arena: vmem.Arena
-	testing.expect(t, vmem.arena_init_growing(&arena) == nil)
 	defer vmem.arena_destroy(&arena)
-	defs, _ := data.assets_defs_load("assets", vmem.arena_allocator(&arena))
 	if !testing.expect(t, len(defs.levels) > 0, "the level list must load") {
 		return
 	}
@@ -526,14 +501,12 @@ weapon_passives_shape_the_real_weapons :: proc(t: ^testing.T) {
 // are offered from the level each weapon is.
 @(test)
 chaingun_passive_offered_with_its_plugin :: proc(t: ^testing.T) {
-	if !os.exists("assets/data/index.json") {
-		log.info("skipped: needs the extracted assets tree")
+	arena: vmem.Arena
+	defs, loaded := assets_defs(t, &arena)
+	if !loaded {
 		return
 	}
-	arena: vmem.Arena
-	testing.expect(t, vmem.arena_init_growing(&arena) == nil)
 	defer vmem.arena_destroy(&arena)
-	defs, _ := data.assets_defs_load("assets", vmem.arena_allocator(&arena))
 	if !testing.expect(t, len(defs.levels) > 0, "the level list must load") {
 		return
 	}
@@ -594,14 +567,12 @@ every_passive_has_an_icon :: proc(t: ^testing.T) {
 // every one leaves on the same step. Skipped without the extracted data.
 @(test)
 rear_gun_fires_one_volley_to_the_sides :: proc(t: ^testing.T) {
-	if !os.exists("assets/data/index.json") {
-		log.info("skipped: needs the extracted assets tree")
+	arena: vmem.Arena
+	defs, loaded := assets_defs(t, &arena)
+	if !loaded {
 		return
 	}
-	arena: vmem.Arena
-	testing.expect(t, vmem.arena_init_growing(&arena) == nil)
 	defer vmem.arena_destroy(&arena)
-	defs, _ := data.assets_defs_load("assets", vmem.arena_allocator(&arena))
 	rear := -1
 	for &w, i in defs.weapons {
 		if w.id == passives.WEAPON_REAR_GUN {
@@ -613,9 +584,8 @@ rear_gun_fires_one_volley_to_the_sides :: proc(t: ^testing.T) {
 	}
 	s := new(sim.State, context.temp_allocator)
 	defer sim.destroy(s)
-	sim.init(s, sim.Session{seed = 1, level_id = defs.levels[0].id, game_type = .Single, mods = session_mods(true, false)}, &defs)
-	for i := 0; i < 300 && sim.player_at(s, 0).state != .Playing; i += 1 {
-		sim.session_step(s, {})
+	if !play_start(t, s, sim.Session{seed = 1, level_id = defs.levels[0].id, game_type = .Single, mods = session_mods(true, false)}, &defs) {
+		return
 	}
 	p := sim.player_at(s, 0)
 	p.weapons.air.weapon = i32(rear)

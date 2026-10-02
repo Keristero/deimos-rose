@@ -173,13 +173,12 @@ classic_levels_play_in_the_original_order :: proc(t: ^testing.T) {
 			testing.expect_value(t, order[i], name)
 		}
 	}
-	if !os.exists("assets/data/idli/gaob.json") {
+	arena: vmem.Arena
+	defs, loaded := assets_defs(t, &arena, "assets/data/idli/gaob.json")
+	if !loaded {
 		return
 	}
-	arena: vmem.Arena
-	testing.expect(t, vmem.arena_init_growing(&arena) == nil)
 	defer vmem.arena_destroy(&arena)
-	defs, _ := data.assets_defs_load("assets", vmem.arena_allocator(&arena))
 	levels := sim.campaign_levels(&defs, sim.CORE)
 	testing.expect_value(t, len(levels), 12)
 	for &l, i in levels {

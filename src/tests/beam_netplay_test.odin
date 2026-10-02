@@ -1,7 +1,5 @@
 package tests
 
-import "core:log"
-import "core:os"
 import "core:testing"
 import vmem "core:mem/virtual"
 
@@ -20,16 +18,14 @@ import "dr:sim"
 // assets tree.
 @(test)
 netplay_peer_keeps_the_other_players_beams :: proc(t: ^testing.T) {
-	if !os.exists("assets/data/index.json") || !os.exists("plugins/new_weapons/data") {
-		log.info("skipped: needs the extracted assets tree")
+	arena: vmem.Arena
+	defs, loaded := assets_defs(t, &arena, "plugins/new_weapons/data")
+	if !loaded {
 		return
 	}
-	arena: vmem.Arena
-	testing.expect(t, vmem.arena_init_growing(&arena) == nil)
 	defer vmem.arena_destroy(&arena)
 	alloc := vmem.arena_allocator(&arena)
 	context.allocator = alloc // the states' worlds go in the arena too
-	defs, _ := data.assets_defs_load("assets", alloc)
 	if _, ok := data.extra_defs_load(&defs, alloc); !testing.expect(t, ok) {
 		return
 	}
@@ -48,46 +44,26 @@ netplay_peer_keeps_the_other_players_beams :: proc(t: ^testing.T) {
 	rs: [2]net.Rollback_Session
 	for k in 0 ..< 2 {
 		states[k] = new(sim.State, alloc)
-		sim.init(states[k], session, &defs)
 		// Both ships in play, the guest's (player 2) with the beam and
 		// unable to die, the same on both peers.
-		for i := 0; i < 300 && sim.player_at(states[k], 1).state != .Playing; i += 1 {
-			sim.session_step(states[k], {})
+		if !play_start(t, states[k], session, &defs, player = 1) {
+			return
 		}
 		p := sim.player_at(states[k], 1)
 		p.weapons.air.weapon = i32(db)
 		p.invulnerable_always, p.invulnerable = true, true
 		net.rollback_session_init(&rs[k], states[k], k, alloc)
 	}
-	testing.expect(t, sim.player_at(states[0], 1).state == .Playing, "the guest's ship must be in play")
 
-	Delivery :: struct {
-		at:  int,
-		buf: [128]byte,
-		n:   int,
-	}
 	// Longer than the pulse's wind-up: the pulse fires windup steps after
 	// its press, and a press the host has by then fires on its newest step
 	// without a replay.
 	LATENCY :: 8
 	FRAMES :: 240
-	queues: [2][dynamic]Delivery // to host, to guest
-	queues[0] = make([dynamic]Delivery, alloc)
-	queues[1] = make([dynamic]Delivery, alloc)
+	link := link_make(LATENCY, alloc)
 	newest_step := 0
 	for tick in 0 ..< FRAMES {
-		for &q, k in queues {
-			w := 0
-			for &d in q {
-				if d.at > tick {
-					q[w] = d
-					w += 1
-				} else if pkt, ok := net.decode_input(d.buf[:d.n]); ok {
-					net.rollback_session_receive(&rs[k], pkt)
-				}
-			}
-			resize(&q, w)
-		}
+		link_deliver(&link, rs[:], tick)
 		// The guest taps fire-air, a step down in every twelve; the host
 		// does nothing. Not on the first steps: a rollback restores the
 		// step before the one it replays, which a session begun mid-level
@@ -106,13 +82,7 @@ netplay_peer_keeps_the_other_players_beams :: proc(t: ^testing.T) {
 			}
 		}
 		for k in 0 ..< 2 {
-			win: [8]sim.Buttons
-			start, count := net.rollback_session_local_window(&rs[k], len(win), win[:])
-			if count > 0 {
-				d := Delivery{at = tick + LATENCY}
-				d.n = net.encode_input(d.buf[:], u8(k), start, win[:count])
-				append(&queues[1 - k], d)
-			}
+			link_send(&link, rs[:], k, tick)
 		}
 	}
 

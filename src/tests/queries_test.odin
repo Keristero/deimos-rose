@@ -1,14 +1,10 @@
 package tests
 
-import "core:log"
 import vmem "core:mem/virtual"
-import "core:os"
 import "core:testing"
 
-import "dr:data"
 import "dr:plugins/fps_unlock"
 import "dr:sim"
-import "dr:sim/lifecycle"
 import "dr:sim/systems/entity_system"
 
 // Component queries (docs/phase-9-ecs.md, D45): a stage runs for the
@@ -66,35 +62,12 @@ Query_Fixture :: struct {
 // Stage 1 once the ship is in play, with or without the test builders.
 @(private = "file")
 query_fixture :: proc(t: ^testing.T, f: ^Query_Fixture, builders: bool) -> bool {
-	if !os.exists("assets/data/index.json") {
-		log.info("skipped: needs the extracted assets tree")
-		return false
-	}
-	testing.expect(t, vmem.arena_init_growing(&f.arena) == nil)
+	f.defs = assets_defs(t, &f.arena) or_return
 	alloc := vmem.arena_allocator(&f.arena)
-	f.defs, _ = data.assets_defs_load("assets", alloc)
 	f.s = new(sim.State, alloc)
 	context.allocator = alloc
 	mods := builders ? sim.Mods{int(fps_unlock.ID)} : {}
-	sim.init(f.s, sim.Session{seed = 1, level_id = f.defs.levels[0].id, game_type = .Single, mods = mods}, &f.defs)
-	for i := 0; i < 300 && sim.player_at(f.s, 0).state != .Playing; i += 1 {
-		sim.session_step(f.s, {})
-	}
-	return testing.expect(t, sim.player_at(f.s, 0).state == .Playing, "the ship must be in play")
-}
-
-@(private = "file")
-spawn_mine :: proc(t: ^testing.T, s: ^sim.State) -> (sim.Entity, bool) {
-	req := sim.spawn_request(MINE)
-	req.loc = {200, 100}
-	req.stationary = true
-	r := lifecycle.eg_request_spawn(s, req)
-	if !testing.expect(t, sim.ref_valid(s, r), "the mine must spawn") {
-		return {}, false
-	}
-	e := sim.entity_at(s, r.index)
-	e.appear_delay = 0
-	return e, true
+	return play_start(t, f.s, sim.Session{seed = 1, level_id = f.defs.levels[0].id, game_type = .Single, mods = mods}, &f.defs)
 }
 
 @(test)
@@ -105,7 +78,7 @@ a_plugins_builder_gives_a_unit_a_core_behaviour :: proc(t: ^testing.T) {
 		if !query_fixture(t, &f, builders) {
 			return
 		}
-		if _, ok := spawn_mine(t, f.s); !ok {
+		if _, ok := unit_spawn(t, f.s, MINE, {200, 100}, stationary = true); !ok {
 			return
 		}
 		sim.session_step(f.s, {})
@@ -124,7 +97,7 @@ a_later_value_overrides_an_earlier :: proc(t: ^testing.T) {
 	if !query_fixture(t, &f, true) {
 		return
 	}
-	e, ok := spawn_mine(t, f.s)
+	e, ok := unit_spawn(t, f.s, MINE, {200, 100}, stationary = true)
 	if !ok {
 		return
 	}

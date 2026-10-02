@@ -380,17 +380,14 @@ golden_parse :: proc(text: string, allocator := context.allocator) -> map[string
 
 @(test)
 golden_runs_match_the_recorded_fingerprints :: proc(t: ^testing.T) {
-	if !os.exists("assets/data/index.json") {
-		log.info("skipped: needs the extracted assets tree")
+	arena: vmem.Arena
+	defs, loaded := assets_defs(t, &arena)
+	if !loaded {
 		return
 	}
-	arena: vmem.Arena
-	testing.expect(t, vmem.arena_init_growing(&arena) == nil)
 	defer vmem.arena_destroy(&arena)
 	alloc := vmem.arena_allocator(&arena)
 	context.allocator = alloc // film_parse's frames, among others
-
-	defs, _ := data.assets_defs_load("assets", alloc)
 	data.extra_defs_load(&defs, alloc)
 	if !testing.expect(t, len(defs.levels) > 9, "the level list must load") {
 		return
@@ -455,17 +452,15 @@ GOLDEN_FILMS_PATH :: "tests/golden/films.txt"
 // players' films") says which of them match it.
 @(test)
 golden_players_films_match_the_recorded_fingerprints :: proc(t: ^testing.T) {
-	if !os.exists("assets/data/index.json") || !os.exists("assets/films/pd01.film") {
-		log.info("skipped: needs the extracted assets tree and mise run assets:films")
+	// The films are mise run assets:films's.
+	arena: vmem.Arena
+	defs, loaded := assets_defs(t, &arena, "assets/films/pd01.film")
+	if !loaded {
 		return
 	}
-	arena: vmem.Arena
-	testing.expect(t, vmem.arena_init_growing(&arena) == nil)
 	defer vmem.arena_destroy(&arena)
 	alloc := vmem.arena_allocator(&arena)
 	context.allocator = alloc
-
-	defs, _ := data.assets_defs_load("assets", alloc)
 	data.extra_defs_load(&defs, alloc)
 	runs := make([dynamic]Golden_Run, alloc)
 	for e in PLAYERS_FILMS {
@@ -511,17 +506,14 @@ golden_wide_sessions :: proc(defs: ^sim.Defs, allocator := context.allocator) ->
 
 @(test)
 golden_wide_runs_match_the_recorded_fingerprints :: proc(t: ^testing.T) {
-	if !os.exists("assets/data/index.json") {
-		log.info("skipped: needs the extracted assets tree")
+	arena: vmem.Arena
+	defs, loaded := assets_defs(t, &arena)
+	if !loaded {
 		return
 	}
-	arena: vmem.Arena
-	testing.expect(t, vmem.arena_init_growing(&arena) == nil)
 	defer vmem.arena_destroy(&arena)
 	alloc := vmem.arena_allocator(&arena)
 	context.allocator = alloc
-
-	defs, _ := data.assets_defs_load("assets", alloc)
 	data.extra_defs_load(&defs, alloc)
 	if !testing.expect(t, len(defs.levels) == 12, "the level list must load") {
 		return

@@ -6,6 +6,7 @@ package editor
 import "core:c"
 import "core:fmt"
 import "core:math"
+import "core:slice"
 import "core:strings"
 
 import rl "vendor:raylib"
@@ -575,6 +576,17 @@ colour :: proc(x: f32, y: ^f32, w: f32, label: cstring, c: ^[3]u8) {
 	y^ += ROW
 }
 
+// A text box's buffer, NUL-terminated as raygui keeps it: what it holds,
+// and set to `text`, cut short to leave room for the NUL.
+box_text :: proc(buf: []u8) -> string {
+	return string(cstring(raw_data(buf)))
+}
+
+box_set :: proc(buf: []u8, text: string) {
+	slice.zero(buf)
+	copy(buf[:len(buf) - 1], text)
+}
+
 help :: proc(x: f32, y: ^f32, w: f32, lines: []cstring) {
 	for line in lines {
 		rl.GuiLabel({x, y^, w, 14}, line)
@@ -606,7 +618,7 @@ status_draw :: proc(e: ^Editor, area: rl.Rectangle) {
 		models_status(e, &sb)
 	}
 	if rl.GetTime() < e.message_until {
-		fmt.sbprintf(&sb, "   |   %s", string(cstring(raw_data(e.message[:]))))
+		fmt.sbprintf(&sb, "   |   %s", box_text(e.message[:]))
 	}
 	rl.GuiStatusBar(area, strings.to_cstring(&sb))
 }

@@ -105,15 +105,9 @@ main :: proc() {
 	render.renderer_init(&renderer, root, prefs_classic(&ps), audio)
 	defer render.renderer_destroy(&renderer)
 
-	particles: render.Particles
-	render.particles_init(&particles)
-	defer render.particles_destroy(&particles)
-
-	blurs: render.Blurs
-	render.blurs_init(&blurs)
-	defer render.blurs_destroy(&blurs)
-
-	notices: render.Notices
+	fx: render.Effects
+	render.effects_init(&fx)
+	defer render.effects_destroy(&fx)
 
 	state := new(sim.State)
 	defer free(state)
@@ -179,7 +173,7 @@ main :: proc() {
 				renderer.accents[i] = {on = true, hue = f32(prefs.hue_wrap(hue))}
 			}
 		}
-		run_shots(&renderer, state, &particles, &blurs, &notices, playing_film ? &film : nil, shot,
+		run_shots(&renderer, state, &fx, playing_film ? &film : nil, shot,
 			os.get_env("DR_SHOT_AT", context.temp_allocator))
 		return
 	}
@@ -276,7 +270,7 @@ main :: proc() {
 			if high {
 				render.interp_capture(interp_prev, state) // before this step; a step that changes nothing leaves them equal
 			}
-			flow_step(&flow, &renderer, &particles, &blurs, &notices)
+			flow_step(&flow, &renderer, &fx)
 			if was_playing {
 				diagnostics_note_update(&diagnostics)
 			}
@@ -290,7 +284,7 @@ main :: proc() {
 
 		rl.BeginTextureMode(renderer.canvas)
 		rl.ClearBackground(rl.Color{0, 0, 0, 255})
-		flow_draw(&flow, &renderer, &particles, &blurs, &notices, render.WINDOW_SCALE)
+		flow_draw(&flow, &renderer, &fx, render.WINDOW_SCALE)
 		if show_debug && sim.level_def(state) != nil {
 			draw_debug(state, &report)
 		}
@@ -344,21 +338,15 @@ canvas_fit :: proc(canvas: rl.RenderTexture2D) -> rl.Rectangle {
 // One named menu screen, drawn once and exported to <path>.png. See
 // docs/phase-7-faithful-menus.md's "Verification" section and
 // tools/oracle/menu_shot.sh/menu_compare.sh, which drive this to compare
-// against the original. Flow's Title branch (the only menu mode so far)
-// returns before touching particles/blurs/notices, so nil is safe here; add
-// a case as each later stage (Level Select, Credits, High Scores) lands.
+// against the original. Each menu screen is a case below.
 run_menu_shot :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, root, name, path: string, ps: ^Prefs_State) {
 	flow: Flow
 	flow_init(&flow, root, defs, state, r, ps)
-	// Real (empty) presentation buffers, for the cases that draw a game
+	// Real (empty) presentation effects, for the cases that draw a game
 	// frame behind the menu.
-	particles: render.Particles
-	render.particles_init(&particles)
-	defer render.particles_destroy(&particles)
-	blurs: render.Blurs
-	render.blurs_init(&blurs)
-	defer render.blurs_destroy(&blurs)
-	notices: render.Notices
+	fx: render.Effects
+	render.effects_init(&fx)
+	defer render.effects_destroy(&fx)
 	switch name {
 	case "main":
 		flow.mode = .Title
@@ -415,12 +403,11 @@ run_menu_shot :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, r
 		// are on screen, quit to the menu, start a new game. The shot must
 		// show none of the old game's, and the counts are printed.
 		flow_start_session(&flow, 0x1234_5678, .Single, 0)
-		for i := 0; i < 2000 && (i < 300 || len(particles.live) == 0); i += 1 {
+		for i := 0; i < 2000 && (i < 300 || len(fx.particles.live) == 0); i += 1 {
 			_ = sim.session_step(state, {{.Fire_Air, .Fire_Ground}, {}})
-			render.particles_step(&particles, state)
-			render.blurs_step(&blurs, state)
+			render.effects_step(&fx, state)
 		}
-		fmt.eprintfln("before quitting: %d particles, %d ghosts", len(particles.live), len(blurs.live))
+		fmt.eprintfln("before quitting: %d particles, %d ghosts", len(fx.particles.live), len(fx.blurs.live))
 		flow.mode = .Title // quitting to the menu
 		flow_start_session(&flow, 0x1234_5678, .Single, 0)
 	case "interpolated":
@@ -591,13 +578,13 @@ run_menu_shot :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, r
 		if len(sh.phases) > 0 {
 			// Taken now, so drawing a shot does not clear the effects below
 			// as a new level's.
-			flow_effects_sync(&flow, &particles, &blurs, &notices)
+			flow_effects_sync(&flow, &fx)
 		}
 		for ph in sh.phases {
 			for _ in 0 ..< ph.steps {
 				_ = sim.session_step(state, ph.input)
-				render.particles_step(&particles, state)
-				render.effect_systems_step(r, state, &particles)
+				render.particles_step(&fx.particles, state)
+				render.effect_systems_step(r, state, &fx.particles)
 			}
 		}
 		flow.mode = .Playing
@@ -622,17 +609,17 @@ run_menu_shot :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, r
 	r.canvas = rl.LoadRenderTexture(render.SCREEN_W * render.WINDOW_SCALE, render.SCREEN_H * render.WINDOW_SCALE)
 	rl.BeginTextureMode(r.canvas)
 	rl.ClearBackground(rl.Color{0, 0, 0, 255})
-	flow_draw(&flow, r, &particles, &blurs, &notices, render.WINDOW_SCALE)
+	flow_draw(&flow, r, &fx, render.WINDOW_SCALE)
 	diagnostics_draw(&diag, flow.netplay_active, flow.netplay.ping_ms)
 	if name == "restarted" {
-		fmt.eprintfln("new game drawn with: %d particles, %d ghosts", len(particles.live), len(blurs.live))
+		fmt.eprintfln("new game drawn with: %d particles, %d ghosts", len(fx.particles.live), len(fx.blurs.live))
 	}
 	rl.EndTextureMode()
 	canvas_save(r.canvas, path)
 }
 
 // Steps the simulation, capturing the frame at each requested step.
-run_shots :: proc(r: ^render.Renderer, s: ^sim.State, particles: ^render.Particles, blurs: ^render.Blurs, notices: ^render.Notices, film: ^sim.Film, path, at: string) {
+run_shots :: proc(r: ^render.Renderer, s: ^sim.State, fx: ^render.Effects, film: ^sim.Film, path, at: string) {
 	steps := make([dynamic]int, context.temp_allocator)
 	rest := at == "" ? "120" : at
 	for field in strings.split_iterator(&rest, ",") {
@@ -653,7 +640,7 @@ run_shots :: proc(r: ^render.Renderer, s: ^sim.State, particles: ^render.Particl
 	for i in 0 ..= last {
 		if r.find != "" {
 			r.find_hits = 0
-			render.build_frame(r, s, blurs, notices)
+			render.build_frame(r, s, &fx.blurs, &fx.notices)
 			if r.find_hits > 0 {
 				found += 1
 				if found <= 20 {
@@ -661,16 +648,14 @@ run_shots :: proc(r: ^render.Renderer, s: ^sim.State, particles: ^render.Particl
 				}
 			}
 			sim.step(s, {}, film)
-			render.particles_step(particles, s)
-			render.blurs_step(blurs, s)
-			render.notices_step(notices, s)
+			render.effects_step(fx, s)
 			continue
 		}
 		r.dump = dump && next < len(steps) && steps[next] == i
 		if r.dump {
 			fmt.printfln("step %v draw list:", i)
 		}
-		render.build_frame(r, s, blurs, notices)
+		render.build_frame(r, s, &fx.blurs, &fx.notices)
 		// Only a frame that is saved is presented: EndDrawing waits for
 		// vsync, which made a shot a few thousand steps in take minutes.
 		// Twice, so both swap buffers hold it -- the read-back below reads
@@ -679,7 +664,7 @@ run_shots :: proc(r: ^render.Renderer, s: ^sim.State, particles: ^render.Particl
 			for _ in 0 ..< 2 {
 				rl.BeginDrawing()
 				rl.ClearBackground(rl.Color{0, 0, 0, 255})
-				render.present(r, s, particles, render.WINDOW_SCALE)
+				render.present(r, s, &fx.particles, render.WINDOW_SCALE)
 				rl.EndDrawing()
 			}
 		}
@@ -695,9 +680,7 @@ run_shots :: proc(r: ^render.Renderer, s: ^sim.State, particles: ^render.Particl
 			next += 1
 		}
 		sim.step(s, {}, film)
-		render.particles_step(particles, s)
-		render.blurs_step(blurs, s)
-		render.notices_step(notices, s)
+		render.effects_step(fx, s)
 		render.sounds_step(&r.textures, s)
 	}
 	if r.find != "" {

@@ -17,31 +17,8 @@ import "core:fmt"
 
 import "dr:sim"
 
-@(private = "file")
-mix :: proc(h: ^u64, v: u64) {
-	x := v
-	for _ in 0 ..< 8 {
-		h^ ~= x & 0xff
-		h^ *= 0x100000001b3
-		x >>= 8
-	}
-}
-
 main :: proc() {
 	// Every registry filled, in the same order on every platform.
 	sim.register_all()
-	r := sim.rand_init(0x5EED)
-	h: u64 = 0xcbf29ce484222325
-	for i in 0 ..< 20_000 {
-		lo := i32(i%2000) - 1000
-		hi := lo + i32(i%37) + 1
-		iv := sim.random_int(&r, lo, hi, 0)
-		mix(&h, u64(u32(iv)))
-
-		fa := f32(i%401) - 200.0
-		fb := fa + f32(i%53) + 1.0
-		fv := sim.random_float(&r, fa, fb, 0)
-		mix(&h, u64(transmute(u32)fv))
-	}
-	fmt.printfln("%016x", h)
+	fmt.printfln("%016x", sim.rand_digest(0x5EED, 20_000))
 }

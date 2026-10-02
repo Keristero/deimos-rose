@@ -29,7 +29,6 @@ package game
 // batched to the end), so cancelling the second player's turn never loses
 // the first player's saved entry.
 
-import "core:fmt"
 import "core:strings"
 
 import rl "vendor:raylib"
@@ -255,18 +254,12 @@ score_entry_draw :: proc(r: ^render.Renderer, se: ^Score_Entry) {
 	case .Fading_Out:
 		alpha = 1 - clamp(se.t / HSE_FADE_SECONDS, 0, 1)
 	}
-	a := u8(alpha * 255)
-	header := rl.Color{ui.HIGH_SCORES_HEADER_RGB[0], ui.HIGH_SCORES_HEADER_RGB[1], ui.HIGH_SCORES_HEADER_RGB[2], a}
 	// FUN_0043c480 gives the actively-edited row its own preset (0xe/0x11/0x14)
 	// distinct from every other name-entry-mode row (0xf/0x12/0x15), but
 	// neither has a decompiled colour value -- both draw the same plain white
 	// here as the viewer's rows. The blinking cursor is the only thing that
 	// marks the active row.
-	row_color := rl.Color{HIGH_SCORES_ROW_RGB[0], HIGH_SCORES_ROW_RGB[1], HIGH_SCORES_ROW_RGB[2], a}
-
-	ui.menu_draw_text(r, "Name", HIGH_SCORES_NAME_X, HIGH_SCORES_HEADER_Y, header)
-	ui.menu_draw_text(r, "Score", HIGH_SCORES_SCORE_X, HIGH_SCORES_HEADER_Y, header)
-	ui.menu_draw_text(r, "Sector", HIGH_SCORES_SECTOR_X, HIGH_SCORES_HEADER_Y, header)
+	row_color := high_scores_header_draw(r, alpha)
 	y := f32(HIGH_SCORES_ROW0_Y)
 
 	rank := se.ranks[se.player_i]
@@ -280,9 +273,7 @@ score_entry_draw :: proc(r: ^render.Renderer, se: ^Score_Entry) {
 				name = strings.concatenate({name, "_"}, context.temp_allocator) // perm game string 7
 			}
 		}
-		ui.menu_draw_text(r, name, HIGH_SCORES_NAME_X, i32(y), color)
-		ui.menu_draw_text(r, fmt.tprintf("%d", e.score), HIGH_SCORES_SCORE_X, i32(y), color)
-		ui.menu_draw_text(r, e.sector, HIGH_SCORES_SECTOR_X, i32(y), color)
+		high_scores_row_draw(r, name, e.score, e.sector, i32(y), color)
 		y += HIGH_SCORES_ROW_GAP
 	}
 }

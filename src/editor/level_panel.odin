@@ -107,13 +107,12 @@ level_panel :: proc(e: ^Editor, x: f32, y: ^f32, w: f32, bottom: f32, view: rl.R
 	for f in Field {
 		buf := &lp.buffers[f]
 		if lp.editing != c.int(f) {
-			buf^ = {}
-			copy(buf[:len(buf) - 1], field_of(&e.project, f)^)
+			box_set(buf[:], field_of(&e.project, f)^)
 		}
 		rl.GuiLabel({x, y^, 76, 20}, FIELD_LABELS[f])
 		if rl.GuiTextBox({x + 76, y^, w - 76, 20}, cstring(raw_data(buf[:])), c.int(len(buf) - 1), lp.editing == c.int(f)) {
 			if lp.editing == c.int(f) {
-				editor_property_set(e, f, string(cstring(raw_data(buf[:]))))
+				editor_property_set(e, f, box_text(buf[:]))
 				lp.editing = -1
 			} else {
 				level_panel_leave(e)
@@ -189,7 +188,7 @@ level_panel_leave :: proc(e: ^Editor) {
 	lp := &e.level_panel
 	if lp.editing >= 0 {
 		f := Field(lp.editing)
-		editor_property_set(e, f, string(cstring(raw_data(lp.buffers[f][:]))))
+		editor_property_set(e, f, box_text(lp.buffers[f][:]))
 		lp.editing = -1
 	}
 }

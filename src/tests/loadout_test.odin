@@ -1,8 +1,6 @@
 package tests
 
-import "core:log"
 import "core:math"
-import "core:os"
 import "core:testing"
 import vmem "core:mem/virtual"
 
@@ -12,7 +10,6 @@ import "dr:plugins/loadout"
 import "dr:plugins/new_weapons"
 import "dr:sim"
 import "dr:sim/systems/weapon_system"
-import "dr:sim/lifecycle"
 
 // New Weapons' loadout screen and the Chaingun's aimed charge
 // (plugins/loadout, sim/systems/weapon_system/aimed.odin). The rules are the design's
@@ -279,15 +276,13 @@ aimed_shots_lead_the_target :: proc(t: ^testing.T) {
 // assets tree.
 @(test)
 chaingun_loads_as_new_content :: proc(t: ^testing.T) {
-	if !os.exists("assets/data/index.json") || !os.exists("plugins/chaingun/data") {
-		log.info("skipped: needs the extracted assets tree")
+	arena: vmem.Arena
+	defs, loaded := assets_defs(t, &arena, "plugins/chaingun/data")
+	if !loaded {
 		return
 	}
-	arena: vmem.Arena
-	testing.expect(t, vmem.arena_init_growing(&arena) == nil)
 	defer vmem.arena_destroy(&arena)
 	alloc := vmem.arena_allocator(&arena)
-	defs, _ := data.assets_defs_load("assets", alloc)
 	originals := len(defs.weapons)
 	_, ok := data.extra_defs_load(&defs, alloc)
 	if !testing.expect(t, ok && len(defs.levels) >= 7, "the extra content must load") {
@@ -341,15 +336,13 @@ chaingun_loads_as_new_content :: proc(t: ^testing.T) {
 // tree.
 @(test)
 aimed_volley_turns_towards_an_air_enemy :: proc(t: ^testing.T) {
-	if !os.exists("assets/data/index.json") || !os.exists("plugins/chaingun/data") {
-		log.info("skipped: needs the extracted assets tree")
+	arena: vmem.Arena
+	defs, loaded := assets_defs(t, &arena, "plugins/chaingun/data")
+	if !loaded {
 		return
 	}
-	arena: vmem.Arena
-	testing.expect(t, vmem.arena_init_growing(&arena) == nil)
 	defer vmem.arena_destroy(&arena)
 	alloc := vmem.arena_allocator(&arena)
-	defs, _ := data.assets_defs_load("assets", alloc)
 	if _, ok := data.extra_defs_load(&defs, alloc); !testing.expect(t, ok) {
 		return
 	}
@@ -366,19 +359,14 @@ aimed_volley_turns_towards_an_air_enemy :: proc(t: ^testing.T) {
 	// before anything else is in the air.
 	s := new(sim.State, context.temp_allocator)
 	defer sim.destroy(s)
-	sim.init(s, sim.Session{seed = 1, level_id = defs.levels[0].id, game_type = .Single, mods = session_mods(false, true)}, &defs)
-	for i := 0; i < 300 && sim.player_at(s, 0).state != .Playing; i += 1 {
-		sim.session_step(s, {})
-	}
-	at := sim.Vec{208, 400}
-	req := sim.spawn_request(sim.res_id("mine"))
-	req.loc = at + {80, -80} // up and to the right: a heading of 45
-	mine := lifecycle.eg_request_spawn(s, req)
-	if !testing.expect(t, sim.ref_valid(s, mine), "the mine must spawn") {
+	if !play_start(t, s, sim.Session{seed = 1, level_id = defs.levels[0].id, game_type = .Single, mods = session_mods(false, true)}, &defs) {
 		return
 	}
-	target := sim.entity_at(s, mine.index)
-	target.appear_delay = 0
+	at := sim.Vec{208, 400}
+	target, spawned := unit_spawn(t, s, sim.res_id("mine"), at + {80, -80}) // up and to the right: a heading of 45
+	if !spawned {
+		return
+	}
 	found, ok := chaingun.aimed_target(s, at)
 	if !testing.expect(t, ok && found == target, "the mine must be the nearest target") {
 		return

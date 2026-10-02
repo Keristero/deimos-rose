@@ -94,12 +94,11 @@ editor_destroy :: proc(e: ^Editor) {
 }
 
 editor_path :: proc(e: ^Editor) -> string {
-	return string(cstring(raw_data(e.path[:])))
+	return box_text(e.path[:])
 }
 
 editor_set_path :: proc(e: ^Editor, path: string) {
-	e.path = {}
-	copy(e.path[:len(e.path) - 1], path)
+	box_set(e.path[:], path)
 }
 
 // Opens the project at `path`, in place of the one open. Needs the window.
@@ -152,7 +151,9 @@ editor_take :: proc(e: ^Editor, p: terrain.Project, arena: ^virtual.Arena) {
 	view_reset(&e.view, &e.project)
 }
 
-@(private = "file")
+// A growing arena on the heap, for memory that is all freed at once: a
+// project's, a campaign's. On the heap, so what allocates from it can
+// keep pointing at it as it moves between owners.
 arena_new :: proc() -> (a: ^virtual.Arena, ok: bool) {
 	a = new(virtual.Arena)
 	if virtual.arena_init_growing(a) != nil {
@@ -162,7 +163,6 @@ arena_new :: proc() -> (a: ^virtual.Arena, ok: bool) {
 	return a, true
 }
 
-@(private = "file")
 arena_free :: proc(a: ^virtual.Arena) {
 	if a != nil {
 		virtual.arena_destroy(a)

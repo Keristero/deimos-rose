@@ -31,24 +31,6 @@ rule_conditions_cover_the_whole_vocabulary :: proc(t: ^testing.T) {
 	}
 }
 
-@(private = "file")
-encode_def :: proc(plain: string, allocator := context.allocator) -> []byte {
-	table: [128]u8
-	seen: [128]bool
-	for c in 0 ..= 255 {
-		v := data.tagged_decode_byte(u8(c))
-		if v < 128 && !seen[v] {
-			seen[v] = true
-			table[v] = u8(c)
-		}
-	}
-	out := make([]byte, len(plain), allocator)
-	for i in 0 ..< len(plain) {
-		out[i] = table[plain[i] & 0x7f]
-	}
-	return out
-}
-
 @(test)
 definition_parses_nested_scopes :: proc(t: ^testing.T) {
 	src := "#name_STR <Test Unit>\r#score_INT <500>\r#numStates_INT <2>\r" +
@@ -64,7 +46,7 @@ definition_parses_nested_scopes :: proc(t: ^testing.T) {
 		"#stateRuleCondition_STR <No Players Are Active>\r#stateRuleAction_STR <Wait>\r" +
 		"#stateName_STR <Fire>\r#stateNumSpawnSets_INT <0>\r#stateNumRules_INT <0>\r"
 
-	enc := encode_def(src)
+	enc := tagged_encode(src)
 	defer delete(enc)
 	def, err := data.definition_parse(data.fourcc_from("test"), enc)
 	defer data.definition_destroy(&def)
@@ -96,7 +78,7 @@ definition_parses_nested_scopes :: proc(t: ^testing.T) {
 definition_rejects_a_bad_state_count :: proc(t: ^testing.T) {
 	src := "#name_STR <X>\r#numStates_INT <3>\r#stateName_STR <A>\r" +
 		"#stateNumSpawnSets_INT <0>\r#stateNumRules_INT <0>\r"
-	enc := encode_def(src)
+	enc := tagged_encode(src)
 	defer delete(enc)
 	def, err := data.definition_parse(data.fourcc_from("bad "), enc)
 	defer data.definition_destroy(&def)
@@ -113,12 +95,7 @@ parse_dir :: proc(
 	files, states, rules, spawn_sets: int,
 ) {
 	dir := fmt.tprintf("%s/records/%s", ASSETS, type)
-	handle, oerr := os.open(dir)
-	if oerr != nil {
-		return
-	}
-	defer os.close(handle)
-	entries, rerr := os.read_directory(handle, -1, context.temp_allocator)
+	entries, rerr := os.read_all_directory_by_path(dir, context.temp_allocator)
 	if rerr != nil {
 		return
 	}
@@ -181,12 +158,10 @@ every_rule_condition_in_the_corpus_is_known :: proc(t: ^testing.T) {
 		return
 	}
 	dir := ASSETS + "/records/unde"
-	handle, oerr := os.open(dir)
-	if oerr != nil {
+	entries, rerr := os.read_all_directory_by_path(dir, context.temp_allocator)
+	if rerr != nil {
 		return
 	}
-	defer os.close(handle)
-	entries, _ := os.read_directory(handle, -1, context.temp_allocator)
 
 	used: bit_set[data.Rule_Condition]
 	for e in entries {

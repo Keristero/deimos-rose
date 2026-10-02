@@ -314,7 +314,6 @@ rollback_session_converges_across_level_changes_and_pauses :: proc(t: ^testing.T
 
 	FRAMES :: 1100
 	LATENCY :: 6
-	WINDOW :: 8
 	inputs := [2][]sim.Buttons{make([]sim.Buttons, FRAMES, context.temp_allocator), make([]sim.Buttons, FRAMES, context.temp_allocator)}
 	r := sim.rand_init(77)
 	for i in 0 ..< FRAMES {
@@ -344,27 +343,12 @@ rollback_session_converges_across_level_changes_and_pauses :: proc(t: ^testing.T
 	}
 	defer for p in 0 ..< 2 { net.rollback_session_destroy(&rs[p], context.temp_allocator) }
 
-	Delivery :: struct {
-		deliver_at: int,
-		pkt:        net.Input_Packet,
-	}
-	queues := [2][dynamic]Delivery{make([dynamic]Delivery, context.temp_allocator), make([dynamic]Delivery, context.temp_allocator)}
+	link := link_make(LATENCY, context.temp_allocator)
 	paused_frames := 0
 	max_level: i32 = 0
 
 	for i in 0 ..< FRAMES + LATENCY + 1 {
-		for p in 0 ..< 2 {
-			w := 0
-			for d in queues[p] {
-				if d.deliver_at <= i {
-					net.rollback_session_receive(&rs[p], d.pkt)
-				} else {
-					queues[p][w] = d
-					w += 1
-				}
-			}
-			resize(&queues[p], w)
-		}
+		link_deliver(&link, rs[:], i)
 		if i >= FRAMES {
 			continue // just draining what is still in flight
 		}
@@ -374,14 +358,7 @@ rollback_session_converges_across_level_changes_and_pauses :: proc(t: ^testing.T
 			if i % 5 == 4 {
 				continue // lose this tick's packet
 			}
-			win: [WINDOW]sim.Buttons
-			start, count := net.rollback_session_local_window(&rs[p], WINDOW, win[:])
-			if count > 0 {
-				buf: [64]byte
-				n := net.encode_input(buf[:], u8(p), start, win[:count])
-				pkt, _ := net.decode_input(buf[:n])
-				append(&queues[1 - p], Delivery{i + LATENCY, pkt})
-			}
+			link_send(&link, rs[:], p, i)
 		}
 		if netplay_plugin.paused(states[0]) {
 			paused_frames += 1

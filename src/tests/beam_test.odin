@@ -1,7 +1,5 @@
 package tests
 
-import "core:log"
-import "core:os"
 import "core:testing"
 import vmem "core:mem/virtual"
 
@@ -12,7 +10,6 @@ import "dr:plugins/passives"
 import "dr:sim"
 import "dr:sim/stats"
 import "dr:sim/systems/weapon_system"
-import "dr:sim/lifecycle"
 
 // The Discharge Beam (plugins/new_weapons/beam.odin): an instant line that carries its
 // leftover damage through what it kills. The design is notes/new-weapons.md;
@@ -31,13 +28,8 @@ Beam_Fixture :: struct {
 // mode's passives too if `easy`.
 @(private = "file")
 beam_fixture :: proc(t: ^testing.T, f: ^Beam_Fixture, easy := false) -> bool {
-	if !os.exists("assets/data/index.json") || !os.exists("plugins/new_weapons/data") {
-		log.info("skipped: needs the extracted assets tree")
-		return false
-	}
-	testing.expect(t, vmem.arena_init_growing(&f.arena) == nil)
+	f.defs = assets_defs(t, &f.arena, "plugins/new_weapons/data") or_return
 	alloc := vmem.arena_allocator(&f.arena)
-	f.defs, _ = data.assets_defs_load("assets", alloc)
 	if _, ok := data.extra_defs_load(&f.defs, alloc); !testing.expect(t, ok) {
 		return false
 	}
@@ -52,28 +44,7 @@ beam_fixture :: proc(t: ^testing.T, f: ^Beam_Fixture, easy := false) -> bool {
 	}
 	f.s = new(sim.State, alloc)
 	context.allocator = alloc // the state's world goes in the arena too
-	sim.init(f.s, sim.Session{seed = 1, level_id = f.defs.levels[0].id, game_type = .Single, mods = session_mods(easy, true)}, &f.defs)
-	for i := 0; i < 300 && sim.player_at(f.s, 0).state != .Playing; i += 1 {
-		sim.session_step(f.s, {})
-	}
-	return testing.expect(t, sim.player_at(f.s, 0).state == .Playing, "the ship must be in play")
-}
-
-// A stationary target in the air (the mine) at `loc` with `shields`.
-@(private = "file")
-beam_target :: proc(t: ^testing.T, s: ^sim.State, loc: sim.Vec, shields: f32) -> sim.Entity {
-	req := sim.spawn_request(sim.res_id("mine"))
-	req.loc = loc
-	req.stationary = true
-	r := lifecycle.eg_request_spawn(s, req)
-	if !testing.expect(t, sim.ref_valid(s, r), "the target must spawn") {
-		return {}
-	}
-	e := sim.entity_at(s, r.index)
-	e.loc = loc // the unit spawns at a random offset
-	e.appear_delay = 0
-	e.shields = shields
-	return e
+	return play_start(t, f.s, sim.Session{seed = 1, level_id = f.defs.levels[0].id, game_type = .Single, mods = session_mods(easy, true)}, &f.defs)
 }
 
 @(private = "file")
@@ -146,10 +117,10 @@ discharge_beam_carries_leftover_damage :: proc(t: ^testing.T) {
 	h := sim.player_at(s, 0).weapons
 	wd := &f.defs.weapons[f.db]
 	at := sim.Vec{208, 420}
-	far := beam_target(t, s, at + {0, -240}, 5)
-	near := beam_target(t, s, at + {0, -80}, 1)
-	mid := beam_target(t, s, at + {0, -160}, 1)
-	aside := beam_target(t, s, at + {60, -120}, 1)
+	far := mine_spawn(t, s, at + {0, -240}, 5)
+	near := mine_spawn(t, s, at + {0, -80}, 1)
+	mid := mine_spawn(t, s, at + {0, -160}, 1)
+	aside := mine_spawn(t, s, at + {60, -120}, 1)
 	if far.obj == nil || near.obj == nil || mid.obj == nil || aside.obj == nil {
 		return
 	}
@@ -181,7 +152,7 @@ discharge_beam_leaves_the_screen :: proc(t: ^testing.T) {
 	}
 	s := f.s
 	wd := &f.defs.weapons[f.db]
-	one := beam_target(t, s, {8, 300}, 0.5)
+	one := mine_spawn(t, s, {8, 300}, 0.5)
 	if one.obj == nil {
 		return
 	}
@@ -205,7 +176,7 @@ discharge_beam_release_scales_with_charge :: proc(t: ^testing.T) {
 	wd := &f.defs.weapons[f.db]
 	at := sim.Vec{208, 420}
 	top := wd.powerup_air_max_power_level
-	wall := beam_target(t, s, at + {0, -100}, 100)
+	wall := mine_spawn(t, s, at + {0, -100}, 100)
 	if wall.obj == nil {
 		return
 	}
@@ -235,7 +206,7 @@ discharge_beam_release_leaves_motes :: proc(t: ^testing.T) {
 	b := new_weapons.beam_def(wd)
 	at := sim.Vec{208, 420}
 	top := wd.powerup_air_max_power_level
-	wall := beam_target(t, s, at + {0, -100}, 100)
+	wall := mine_spawn(t, s, at + {0, -100}, 100)
 	if wall.obj == nil {
 		return
 	}
@@ -373,7 +344,7 @@ discharge_beam_passive_hits_harder_and_wider :: proc(t: ^testing.T) {
 	b := new_weapons.beam_def(wd)
 	at := sim.Vec{208, 420}
 	top := wd.powerup_air_max_power_level
-	wall := beam_target(t, s, at + {0, -100}, 100)
+	wall := mine_spawn(t, s, at + {0, -100}, 100)
 	if wall.obj == nil {
 		return
 	}

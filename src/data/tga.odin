@@ -23,30 +23,9 @@ tga_decode_1555 :: proc(
 	w, h: int,
 	err: Tga_Error,
 ) {
-	if len(src) < 18 {
-		return nil, 0, 0, .Truncated
-	}
-	id_len := int(src[0])
-	cmap_type := src[1]
-	img_type := src[2]
-	width := int(r_u16(src, 12))
-	height := int(r_u16(src, 14))
-	depth := int(src[16])
-	desc := src[17]
-
-	if cmap_type != 0 || img_type != 2 || depth != 16 {
-		return nil, 0, 0, .Unsupported
-	}
-	off := 18 + id_len
-	need := width * height * 2
-	if off + need > len(src) {
-		return nil, 0, 0, .Truncated
-	}
-
-	top_origin := desc & 0x20 != 0
+	off, width, height, top_origin := tga_header(src) or_return
 	out := make([]Rgba, width * height, allocator)
 	for y in 0 ..< height {
-		// TGA rows run bottom-to-top unless bit 5 of the descriptor is set.
 		src_y := top_origin ? y : height - 1 - y
 		for x in 0 ..< width {
 			v := r_u16(src, off + (src_y * width + x) * 2)
@@ -72,20 +51,7 @@ tga_decode_raw16 :: proc(
 	w, h: int,
 	err: Tga_Error,
 ) {
-	if len(src) < 18 {
-		return nil, 0, 0, .Truncated
-	}
-	id_len := int(src[0])
-	width := int(r_u16(src, 12))
-	height := int(r_u16(src, 14))
-	if src[1] != 0 || src[2] != 2 || src[16] != 16 {
-		return nil, 0, 0, .Unsupported
-	}
-	off := 18 + id_len
-	if off + width * height * 2 > len(src) {
-		return nil, 0, 0, .Truncated
-	}
-	top_origin := src[17] & 0x20 != 0
+	off, width, height, top_origin := tga_header(src) or_return
 	out := make([]u16, width * height, allocator)
 	for y in 0 ..< height {
 		src_y := top_origin ? y : height - 1 - y
@@ -94,4 +60,22 @@ tga_decode_raw16 :: proc(
 		}
 	}
 	return out, width, height, .None
+}
+
+// Where the pixels of a 16-bit uncompressed TGA begin, its size, and
+// whether its rows run top-down (bit 5 of the descriptor) rather than the
+// format's bottom-up.
+@(private = "file")
+tga_header :: proc(src: []byte) -> (off, w, h: int, top_origin: bool, err: Tga_Error) {
+	if len(src) < 18 {
+		return 0, 0, 0, false, .Truncated
+	}
+	if src[1] != 0 || src[2] != 2 || src[16] != 16 {
+		return 0, 0, 0, false, .Unsupported
+	}
+	off, w, h = 18 + int(src[0]), int(r_u16(src, 12)), int(r_u16(src, 14))
+	if off + w * h * 2 > len(src) {
+		return 0, 0, 0, false, .Truncated
+	}
+	return off, w, h, src[17] & 0x20 != 0, .None
 }

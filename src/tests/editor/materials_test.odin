@@ -204,17 +204,6 @@ materials_through_the_editor :: proc(t: ^testing.T) {
 	testing.expect_value(t, e.project.materials[2].image, "materials/rock-face.png")
 	testing.expect_value(t, e.project.materials[2].tile, f32(32))
 
-	drawn :: proc(e: ^editor.Editor) -> string {
-		pic, _ := terrain.render(&e.renderer, &e.project, {output = .Lit}, context.temp_allocator)
-		return string(pic.pixels)
-	}
-	fresh :: proc(t: ^testing.T, p: ^terrain.Project) -> string {
-		r: terrain.Renderer
-		testing.expect(t, terrain.renderer_init(&r, p))
-		defer terrain.renderer_destroy(&r)
-		pic, _ := terrain.render(&r, p, {output = .Lit}, context.temp_allocator)
-		return string(pic.pixels)
-	}
 	before := drawn(&e)
 	e.tab = i32(editor.Tab.Paint)
 	e.brush.strength = 1
