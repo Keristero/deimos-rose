@@ -587,6 +587,22 @@ MASK=$("$PY" -c "import json,sys; print(json.load(open(sys.argv[1]))['media_mask
   --images "$DR_PLUGINS/classic_levels/images/im16" --out "${OUT:-$DR_SRC/../work/terrain/$LEVEL}" "$@"
 """
 
+[tasks."terrain:aerial"]
+description = "Make a level project from LINZ aerial imagery (LAT=-42.43 LON=171.19 ID=greymouth [NAME=...], into work/aerial/ID/): a strip south from the GPS point, its water from OpenStreetMap (water_mask.py --osm, which a mask texture would otherwise give; ODbL), then terrain:recover's pipeline on it. DEVICE=cpu by default; -- args go to recover.py"
+depends = ["terrain:build"]
+run = """
+set -e
+PY="$DR_MARIGOLD/venv/bin/python"; [ -x "$PY" ] || PY="$DR_MARIGOLD/venv/Scripts/python.exe"
+[ -x "$PY" ] || { echo "no venv at $DR_MARIGOLD/venv: run 'mise run terrain:marigold-setup' first"; exit 1; }
+[ -n "$LAT" ] && [ -n "$LON" ] && [ -n "$ID" ] || { echo "terrain:aerial: set LAT, LON (the strip's northernmost point) and ID" >&2; exit 2; }
+OUT="${OUT:-$DR_SRC/../work/aerial/$ID}"
+"$PY" -m pip install -q rasterio pyproj
+"$PY" tools/terrain_recover/aerial.py "$LAT" "$LON" --id "$ID" --name "${NAME:-$ID}" --out "$OUT"
+"$PY" tools/terrain_recover/water_mask.py "$OUT/images/${ID}_map.png" "$OUT/images/${ID}_mask.png" --osm "$LAT" "$LON" --preview "$OUT/water-preview.png"
+"$PY" tools/terrain_recover/recover.py "${ID}_map" --mask "${ID}_mask" --level "$OUT/$ID.json" --renderer "$DR_BUILD/terrain$DR_EXT" \
+  --images "$OUT/images" --out "$OUT/project" --device "${DEVICE:-cpu}" "$@"
+"""
+
 [tasks."terrain:relight"]
 description = "Refit a recovered level's colour to its occlusion layer (LEVEL=le07 in work/terrain/LEVEL/, or OUT=dir): the layer fitted to the original's shadows and divided out with the rest of the light, the water refitted over its lit bed; no model runs, after terrain:occlusion"
 depends = ["terrain:build"]

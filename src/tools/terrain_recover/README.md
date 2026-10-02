@@ -42,6 +42,25 @@ The recovery draws the project with `tools/terrain` (built by the task) to
 divide the renderer's own light out of the colour, headless under
 `xvfb-run` when it is installed.
 
+## From aerial imagery
+
+```sh
+LAT=-42.4398918 LON=171.1968841 ID=greymouth NAME=Greymouth mise run terrain:aerial
+```
+
+makes a level project from LINZ's open aerial imagery (CC BY 4.0, so the
+level's copyright credits LINZ). The GPS point is the northernmost point of
+the strip, which runs 3600 m south and 480 m wide, a metre to a map pixel.
+`aerial.py` fetches the map; `water_mask.py` makes the media mask that
+aerial imagery lacks, from OpenStreetMap's water (`natural=water` and
+`waterway=riverbank`, through Overpass; credit OpenStreetMap, ODbL), and
+`OUT/water-preview.png` shows it over the map. Without `--osm` it finds the
+water by colour instead, which shadows can fool. Then `recover.py` runs as
+for the originals, moving the shores to the art's own, with Marigold on the
+CPU (`DEVICE=cuda` to change). The project is in `work/aerial/<id>/project/`.
+Place units in the editor. The sun's angle is not known: pass
+`-- --azimuth A --elevation E`.
+
 ## Setup
 
 `terrain:marigold-setup` follows the upstream `setup/setup_env.sh`, with a
