@@ -239,9 +239,8 @@ is `plbo`, the Plasma Bomb, the only ground weapon.
   still flies straight, and draws nothing more.
 - **Weapon 6.** The beam is not a projectile, so the plugin reads the
   stats itself (`beam_scaled` in `plugins/new_weapons/beam.odin`).
-  `projectile_damage` scales a pulse and a charge's release; the motes a
-  release leaves carry the weapon's tag, so their fragments take it too
-  (`stats.shot_damage`). `base_beam_width` is `Shot_Width`, a stat for any
+  `projectile_damage` scales a pulse and a charge's release.
+  `base_beam_width` is `Shot_Width`, a stat for any
   shot cast as a line rather than flown; the beam's width is scaled by it
   plus the damage's percentage, as "width also scales with damage" asks,
   so level 3 is 90% wider. The reward screen shows the width stat alone.
@@ -295,8 +294,9 @@ Levels carry what they do not change (the design's `x`).
   any width, so only the single and cluster targets gain: the Gain is
   0.71 times the damage's percentage. The widths are the design's.
 - Charge shots are not tuned. Weapon passives add at most 1% to them,
-  except Weapon 6, whose damage bases the release and its fragments:
-  +12.3 / +24.5 / +49.1%.
+  except Weapon 6, whose damage bases the release: +13.2 / +26.4 /
+  +52.8%, in the primary fire's bands without a change since the charge
+  lost its motes.
 
 ## Provisional
 

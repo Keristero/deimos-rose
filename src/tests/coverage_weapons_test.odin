@@ -1002,35 +1002,6 @@ discharge_beam_spent_on_a_kill_stops_there :: proc(t: ^testing.T) {
 	testing.expect(t, len(new_weapons.beam_shots(s)) == 1 && new_weapons.beam_shots(s)[0].to_y == near.loc.y, "the beam stops at the kill")
 }
 
-// A beam weapon with no motes: its charged beam still fires, and leaves
-// nothing along its path. The shipped beam has motes; this test's copy of
-// it has none.
-@(test)
-discharge_beam_without_motes_leaves_none :: proc(t: ^testing.T) {
-	f: Assets_Fixture
-	defer vmem.arena_destroy(&f.arena)
-	if !cw_assets_fixture(t, &f, false) {
-		return
-	}
-	context.allocator = vmem.arena_allocator(&f.arena)
-	s := f.s
-	db := cw_weapon(t, &f.defs, sim.res_id("aidb"))
-	if db == sim.NO_WEAPON {
-		return
-	}
-	wd := f.defs.weapons[db]
-	sim.weapon_key_set(&wd, new_weapons.BEAM_MOTE, sim.NONE)
-	at := sim.Vec{208, 420}
-	b := new_weapons.beam_def(&f.defs.weapons[db])
-	seen := make(map[i32]bool)
-	cw_new_of(s, &seen, b.mote)
-	cw_new_of(s, &seen, b.mote_sounded)
-	s.effects.count = 0
-	new_weapons.beam_release(s, sim.player_at(s, 0).weapons, &wd, at, wd.powerup_air_max_power_level, sim.single(s, sim.Clock).time)
-	testing.expect_value(t, len(new_weapons.beam_shots(s)), 1)
-	testing.expect_value(t, cw_new_of(s, &seen, b.mote) + cw_new_of(s, &seen, b.mote_sounded), 0)
-}
-
 // Priv_Spawn_Ground spawns the weapon's crosshair spawn at the crosshair
 // as well as its bombs. No shipped ground weapon has one; this test's Defs
 // give the Plasma Bomb its launch flash there.

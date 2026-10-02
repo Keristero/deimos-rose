@@ -251,7 +251,7 @@
         },
         {
             "key": "x_BeamReleaseDamage_FLOAT",
-            "value": "5.000000"
+            "value": "6.000000"
         },
         {
             "key": "x_BeamReleaseWidth_FLOAT",
@@ -264,26 +264,6 @@
         {
             "key": "x_BeamFlash_ID",
             "value": "dbmf"
-        },
-        {
-            "key": "x_BeamMote_ID",
-            "value": "dbcm"
-        },
-        {
-            "key": "x_BeamMoteSounded_ID",
-            "value": "dbcs"
-        },
-        {
-            "key": "x_BeamMoteSpacing_INT",
-            "value": "24"
-        },
-        {
-            "key": "x_BeamMoteDelayMin_INT",
-            "value": "6"
-        },
-        {
-            "key": "x_BeamMoteDelayMax_INT",
-            "value": "30"
         }
     ]
 }

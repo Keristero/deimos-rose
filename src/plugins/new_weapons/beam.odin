@@ -13,9 +13,8 @@ package new_weapons
 // - the beam stops at the first target left standing (or one the hit delay
 //   protects), or goes off the top of the screen.
 //
-// A charged beam leaves motes along its path, ordinary units that linger
-// and then burst into fragments, player projectiles. Each shot is pushed
-// as a Beam_Event (sim/queue_effects.odin), and kept in the session's
+// A charge's release is one heavier, wider beam that pierces the same way.
+// Each shot is pushed as a Beam_Event (sim/queue_effects.odin), and kept in the session's
 // Beam_Log for the view, which draws it as a line that fades.
 //
 // The log is why the other player's beams show in netplay. The beam does
@@ -88,15 +87,6 @@ Beam_Def :: struct {
 	release_damage: f32, // a charge's at the weapon's own max power level
 	release_width:  f32,
 	flash:          sim.Res_ID, // spawned at the gun as a pulse fires
-	// A charged beam's motes: one every mote_spacing px along it, bursting
-	// mote_delay_min steps after it fired, and up to mote_delay_max more
-	// for a full charge. One of each release is mote_sounded, which plays
-	// the burst.
-	mote:           sim.Res_ID,
-	mote_sounded:   sim.Res_ID,
-	mote_spacing:   i32,
-	mote_delay_min: i32,
-	mote_delay_max: i32,
 }
 
 beam_def :: proc "contextless" (wd: ^sim.Weapon) -> Beam_Def {
@@ -106,11 +96,6 @@ beam_def :: proc "contextless" (wd: ^sim.Weapon) -> Beam_Def {
 		release_damage = sim.weapon_float(wd, BEAM_RELEASE_DAMAGE),
 		release_width  = sim.weapon_float(wd, BEAM_RELEASE_WIDTH),
 		flash          = sim.weapon_id(wd, BEAM_FLASH),
-		mote           = sim.weapon_id(wd, BEAM_MOTE),
-		mote_sounded   = sim.weapon_id(wd, BEAM_MOTE_SOUNDED),
-		mote_spacing   = sim.weapon_int(wd, BEAM_MOTE_SPACING),
-		mote_delay_min = sim.weapon_int(wd, BEAM_MOTE_DELAY_MIN),
-		mote_delay_max = sim.weapon_int(wd, BEAM_MOTE_DELAY_MAX),
 	}
 }
 
@@ -225,45 +210,8 @@ beam_release :: proc(s: ^sim.State, h: ^sim.Weapon_Handler, wd: ^sim.Weapon, at:
 	b := beam_def(wd)
 	top := max(wd.powerup_air_max_power_level, 1)
 	f := f32(level) / f32(top)
-	to_y := beam_fire(s, h, wd, at, b.release_damage * f, max(b.release_width * min(f, 1), b.width), true, time)
-	beam_motes(s, h, wd, beam_origin(wd, at), to_y, f)
+	beam_fire(s, h, wd, at, b.release_damage * f, max(b.release_width * min(f, 1), b.width), true, time)
 	if wd.powerup_air_release_spawn != sim.NONE {
 		lifecycle.spawn_at(s, wd.powerup_air_release_spawn, beam_origin(wd, at), h.player)
-	}
-}
-
-// The most motes one charged beam leaves: a full screen's height at the
-// shipped spacing is well under this.
-MAX_BEAM_MOTES :: 24
-
-// A charged beam's motes, one every mote_spacing px along it from the gun
-// to where it stopped (the top of the screen at most), nearest first. They
-// drift in a random direction (the unit's initialHeadingTolerance) and
-// burst together, later the fuller the charge (`f`, the level against the
-// weapon's max). Their fragments count as the weapon's shots
-// (shot_shaper), so its passives shape them.
-beam_motes :: proc(s: ^sim.State, h: ^sim.Weapon_Handler, wd: ^sim.Weapon, from: sim.Vec, to_y: f32, f: f32) {
-	b := beam_def(wd)
-	if b.mote == sim.NONE || b.mote_spacing <= 0 {
-		return
-	}
-	delay := b.mote_delay_min + stats.round_i32(f32(b.mote_delay_max - b.mote_delay_min) * f)
-	tag := stats.shot_shaper(s, h.player, h.air.weapon)
-	top := max(to_y, 0)
-	y := from.y - f32(b.mote_spacing) / 2
-	for k := 0; k < MAX_BEAM_MOTES && y > top; k += 1 {
-		req := sim.spawn_request(k == 0 && b.mote_sounded != sim.NONE ? b.mote_sounded : b.mote)
-		req.owner_player = h.player
-		req.loc = {from.x, y}
-		req.explicit_heading = true
-		req.shaped_by = tag
-		// Its fragments are spawned by a spawner the weapon did not fire:
-		// they take its damage, not its lanes (shaped_spawn_child).
-		req.shaped_depth = 1
-		ref := lifecycle.eg_request_spawn(s, req)
-		if ref.index != sim.NO_LINK && delay > 0 {
-			sim.entity_at(s, ref.index).timer = delay
-		}
-		y -= f32(b.mote_spacing)
 	}
 }

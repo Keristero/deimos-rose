@@ -255,8 +255,8 @@ OWN := [Own]Passive_Def {
 		levels = 3,
 		weapon = WEAPON_DISCHARGE_BEAM,
 		mods = {
-			// The damage bases the charge too, and its motes' fragments; the
-			// beam's width takes the damage's percentage as well as its own.
+			// The damage bases the charge too (+13/26/53% on it); the beam's
+			// width takes the damage's percentage as well as its own.
 			// The design's 10/20/30% damage gains only 7/14/21%: in the wave
 			// a pulse already kills what it hits, so only the single and
 			// cluster targets gain.

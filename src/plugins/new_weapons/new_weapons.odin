@@ -23,7 +23,6 @@ ID: sim.Plugin_ID
 BEAM: sim.Weapon_Key // an instant laser instead of projectiles
 BEAM_DAMAGE, BEAM_WIDTH, BEAM_RELEASE_DAMAGE, BEAM_RELEASE_WIDTH: sim.Weapon_Key
 BEAM_WINDUP, BEAM_FLASH: sim.Weapon_Key
-BEAM_MOTE, BEAM_MOTE_SOUNDED, BEAM_MOTE_SPACING, BEAM_MOTE_DELAY_MIN, BEAM_MOTE_DELAY_MAX: sim.Weapon_Key
 
 // The beam's shots, for the view (sim/queue_effects.odin).
 BEAM_SHOT: sim.Effect_Kind
@@ -54,11 +53,6 @@ register :: proc() {
 	BEAM_RELEASE_WIDTH = sim.weapon_key_register("x_BeamReleaseWidth_FLOAT")
 	BEAM_WINDUP = sim.weapon_key_register("x_BeamWindup_INT")
 	BEAM_FLASH = sim.weapon_key_register("x_BeamFlash_ID")
-	BEAM_MOTE = sim.weapon_key_register("x_BeamMote_ID")
-	BEAM_MOTE_SOUNDED = sim.weapon_key_register("x_BeamMoteSounded_ID")
-	BEAM_MOTE_SPACING = sim.weapon_key_register("x_BeamMoteSpacing_INT")
-	BEAM_MOTE_DELAY_MIN = sim.weapon_key_register("x_BeamMoteDelayMin_INT")
-	BEAM_MOTE_DELAY_MAX = sim.weapon_key_register("x_BeamMoteDelayMax_INT")
 	BEAM_SHOT = sim.effect_kind_register(Beam_Event)
 	sim.kind_component(.Session, Beam_Log{}, ID)
 

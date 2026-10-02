@@ -284,8 +284,8 @@ plain shot the first press fires before a charge begins. The Rear Gun's
 - **The Discharge Beam holds one column of the wave.** Its pulse kills
   the front target and carries the rest into the next, but reaches no
   other column: 4.80, against 4.33 to 5.55 for the other single-lane
-  weapons (it was 8.90 while its kills threw shrapnel). Its charged beam's
-  motes burst into fragments that reach the columns beside it, 1.53.
+  weapons (it was 8.90 while its kills threw shrapnel). Its charged beam
+  holds the one column as well, 0.96.
 - **Straight-firing weapons get nothing from a cluster.** Only the Bacta
   Gun's spread (+50%) and Weapon 1 level 3's wide lanes reach past the
   front target, which soaks every other shot.

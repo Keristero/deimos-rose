@@ -19,9 +19,7 @@ package new_weapons_view
 // skipped. The Chaingun's are its own (plugins/chaingun/view).
 // - discharge_windup: a press winding up, the motes drawn in to the gun;
 // - discharge: a pulse as it fades;
-// - discharge_charge: the charged beam the step after it is let go;
-// - discharge_motes: its motes lingering along its path;
-// - discharge_burst: the motes' fragments, just after they burst.
+// - discharge_charge: the charged beam the step after it is let go.
 
 
 import "dr:plugins/loadout"
@@ -68,18 +66,13 @@ discharge_shot :: proc(s: ^sim.State, name: string) -> string {
 }
 
 // Fire held for some steps, then let go for some. A pulse fires 6 steps
-// after its press (the wind-up); a full charge's motes burst 30 steps
-// after the release.
+// after its press (the wind-up).
 @(private = "file", rodata)
 DISCHARGE_WINDUP_PHASES := []ui.Shot_Phase{{1, {{.Fire_Air}, {}}}, {3, {}}}
 @(private = "file", rodata)
 DISCHARGE_PHASES := []ui.Shot_Phase{{1, {{.Fire_Air}, {}}}, {7, {}}}
 @(private = "file", rodata)
 DISCHARGE_CHARGE_PHASES := []ui.Shot_Phase{{90, {{.Fire_Air}, {}}}, {1, {}}}
-@(private = "file", rodata)
-DISCHARGE_MOTES_PHASES := []ui.Shot_Phase{{90, {{.Fire_Air}, {}}}, {16, {}}}
-@(private = "file", rodata)
-DISCHARGE_BURST_PHASES := []ui.Shot_Phase{{90, {{.Fire_Air}, {}}}, {32, {}}}
 
 register_shots :: proc() {
 	id := new_weapons.ID
@@ -89,8 +82,6 @@ register_shots :: proc() {
 	ui.shot_register({name = "discharge_windup", plugin = id, level = 9, setup = discharge_shot, phases = DISCHARGE_WINDUP_PHASES})
 	ui.shot_register({name = "discharge", plugin = id, level = 9, setup = discharge_shot, phases = DISCHARGE_PHASES})
 	ui.shot_register({name = "discharge_charge", plugin = id, level = 9, setup = discharge_shot, phases = DISCHARGE_CHARGE_PHASES})
-	ui.shot_register({name = "discharge_motes", plugin = id, level = 9, setup = discharge_shot, phases = DISCHARGE_MOTES_PHASES})
-	ui.shot_register({name = "discharge_burst", plugin = id, level = 9, setup = discharge_shot, phases = DISCHARGE_BURST_PHASES})
 }
 
 @(init)

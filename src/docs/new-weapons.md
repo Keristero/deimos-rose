@@ -153,27 +153,10 @@ that plays the wind-up sound.
     screen.
 - **Charge attack.** Holding charges as the original's weapons do. On
   release, `beam_release` fires one beam at once in place of the release
-  spawns, with no wind-up: 5.0 damage, 14 px wide, scaled by the level
+  spawns, with no wind-up: 6.0 damage, 14 px wide, scaled by the level
   reached against the weapon's own max. A part charge deals part, and
-  Improved Charge's higher max deals more than the full 5.0. The width
-  never falls below the pulse's.
-  - Along the beam, from the gun to where it stopped (the top of the
-    screen at most), it leaves a mote every 24 px, `dbcm`. Motes are
-    ordinary units that collide with nothing. Each drifts at 0.2–0.4 px a
-    step in a random direction (its `initialHeadingTolerance` of 360).
-  - They burst together, 6 steps after the release for the least charge
-    and up to 30 for a full one (`x_BeamMoteDelayMin_INT`,
-    `x_BeamMoteDelayMax_INT`), set on each mote's state timer.
-  - Each burst is three fragments, `dbfr`, at headings 0°, 120° and 240°
-    within a 60° tolerance, one spawn set each. A fragment is a player
-    projectile of 0.4 damage at speed 7–8, white for 2 steps, pale orange
-    for 2, then dwindling orange for 4 with no collision: the Bacta Gun's
-    bullet, cut short.
-  - The nearest mote of a release is `dbcs`, the same mote with the burst
-    sound, so a release makes one sound however many motes it left.
-  - A mote carries the weapon's passive tag (`shot_shaper`), so its
-    fragments take the weapon's damage passives, but it is spawned at
-    depth 1, so they take none of its lane passives.
+  Improved Charge's higher max deals more than the full 6.0. The width
+  never falls below the pulse's. It pierces as a pulse does.
 - **Drawing.** Each beam is pushed as a `Beam_Event`, a plugin's effect
   event (`sim/queue_effects.odin`) that lasts the step, like the particle
   and blur queues: where it started, where it stopped, its width and
@@ -207,17 +190,15 @@ that plays the wind-up sound.
   wind-up a pulse takes about 15 steps where it took 8. The damage went
   from 1.6 to 3.0 to keep the single-target DPS at 6.00, and the width
   from 4 to 7 px.
-- **The charged beam's particles.** "Lingering red particles at a
-  regular interval" are the motes, one every 24 px, so a longer beam
-  leaves more. "Explode after 0.2 s to about 1 s, scaled by the charge"
-  is 6 to 30 steps. "Only one sound" is the one sounded mote. "Three fast
-  white damaging particles with a short life, fading like the Bacta Gun's
-  shots and turning orange" are the fragments, the Bacta Gun's bullet
-  sprite tinted white, then pale orange, then orange as it fades.
-- **"Brighter and wider, pierces more."** The charged beam is still a
-  single heavier beam, twice as wide as a pulse and drawn brighter and
-  longer. Its damage went from 7.5 to 5.0, as the motes' fragments now
-  carry part of it.
+- **The charged beam.** A single heavier beam, twice as wide as a pulse
+  and drawn brighter and longer, that pierces like one. For a while it
+  also left lingering red motes along its path that burst, after a delay
+  set by the charge, into white fragments
+  ([notes/extra-weapon-passives-and-base-adjustments.md](../../notes/extra-weapon-passives-and-base-adjustments.md)).
+  That did not play well, and the charge went back to the plain piercing
+  beam ([notes/extra-weapons-and-passives-3.md](../../notes/extra-weapons-and-passives-3.md)).
+  Its damage went from 7.5 to 5.0 while the fragments carried part of it,
+  and is 6.0 now (see Balance).
 - **Weapon passives.** The Weapon 1–4 passives belong to the original's
   weapons, so none applies. Weapon 6 is the beam's own: more damage and a
   wider beam ([passive-upgrades.md](passive-upgrades.md)). Improved
@@ -230,9 +211,10 @@ upgrades by this point", which is stage 10. It was checked with
 `mise run dps:report` at its default stage 7, in the four scenarios of
 [dps-report.md](dps-report.md). Its bare numbers are set against the
 others' with their weapon passive at level 2, or with Improved Charge 2
-for charge shots. The numbers below are from after the base changes (the
-wind-up, the motes). Its own passive, Weapon 6, takes it to 7.20 ahead at
-level 2 and 9.60 at level 3.
+for charge shots. The primary fire's numbers are from after the base
+changes (the wind-up), the charge's from after the motes were taken out.
+Its own passive, Weapon 6, takes the pulse to 7.20 ahead at level 2 and
+9.60 at level 3.
 
 Primary fire, DPS (single / cluster / behind / wave, mean):
 
@@ -249,8 +231,8 @@ Charge shots, with Improved Charge 2:
 
 | Weapon | Single | Wave |
 |---|---|---|
+| **Discharge Beam** | **3.96** | **0.96** |
 | Bacta Gun | 3.86 | 1.63 |
-| **Discharge Beam** | **3.70** | **1.67** |
 | Rear Gun | 3.35 | 3.70 |
 | Chaingun | 3.22 | 3.36 |
 | Ion Cannon | 3.21 | 1.61 |
@@ -261,15 +243,18 @@ average. It is a single-lane weapon: it gains nothing from a cluster, and
 in a wave the pulse clears one column. Before the base changes its wave
 was 8.90, as the shrapnel chipped at the neighbouring columns; with the
 shrapnel gone it is 4.80. That drop was accepted: the design removed the
-shrapnel, and the beam keeps its piercing. Its charge is second ahead, and
-mid-table in the wave, where the fragments now reach past the one column.
+shrapnel, and the beam keeps its piercing. Its charge is the best ahead
+and the weakest in the wave, where it too holds one column.
 
 - The pulse's damage, 3.0, keeps the single-target DPS at 6.00 over the
   longer cycle (6 steps of wind-up and a delay of 8 from the shot).
-- The release's 5.0 and the fragments' 0.4 were chosen by a sweep, to
-  keep the charge's single-target DPS near the others' (3.34 bare, where
-  7.5 with the fragments gave 4.30). Before the base changes it was 2.90
-  single and 1.85 in the wave.
+- The release's 6.0 was chosen by a sweep (5.0 to 7.5, 0.19 single-target
+  DPS a step of 0.5), to keep the charge near the others' with the
+  fragments gone: 3.50 bare, against 3.43 for the Bacta Gun's and 3.02
+  for the Chaingun's. The wave stays at 0.96 whatever the damage, as a
+  release already kills the column it hits. With the motes it was 5.0,
+  3.34 single and 1.53 in the wave; before the base changes, 7.5, 2.90
+  and 1.85.
 
 ### Presentation
 
@@ -341,15 +326,11 @@ The Discharge Beam's numbers were set against the DPS report (see
 Balance), but its feel is untested by hand:
 - a 6-step wind-up, then a delay of 8 steps from the shot;
 - a pulse of 3.0 damage, 7 px wide;
-- the release's 5.0 damage and 14 px, a charge of 20 levels, 2 steps each;
-- a mote every 24 px, drifting at 0.2–0.4 px a step, bursting 6 to 30
-  steps after the release;
-- 3 fragments of 0.4 damage, speed 7–8, 4 steps of flight and 4 of
-  dwindling, and their tints: white, FFC878, FF7020;
+- the release's 6.0 damage and 14 px, a charge of 20 levels, 2 steps each;
 - the pulse's sound: the Laser Gun Bullet's (`lgbu`), pitched down, a
   stand-in for a proper zap;
 - the precharge's sound, `icpo` (the Ion Cannon's charge-up) at pitch
-  1.8, and the motes' burst, `balh` at pitch 1.1: stand-ins as well;
+  1.8: a stand-in as well;
 - in the code: the kill burst's size and colour
   (`plugins/new_weapons/beam.odin`), the beam's lifetimes, widths and
   colours (`plugins/new_weapons/view/beams.odin`), and the wind-up motes'
@@ -394,9 +375,9 @@ extra sprite index beside the game's own.
   - `dbmf` became `dbpc`, the precharge, a glow at the gun that grows over
     the wind-up;
   - `dbpp` became `dbcm`, the charged beam's mote, and `dbcs`, the same
-    with the burst sound;
-  - `bagb` became `dbfr`, the fragment (it was `dbsh`, the shrapnel,
-    before), and `bagh` became `dbsx`, its hit.
+    with the burst sound; `bagb` became `dbfr`, the fragment (it was
+    `dbsh`, the shrapnel, before), and `bagh` became `dbsx`, its hit. All
+    four went again with the motes.
 - **Red ships.** The same recipe turns the Ion Cannon's plates (`PL1O`,
   `PL2O`) and the score bar symbols (`WESY`) red: pixels with a hue from
   20° to 75° have it turned by −50°, keeping their saturation and value.
@@ -430,10 +411,6 @@ extra sprite index beside the game's own.
     touches a target beside the line;
   - a press winds up: its pulse lands on the wind-up's last step, and
     pulses held down come one cycle (wind-up, delay and one) apart;
-  - a release leaves a mote every 24 px along the beam, on its line, set
-    to burst later the fuller the charge, and each bursts into three
-    fragments;
-  - with the mote key cleared, a release leaves none;
   - a second pulse on the same step is stopped by the hit delay;
   - with nothing left standing, the beam leaves the screen;
   - a full charge deals the release damage, half a charge half;
@@ -446,10 +423,8 @@ extra sprite index beside the game's own.
   - `chaingun` for a burst in flight and its half-strength muzzle flash;
   - `chaingun_charge` for aimed pairs after a release;
   - `chaingun_release` for the full-strength flash of a charge's release;
-  - `discharge_windup` for the motes drawn in to the gun, `discharge` and
-    `discharge_charge` for a pulse and a charged beam, and
-    `discharge_motes` and `discharge_burst` for the motes lingering and
-    their fragments;
+  - `discharge_windup` for the motes drawn in to the gun, and `discharge`
+    and `discharge_charge` for a pulse and a charged beam;
   - `netplay_lobby_connected_host` and `netplay_lobby_connected` for the
     lobby toggles.
 - Not yet done:
