@@ -1909,3 +1909,30 @@ depletes".
   (`weapon_fire_register`) has its own volley, and does not fan out.
   Without the stat the field is 0, and every release is the original's:
   the goldens did not change until the passive was offered.
+
+### D73 — A wearing shot gives its damage and takes no hits
+
+notes/extra-weapons-and-passives-3.md asks for a Rear Gun charge upgrade
+whose bubbles "reduce in size when they damage enemies until they run out
+of damage to give", each level making them "larger and longer lasting".
+
+- **Two core stats.** `Shot_Scale` multiplies a shaped projectile's
+  states' scales (`Shaped.size`, in `appearance_stage`), and so what it
+  reaches. `Wears_Down` is a toggle: the shot has its damage times its
+  size to give (`stats.wear_pool`, kept in `Shaped.wear`). Both are
+  read in the shot's own scope (D67), so a pulse passive or a charge
+  passive can grant them, and name how a shot behaves, not the bubble.
+- **No hits taken.** In the original a shot meeting a target takes the
+  target's damage against its own shields, so a bubble nearly always
+  bursts on its first hit. A wearing shot takes none, either way round
+  (a player's shot or one an enemy's shot can hit). Its own hit gives no
+  more than it has left and spends what the hit dealt, so one turned
+  away by the target's hit delay flies on with all of it
+  (collision_system's `shot_hit`).
+- **Its size shows what is left.** The shot shrinks in proportion to
+  what it has left, to no less than `WEAR_MIN_SIZE`. Once spent it is
+  destroyed, as the hit back would have destroyed it, with its own
+  destruction effects.
+- Without the stats both fields are 0 and every collision is the
+  original's two hits: the goldens did not change until the passive was
+  offered.

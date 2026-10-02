@@ -180,6 +180,20 @@ passive has a recipe entry and, when the assets tree is present, a file.
   the count (`Shaped.overcharge`), as it does not know the level it was
   fired at. A weapon with a release of its own (`weapon_fire_register`)
   does not fan out.
+- **A shot's size** (`Shot_Scale`). A shaped projectile's states' scales
+  are multiplied by it (`Shaped.size`, applied in `appearance_stage`)
+  from its first scale on, so a shot that inflates as it leaves inflates
+  to the larger size. Its size is what it reaches: collisions are
+  measured from its scaled sprite.
+- **A wearing shot** (`Wears_Down`, D73). The original's shot takes the
+  hit back from what it hits, against its own shields, and nearly
+  always bursts on its first. A wearing shot takes no hits. It has its
+  damage times its size to give (`stats.wear_pool`). Each hit gives no
+  more than it has left, spends what the hit dealt, and shrinks it in
+  proportion, to no less than `WEAR_MIN_SIZE` (40%) of its size, so one
+  nearly spent can still be seen. A hit the target's hit delay turns
+  away spends nothing. Once spent, it is destroyed as the hit back would
+  have destroyed it (collision_system's `shot_hit`).
 - **Offering.**
   - There are `min(choosers + 2, available)` options, drawn without repeats:
     three for one player, four for two (the design's first count, one more
@@ -462,6 +476,11 @@ Each of these is marked in the code, with what would settle it:
   `CHARGE_ORBIT_DEGREES_A_SECOND` = 180: a charged crosshair swings
   behind in half a second, and circles the ship in two.
 - `LANE_SPACING` = 12 px, for a weapon with a single lane.
+- `OVERCHARGE_STEP` = 25% and `OVERCHARGE_FAN` = 10°: the design's "every
+  x charge over the base amount" and "wide spread pattern" set no number.
+  25% makes its +4 projectiles at level 3's max charge.
+- `WEAR_HITS` = 1, the hits' worth of damage a wearing shot has to give
+  at its own size, and `WEAR_MIN_SIZE` = 40%, the least it shrinks to.
 - The icons' compositions (see Icons) are a first pass, not a
   designed set.
 

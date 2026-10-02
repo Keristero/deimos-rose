@@ -368,6 +368,12 @@ Shaped :: struct {
 	// (stats.overcharge_lanes): the lanes it fans out beyond its own. Not
 	// passed on to what it spawns.
 	overcharge:    u8,
+	// A projectile's factor on its states' scales (Shot_Scale, and a
+	// wearing shot's shrinking: stats.wear_size), 0 for none.
+	size:          f32,
+	// The damage a wearing shot has left to give (Wears_Down,
+	// stats.wear_pool), 0 for one that does not wear.
+	wear:          f32,
 }
 
 // One pool entity: its components, as G_Entity's fields. A view, passed by

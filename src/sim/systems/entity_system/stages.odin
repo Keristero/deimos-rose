@@ -154,6 +154,9 @@ appearance_stage :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) -> 
 		e.hittable = false
 	}
 	e.scale_target = f32(st.required_scale_percent) / 100
+	if e.size > 0 {
+		e.scale_target *= e.size // Shot_Scale, and a wearing shot's shrinking
+	}
 	e.scale_delta = f32(st.scale_delta_percent) / 100
 	lifecycle.do_scaling(e.obj)
 	lifecycle.calculate_dimensions(s, e.obj)

@@ -79,6 +79,8 @@ STAT_DISPLAY := [sim.Stat]Stat_Display {
 	.Chains                   = {"CHAIN BEAM", .Toggle, nil},
 	.Release_Ramp             = {"RELEASE SPEED-UP", .Per_Shot, nil},
 	.Overcharge_Projectiles   = {"OVERCHARGE SHOTS", .Toggle, nil},
+	.Shot_Scale               = {"SHOT SIZE", .Percent, nil},
+	.Wears_Down               = {"WEARING SHOTS", .Toggle, nil},
 }
 
 // A stat's value for a player holding `levels`, as the reward screen shows

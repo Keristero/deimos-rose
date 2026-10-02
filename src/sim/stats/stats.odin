@@ -540,6 +540,41 @@ shot_damage :: proc "contextless" (s: ^sim.State, e: sim.Entity, base: f32) -> f
 	return scale_f32(base, shaped_stat(s, e, .Projectile_Damage).percent)
 }
 
+// Shot_Scale: a shaped projectile's size, as a factor on its states'
+// scales, and so on what it reaches (1 without it).
+shot_size :: proc "contextless" (s: ^sim.State, e: sim.Entity) -> f32 {
+	return scale_f32(1, shaped_stat(s, e, .Shot_Scale).percent)
+}
+
+// Wears_Down: a shot is not stopped by what it hits. It has WEAR_HITS of
+// its hits' damage to give, more as it is larger, and shrinks as it gives
+// it (collision_system's shot_hit), down to WEAR_MIN_SIZE of its size, so
+// that one nearly spent can still be seen. Provisional: one hit's worth
+// spreads a shot's own damage over its hits (4 made Weapon 3 Charge's
+// level 1 +238% in the DPS report), and 40% was picked by eye.
+WEAR_HITS :: 1
+WEAR_MIN_SIZE :: 0.4
+// Left to give at most this, a wearing shot is spent: what a hit takes
+// from it is a difference of floats, so the last may leave a crumb.
+WEAR_SPENT :: 0.001
+
+// The damage a shot has to give over its hits, or 0 when it does not wear.
+wear_pool :: proc "contextless" (s: ^sim.State, e: sim.Entity) -> f32 {
+	if !shaped_stat(s, e, .Wears_Down).enabled {
+		return 0
+	}
+	return shot_damage(s, e, sim.unit_of(s, e).damage) * WEAR_HITS * shot_size(s, e)
+}
+
+// A wearing shot's size with `left` of its damage still to give.
+wear_size :: proc "contextless" (s: ^sim.State, e: sim.Entity, left: f32) -> f32 {
+	size, full := shot_size(s, e), wear_pool(s, e)
+	if full <= 0 {
+		return size
+	}
+	return size * max(left / full, WEAR_MIN_SIZE)
+}
+
 // Accelerating shots leave at the scaled initial speed and speed up evenly
 // until they are back to their unit's own speed ACCEL_SECONDS later
 // (notes/extra-weapon-passives-and-base-adjustments.md: "only get back to
@@ -558,6 +593,14 @@ shaped_entity_init :: proc(s: ^sim.State, e: sim.Entity, time: i32) {
 		if pct := shaped_stat(s, e, .Projectile_Lifetime).percent; pct != 0 && e.timer > 0 {
 			e.timer = scale_i32(e.timer, pct)
 		}
+		if size := shot_size(s, e); size != 1 {
+			// From its first scale on: a shot that grows as it flies
+			// grows to its state's scale times this (appearance_stage).
+			e.size = size
+			e.scale *= size
+			e.dims_dirty = true
+		}
+		e.wear = wear_pool(s, e)
 		speed := sim.speed_from_vector(e.vel)
 		if e.stationary || speed == 0 {
 			return

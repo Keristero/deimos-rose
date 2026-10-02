@@ -105,9 +105,30 @@ hit_taker :: proc "contextless" (s: ^sim.State, e: sim.Entity, passes: bool, own
 collide_entities :: proc(s: ^sim.State, e, o: sim.Entity, time: i32) {
 	eu, ou := sim.unit_of(s, e), sim.unit_of(s, o)
 	e_passes := sim.prefab_has(s, sim.prefab_of(s, e), Passes_Hits_To_Owner)
-	entity_hit(s, hit_taker(s, e, e_passes, e.owner), stats.shot_damage(s, o, ou.damage), o.owner_player, time)
+	shot_hit(s, o, hit_taker(s, e, e_passes, e.owner), stats.shot_damage(s, o, ou.damage), time)
 	o_passes := sim.prefab_has(s, sim.prefab_of(s, o), Passes_Hits_To_Owner)
-	entity_hit(s, hit_taker(s, o, o_passes, e.owner), stats.shot_damage(s, e, eu.damage), e.owner_player, time)
+	shot_hit(s, e, hit_taker(s, o, o_passes, e.owner), stats.shot_damage(s, e, eu.damage), time)
+}
+
+// `by` hits `target` for `damage`: entity_hit, for the player `by` belongs
+// to. A wearing shot (Wears_Down) takes no hits. It gives no more than it
+// has left, wears down by what the hit dealt, shrinking, and once spent is
+// destroyed, as the hit back would have destroyed it.
+@(private = "file")
+shot_hit :: proc(s: ^sim.State, by, target: sim.Entity, damage: f32, time: i32) {
+	if target.wear > 0 {
+		return
+	}
+	if by.wear <= 0 {
+		entity_hit(s, target, damage, by.owner_player, time)
+		return
+	}
+	by.wear -= entity_hit(s, target, min(damage, by.wear), by.owner_player, time)
+	if by.wear <= stats.WEAR_SPENT {
+		lifecycle.entity_destroy(s, by, target.owner_player, time)
+		return
+	}
+	by.size = stats.wear_size(s, by, by.wear)
 }
 
 // G_Player::Score_Adjust. `flat` bonuses bypass the multiplier and reset the
