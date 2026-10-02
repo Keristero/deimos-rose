@@ -598,3 +598,82 @@ rear_gun_charge_bubbles_wear_down :: proc(t: ^testing.T) {
 		testing.expect(t, last < biggest, "and shrinks as it gives")
 	}
 }
+
+// Weapon 2 Charge: a hit of the Bacta Gun's release leaves a corrosive
+// cloud where it lands, which harms the mine it hit each step for the
+// notes' 2 seconds, without counting as a hit. Without the passive the shot
+// only hits.
+@(test)
+bacta_gun_charge_leaves_clouds :: proc(t: ^testing.T) {
+	arena: vmem.Arena
+	defs, loaded := assets_defs(t, &arena)
+	if !loaded {
+		return
+	}
+	defer vmem.arena_destroy(&arena)
+	bg := weapon_index(t, &defs, passives.WEAPON_BACTA_GUN)
+	if bg < 0 {
+		return
+	}
+	for level in ([]u8{0, 1}) {
+		s := new(sim.State, context.temp_allocator)
+		defer sim.destroy(s)
+		if !play_start(t, s, sim.Session{seed = 1, level_id = defs.levels[0].id, game_type = .Single, mods = session_mods()}, &defs) {
+			return
+		}
+		p := sim.player_at(s, 0)
+		h := p.weapons
+		h.air.weapon = bg
+		p.invulnerable_always, p.invulnerable = true, true
+		passives.levels_of(s, 0)[passives.WEAPON_2_CHARGE] = level
+		mine := support.mine_spawn(t, s, p.loc + {0, -70}, 100)
+		if mine.obj == nil {
+			return
+		}
+		// One level: a release of one shot.
+		h.air_powerup = {state = 3, level = 1, release_time = -100}
+
+		// The mine's shields lost each step, and when it was last hit.
+		hz := stats.step_hz(s)
+		hit_at: i32 = -1
+		taken: [dynamic]f32
+		taken.allocator = context.temp_allocator
+		for _ in 0 ..< 3 * hz {
+			before := mine.shields
+			sim.session_step(s, {})
+			append(&taken, before - mine.shields)
+			if hit_at < 0 && mine.shields < before {
+				hit_at = mine.last_hit
+			}
+		}
+		first := -1
+		for d, i in taken {
+			if d > 0 {
+				first = i
+				break
+			}
+		}
+		if !testing.expect(t, first >= 0, "the shot hits") {
+			continue
+		}
+		testing.expect_value(t, mine.last_hit, hit_at)
+		if level == 0 {
+			testing.expect(t, abs(taken[first] - 0.6) < 0.001, "a bare shot deals its damage")
+			for d in taken[first + 1:] {
+				testing.expect_value(t, d, 0)
+			}
+			continue
+		}
+		// The cloud forms as the shot hits, and harms from that step, for
+		// 2 seconds of steps.
+		life := int(passives.CLOUD_SECONDS * hz)
+		testing.expect(t, abs(taken[first] - (0.6 + passives.CLOUD_DAMAGE)) < 0.001, "the hit and the cloud")
+		for d, i in taken[first + 1:] {
+			want: f32 = i + 1 < life ? passives.CLOUD_DAMAGE : 0
+			if abs(d - want) > 0.0001 {
+				testing.expectf(t, false, "step %d after the hit: took %v, want %v", i + 1, d, want)
+				break
+			}
+		}
+	}
+}

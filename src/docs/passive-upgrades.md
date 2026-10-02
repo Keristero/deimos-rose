@@ -95,7 +95,8 @@ The current set:
 | Weapon 1-4 | the weapon's score-bar symbol (`wesy` 0, 1, 3, 2), with the plus |
 | Weapon 5 | the Chaingun's score-bar symbol (`wesy` 4), with the plus |
 | Weapon 6 | the Discharge Beam's red symbol (`wesd` 0, New Weapons' own plate), with the plus |
-| Weapon 3 Charge | the Rear Gun's symbol, smaller, in Improved Charge's glow, with the plus: a weapon's charge passive |
+| Weapon 2 Charge | the Bacta Gun's symbol, smaller, in Improved Charge's glow, with the plus: a weapon's charge passive |
+| Weapon 3 Charge | the same for the Rear Gun |
 | Weapon 4 Charge | the same for the Photon Beam |
 | Weapon 5 Charge | the same for the Chaingun |
 | Weapon 6 Charge | the same for the Discharge Beam |
@@ -324,6 +325,14 @@ and 2 are `plbo`'s, the Plasma Bomb, the only ground weapon.
   asks. They used to climb to 150%, which made level 3 strong in the wave.
 - **Weapon 2** (Bacta Gun). `projectile_lifetime` scales the shot's timer,
   and so its range.
+- **Weapon 2 Charge** (Bacta Gun), a charge passive from
+  [notes/extra-weapons-and-passives-3.md](../../notes/extra-weapons-and-passives-3.md):
+  the release's hits leave corrosive clouds (see The rules as
+  implemented), for the notes' "2 seconds base". "Small amounts of
+  damage" is `CLOUD_DAMAGE`, 0.3 shields a second, half a release shot's
+  hit. The notes set nothing for the levels: they make the clouds linger
+  longer (`Cloud_Lifetime`) and the charge faster (`Charge_Rate`).
+  `MENU=bacta_gun_charge` shows a release at level 3.
 - **Weapon 3** (Rear Gun)
   - Side fire makes each forward-facing set fire to the side it is on as
     well. A centre lane fires both ways. It fires on the first volley of
@@ -417,6 +426,7 @@ the Ion Cannon's 4 steps take 20% to lose one.
 | Weapon 4 (Photon Beam) | firing delay -20% | firing delay -40% | firing delay -10%, +1 volley | +18.7 / +32.9 / +45.2% |
 | Weapon 5 (Chaingun) | firing delay -13%, spread +25% | firing delay -20%, spread +50% | firing delay -33%, spread +100% | +11.9 / +23.8 / +49.2% |
 | Weapon 6 (Discharge Beam) | damage +15%, width +10% | damage +30%, width +20% | damage +60%, width +30% | +10.7 / +21.4 / +42.9% |
+| Weapon 2 Charge (Bacta Gun's charge) | corrosive clouds | cloud time +50%, charge rate +20% | cloud time +100%, charge rate +50% | +19.2 / +32.6 / +50.0% |
 | Weapon 3 Charge (Rear Gun's charge) | wearing shots, size +10%, life +20% | size +25%, life +40% | size +45%, life +60% | +15.9 / +30.1 / +50.3% |
 | Weapon 4 Charge (Photon Beam's charge) | overcharge shots, max charge +25%, charge rate +20% | max charge +40%, charge rate +40% | max charge +50%, charge rate +80% | +15.8 / +32.8 / +47.7% |
 | Weapon 5 Charge (Chaingun's charge) | release ramp +20% a volley, max charge +10% | max charge +20%, charge rate +20% | max charge +40%, charge rate +60% | +12.4 / +25.6 / +46.8% |
@@ -455,6 +465,13 @@ Levels carry what they do not change (the design's `x`).
   kills what it hits and the next column is 40 px away, out of reach of
   any width, so only the single and cluster targets gain: the Gain is
   0.71 times the damage's percentage. The widths are the design's.
+- **Weapon 2 Charge** is measured in the Charge-shots set. The clouds
+  alone gain +19.2%: +7.9% on a lone target or a cluster, and +66.9% on
+  the wave, which flies through the clouds the release leaves ahead of
+  it. Behind stays at nothing, as the release fires ahead. Doubling the
+  clouds' time adds under 2 points, a target being dead or past a cloud
+  before it would go, so the charge rate carries levels 2 and 3. In play
+  a longer cloud holds more ground.
 - **Weapon 3 Charge** is measured in the Charge-shots set. The wear
   alone gains +8.6%: a bubble no longer bursts on a target it cannot
   hurt yet (inside its hit delay), nor spends its whole hit on one
@@ -546,6 +563,10 @@ Each of these is marked in the code, with what would settle it:
     hit, a run for each jump, until a target stands or its damage is
     spent, while the pulses still pierce straight (skipped without
     `src/assets`);
+  - Weapon 2 Charge's release hit leaving a cloud that harms the mine
+    it hit by `CLOUD_DAMAGE` each step for 2 seconds, from the hit's own
+    step, without its last hit changing, where a bare shot only hits
+    (skipped without `src/assets`);
   - Weapon 3 Charge's bubble 45% larger at level 3, giving a tough
     mine its 0.8 and then the 0.36 it has left, shrinking, and gone,
     where a bare bubble hits once and bursts (skipped without
@@ -567,7 +588,9 @@ Each of these is marked in the code, with what would settle it:
     the same option;
   - `MENU=level_select_easy`;
   - `MENU=rear_gun_charge`, a Rear Gun release at Weapon 3 Charge's
-    level 3, its bubbles flying out larger.
+    level 3, its bubbles flying out larger;
+  - `MENU=bacta_gun_charge`, a Bacta Gun release at Weapon 2 Charge's
+    level 3, a corrosive cloud lingering where it hit.
 
 ## Open
 

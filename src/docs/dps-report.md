@@ -217,6 +217,9 @@ as below (2026-10-02):
 
 | Passive | Weapon | Change | DPS added | Gain |
 |---|---|---|---|---|
+| Weapon 2 Charge 1 | Bacta Gun | +7.9% / +7.9% / 0 / +66.9% | +0.41 | +19.2% |
+| Weapon 2 Charge 2 | Bacta Gun | +19.6% / +19.5% / 0 / +87.7% | +0.69 | +32.6% |
+| Weapon 2 Charge 3 | Bacta Gun | +36.8% / +36.7% / 0 / +105.7% | +1.06 | +50.0% |
 | Weapon 3 Charge 1 | Rear Gun | +16.3% / +24.7% / 0 / +7.8% | +0.37 | +15.9% |
 | Weapon 3 Charge 2 | Rear Gun | +29.8% / +41.6% / 0 / +20.4% | +0.70 | +30.1% |
 | Weapon 3 Charge 3 | Rear Gun | +47.7% / +64.2% / 0 / +40.5% | +1.18 | +50.3% |

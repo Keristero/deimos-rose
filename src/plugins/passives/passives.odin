@@ -96,6 +96,7 @@ Own :: enum u8 {
 	// that the ids before them stay as they were.
 	Weapon_4_Charge,
 	Weapon_3_Charge,
+	Weapon_2_Charge,
 }
 
 // A passive, by its id: this plugin's own first (Own), then other plugins'.
@@ -113,6 +114,7 @@ WEAPON_4 :: Passive(Own.Weapon_4)
 GROUND_VARIANT_2 :: Passive(Own.Ground_Variant_2)
 WEAPON_4_CHARGE :: Passive(Own.Weapon_4_Charge)
 WEAPON_3_CHARGE :: Passive(Own.Weapon_3_Charge)
+WEAPON_2_CHARGE :: Passive(Own.Weapon_2_Charge)
 
 MAX_PASSIVES :: 32
 
@@ -298,6 +300,25 @@ OWN := [Own]Passive_Def {
 			{.Wears_Down, .Enables, {1, X, X}},
 			{.Shot_Scale, .Increase, {10, 25, 45}},
 			{.Projectile_Lifetime, .Increase, {20, 40, 60}},
+		},
+	},
+	.Weapon_2_Charge = {
+		name   = "weapon_2_charge",
+		label  = "BACTA GUN CHARGE",
+		levels = 3,
+		weapon = WEAPON_BACTA_GUN,
+		charge = true,
+		mods = {
+			// The release's hits leave corrosive clouds (Hit_Cloud, the
+			// notes' 2 seconds base), which gain 19% in the Charge-shots
+			// set: 8% on a lone target and most on a wave, which moves
+			// through them. The longer life gains under 2% more there, a
+			// target being dead or past a cloud before it would go; in play
+			// it holds ground longer. A faster charge carries the levels:
+			// 33% and 50%.
+			{.Hit_Cloud, .Enables, {1, X, X}},
+			{.Cloud_Lifetime, .Increase, {X, 50, 100}},
+			{.Charge_Rate, .Increase, {X, 20, 50}},
 		},
 	},
 }
