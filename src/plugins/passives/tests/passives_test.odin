@@ -118,7 +118,7 @@ passives_count_in_their_own_scope :: proc(t: ^testing.T) {
 }
 
 // Against the shipped weapons (src/assets): the lanes the weapon passives
-// add, and the backwards plasma bomb. Skipped without the assets tree.
+// add, and the plasma bomb's charge turned round. Skipped without the assets tree.
 @(test)
 weapon_passives_shape_the_real_weapons :: proc(t: ^testing.T) {
 	arena: vmem.Arena
@@ -151,7 +151,7 @@ weapon_passives_shape_the_real_weapons :: proc(t: ^testing.T) {
 	if ion < 0 {
 		return
 	}
-	nb := stats.weapon_spawns(s, ion, 0, false, before[:])
+	nb := stats.weapon_spawns(s, ion, 0, before[:])
 	// With no passive held, the spawn list is the weapon's own, as it was.
 	wd := &defs.weapons[ion]
 	k := 0
@@ -165,38 +165,38 @@ weapon_passives_shape_the_real_weapons :: proc(t: ^testing.T) {
 	}
 	testing.expect_value(t, nb, k)
 	passives.levels_of(s, p.number)^[passives.WEAPON_1] = 1
-	n := stats.weapon_spawns(s, ion, 0, false, out[:])
+	n := stats.weapon_spawns(s, ion, 0, out[:])
 	testing.expect_value(t, projectiles(s, out[:n]), projectiles(s, before[:nb]) + 1)
 	passives.levels_of(s, p.number)^[passives.WEAPON_1] = 2 // x at level 2: still the one extra
-	n = stats.weapon_spawns(s, ion, 0, false, out[:])
+	n = stats.weapon_spawns(s, ion, 0, out[:])
 	testing.expect_value(t, projectiles(s, out[:n]), projectiles(s, before[:nb]) + 1)
 	passives.levels_of(s, p.number)^[passives.WEAPON_1] = 3 // two, not three: only the level held counts
-	n = stats.weapon_spawns(s, ion, 0, false, out[:])
+	n = stats.weapon_spawns(s, ion, 0, out[:])
 	testing.expect_value(t, projectiles(s, out[:n]), projectiles(s, before[:nb]) + 2)
 
 	// The Bacta Gun's passive leaves the Ion Cannon alone.
 	passives.levels_of(s, p.number)^ = {passives.WEAPON_2 = 3}
-	n = stats.weapon_spawns(s, ion, 0, false, out[:])
+	n = stats.weapon_spawns(s, ion, 0, out[:])
 	testing.expect_value(t, n, nb)
 
-	// The plasma bomb, backwards: every spawn mirrored behind the ship.
+	// The plasma bomb's charge passive leaves its burst alone. Its charge's
+	// volley turns with the crosshair: behind the ship, every spawn is
+	// turned round it.
 	bomb := weapon_index(t, &defs, passives.WEAPON_PLASMA_BOMB)
 	if bomb < 0 {
 		return
 	}
-	passives.levels_of(s, p.number)^ = {passives.GROUND_VARIANT_1 = 1}
-	fwd := stats.weapon_spawns(s, bomb, 0, false, before[:])
-	back := stats.weapon_spawns(s, bomb, 0, true, out[:])
-	testing.expect_value(t, back, fwd)
+	own := stats.weapon_spawns(s, bomb, 0, before[:])
+	passives.levels_of(s, p.number)^ = {passives.GROUND_VARIANT_1 = 3}
+	testing.expect_value(t, stats.weapon_spawns(s, bomb, 0, out[:]), own)
+	back := stats.weapon_spawns(s, bomb, 0, out[:], charge = true, turn = 180)
+	testing.expect_value(t, back, own)
 	for i in 0 ..< back {
+		testing.expect_value(t, out[i].x, -before[i].x)
 		testing.expect_value(t, out[i].y, -before[i].y)
 		testing.expect(t, out[i].set_heading)
-		testing.expect_value(t, out[i].angle, (540 - before[i].angle) % 360)
+		testing.expect_value(t, out[i].angle, (before[i].angle + 180) % 360)
 	}
-	// Level 3 drops one more bomb.
-	passives.levels_of(s, p.number)^ = {passives.GROUND_VARIANT_1 = 3}
-	n = stats.weapon_spawns(s, bomb, 0, true, out[:])
-	testing.expect_value(t, projectiles(s, out[:n]), projectiles(s, before[:fwd]) + 1)
 
 	// Every weapon passive is offered only where its weapon flies.
 	testing.expect(t, passives.passive_available(s, passives.WEAPON_1, 1))
@@ -213,6 +213,113 @@ weapon_passives_shape_the_real_weapons :: proc(t: ^testing.T) {
 			testing.expectf(t, !passives.passive_available(s, passives.Passive(i), i32(len(defs.levels))), "%s offered without its plugin", def.name)
 		}
 	}
+}
+
+// The two ground charges are alternatives: taking one gives up the other,
+// which starts again from level 1 if taken back. Other passives stand
+// alone.
+@(test)
+the_ground_charges_replace_each_other :: proc(t: ^testing.T) {
+	lv: passives.Passive_Levels
+	passives.passive_take(&lv, passives.GROUND_VARIANT_1)
+	passives.passive_take(&lv, passives.GROUND_VARIANT_1)
+	testing.expect_value(t, lv[passives.GROUND_VARIANT_1], 2)
+	_, held := passives.passive_replaces(&lv, passives.GROUND_VARIANT_1)
+	testing.expect(t, !held, "a passive held replaces nothing")
+	gone, ok := passives.passive_replaces(&lv, passives.GROUND_VARIANT_2)
+	testing.expect(t, ok && gone == passives.GROUND_VARIANT_1, "the orbiting bomb replaces the reverse one")
+	passives.passive_take(&lv, passives.GROUND_VARIANT_2)
+	testing.expect_value(t, lv[passives.GROUND_VARIANT_1], 0)
+	testing.expect_value(t, lv[passives.GROUND_VARIANT_2], 1)
+	passives.passive_take(&lv, passives.WEAPON_1)
+	_, ok = passives.passive_replaces(&lv, passives.IMPROVED_CHARGE)
+	testing.expect(t, !ok)
+	testing.expect_value(t, lv[passives.GROUND_VARIANT_2], 1)
+	testing.expect_value(t, lv[passives.WEAPON_1], 1)
+}
+
+// Ground Variant 1 against the shipped Plasma Bomb. A press still drops
+// the burst. Held on, the charge begins, and its crosshair swings round
+// behind the ship as it gets ready; let go, one charged bomb drops there,
+// as heavy as the passive makes the charge's, and the crosshair comes back
+// ahead. Let go before it is ready, the charge is lost. Skipped without
+// the extracted data.
+@(test)
+the_reverse_plasma_bomb_charges_behind_the_ship :: proc(t: ^testing.T) {
+	arena: vmem.Arena
+	defs, loaded := assets_defs(t, &arena)
+	if !loaded {
+		return
+	}
+	defer vmem.arena_destroy(&arena)
+	bomb := weapon_index(t, &defs, passives.WEAPON_PLASMA_BOMB)
+	if bomb < 0 {
+		return
+	}
+	s := new(sim.State, context.temp_allocator)
+	defer sim.destroy(s)
+	if !play_start(t, s, sim.Session{seed = 1, level_id = defs.levels[0].id, game_type = .Single, mods = session_mods()}, &defs) {
+		return
+	}
+	p := sim.player_at(s, 0)
+	p.invulnerable_always, p.invulnerable = true, true
+	h := p.weapons
+	h.ground.weapon = bomb
+	passives.levels_of(s, 0)[passives.GROUND_VARIANT_1] = 1
+
+	// The charge's bombs: player 0's projectiles tagged with its scope.
+	charged :: proc(s: ^sim.State) -> (n: int, e: sim.Entity) {
+		walk := sim.walk_entities(s)
+		for c in sim.walk_next(&walk) {
+			if !c.deleted && c.shaped_charge && c.shaped_depth == 0 && s.defs.units[c.unit].player_projectile && c.owner_player == 0 {
+				n += 1
+				e = c
+			}
+		}
+		return
+	}
+	held := sim.Frame_Input{0 = {.Fire_Ground}}
+	ready := stats.ground_charge_ready(s)
+
+	// Let go too soon: no bomb.
+	for _ in 0 ..< stats.GROUND_CHARGE_HOLD + 2 {
+		sim.session_step(s, held)
+	}
+	testing.expect(t, h.ground_charged > 0, "held, the charge begins")
+	sim.session_step(s, {})
+	testing.expect_value(t, h.ground_charged, i32(0))
+	n, _ := charged(s)
+	testing.expect_value(t, n, 0)
+	for _ in 0 ..< 30 {
+		sim.session_step(s, {})
+	}
+
+	for _ in 0 ..< stats.GROUND_CHARGE_HOLD {
+		sim.session_step(s, held)
+	}
+	testing.expect_value(t, h.ground_charged, i32(1))
+	testing.expect_value(t, h.ground_aim, i32(0))
+	for _ in 0 ..< ready {
+		sim.session_step(s, held)
+	}
+	testing.expect_value(t, h.ground_aim, i32(180))
+	testing.expect(t, h.crosshair.loc.y > p.loc.y, "ready, the crosshair is behind the ship")
+	sim.session_step(s, held)
+	testing.expect_value(t, h.ground_aim, i32(180)) // and held there
+
+	sim.session_step(s, {})
+	testing.expect_value(t, h.ground_charged, i32(0))
+	testing.expect_value(t, h.ground_aim, i32(0))
+	n2, e := charged(s)
+	if !testing.expect_value(t, n2, 1) {
+		return
+	}
+	testing.expect_value(t, e.heading, i32(180))
+	base := s.defs.units[e.unit].damage
+	testing.expect_value(t, stats.shot_damage(s, e, base), stats.scale_f32(base, stats.charge_stat(s, 0, bomb, .Projectile_Damage).percent))
+	testing.expect(t, stats.shot_damage(s, e, base) > base, "the charge's bomb is the heavier")
+	sim.session_step(s, {})
+	testing.expect(t, h.crosshair.loc.y < p.loc.y, "let go, the crosshair is back ahead")
 }
 
 // Every passive has an icon recipe (tools/icons/passives.json), and the icon

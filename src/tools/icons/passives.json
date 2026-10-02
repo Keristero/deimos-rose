@@ -32,5 +32,11 @@
   {"sprite": "edut", "frame": 1, "fit": 11, "x": 26, "y": 26}]},
  {"name": "weapon_6", "layers": [
   {"sprite": "wesd", "frame": 0, "fit": 26, "x": 15, "y": 15},
-  {"sprite": "edut", "frame": 1, "fit": 11, "x": 26, "y": 26}]}
+  {"sprite": "edut", "frame": 1, "fit": 11, "x": 26, "y": 26}]},
+ {"name": "ground_variant_2", "layers": [
+  {"sprite": "pbta", "frame": 1, "fit": 10, "x": 16, "y": 5, "alpha": 0.4},
+  {"sprite": "pbta", "frame": 1, "fit": 10, "x": 27, "y": 16, "alpha": 0.6},
+  {"sprite": "pbta", "frame": 1, "fit": 10, "x": 5,  "y": 16, "alpha": 0.6},
+  {"sprite": "pbta", "frame": 1, "fit": 12, "x": 16, "y": 27},
+  {"sprite": "pl1b", "frame": 0, "fit": 16, "x": 16, "y": 15}]}
 ]}

@@ -142,7 +142,7 @@ weapons_appear :: proc(s: ^sim.State, h: sim.Weapons, level_start: bool) {
 	h.ground_held = 0
 	h.air_idle, h.volleys_left, h.volley_pace, h.ground_pace = 0, 0, 0, 0
 	h.air_windup = 0
-	h.ground_charging, h.ground_aim = false, 0
+	h.ground_charged, h.ground_aim = 0, 0
 	if w, ok := level_start_weapon(s, sim.WEP_GROUND); ok && level_start {
 		h.queued_ground = w
 	}
@@ -184,7 +184,7 @@ change_weapon :: proc(s: ^sim.State, h: sim.Weapons, type: sim.Res_ID, weapon: i
 	case sim.WEP_GROUND:
 		if h.ground.weapon == weapon {
 			h.queued_ground = sim.NO_WEAPON
-		} else if h.ground_powerup.state == 0 && !h.ground_charging {
+		} else if h.ground_powerup.state == 0 && h.ground_charged == 0 {
 			h.ground.weapon = weapon
 			h.ground.count, h.ground.pending = 0, 0
 			h.ground.flag_a, h.ground.flag_b = false, true
@@ -251,7 +251,7 @@ weapons_process :: proc(
 	// clear an air overload.
 	gw := sim.weapon_def(s, h.ground.weapon)
 	ground_powered := gw.powerup_ground_activation_spawn != sim.NONE || gw.powerup_ground_release_spawn != sim.NONE
-	if !ground_powered && (h.ground_charging || stats.ground_charges(s, h)) {
+	if !ground_powered && (h.ground_charged != 0 || stats.ground_charges(s, h)) {
 		ground_charge_process(s, h, at, ground)
 	}
 	if !ground && (h.ground_powerup.state == 1 || h.ground_powerup.state == 2) {
@@ -392,19 +392,24 @@ check_spawning_ground :: proc "contextless" (s: ^sim.State, h: sim.Weapons, time
 
 // Priv_Spawn_Ground: each spawn record of the ground weapon, its speed scaled
 // by the crosshair's distance, then the crosshair's activation spawn. A
-// passive may add lanes, or turn the weapon behind the ship (weapon_spawns).
-spawn_ground :: proc(s: ^sim.State, h: sim.Weapons, at: sim.Vec) {
+// passive may add lanes (weapon_spawns). With `charge` it is the ground
+// weapon's charge (ground_charge_process) letting go, whose crosshair may
+// have turned about the ship: the spawns turn with it, and the distance is
+// the crosshair's along that way.
+spawn_ground :: proc(s: ^sim.State, h: sim.Weapons, at: sim.Vec, charge := false) {
 	wd := sim.weapon_def(s, h.ground.weapon)
-	backwards := stats.ground_fires_backwards(s, h)
+	turn := h.ground_aim
 	spawns: [stats.MAX_LANES + stats.MAX_EXTRA_SPAWNS]stats.Weapon_Spawn
-	for sp in spawns[:stats.weapon_spawns(s, h.ground.weapon, h.player, backwards, spawns[:])] {
+	for sp in spawns[:stats.weapon_spawns(s, h.ground.weapon, h.player, spawns[:], charge, turn)] {
 		req := sim.spawn_request(sp.unit)
 		req.owner_player = h.player
 		req.loc = {f32(sp.x) + at.x, f32(sp.y) + at.y}
 		req.explicit_heading = sp.set_heading
 		req.heading = sp.angle
-		stats.shape_spawn(s, &req, h.player, h.ground.weapon)
-		reach := max(sim.trunc_i32(backwards ? h.crosshair.loc.y - h.loc.y : h.loc.y - h.crosshair.loc.y), 0)
+		stats.shape_spawn(s, &req, h.player, h.ground.weapon, charge)
+		// Ahead, as the original has it, h.loc.y - h.crosshair.loc.y.
+		d := h.crosshair.loc - h.loc
+		reach := max(sim.trunc_i32(d.x * sim.m_sin(turn) - d.y * sim.m_cos(turn)), 0)
 		req.speed_scale = f32(reach) / f32(abs(wd.crosshair_y_offset))
 		lifecycle.eg_request_spawn(s, req)
 	}
@@ -414,60 +419,31 @@ spawn_ground :: proc(s: ^sim.State, h: sim.Weapons, at: sim.Vec) {
 }
 
 // The ground weapon's charge (stats.ground_charges): held long enough it
-// begins, the crosshair turns about the ship while it lasts, and letting
-// go drops the bomb (spawn_ground_charge) and brings the crosshair back
-// ahead. Lost with the stat, the charge ends without a bomb.
+// begins, and the crosshair turns about the ship while it lasts. Letting
+// go once it is ready (stats.ground_charge_ready) drops one more volley of
+// bombs, the charge's (spawn_ground); sooner, or with the stat lost, it
+// ends with none. Either way the crosshair comes back ahead.
 ground_charge_process :: proc(s: ^sim.State, h: sim.Weapons, at: sim.Vec, ground: bool) {
-	if !h.ground_charging {
-		h.ground_charging = ground && stats.GROUND_CHARGE_HOLD <= h.ground_held
+	if h.ground_charged == 0 {
+		h.ground_charged = ground && stats.GROUND_CHARGE_HOLD <= h.ground_held ? 1 : 0
 		return
 	}
 	if !stats.ground_charges(s, h) {
-		h.ground_charging, h.ground_aim = false, 0
+		h.ground_charged, h.ground_aim = 0, 0
 		return
 	}
 	if ground {
+		h.ground_charged += 1
 		h.ground_aim = stats.ground_aim_next(s, h)
 		return
 	}
-	spawn_ground_charge(s, h, at)
-	h.ground_charging, h.ground_aim = false, 0
+	if h.ground_charged > stats.ground_charge_ready(s) {
+		spawn_ground(s, h, at, charge = true)
+	}
+	h.ground_charged, h.ground_aim = 0, 0
 	if h.queued_ground != sim.NO_WEAPON {
 		change_weapon(s, h, sim.WEP_GROUND, h.queued_ground)
 		h.queued_ground = sim.NO_WEAPON
-	}
-}
-
-// A charged bomb: the ground weapon's spawns with their first projectile
-// alone, turned with the crosshair and sped to reach it as spawn_ground's
-// are, tagged as the charge's. Then the crosshair's activation spawn.
-spawn_ground_charge :: proc(s: ^sim.State, h: sim.Weapons, at: sim.Vec) {
-	wd := sim.weapon_def(s, h.ground.weapon)
-	turn := h.ground_aim
-	d := h.crosshair.loc - h.loc
-	reach := sim.m_sqrt(sim.trunc_i32(d.x * d.x + d.y * d.y))
-	bomb := false
-	for &sp in wd.spawns {
-		if sp.unit == sim.NONE {
-			continue
-		}
-		if stats.unit_is_projectile(s, sp.unit) {
-			if bomb {
-				continue
-			}
-			bomb = true
-		}
-		req := sim.spawn_request(sp.unit)
-		req.owner_player = h.player
-		req.loc = at + stats.turn_offset({f32(sp.x_loc), f32(sp.y_loc)}, turn)
-		req.explicit_heading = sp.set_heading || turn != 0
-		req.heading = stats.wrap_angle(sp.angle + turn)
-		stats.shape_spawn(s, &req, h.player, h.ground.weapon, charge = true)
-		req.speed_scale = reach / f32(abs(wd.crosshair_y_offset))
-		lifecycle.eg_request_spawn(s, req)
-	}
-	if wd.crosshair_spawn_on_activation != sim.NONE {
-		lifecycle.spawn_at(s, wd.crosshair_spawn_on_activation, h.crosshair.loc, h.player)
 	}
 }
 
@@ -478,7 +454,7 @@ spawn_air :: proc(s: ^sim.State, h: sim.Weapons, at: sim.Vec) {
 		return
 	}
 	spawns: [stats.MAX_LANES + stats.MAX_EXTRA_SPAWNS]stats.Weapon_Spawn
-	for sp in spawns[:stats.weapon_spawns(s, h.air.weapon, h.player, false, spawns[:])] {
+	for sp in spawns[:stats.weapon_spawns(s, h.air.weapon, h.player, spawns[:])] {
 		req := sim.spawn_request(sp.unit)
 		req.owner_player = h.player
 		req.loc = {f32(sp.x) + at.x, f32(sp.y) + at.y}

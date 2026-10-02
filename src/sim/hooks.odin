@@ -192,7 +192,6 @@ Stat :: enum u8 {
 	Shield_Regenerates,       // shields refill on their own
 	Recharge_Delay,           // seconds without damage before they start to
 	Shield_Regen_Rate,        // percentage points per second they refill by
-	Fires_Backwards,          // the ground weapon drops behind the ship, at half the reach
 	Volley_Delay,             // the gap between the volleys of one shot
 	Extra_Projectiles,        // more lanes in each volley, continuing the spread
 	Extra_Volley,             // more volleys per shot

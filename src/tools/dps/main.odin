@@ -64,8 +64,8 @@ STEP_HZ :: 30
 
 // Where the targets stand. Air targets are this far straight ahead of (or
 // behind) the ship. Ground targets are as far from it as the crosshair,
-// where the bombs land: ahead, or behind -- where Ground Variant 1 turns the
-// bombs to.
+// where the bombs land: ahead, or behind -- where a ground charge's
+// crosshair turns to (Ground Variant 1 and 2).
 // Provisional: picked to be well inside every air weapon's reach (the Bacta
 // Gun's is the shortest, 240 px).
 AIR_RANGE :: 120
@@ -137,7 +137,7 @@ MODE_NAMES := [Mode]string {
 Policy_Kind :: enum u8 {
 	Tap,    // press for one step every `period` steps
 	Hold,   // hold fire throughout (under Auto Charge this autofires)
-	Charge, // charge to the full power level, release, repeat
+	Charge, // charge to the full power level, release, repeat; on the ground, aimed at the target
 }
 
 Policy :: struct {
@@ -506,6 +506,9 @@ weapon_policies :: proc(w: Weapon_Case, c: Config, out: ^[dynamic]Policy) {
 		append(out, Policy{.Tap, i32(p)})
 	}
 	if w.ground {
+		if c.has && passive_charges_ground(c.passive) {
+			append(out, Policy{.Charge, 0})
+		}
 		return
 	}
 	auto_charge := c.has && c.passive == passives.AUTO_CHARGE
@@ -547,14 +550,29 @@ dps_worker :: proc(data: rawptr) {
 	}
 }
 
+// Whether a passive gives the ground weapon a charge.
+passive_charges_ground :: proc(p: passives.Passive) -> bool {
+	for mod in passives.passive_def(p).mods {
+		if mod.stat == .Ground_Charge {
+			return true
+		}
+	}
+	return false
+}
+
 // The fire button for this step under the policy, from the state before it.
-policy_fire :: proc(s: ^sim.State, h: ^sim.Weapon_Handler, pol: Policy, k: int) -> bool {
+// A ground charge is held until it is ready and its crosshair points at the
+// targets, `aim` degrees about the ship, and let go for a step.
+policy_fire :: proc(s: ^sim.State, h: ^sim.Weapon_Handler, pol: Policy, k: int, ground: bool, aim: i32) -> bool {
 	switch pol.kind {
 	case .Tap:
 		return k % int(pol.period) == 0
 	case .Hold:
 		return true
 	case .Charge:
+		if ground {
+			return h.ground_charged <= stats.ground_charge_ready(s) || h.ground_aim != aim
+		}
 		pu := &h.air_powerup
 		full := pu.state == 1 && pu.percent >= 100 || pu.state == 2
 		if stats.air_auto_charge(s, h) {
@@ -601,14 +619,14 @@ dps_run :: proc(d: ^sim.Defs, w: Weapon_Case, sc: Scenario, levels: passives.Pas
 	}
 
 	centre := p.loc + (sc == .Behind ? sim.Vec{0, AIR_RANGE} : sim.Vec{0, -AIR_RANGE})
+	aim := sc == .Behind ? i32(180) : 0
 	if w.ground {
 		// Under the crosshair, where the bombs land: ahead where it stands,
-		// behind where it stands once a passive turns the bombs round. The
-		// crosshair in use must be where ground_aim says, or the targets
-		// would stand where nothing lands.
+		// behind where a charge turns it to. The crosshair must stand where
+		// ground_aim says, or the targets would stand where nothing lands.
 		fwd, back := ground_aim(s, p)
 		centre = sc == .Behind ? back : fwd
-		if at := stats.ground_fires_backwards(s, h) ? back : fwd; at != h.crosshair.loc {
+		if fwd != h.crosshair.loc {
 			return
 		}
 	}
@@ -639,7 +657,7 @@ dps_run :: proc(d: ^sim.Defs, w: Weapon_Case, sc: Scenario, levels: passives.Pas
 	button: sim.Button = w.ground ? .Fire_Ground : .Fire_Air
 	for k in 0 ..< steps {
 		b: sim.Buttons
-		if policy_fire(s, h, pol, k) {
+		if policy_fire(s, h, pol, k, w.ground, aim) {
 			b += {button}
 		}
 		sim.session_step(s, {b, {}})
@@ -695,15 +713,16 @@ dps_run :: proc(d: ^sim.Defs, w: Weapon_Case, sc: Scenario, levels: passives.Pas
 	return
 }
 
-// Where the ground crosshair stands, ahead and turned round, at the ship's
-// current reach: the sums in player_system's crosshair update. Turned round
-// it is half the reach behind the ship, kept on screen at the bottom.
+// Where the ground crosshair stands, ahead and turned round behind the ship,
+// at the ship's current reach: the sums in player_system's crosshair
+// update, each kept on screen.
 ground_aim :: proc(s: ^sim.State, p: sim.Player) -> (fwd, back: sim.Vec) {
 	gw := &s.defs.weapons[p.weapons.ground.weapon]
 	half := f32(lifecycle.halve(p.weapons.crosshair.dims.y))
-	x := f32(gw.crosshair_x_offset) + p.loc.x
-	fwd = {x, max(f32(p.crosshair_reach + gw.crosshair_y_offset) + p.loc.y, half)}
-	back = {x, min(p.loc.y - f32(p.crosshair_reach + gw.crosshair_y_offset) / 2, f32(sim.view_height(s.defs)) - half)}
+	x := f32(gw.crosshair_x_offset)
+	fwd = {x + p.loc.x, max(f32(p.crosshair_reach + gw.crosshair_y_offset) + p.loc.y, half)}
+	back = stats.crosshair_turned(p.loc, x, -f32(p.crosshair_reach + gw.crosshair_y_offset), 180)
+	back.y = clamp(back.y, half, f32(sim.view_height(s.defs)) - half)
 	return
 }
 
@@ -734,8 +753,10 @@ dps_best :: proc(sh: ^Shared, alloc := context.allocator) -> Table {
 	secs := f64(sh.steps) / STEP_HZ
 	for j, i in sh.jobs {
 		o := sh.outcomes[i]
+		// The ground weapon's charge is part of its primary fire: the bare
+		// weapon has none to measure against.
 		mode := Mode.Primary
-		if j.policy.kind == .Charge {
+		if j.policy.kind == .Charge && !sh.weapons[j.weapon].ground {
 			mode = .Charge
 		} else if o.charged {
 			continue

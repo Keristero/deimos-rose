@@ -3,7 +3,6 @@ package tests
 import "core:testing"
 import vmem "core:mem/virtual"
 
-import "dr:plugins/passives"
 import "dr:sim"
 import "dr:sim/lifecycle"
 import "dr:sim/systems/collision_system"
@@ -583,55 +582,4 @@ a_scaled_ship_holds_its_fire :: proc(t: ^testing.T) {
 	p.scale = 1
 	player_system.fire_stage(s, p, &ps)
 	testing.expect(t, sim.single(s, sim.Pool).next_entity > next, "at full size it fires")
-}
-
-// With Fires_Backwards (the plasma bomb's passive), the crosshair drops
-// behind the ship at half the reach, kept on screen at the bottom, and is
-// pushed out by holding Up against the top of the screen, not Down against
-// the bottom.
-@(test)
-a_backwards_crosshair_sits_behind_the_ship :: proc(t: ^testing.T) {
-	f: Hit_Fixture
-	defer vmem.arena_destroy(&f.arena)
-	if !hit_fixture(t, &f, session_mods(true, false)) {
-		return
-	}
-	context.allocator = vmem.arena_allocator(&f.arena)
-	s := f.s
-	p := sim.player_at(s, 0)
-	bomb := i32(-1)
-	for &w, i in f.defs.weapons {
-		if w.id == passives.WEAPON_PLASMA_BOMB {
-			bomb = i32(i)
-		}
-	}
-	if !testing.expect(t, bomb >= 0, "no Plasma Bomb in the data") {
-		return
-	}
-	p.weapons.ground.weapon = bomb
-	p.weapons.crosshair_shown = true
-	passives.levels_of(s, p.number)^[passives.GROUND_VARIANT_1] = 1
-	h := f32(sim.view_height(s.defs))
-	half := f32(lifecycle.halve(p.weapons.crosshair.dims.y))
-	c := p.weapons.crosshair
-	now := hit_now(s)
-
-	// At the bottom, pushing Down does not pull it out; it would be off
-	// the bottom of the screen, so it is held on it.
-	p.loc.y, p.vel, p.crosshair_reach = h, {}, 0
-	p.inputs = {.Down}
-	player_system.player_move(s, p, now)
-	testing.expect_value(t, p.crosshair_reach, i32(0))
-	testing.expect_value(t, c.loc.y, h - half)
-	testing.expect(t, c.loc.y > p.loc.y, "behind the ship")
-
-	// At the top, pushing Up pulls it out, behind the ship.
-	p.loc.y, p.vel = 0, {}
-	p.inputs = {.Up}
-	player_system.player_move(s, p, now)
-	reach := p.crosshair_reach
-	testing.expect_value(t, reach, sim.trunc_i32(s.defs.perm_floats[0xb9]))
-	yoff := f32(sim.weapon_def(s, bomb).crosshair_y_offset)
-	testing.expect_value(t, c.loc.y, p.loc.y - (f32(reach) + yoff) / 2)
-	testing.expect(t, c.loc.y > p.loc.y, "behind the ship")
 }

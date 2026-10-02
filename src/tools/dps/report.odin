@@ -11,13 +11,11 @@ package dps
 //
 // Gains are ranked in DPS rather than percent: a weapon that cannot reach a
 // target behind has nothing to take a percentage of, and a passive that
-// turns it round is worth the most there.
+// aims it round is worth the most there.
 
 import "core:fmt"
 import "core:slice"
 import "core:strings"
-
-import "dr:plugins/passives"
 
 // A change this small is the same run give or take rounding: no effect.
 // A 0.01-point hit over 60 s is 0.0002 DPS.
@@ -51,40 +49,27 @@ mean_dps :: proc(t: Table, w: int, m: Mode, c: int) -> (d: f64) {
 	return d / len(Scenario)
 }
 
-// A passive level's gain as a percentage of the weapon's DPS: the mean over
-// the scenarios the bare weapon reaches, with and without it. A passive that
-// turns the weapon round (Fires_Backwards) is measured behind against the
-// bare weapon's single target ahead, since it gives up ahead for behind.
-// ok is false where the bare weapon reaches nothing to compare with.
+// A passive level's gain as a percentage of the weapon's DPS: its mean over
+// the four scenarios, with and without it. Where the bare weapon reaches
+// nothing (a target behind, for most), what the passive reaches there
+// adds to the mean, as the ground charges do aiming round behind. They
+// once turned the bomb round for good, and were measured behind against
+// the single target ahead, the bomb gave up. ok is false where the bare
+// weapon reaches nothing to compare with.
 gain_pct :: proc(sh: ^Shared, t: Table, w: int, m: Mode, c: int) -> (pct: f64, ok: bool) {
-	cfg := sh.configs[c]
-	if cfg.has && passive_turns(cfg.passive) {
-		base := cell(t, w, m, .Single, 0).dps
-		if base <= NOISE_DPS {
-			return
-		}
-		return (cell(t, w, m, .Behind, c).dps / base - 1) * 100, true
-	}
 	with, bare := 0.0, 0.0
 	for sc in Scenario {
 		if b := cell(t, w, m, sc, 0).dps; b > NOISE_DPS {
 			bare += b
-			with += cell(t, w, m, sc, c).dps
+		}
+		if d := cell(t, w, m, sc, c).dps; d > NOISE_DPS {
+			with += d
 		}
 	}
 	if bare <= 0 {
 		return
 	}
 	return (with / bare - 1) * 100, true
-}
-
-passive_turns :: proc(p: passives.Passive) -> bool {
-	for mod in passives.passive_def(p).mods {
-		if mod.stat == .Fires_Backwards {
-			return true
-		}
-	}
-	return false
 }
 
 gain_text :: proc(sh: ^Shared, t: Table, w: int, m: Mode, c: int) -> string {
@@ -451,7 +436,7 @@ report_mode :: proc(b: ^strings.Builder, sh: ^Shared, t: Table, m: Mode) {
 	case .Charge:
 		fmt.sbprintf(b, "<p class=\"sub\">Only the weapons with a charge attack; the Plasma Bomb has none. Each charges to full, releases, and starts again once the release is spent.</p>\n")
 	}
-	fmt.sbprintf(b, "<h3>Weapons by DPS</h3>\n<p class=\"sub\">Ranked by the average over the four scenarios. Open a weapon for its passives, ranked by the DPS they add. <em>Gain</em> is the passive's percentage on the weapon's DPS averaged over the scenarios the bare weapon reaches; for a passive that turns the weapon round, its DPS behind against the bare weapon's single target ahead.</p>\n")
+	fmt.sbprintf(b, "<h3>Weapons by DPS</h3>\n<p class=\"sub\">Ranked by the average over the four scenarios. Open a weapon for its passives, ranked by the DPS they add. <em>Gain</em> is the passive's percentage on the weapon's DPS averaged over the four scenarios, so what it reaches where the bare weapon reaches nothing (behind, for most) adds to it.</p>\n")
 	fmt.sbprintf(b, "<div class=\"card\">\n<div class=\"head\"><span>#</span><span class=\"nm\">Weapon</span>")
 	for sc in Scenario {
 		fmt.sbprintf(b, "<span class=\"s%d\">%s</span>", int(sc), SCENARIO_NAMES[sc])
@@ -523,11 +508,11 @@ report_method :: proc(b: ^strings.Builder, sh: ^Shared, seconds, stage: int) {
 	fmt.sbprintf(b, "<li>Once the ship is in play it gets the weapon and at most one passive at one level. After %d steps for the crosshair to settle, the targets are spawned and %d s (%d steps) are measured. DPS is the damage over all of it.</li>\n",
 		SETTLE_STEPS, seconds, seconds * STEP_HZ)
 	fmt.sbprintf(b, "<li>The targets are copies of the BlackHawk (air) and the Laser Tank (ground). Each copy is stationary, has one state that never fires, moves or changes, and outside the wave has its shields topped back up every step. A shot that hits one is still spent as it would be against the real enemy.</li>\n")
-	fmt.sbprintf(b, "<li>Scenarios: <em>single target</em>, one target ahead; <em>cluster of 5</em>, that target and four more in a V, 40 px either side and 34 px further back; <em>target behind</em>, one target mirrored behind the ship. Air targets stand %d px from the ship. Ground targets stand under the crosshair, where the Plasma Bomb lands: ahead, and behind where it stands when Ground Variant 1 turns the bombs round (half the reach, kept on screen).</li>\n",
+	fmt.sbprintf(b, "<li>Scenarios: <em>single target</em>, one target ahead; <em>cluster of 5</em>, that target and four more in a V, 40 px either side and 34 px further back; <em>target behind</em>, one target mirrored behind the ship. Air targets stand %d px from the ship. Ground targets stand under the crosshair, where the Plasma Bomb lands: ahead, and behind where a ground charge turns it round to (half the reach, kept on screen).</li>\n",
 		AIR_RANGE)
 	fmt.sbprintf(b, "<li><em>Wave of 9</em> is the one scenario whose targets die: three rows of three, 40 px apart across and 34 px deep, starting where the single target stands. Each has %.1f shields, a stage 9&ndash;12 enemy's, and a target shot down is replaced %d steps later. Its DPS counts only the shields taken off, so damage past a kill counts only where it carries on to another target (the Discharge Beam) or throws out fragments that hit one.</li>\n",
 		WAVE_SHIELDS, WAVE_RESPAWN_STEPS)
-	fmt.sbprintf(b, "<li>Primary fire: a tap every %d to %d steps, and holding where holding fires (Auto Charge). A run in which a charge began is left out of this set. Charge shots: hold until the charge is full, let go for a step, hold again; under Auto Charge, the reverse. Each cell is the best run in its set, so these are a perfect player's numbers.</li>\n",
+	fmt.sbprintf(b, "<li>Primary fire: a tap every %d to %d steps, and holding where holding fires (Auto Charge). A run in which a charge began is left out of this set. Charge shots: hold until the charge is full, let go for a step, hold again; under Auto Charge, the reverse. A passive that gives the Plasma Bomb a charge is measured in primary fire, the bare bomb having none: hold until the crosshair points at the target and the charge is ready, let go for a step, hold again. Each cell is the best run in its set, so these are a perfect player's numbers.</li>\n",
 		TAP_MIN, TAP_MAX)
 	fmt.sbprintf(b, "<li>An enemy ignores a hit that lands within %d step of its last one (perm float 0xa7, <code>entity_hit</code>). One target therefore takes at most %.0f hits a second, however many shots reach it.</li>\n",
 		i32(hit_delay), f64(STEP_HZ) / (f64(hit_delay) + 1))

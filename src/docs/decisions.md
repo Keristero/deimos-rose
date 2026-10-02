@@ -1801,7 +1801,7 @@ attack, aimed by a crosshair that turns about the ship. The original's
 one ground weapon has no power-up, and the ground power-up it might have
 had (0x44741a) is not ported.
 
-- **Its own state.** The charge is held in `Weapon_Handler.ground_charging`,
+- **Its own state.** The charge is held in `Weapon_Handler.ground_charged`,
   not in `ground_powerup`. The original's release of a ground power-up
   also ends the air one's overload. Kept apart, the charge cannot reach
   that, or be mistaken for the unported power-up.
@@ -1813,3 +1813,29 @@ had (0x44741a) is not ported.
 - **The crosshair's turn is the handler's** (`ground_aim`), so a rollback
   restores it with the rest. At 0 the crosshair is placed by the
   original's code untouched.
+- **Ready after half a second.** Let go sooner, the charge drops nothing
+  (`stats.ground_charge_ready`). The DPS report's first runs had a heavy
+  bomb dropped the moment a charge began, straight ahead, outdo the burst
+  it was added to; it now comes when the crosshair is round behind.
+
+### D69 — Alternative passives give each other up
+
+The notes ask for a second ground charge that "replaces other passive when
+picked", and for the first to replace it the same way.
+
+- **A group, not a pair.** `Passive_Def.exclusive` names a group; any
+  passive may join one, another plugin's too. Taking a passive of a
+  group drops every other held (`passives.passive_take`).
+- **From level 1.** The one taken starts at level 1, as any new passive
+  does. Carrying the levels over would let a player switch for free, and
+  the two charges are tuned level for level, not as one.
+- **Offered as before.** An alternative is offered while its own levels
+  are not maxed, whatever its group holds. The reward screen names the
+  passive it would give up.
+- **The gain behind.** The ground charges add DPS only behind the ship,
+  where the bare bomb reaches nothing. The DPS report's Gain is now the
+  change in DPS averaged over all four scenarios, so that counts. It was
+  averaged over the scenarios the bare weapon reaches, with the backwards
+  bomb measured behind against its single target ahead. No other
+  passive's Gain changed: none of them reaches a scenario its bare
+  weapon cannot.

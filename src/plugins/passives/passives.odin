@@ -62,6 +62,9 @@ Passive_Def :: struct {
 	// as a passive without it is the other way round (the stat providers'
 	// scopes, sim.Stat_Provider). A ship passive's apply to both.
 	charge: bool,
+	// Passives that share one are alternatives: taking one gives up any of
+	// the others held (passive_take). "" for none.
+	exclusive: string,
 	mods:   []Mod,
 }
 
@@ -88,6 +91,7 @@ Own :: enum u8 {
 	Weapon_2,
 	Weapon_3,
 	Weapon_4,
+	Ground_Variant_2,
 }
 
 // A passive, by its id: this plugin's own first (Own), then other plugins'.
@@ -102,6 +106,7 @@ WEAPON_1 :: Passive(Own.Weapon_1)
 WEAPON_2 :: Passive(Own.Weapon_2)
 WEAPON_3 :: Passive(Own.Weapon_3)
 WEAPON_4 :: Passive(Own.Weapon_4)
+GROUND_VARIANT_2 :: Passive(Own.Ground_Variant_2)
 
 MAX_PASSIVES :: 32
 
@@ -153,23 +158,24 @@ OWN := [Own]Passive_Def {
 			{.Shield_Regen_Rate, .Extra, {1, 2, X}},
 		},
 	},
+	// The ground weapon's two charges (stats.ground_charges), of which a
+	// player holds one: notes/extra-weapons-and-passives-3.md. The first
+	// was the bomb turned round for good; now the burst stays ahead and
+	// the charge is aimed. The charge and its aim are the passives'
+	// premise rather than listed stats; as stats, they show on the reward
+	// screen like the rest. Its damage is the charge's alone, so the
+	// burst is the bomb's own.
 	.Ground_Variant_1 = {
-		name   = "ground_variant_1",
-		label  = "REVERSE PLASMA BOMB",
-		levels = 3,
-		weapon = WEAPON_PLASMA_BOMB,
+		name      = "ground_variant_1",
+		label     = "REVERSE PLASMA BOMB",
+		levels    = 3,
+		weapon    = WEAPON_PLASMA_BOMB,
+		charge    = true,
+		exclusive = "ground_charge",
 		mods = {
-			// Firing backwards is the passive's premise rather than a listed
-			// stat; as one, it shows on the reward screen like the rest.
-			// The design's shorter volley delay (10, 20) is gone: a burst
-			// already lands a bomb every two steps, the most a target takes,
-			// so bombs any closer were ignored and it cost 9-19% of the DPS.
-			// Nothing but damage per hit can add to a lone target, so the
-			// DPS report's bands come from Projectile_Damage, a stat the
-			// design does not have. The extra lane adds only on groups.
-			{.Fires_Backwards, .Enables, {1, X, X}},
-			{.Projectile_Damage, .Increase, {15, 30, 50}},
-			{.Extra_Projectiles, .Extra, {X, X, 1}},
+			{.Ground_Charge, .Enables, {1, X, X}},
+			{.Charge_Aim_Behind, .Enables, {1, X, X}},
+			{.Projectile_Damage, .Increase, {340, 780, 1370}},
 		},
 	},
 	// The weapon passives below are tuned by the DPS report (mise run
@@ -229,6 +235,21 @@ OWN := [Own]Passive_Def {
 			// takes over; 40% with it would be +90%.
 			{.Firing_Delay, .Decrease, {20, 40, 10}},
 			{.Extra_Volley, .Extra, {X, X, 1}},
+		},
+	},
+	// The other ground charge (see Ground Variant 1): its crosshair
+	// circles the ship, and its bomb hits harder for being slower to aim.
+	.Ground_Variant_2 = {
+		name      = "ground_variant_2",
+		label     = "ORBITING PLASMA BOMB",
+		levels    = 3,
+		weapon    = WEAPON_PLASMA_BOMB,
+		charge    = true,
+		exclusive = "ground_charge",
+		mods = {
+			{.Ground_Charge, .Enables, {1, X, X}},
+			{.Charge_Aim_Around, .Enables, {1, X, X}},
+			{.Projectile_Damage, .Increase, {560, 1200, 2050}},
 		},
 	},
 }
@@ -318,6 +339,30 @@ stat_total :: proc "contextless" (levels: ^Passive_Levels, stat: Stat, weapon: R
 // Whether a passive's modifiers count for a stat of `weapon` in that scope.
 passive_applies :: #force_inline proc "contextless" (def: ^Passive_Def, weapon: Res_ID, charge: bool) -> bool {
 	return def.weapon == NONE || (def.weapon == weapon && def.charge == charge)
+}
+
+// The passive held that taking `pa` would give up: one of its alternatives
+// (Passive_Def.exclusive). ok is false where there is none.
+passive_replaces :: proc "contextless" (levels: ^Passive_Levels, pa: Passive) -> (Passive, bool) {
+	group := passive_def(pa).exclusive
+	if group == "" || levels[pa] > 0 {
+		return 0, false
+	}
+	for i in 0 ..< passive_count() {
+		if Passive(i) != pa && levels[i] > 0 && passive_def(Passive(i)).exclusive == group {
+			return Passive(i), true
+		}
+	}
+	return 0, false
+}
+
+// Takes a level of `pa`, giving up its alternatives held: the one taken
+// starts again from level 1.
+passive_take :: proc "contextless" (levels: ^Passive_Levels, pa: Passive) {
+	for other, ok := passive_replaces(levels, pa); ok; other, ok = passive_replaces(levels, pa) {
+		levels[other] = 0
+	}
+	levels[pa] += 1
 }
 
 passive_maxed :: #force_inline proc "contextless" (levels: ^Passive_Levels, pa: Passive) -> bool {

@@ -384,14 +384,7 @@ player_move :: proc(s: ^sim.State, p: sim.Player, time: i32) {
 	p.weapons.loc = p.loc
 
 	if p.weapons.crosshair_shown {
-		// A ground weapon firing backwards is pulled in by pushing against
-		// the top of the screen instead of the bottom.
-		backwards := stats.ground_fires_backwards(s, p.weapons)
-		pull, pinned := down, at_bottom
-		if backwards {
-			pull, pinned = up, at_top
-		}
-		if !pull || !pinned {
+		if !down || !at_bottom {
 			if 0 < p.crosshair_reach {
 				p.crosshair_reach += sim.trunc_i32(s.defs.perm_floats[0xba])
 				if p.crosshair_reach < 0 {
@@ -411,15 +404,8 @@ player_move :: proc(s: ^sim.State, p: sim.Player, time: i32) {
 		if turn := p.weapons.ground_aim; turn != 0 {
 			// Turned about the ship by the ground weapon's charge
 			// (stats.ground_aim_next), and kept on screen.
-			ahead := -f32(p.crosshair_reach + gw.crosshair_y_offset)
-			loc = p.loc + stats.turn_offset({f32(gw.crosshair_x_offset), -stats.crosshair_turned_reach(ahead, turn)}, turn)
+			loc = stats.crosshair_turned(p.loc, f32(gw.crosshair_x_offset), -f32(p.crosshair_reach + gw.crosshair_y_offset), turn)
 			loc.y = clamp(loc.y, f32(half), f32(h - half))
-		} else if backwards {
-			// Behind the ship at half the reach, kept on screen at the bottom.
-			loc.y = p.loc.y - f32(p.crosshair_reach + gw.crosshair_y_offset) / 2
-			if f32(h) < loc.y + f32(half) {
-				loc.y = f32(h - half)
-			}
 		} else if loc.y - f32(half) < 0 {
 			loc.y = f32(half)
 		}

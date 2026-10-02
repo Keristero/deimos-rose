@@ -233,20 +233,26 @@ ground_burst_due :: proc "contextless" (s: ^sim.State, h: ^sim.Weapon_Handler, t
 	return true
 }
 
-ground_fires_backwards :: proc "contextless" (s: ^sim.State, h: ^sim.Weapon_Handler) -> bool {
-	return weapon_stat(s, h.player, h.ground.weapon, .Fires_Backwards).enabled
-}
-
 // The ground weapon's charge (Ground_Charge), which the original does not
 // have: its one ground weapon has no power-up. Fire-ground held on past
-// the burst a press fires charges one bomb, aimed by the crosshair, which
-// may turn about the ship meanwhile; letting go drops it. Its stats are
-// the charge's (charge_stat), so a passive can make that bomb heavier
-// without touching the burst.
+// the burst a press fires charges one more volley, aimed by the
+// crosshair, which may turn about the ship meanwhile; letting go once it
+// is ready drops it. Its stats are the charge's (charge_stat), so a
+// passive can make that volley heavier without touching the burst.
 
 // Steps fire-ground is held before the charge begins. Provisional: the
 // air weapons' own powerup_air_time_until_activation.
 GROUND_CHARGE_HOLD :: 15
+
+// Steps the charge is held before letting go drops it; let go sooner, it
+// is lost. Without it a heavy volley dropped the moment the charge began,
+// straight ahead, outdid the burst it was added to: the DPS report's
+// first runs. Half a second: provisional, the time the crosshair takes to
+// swing round behind (CHARGE_SWING_DEGREES_A_SECOND), so that charge is
+// ready as it gets there.
+ground_charge_ready :: #force_inline proc "contextless" (s: ^sim.State) -> i32 {
+	return step_hz(s) / 2
+}
 
 // How fast the crosshair turns while charged. Provisional: picked to
 // swing round behind in half a second, and to circle the ship in two.
@@ -278,12 +284,13 @@ ground_aim_next :: proc "contextless" (s: ^sim.State, h: ^sim.Weapon_Handler) ->
 	return h.ground_aim
 }
 
-// How far from the ship a crosshair `ahead` px in front of it stands once
-// turned `turn` degrees about it: on an ellipse, half as far behind, the
-// reach the backwards bomb had (there is less room behind the ship than
-// ahead), and three quarters to the sides.
-crosshair_turned_reach :: proc "contextless" (ahead: f32, turn: i32) -> f32 {
-	return ahead * (3 + sim.m_cos(wrap_angle(turn))) / 4
+// Where a crosshair `ahead` px in front of the ship and `x` px to its
+// right stands once turned `turn` degrees about it. It goes round on an
+// ellipse: the full reach ahead, three quarters of it to the sides, and
+// half of it behind, as there is less room behind the ship than ahead.
+crosshair_turned :: proc "contextless" (ship: sim.Vec, x, ahead: f32, turn: i32) -> sim.Vec {
+	reach := ahead * (3 + sim.m_cos(wrap_angle(turn))) / 4
+	return ship + turn_offset({x, -reach}, turn)
 }
 
 // An offset from the ship, turned `turn` degrees clockwise on screen: the
@@ -400,9 +407,10 @@ lanes_sort :: proc "contextless" (l: []Lane) {
 	}
 }
 
-// A weapon's spawn list, shaped by its passive: the lanes extended, and for
-// a backwards ground weapon mirrored behind the ship. Non-projectile entries
-// (muzzle flashes, spawners) fire as they are. `emit` receives each spawn.
+// A weapon's spawn list, shaped by its passive (by its charge's, with
+// `charge`): the lanes extended, and every spawn turned `turn` degrees
+// about the ship, as a charged ground weapon's are with its crosshair.
+// Non-projectile entries (muzzle flashes, spawners) fire as they are.
 Weapon_Spawn :: struct {
 	unit:        sim.Res_ID,
 	x, y:        i32,
@@ -410,9 +418,9 @@ Weapon_Spawn :: struct {
 	angle:       i32,
 }
 
-weapon_spawns :: proc "contextless" (s: ^sim.State, weapon: i32, player: i32, backwards: bool, out: []Weapon_Spawn) -> int {
+weapon_spawns :: proc "contextless" (s: ^sim.State, weapon: i32, player: i32, out: []Weapon_Spawn, charge := false, turn: i32 = 0) -> int {
 	wd := sim.weapon_def(s, weapon)
-	extra := weapon_stat(s, player, weapon, .Extra_Projectiles).extra
+	extra := weapon_stat(s, player, weapon, .Extra_Projectiles, charge).extra
 	base: [MAX_LANES]Lane
 	units: [MAX_LANES]Weapon_Spawn
 	n := 0
@@ -430,15 +438,16 @@ weapon_spawns :: proc "contextless" (s: ^sim.State, weapon: i32, player: i32, ba
 		m = lanes_extend(base[:n], extra, lanes[:])
 	}
 	count := 0
-	push :: proc "contextless" (out: []Weapon_Spawn, count: ^int, sp: Weapon_Spawn, backwards: bool) {
+	push :: proc "contextless" (out: []Weapon_Spawn, count: ^int, sp: Weapon_Spawn, turn: i32) {
 		if count^ >= len(out) {
 			return
 		}
 		sp := sp
-		if backwards {
-			sp.y = -sp.y
+		if turn != 0 {
+			at := turn_offset({f32(sp.x), f32(sp.y)}, turn)
+			sp.x, sp.y = round_i32(at.x), round_i32(at.y)
 			sp.set_heading = true
-			sp.angle = wrap_angle(180 - sp.angle)
+			sp.angle = wrap_angle(sp.angle + turn)
 		}
 		out[count^] = sp
 		count^ += 1
@@ -449,7 +458,7 @@ weapon_spawns :: proc "contextless" (s: ^sim.State, weapon: i32, player: i32, ba
 			continue
 		}
 		if m == 0 || !unit_is_projectile(s, sp.unit) {
-			push(out, &count, {sp.unit, sp.x_loc, sp.y_loc, sp.set_heading, sp.angle}, backwards)
+			push(out, &count, {sp.unit, sp.x_loc, sp.y_loc, sp.set_heading, sp.angle}, turn)
 			continue
 		}
 		// Every lane goes out where the first projectile entry stood.
@@ -460,7 +469,7 @@ weapon_spawns :: proc "contextless" (s: ^sim.State, weapon: i32, player: i32, ba
 		for l in lanes[:m] {
 			src := units[base[l.src].src]
 			a := round_i32(l.angle)
-			push(out, &count, {src.unit, round_i32(l.x), round_i32(l.y), src.set_heading || a != 0, wrap_angle(a)}, backwards)
+			push(out, &count, {src.unit, round_i32(l.x), round_i32(l.y), src.set_heading || a != 0, wrap_angle(a)}, turn)
 		}
 	}
 	return count

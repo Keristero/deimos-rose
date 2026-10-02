@@ -61,7 +61,6 @@ STAT_DISPLAY := [sim.Stat]Stat_Display {
 	.Shield_Regenerates       = {"SHIELD REGENERATION", .Toggle, nil},
 	.Recharge_Delay           = {"RECHARGE DELAY", .Seconds, .Shield_Regenerates},
 	.Shield_Regen_Rate        = {"REGENERATION RATE", .Rate, .Shield_Regenerates},
-	.Fires_Backwards          = {"FIRES BACKWARDS", .Toggle, nil},
 	.Volley_Delay             = {"VOLLEY DELAY", .Percent, nil},
 	.Extra_Projectiles        = {"EXTRA PROJECTILES", .Count, nil},
 	.Extra_Volley             = {"EXTRA VOLLEYS", .Count, nil},

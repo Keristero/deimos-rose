@@ -410,10 +410,10 @@ extra_lanes_follow_the_spread_not_the_list :: proc(t: ^testing.T) {
 	d.weapons[0].spawns = spawns
 	s := cw_session(d, session_mods(true, false))
 	out: [stats.MAX_LANES + stats.MAX_EXTRA_SPAWNS]stats.Weapon_Spawn
-	n := stats.weapon_spawns(s, 0, 0, false, out[:])
+	n := stats.weapon_spawns(s, 0, 0, out[:])
 	testing.expect_value(t, n, 2) // no passive: the list as it is, bar the empty entry
 	passives.levels_of(s, 0)^[passives.WEAPON_1] = 1
-	n = stats.weapon_spawns(s, 0, 0, false, out[:])
+	n = stats.weapon_spawns(s, 0, 0, out[:])
 	if testing.expect_value(t, n, 3) {
 		for x, i in ([3]i32{-8, 0, 8}) {
 			testing.expectf(t, out[i].unit == shot && out[i].x == x, "lane %d at %d, want %d", i, out[i].x, x)
@@ -722,7 +722,7 @@ bacta_gun_extra_lanes_continue_its_fan :: proc(t: ^testing.T) {
 	}
 	passives.levels_of(s, 0)^[passives.WEAPON_2] = 2
 	out: [stats.MAX_LANES + stats.MAX_EXTRA_SPAWNS]stats.Weapon_Spawn
-	n := stats.weapon_spawns(s, bg, 0, false, out[:])
+	n := stats.weapon_spawns(s, bg, 0, out[:])
 	shots, flashes := 0, 0
 	for sp in out[:n] {
 		if sp.unit == sim.res_id("bagb") {

@@ -137,8 +137,12 @@ reward_draw :: proc(r: ^render.Renderer, s: ^sim.State, names: ^ui.Player_Names)
 			ui.menu_draw_text(r, "TAKEN BY THE OTHER PLAYER", left, y, dim)
 			y += LINE
 		}
+		if gone, ok := passives.passive_replaces(levels, pa); ok {
+			ui.menu_draw_text(r, fmt.tprintf("REPLACES %s", passives.passive_def(gone).label), left, y, dim)
+			y += LINE
+		}
 		after := levels^
-		after[pa] = next
+		passives.passive_take(&after, pa)
 		for m in def.mods {
 			// A stat the new level leaves as it was is not listed.
 			if m.at[next - 1] == passives.X {

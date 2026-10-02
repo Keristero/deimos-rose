@@ -82,8 +82,8 @@ carries on to another target. It is replaced 12 steps later.
   two 34 px further back.
 - **Target behind:** for air weapons, the single target mirrored behind
   the ship. For the Plasma Bomb it stands under the crosshair as it is when
-  Ground Variant 1 turns the bombs round: half the reach behind, kept on
-  screen (y 390.5 at stage 7, with the ship at 330).
+  a ground charge (Ground Variant 1 and 2) turns it round behind: half the
+  reach behind, kept on screen (y 390.5 at stage 7, with the ship at 330).
 - **Wave of 9:** three rows of three, 40 px apart across and 34 px deep,
   the first row where the single target stands. Each target has 0.8
   shields, about a stage 9–12 air enemy's, and is replaced 12 steps after
@@ -91,12 +91,13 @@ carries on to another target. It is replaced 12 steps later.
   damage that carries through a kill (the Discharge Beam's leftover)
   counts.
 
-Both ground positions come from the crosshair's own sums
-(`ground_aim` in `tools/dps`, copied from `sim/systems/player_system/player.odin`). A scenario
-keeps its side whichever way the bombs face. Every run checks that the
-crosshair in use stands where `ground_aim` puts it, and the run fails if
-it does not. So the targets cannot drift from where the bombs land
-without the report failing.
+Both ground positions come from the crosshair's own sums (`ground_aim` in
+`tools/dps`: the sum ahead is copied from
+`sim/systems/player_system/player.odin`, and the one behind is
+`stats.crosshair_turned`, which the player's code calls too). Every run
+checks that the crosshair stands ahead where `ground_aim` puts it before
+it fires, and the run fails if it does not. So the targets cannot drift
+from where the bombs land without the report failing.
 
 **Two sets.** Every scenario is measured twice. Each cell is the best
 policy in its set, so the numbers are a perfect player's.
@@ -110,6 +111,11 @@ policy in its set, so the numbers are a perfect player's.
   and hold again. Under Auto Charge this is inverted, since the charge
   builds while fire is released. The Plasma Bomb has no charge, so it is
   not in this set.
+- **The Plasma Bomb's charge** comes only with a passive (Ground Variant
+  1 and 2), so it counts as primary fire: the bare bomb has no charge to
+  measure it against. Its policy holds until the charge is ready and the
+  crosshair points at the targets (180° behind, else straight ahead),
+  lets go for a step, and holds again.
 
 **DPS is over the whole run.** Every figure is the damage dealt in the
 measured 60 s, divided by 60. A charge shot's DPS therefore includes the
@@ -153,7 +159,7 @@ been confirmed.
   second click reverses it. Numbers start highest first, text A to Z, and
   a cell with nothing to show ("–") sorts last either way.
 - **Gains in DPS, not percent.** A weapon that deals nothing to a target
-  behind has nothing to take a percentage of, and a passive that turns it
+  behind has nothing to take a percentage of, and a passive that aims it
   round is worth most there. The per-scenario change is still shown as a
   percentage, or as "from 0".
 - **"Charge time averaged."** This is read as the whole-run rate above:
@@ -179,8 +185,11 @@ behind.
 Passive changes that are not 0, as single / cluster / behind / wave, with
 the weapon passives as tuned on 2026-09-25 (see
 [passive-upgrades.md](passive-upgrades.md), Tuning). Gain is the band
-measure: the mean over the scenarios the bare weapon reaches. For Ground
-Variant 1 it is behind against the bare bomb's single target ahead.
+measure: the change in the weapon's DPS averaged over the four
+scenarios. Until 2026-10-02 it was averaged over the scenarios the bare
+weapon reaches, with Ground Variant 1, which turned the bomb round for
+good, measured behind against the bare bomb's single target ahead. No
+other passive's Gain differs between the two.
 
 | Passive | Weapon | Change | DPS added | Gain |
 |---|---|---|---|---|
@@ -196,13 +205,21 @@ Variant 1 it is behind against the bare bomb's single target ahead.
 | Weapon 4 (Photon) 1 | Photon Beam | +28.5% / +28.5% / 0 / 0 | +0.76 | +18.7% |
 | Weapon 4 (Photon) 2 | Photon Beam | +50.0% / +50.0% / 0 / 0 | +1.33 | +32.9% |
 | Weapon 4 (Photon) 3 | Photon Beam | +68.8% / +68.8% / 0 / 0 | +1.83 | +45.2% |
-| Ground Variant 1 1 | Plasma Bomb | −100% / −100% / 5.63 from 0 / −100% | −1.39 | +14.9% |
-| Ground Variant 1 2 | Plasma Bomb | −100% / −100% / 6.36 from 0 / −100% | −1.21 | +29.8% |
-| Ground Variant 1 3 | Plasma Bomb | −100% / −100% / 7.34 from 0 / −100% | −0.97 | +49.8% |
+| Ground Variant 1 1 | Plasma Bomb | 0 / 0 / 1.67 from 0 / 0 | +0.42 | +14.9% |
+| Ground Variant 1 2 | Plasma Bomb | 0 / 0 / 3.34 from 0 / 0 | +0.84 | +29.8% |
+| Ground Variant 1 3 | Plasma Bomb | 0 / 0 / 5.59 from 0 / 0 | +1.40 | +49.8% |
+| Ground Variant 2 1 | Plasma Bomb | 0 / 0 / 1.67 from 0 / 0 | +0.42 | +14.9% |
+| Ground Variant 2 2 | Plasma Bomb | 0 / 0 / 3.29 from 0 / 0 | +0.82 | +29.4% |
+| Ground Variant 2 3 | Plasma Bomb | 0 / 0 / 5.45 from 0 / 0 | +1.36 | +48.6% |
+
+The Ground Variants are the bomb's charges since 2026-10-02 (see
+[passive-upgrades.md](passive-upgrades.md)), measured then; the rest of
+the table is the 2026-09-25 run, which they leave as it was. Ahead, taps
+beat holding for a charge at every level, so they add only behind.
 
 Before the tuning, Weapon 1 level 3 was +299.8% by this measure, Weapon 4
 level 3 +79.8% and Weapon 2 level 1 +6.1%. Weapon 3 level 3 was 0, and
-Ground Variant 1 was −9% to −19%.
+Ground Variant 1, then the bomb turned round, was −9% to −19%.
 
 Every other passive level is 0 on every weapon, apart from a +0.1% on the
 Discharge Beam's wave from Improved Manoeuvring 2 (see Method). That

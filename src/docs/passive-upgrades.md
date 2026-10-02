@@ -91,6 +91,7 @@ The current set:
 | Improved Charge | the Photon Beam's charge glow (`phbe` 1), with a green plus (`edut` 1) |
 | Shield Regen | the shield pickup (`pish` 0), with the plus |
 | Ground Variant 1 | the ship above the plasma bomb's locked target (`pbta` 1) |
+| Ground Variant 2 | the ship ringed by the locked target, faint above and to the sides, full below |
 | Weapon 1-4 | the weapon's score-bar symbol (`wesy` 0, 1, 3, 2), with the plus |
 | Weapon 5 | the Chaingun's score-bar symbol (`wesy` 4), with the plus |
 | Weapon 6 | the Discharge Beam's red symbol (`wesd` 0, New Weapons' own plate), with the plus |
@@ -136,20 +137,24 @@ passive has a recipe entry and, when the assets tree is present, a file.
   ground weapon has no power-up, so a passive can give it one of its own
   (`stats.ground_charges`, `weapon_system.ground_charge_process`):
   - A press still drops the usual burst. Held on for
-    `GROUND_CHARGE_HOLD` steps, the charge begins; letting go drops one
-    bomb, the weapon's first projectile and the rest of its spawns.
+    `GROUND_CHARGE_HOLD` steps, the charge begins. Letting go once it is
+    ready, half a second on (`stats.ground_charge_ready`), drops one more
+    volley of the weapon's spawns (`spawn_ground` with `charge`); letting
+    go sooner drops nothing. Without the wait, a heavy bomb dropped the
+    moment the charge began, straight ahead, outdid the burst.
   - The bomb is the charge's (`charge = true`), so a charge passive can
     make it heavier without touching the burst.
   - While it is held the crosshair may turn about the ship
     (`Weapon_Handler.ground_aim`): round behind it and held there
     (`Charge_Aim_Behind`), or on round it (`Charge_Aim_Around`). The
-    bomb's spawns turn with it and are sped to reach it. Letting go
-    brings the crosshair back ahead.
+    volley's spawns turn with it (`stats.weapon_spawns`' `turn`), and are
+    sped by the crosshair's distance along that way. Letting go brings
+    the crosshair back ahead.
   - A turned crosshair stands on an ellipse about the ship
     (`stats.crosshair_turned_reach`): the full reach ahead, half of it
     behind (there is less room behind the ship), and kept on screen.
-  - The charge is the handler's own (`ground_charging`), apart from the
-    original's ground power-up. Its release does not clear an air
+  - The charge is the handler's own (`ground_charged`, the steps it has
+    been held), apart from the original's ground power-up. Its release does not clear an air
     overload, as that power-up's would.
 - **Offering.**
   - There are `min(choosers + 2, available)` options, drawn without repeats:
@@ -161,7 +166,13 @@ passive has a recipe entry and, when the assets tree is present, a file.
   - An air weapon's passive is offered only on the way into a level where
     that weapon can be flown. The Ion Cannon (`aiic`, levels 1-3) stops
     being offered after level 3.
-  - The ground weapon's passive is always offered.
+  - The ground weapon's passives are always offered.
+  - **Alternatives.** Passives that share a `Passive_Def.exclusive` group
+    give each other up: taking one drops any other of its group held
+    (`passives.passive_take`), and the one taken starts from level 1. The
+    reward screen says so under the option ("REPLACES REVERSE PLASMA
+    BOMB"). Ground Variant 1 and 2, the ground weapon's two charges, are
+    the one group.
   - Player 1's cursor starts on the first option, and the others' on the
     last.
 - **Choosing.**
@@ -181,7 +192,7 @@ passive has a recipe entry and, when the assets tree is present, a file.
 The weapon names are the data's ids. The four air weapons are numbered in
 the order they unlock: `aiic` Ion Cannon from level 1, `aibg` Bacta Gun
 from 2, `airg` Rear Gun from 3, `aipb` Photon Beam from 5. Ground Variant 1
-is `plbo`, the Plasma Bomb, the only ground weapon.
+and 2 are `plbo`'s, the Plasma Bomb, the only ground weapon.
 
 ### Ship passives
 
@@ -234,13 +245,24 @@ is `plbo`, the Plasma Bomb, the only ground weapon.
     more volley period each.
   - Volley delay scales the spawner's own clock (`spawn_pace`), or the
     handler's interval.
-- **Ground Variant 1**
-  - Fires backwards: every spawn is mirrored behind the ship, heading
-    `180 - angle`.
-  - The crosshair sits at half its reach below the ship, and against the
-    bottom edge it stops as it normally stops against the top.
-  - `fires_backwards` is listed as a stat, so the reward screen shows it
-    like the rest.
+- **Ground Variant 1** (Reverse Plasma Bomb) and **Ground Variant 2**
+  (Orbiting Plasma Bomb), from
+  [notes/extra-weapons-and-passives-3.md](../../notes/extra-weapons-and-passives-3.md):
+  - Each is a charge passive for the bomb (`charge = true`), and gives it
+    the ground weapon's charge (`ground_charge`, see The rules as
+    implemented). The burst a press drops is the bomb's own.
+  - Ground Variant 1's crosshair swings round behind the ship as the
+    charge gets ready, and is held there. Its bomb is "a single strong
+    shot backwards".
+  - Ground Variant 2's crosshair circles the ship once every two seconds
+    while it is held, and goes back ahead on release, as the notes ask.
+    Its bomb deals more damage than Ground Variant 1's.
+  - They are alternatives (`exclusive = "ground_charge"`): taking one
+    gives up the other.
+  - Ground Variant 1 used to turn the whole weapon round for good: every
+    spawn mirrored behind the ship, and the crosshair pushed out by
+    holding Up against the top of the screen. The notes asked for the
+    bomb to be left as it is, and that went (`Fires_Backwards`).
   - The volley delay paces the bomb burst in hundredths. No passive uses
     it on the bomb any more (see Tuning).
 - **Weapon 1** (Ion Cannon). Accelerating shots leave at the scaled initial
@@ -287,9 +309,9 @@ is `plbo`, the Plasma Bomb, the only ground weapon.
 The weapon passives' numbers no longer follow the design. They are tuned
 with the DPS report (`mise run dps:report`, [dps-report.md](dps-report.md)).
 Level 1 adds 10-20% to the weapon's DPS, level 2 20-40%, and level 3
-40-60%. This is measured as the report's Gain: the mean over the
-scenarios the bare weapon reaches. For Ground Variant 1 it is its DPS
-behind against the bare bomb's single target ahead.
+40-60%. This is measured as the report's Gain: the change in the
+weapon's DPS averaged over the four scenarios. What a passive reaches
+where the bare weapon reaches nothing (behind, for most) adds to it.
 
 A target takes at most one hit every two steps. So a lane that arrives
 with another adds nothing to a lone target, and extra volleys add the most.
@@ -304,7 +326,8 @@ the Ion Cannon's 4 steps take 20% to lose one.
 | Weapon 4 (Photon Beam) | firing delay -20% | firing delay -40% | firing delay -10%, +1 volley | +18.7 / +32.9 / +45.2% |
 | Weapon 5 (Chaingun) | firing delay -13%, spread +25% | firing delay -20%, spread +50% | firing delay -33%, spread +100% | +11.9 / +23.8 / +49.2% |
 | Weapon 6 (Discharge Beam) | damage +15%, width +10% | damage +30%, width +20% | damage +60%, width +30% | +10.7 / +21.4 / +42.9% |
-| Ground Variant 1 (Plasma Bomb) | fires backwards, damage +15% | damage +30% | damage +50%, +1 projectile | +14.9 / +29.8 / +49.8% |
+| Ground Variant 1 (Plasma Bomb's charge) | aimed behind, damage +340% | damage +780% | damage +1370% | +14.9 / +29.8 / +49.8% |
+| Ground Variant 2 (Plasma Bomb's charge) | aimed around, damage +560% | damage +1200% | damage +2050% | +14.9 / +29.4 / +48.6% |
 
 Levels carry what they do not change (the design's `x`).
 
@@ -317,12 +340,19 @@ Levels carry what they do not change (the design's `x`).
   measures the same as one.
 - **Weapon 4** steps its firing delay back to 10% at level 3, where the
   extra volley takes over. With 40% the volley would make it +61%.
-- **Ground Variant 1** had the design's shorter volley delay (10%, 20%).
-  A burst already lands a bomb every two steps, so any bombs closer than
-  that were ignored. It measured -9%, -19% and -19%. With every rate
-  lever at the cap, the bands come from `projectile_damage`, a stat the
-  design does not have. See Balance in AGENTS.md for why that stat is a
-  last resort.
+- **Ground Variant 1 and 2** are all damage, and a great deal of it: the
+  charge drops one bomb (0.4 damage) where a press drops a burst, and
+  every gain is from a target the bare bomb cannot reach. Held, aimed and
+  let go, a charge comes round about once a second behind for Variant 1
+  and every 1.5 s for Variant 2, whose crosshair takes twice as long to
+  get there. So their damage climbs to 5.9 and 8.6 a bomb at level 3,
+  more than any one ground enemy has. Ahead, taps still beat holding for
+  every level of either, so they add nothing there. `projectile_damage`
+  is a last resort (see Balance in AGENTS.md); here, with one bomb
+  against one target, nothing else adds. Variant 1 had the design's
+  shorter volley delay (10%, 20%) once, before it was a charge: a burst
+  already lands a bomb every two steps, the most a target takes, so it
+  measured -9%, -19% and -19%.
 - **Weapon 5 level 1** takes 13% off, not the design's 10%. 10% makes the
   delay 27 steps where 13% makes it 26, and 10% measured +8.6%.
 - **Weapon 6** raises the damage 15/30/60%, not the design's 10/20/30%,
@@ -347,6 +377,8 @@ Each of these is marked in the code, with what would settle it:
 - `REWARD_RESUME_DELAY` = 10 steps.
 - `GROUND_CHARGE_HOLD` = 15 steps before the ground weapon's charge
   begins: the air weapons' own time until activation.
+- `ground_charge_ready` = half a second more before it can be let go:
+  the time its crosshair takes to swing round behind.
 - `CHARGE_SWING_DEGREES_A_SECOND` = 360 and
   `CHARGE_ORBIT_DEGREES_A_SECOND` = 180: a charged crosshair swings
   behind in half a second, and circles the ship in two.
@@ -367,8 +399,12 @@ Each of these is marked in the code, with what would settle it:
   - the shield regeneration timing;
   - two rollback peers converging through two reward screens under latency
     and loss;
-  - the shipped weapons' lanes, the backwards bomb and each passive's
-    weapon being in the data. This test is skipped without `src/assets`;
+  - the shipped weapons' lanes, the bomb's charge turned round and each
+    passive's weapon being in the data. This test is skipped without
+    `src/assets`;
+  - the ground charges replacing each other, and Ground Variant 1's
+    charge from a hold to its bomb behind the ship (skipped without
+    `src/assets`);
   - an icon recipe, and an icon file, for every passive.
 - `mise run oracle:diff` still replays all four demos exactly: with no
   passive held, every hook computes what the original does.

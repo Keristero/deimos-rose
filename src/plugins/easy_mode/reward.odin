@@ -202,7 +202,7 @@ reward_step :: proc(s: ^sim.State, input: sim.Frame_Input) -> bool {
 	}
 	for i in 0 ..< sim.MAX_PLAYERS {
 		if r.choosing[i] && r.locked[i] {
-			passives.levels_of(s, i)[r.options[r.cursor[i]]] += 1
+			passives.passive_take(passives.levels_of(s, i), r.options[r.cursor[i]])
 		}
 	}
 	r.active = false

@@ -155,7 +155,7 @@ Weapon_Handler :: struct {
 	volley_pace:     i32,  // hundredths of a step towards the next one
 	ground_pace:     i32,  // hundredths of a step towards the next bomb
 	air_windup:      i32,  // steps until a wound-up shot fires (Weapon_Fire.windup)
-	ground_charging: bool, // the ground weapon's charge (Ground_Charge) is held, apart from its power-up
+	ground_charged:  i32,  // steps the ground weapon's charge (Ground_Charge) has been held, 0 for none; apart from its power-up
 	ground_aim:      i32,  // degrees the crosshair has turned about the ship, clockwise from ahead (Ground_Charge)
 }
 
