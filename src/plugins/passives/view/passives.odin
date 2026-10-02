@@ -18,28 +18,13 @@ import "dr:render"
 import "dr:sim"
 import "dr:sim/stats"
 
-// The icons are assets/icons/passives/<name>.png, 32x32, composited from the
-// game's own sprites by `mise run assets:icons` (tools/icons/passives.json
-// holds the recipes), each named after its passives.Passive in lower case.
-@(rodata)
-PASSIVE_NAMES := [passives.Passive]string {
-	.Improved_Manoeuvring = "IMPROVED MANOEUVRING",
-	.Auto_Charge          = "AUTO CHARGE",
-	.Improved_Charge      = "IMPROVED CHARGE",
-	.Shield_Regen         = "SHIELD REGENERATION",
-	.Ground_Variant_1     = "REVERSE PLASMA BOMB",
-	.Weapon_1             = "ION CANNON UPGRADE",
-	.Weapon_2             = "BACTA GUN UPGRADE",
-	.Weapon_3             = "REAR GUN UPGRADE",
-	.Weapon_4             = "PHOTON BEAM UPGRADE",
-	.Weapon_5             = "CHAINGUN UPGRADE",
-	.Weapon_6             = "DISCHARGE BEAM UPGRADE",
-}
-
 // A passive's icon, loaded on first use and cached with the other derived
-// images (a missing file is cached too, so it is tried once).
+// images (a missing file is cached too, so it is tried once). The icons are
+// assets/icons/passives/<name>.png, 32x32, composited from the game's own
+// sprites by `mise run assets:icons` (tools/icons/passives.json holds the
+// recipes), each named after its Passive_Def.name.
 passive_icon :: proc(t: ^render.Textures, pa: passives.Passive) -> (rl.Texture2D, bool) {
-	key := fmt.tprintf("icons/passives/%s", strings.to_lower(fmt.tprint(pa), context.temp_allocator))
+	key := fmt.tprintf("icons/passives/%s", passives.passive_def(pa).name)
 	if tex, ok := t.images[key]; ok {
 		return tex, tex.id != 0
 	}

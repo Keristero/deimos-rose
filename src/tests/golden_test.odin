@@ -34,6 +34,7 @@ import "core:fmt"
 import "core:log"
 import vmem "core:mem/virtual"
 import "core:os"
+import "core:slice"
 import "core:strconv"
 import "core:strings"
 import "core:testing"
@@ -47,6 +48,21 @@ import "dr:sim"
 
 GOLDEN_PATH :: "tests/golden/fingerprints.txt"
 GOLDEN_EVERY :: 500 // steps between checkpoints
+
+@(private = "file", rodata)
+GOLDEN_PASSIVES := [?]string {
+	"improved_manoeuvring",
+	"auto_charge",
+	"improved_charge",
+	"shield_regen",
+	"ground_variant_1",
+	"weapon_1",
+	"weapon_2",
+	"weapon_3",
+	"weapon_4",
+	"weapon_5",
+	"weapon_6",
+}
 
 Golden_Run :: struct {
 	name:        string,
@@ -137,8 +153,18 @@ golden_state_hash :: proc(s: ^sim.State) -> u64 {
 		if st := sim.player_component(s, p.number, passives.Passive_State); st != nil {
 			levels = st.passives
 		}
-		for lv in levels {
-			mix(&f, u64(lv))
+		// By name, so ids moving between plugins leave the fingerprints be:
+		// the passives the fingerprints were recorded with, each always,
+		// then any other held.
+		for name in GOLDEN_PASSIVES {
+			pa, ok := passives.passive_by_name(name)
+			mix(&f, ok ? u64(levels[pa]) : 0)
+		}
+		for i in 0 ..< passives.passive_count() {
+			if lv := levels[i]; lv != 0 && !slice.contains(GOLDEN_PASSIVES[:], passives.passive_def(passives.Passive(i)).name) {
+				mix(&f, u64(i))
+				mix(&f, u64(lv))
+			}
 		}
 		wh := p.weapons
 		mix(&f, u64(wh.air.weapon))

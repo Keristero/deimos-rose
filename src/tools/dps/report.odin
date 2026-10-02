@@ -79,7 +79,7 @@ gain_pct :: proc(sh: ^Shared, t: Table, w: int, m: Mode, c: int) -> (pct: f64, o
 }
 
 passive_turns :: proc(p: passives.Passive) -> bool {
-	for mod in passives.PASSIVES[p].mods {
+	for mod in passives.passive_def(p).mods {
 		if mod.stat == .Fires_Backwards {
 			return true
 		}

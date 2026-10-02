@@ -20,7 +20,7 @@ rear_gun_shot :: proc(s: ^sim.State, name: string) -> string {
 			p := sim.player_at(s, 0)
 			weapon_system.change_weapon(s, p.weapons, sim.WEP_AIR, i32(i))
 			player_system.player_sprite_from_weapon(s, p)
-			passives.levels_of(s, 0)[.Weapon_3] = 3
+			passives.levels_of(s, 0)[passives.WEAPON_3] = 3
 			for _ in 0 ..< 120 {
 				_ = sim.session_step(s, {})
 			}

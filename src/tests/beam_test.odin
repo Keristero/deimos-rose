@@ -348,9 +348,9 @@ discharge_beam_passive_hits_harder_and_wider :: proc(t: ^testing.T) {
 	if wall.obj == nil {
 		return
 	}
-	passives.levels_of(s, pl.number)^ = #partial {.Weapon_6 = 3}
-	dmg := i32(passives.PASSIVES[.Weapon_6].mods[0].at[2])
-	wide := i32(passives.PASSIVES[.Weapon_6].mods[1].at[2])
+	passives.levels_of(s, pl.number)^ = {passives.WEAPON_6 = 3}
+	dmg := i32(passives.passive_def(passives.WEAPON_6).mods[0].at[2])
+	wide := i32(passives.passive_def(passives.WEAPON_6).mods[1].at[2])
 	scale := proc(v: f32, pct: i32) -> f32 {return v * f32(100 + pct) / 100}
 
 	s.effects.count = 0

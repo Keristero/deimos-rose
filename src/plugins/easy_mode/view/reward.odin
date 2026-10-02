@@ -119,19 +119,19 @@ reward_draw :: proc(r: ^render.Renderer, s: ^sim.State, names: ^ui.Player_Names)
 		}
 		pa := rw.options[rw.cursor[i]]
 		levels := passives.levels_of(s, i)
-		def := &passives.PASSIVES[pa]
+		def := passives.passive_def(pa)
 		accent := reward_accent(r.accents[i].hue, true)
 		ui.menu_draw_text(r, names[i], left, y, accent)
 		status := rw.locked[i] ? "LOCKED IN" : easy_mode.reward_ready(s, i) ? "NOTHING LEFT TO TAKE" : "CHOOSING"
 		ui.menu_draw_text(r, status, right, y, rw.locked[i] ? accent : dim, .Right)
 		y += LINE
 		if passives.passive_maxed(levels, pa) {
-			ui.menu_draw_text(r, fmt.tprintf("%s: AT ITS HIGHEST LEVEL", passives_view.PASSIVE_NAMES[pa]), left, y, dim)
+			ui.menu_draw_text(r, fmt.tprintf("%s: AT ITS HIGHEST LEVEL", def.label), left, y, dim)
 			y += LINE + LINE / 2
 			continue
 		}
 		next := levels[pa] + 1
-		ui.menu_draw_text(r, fmt.tprintf("%s  LEVEL %d/%d", passives_view.PASSIVE_NAMES[pa], next, def.levels), left, y, white)
+		ui.menu_draw_text(r, fmt.tprintf("%s  LEVEL %d/%d", def.label, next, def.levels), left, y, white)
 		y += LINE
 		if !easy_mode.reward_selectable(s, i, rw.cursor[i]) {
 			ui.menu_draw_text(r, "TAKEN BY THE OTHER PLAYER", left, y, dim)

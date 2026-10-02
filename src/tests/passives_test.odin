@@ -4,7 +4,6 @@ import "core:encoding/json"
 import "core:fmt"
 import "core:log"
 import "core:os"
-import "core:strings"
 import "core:testing"
 import vmem "core:mem/virtual"
 
@@ -16,8 +15,8 @@ import "dr:sim"
 import "dr:sim/stats"
 import "dr:sim/systems/player_system"
 
-// Easy mode's passives and reward screen (sim/passives.odin,
-// sim/reward.odin). The rules are the design's (notes/passive-upgrades-and-
+// Easy mode's passives and reward screen (plugins/passives,
+// plugins/easy_mode). The rules are the design's (notes/passive-upgrades-and-
 // easy-mode.md); these pin how they were read, see docs/passive-upgrades.md.
 
 @(test)
@@ -37,17 +36,17 @@ mod_value_takes_the_level_held_and_x_inherits :: proc(t: ^testing.T) {
 @(test)
 stat_totals_sum_across_passives :: proc(t: ^testing.T) {
 	lv: passives.Passive_Levels
-	lv[.Improved_Charge] = 2 // Charge_Rate +20, Maximum_Charge +20
-	lv[.Auto_Charge] = 1     // Charge_Rate -50
+	lv[passives.IMPROVED_CHARGE] = 2 // Charge_Rate +20, Maximum_Charge +20
+	lv[passives.AUTO_CHARGE] = 1     // Charge_Rate -50
 	testing.expect_value(t, passives.stat_total(&lv, .Charge_Rate, sim.NONE).percent, -30)
 	testing.expect_value(t, passives.stat_total(&lv, .Maximum_Charge, sim.NONE).percent, 20)
 	testing.expect(t, passives.stat_total(&lv, .Auto_Charge_Air_To_Air, sim.NONE).enabled)
 	testing.expect(t, !passives.stat_total(&lv, .Prevent_Overheat, sim.NONE).enabled, "level 2's switch is not on at level 1")
-	lv[.Auto_Charge] = 2
+	lv[passives.AUTO_CHARGE] = 2
 	testing.expect(t, passives.stat_total(&lv, .Prevent_Overheat, sim.NONE).enabled)
 	testing.expect_value(t, passives.stat_total(&lv, .Charge_Rate, sim.NONE).percent, -30) // level 2 is x: still -50
 
-	lv[.Shield_Regen] = 3
+	lv[passives.SHIELD_REGEN] = 3
 	testing.expect_value(t, passives.stat_total(&lv, .Recharge_Delay, sim.NONE).extra, 0)
 	testing.expect_value(t, passives.stat_total(&lv, .Shield_Regen_Rate, sim.NONE).extra, 2)
 }
@@ -55,14 +54,14 @@ stat_totals_sum_across_passives :: proc(t: ^testing.T) {
 @(test)
 weapon_passives_count_only_for_their_weapon :: proc(t: ^testing.T) {
 	lv: passives.Passive_Levels
-	lv[.Weapon_1] = 1 // Ion Cannon: +1 projectile
-	lv[.Weapon_2] = 2 // Bacta Gun: +2 projectiles
+	lv[passives.WEAPON_1] = 1 // Ion Cannon: +1 projectile
+	lv[passives.WEAPON_2] = 2 // Bacta Gun: +2 projectiles
 	testing.expect_value(t, passives.stat_total(&lv, .Extra_Projectiles, passives.WEAPON_ION_CANNON).extra, 1)
 	testing.expect_value(t, passives.stat_total(&lv, .Extra_Projectiles, passives.WEAPON_BACTA_GUN).extra, 2)
 	testing.expect_value(t, passives.stat_total(&lv, .Extra_Projectiles, passives.WEAPON_PHOTON_BEAM).extra, 0)
 	testing.expect_value(t, passives.stat_total(&lv, .Extra_Projectiles, sim.NONE).extra, 0)
 	// Weapon 3's level 3 adds a volley and side fire to levels 1-2's delay.
-	lv[.Weapon_3] = 3
+	lv[passives.WEAPON_3] = 3
 	testing.expect_value(t, passives.stat_total(&lv, .Extra_Volley, passives.WEAPON_REAR_GUN).extra, 1)
 	testing.expect_value(t, passives.stat_total(&lv, .Firing_Delay, passives.WEAPON_REAR_GUN).percent, -20)
 	testing.expect(t, passives.stat_total(&lv, .Side_Firing_Volley, passives.WEAPON_REAR_GUN).enabled)
@@ -177,7 +176,7 @@ reward_screen_takes_every_players_choice :: proc(t: ^testing.T) {
 	// not the passives' weapons, so only the four ship passives can come up.
 	testing.expect_value(t, rw.count, 3)
 	for k in 0 ..< rw.count {
-		testing.expect(t, passives.PASSIVES[rw.options[k]].weapon == sim.NONE)
+		testing.expect(t, passives.passive_def(rw.options[k]).weapon == sim.NONE)
 		for j in 0 ..< k {
 			testing.expect(t, rw.options[j] != rw.options[k], "an option offered twice")
 		}
@@ -259,10 +258,10 @@ reward_options_are_one_more_than_the_players :: proc(t: ^testing.T) {
 	testing.expect(t, !easy_mode.reward_of(s).choosing[1], "an absent player does not choose")
 	// A passive already at its top level for the only chooser is not offered.
 	sim.init(s, sim.Session{seed = 11, level_id = defs.levels[0].id, game_type = .Single, mods = session_mods(true, false)}, defs)
-	passives.levels_of(s, 0)^ = #partial {.Improved_Manoeuvring = 2, .Auto_Charge = 2, .Improved_Charge = 3}
+	passives.levels_of(s, 0)^ = {passives.IMPROVED_MANOEUVRING = 2, passives.AUTO_CHARGE = 2, passives.IMPROVED_CHARGE = 3}
 	play_to_level_end(s)
 	testing.expect_value(t, easy_mode.reward_of(s).count, 1)
-	testing.expect_value(t, easy_mode.reward_of(s).options[0], passives.Passive.Shield_Regen)
+	testing.expect_value(t, easy_mode.reward_of(s).options[0], passives.SHIELD_REGEN)
 }
 
 // What the passives' shield stage and the core's count of calm do for a
@@ -283,7 +282,7 @@ shields_regenerate_after_the_recharge_delay :: proc(t: ^testing.T) {
 	p := sim.player_at(s, 0)
 	p.state = .Playing
 	p.shields = 50
-	passives.levels_of(s, p.number)^[.Shield_Regen] = 1 // after 30 s, 1% a second
+	passives.levels_of(s, p.number)^[passives.SHIELD_REGEN] = 1 // after 30 s, 1% a second
 	p.calm = 0
 	for i in 0 ..< i32(30 * 30) {
 		regen_step(s, p, i)
@@ -298,7 +297,7 @@ shields_regenerate_after_the_recharge_delay :: proc(t: ^testing.T) {
 	p.calm = 0
 	testing.expect(t, !passives.player_regenerating(s, p))
 	// Level 3: no wait, 2% a second.
-	passives.levels_of(s, p.number)^[.Shield_Regen] = 3
+	passives.levels_of(s, p.number)^[passives.SHIELD_REGEN] = 3
 	for i in 0 ..< i32(15) {
 		regen_step(s, p, i)
 	}
@@ -435,18 +434,18 @@ weapon_passives_shape_the_real_weapons :: proc(t: ^testing.T) {
 		k += 1
 	}
 	testing.expect_value(t, nb, k)
-	passives.levels_of(s, p.number)^[.Weapon_1] = 1
+	passives.levels_of(s, p.number)^[passives.WEAPON_1] = 1
 	n := stats.weapon_spawns(s, ion, 0, false, out[:])
 	testing.expect_value(t, projectiles(s, out[:n]), projectiles(s, before[:nb]) + 1)
-	passives.levels_of(s, p.number)^[.Weapon_1] = 2 // x at level 2: still the one extra
+	passives.levels_of(s, p.number)^[passives.WEAPON_1] = 2 // x at level 2: still the one extra
 	n = stats.weapon_spawns(s, ion, 0, false, out[:])
 	testing.expect_value(t, projectiles(s, out[:n]), projectiles(s, before[:nb]) + 1)
-	passives.levels_of(s, p.number)^[.Weapon_1] = 3 // two, not three: only the level held counts
+	passives.levels_of(s, p.number)^[passives.WEAPON_1] = 3 // two, not three: only the level held counts
 	n = stats.weapon_spawns(s, ion, 0, false, out[:])
 	testing.expect_value(t, projectiles(s, out[:n]), projectiles(s, before[:nb]) + 2)
 
 	// The Bacta Gun's passive leaves the Ion Cannon alone.
-	passives.levels_of(s, p.number)^ = #partial {.Weapon_2 = 3}
+	passives.levels_of(s, p.number)^ = {passives.WEAPON_2 = 3}
 	n = stats.weapon_spawns(s, ion, 0, false, out[:])
 	testing.expect_value(t, n, nb)
 
@@ -455,7 +454,7 @@ weapon_passives_shape_the_real_weapons :: proc(t: ^testing.T) {
 	if !testing.expect(t, bomb >= 0, "no Plasma Bomb in the data") {
 		return
 	}
-	passives.levels_of(s, p.number)^ = #partial {.Ground_Variant_1 = 1}
+	passives.levels_of(s, p.number)^ = {passives.GROUND_VARIANT_1 = 1}
 	fwd := stats.weapon_spawns(s, bomb, 0, false, before[:])
 	back := stats.weapon_spawns(s, bomb, 0, true, out[:])
 	testing.expect_value(t, back, fwd)
@@ -465,29 +464,29 @@ weapon_passives_shape_the_real_weapons :: proc(t: ^testing.T) {
 		testing.expect_value(t, out[i].angle, (540 - before[i].angle) % 360)
 	}
 	// Level 3 drops one more bomb.
-	passives.levels_of(s, p.number)^ = #partial {.Ground_Variant_1 = 3}
+	passives.levels_of(s, p.number)^ = {passives.GROUND_VARIANT_1 = 3}
 	n = stats.weapon_spawns(s, bomb, 0, true, out[:])
 	testing.expect_value(t, projectiles(s, out[:n]), projectiles(s, before[:fwd]) + 1)
 
 	// Every weapon passive is offered only where its weapon flies.
-	testing.expect(t, passives.passive_available(s, .Weapon_1, 1))
-	testing.expect(t, passives.passive_available(s, .Ground_Variant_1, i32(len(defs.levels))))
-	for pa in passives.Passive {
-		w := passives.PASSIVES[pa].weapon
-		if w == sim.NONE {
+	testing.expect(t, passives.passive_available(s, passives.WEAPON_1, 1))
+	testing.expect(t, passives.passive_available(s, passives.GROUND_VARIANT_1, i32(len(defs.levels))))
+	for i in 0 ..< passives.passive_count() {
+		def := passives.passive_def(passives.Passive(i))
+		if def.weapon == sim.NONE {
 			continue
 		}
-		testing.expectf(t, index(&defs, w) >= 0, "%v's weapon is not in the data", pa)
+		testing.expectf(t, index(&defs, def.weapon) >= 0, "%s's weapon is not in the data", def.name)
 	}
 	// A plugin weapon's passive only while its plugin is on: the Chaingun
 	// and the Discharge Beam are not in this session.
-	testing.expect(t, !passives.passive_available(s, .Weapon_5, 9))
-	testing.expect(t, !passives.passive_available(s, .Weapon_6, 10))
+	testing.expect(t, !passives.passive_available(s, passives.WEAPON_5, 9))
+	testing.expect(t, !passives.passive_available(s, passives.WEAPON_6, 10))
 
 	// The Chaingun's rounds stray further with its passive; a unit that
 	// flies straight still does, and another weapon's shots are left alone.
 	cg := index(&defs, passives.WEAPON_CHAINGUN)
-	passives.levels_of(s, p.number)^ = #partial {.Weapon_5 = 3}
+	passives.levels_of(s, p.number)^ = {passives.WEAPON_5 = 3}
 	by := stats.shot_shaper(s, 0, cg)
 	testing.expect(t, by != 0)
 	testing.expect_value(t, stats.heading_tolerance(s, 0, by, 8), 16)
@@ -516,14 +515,14 @@ chaingun_passive_offered_with_its_plugin :: proc(t: ^testing.T) {
 	s := new(sim.State, context.temp_allocator)
 	defer sim.destroy(s)
 	sim.init(s, sim.Session{seed = 1, level_id = defs.levels[0].id, game_type = .Single, mods = session_mods(true, true)}, &defs)
-	testing.expect(t, passives.passive_available(s, .Weapon_5, 9))
-	testing.expect(t, !passives.passive_available(s, .Weapon_6, 9))
-	testing.expect(t, passives.passive_available(s, .Weapon_6, 10))
+	testing.expect(t, passives.passive_available(s, passives.WEAPON_5, 9))
+	testing.expect(t, !passives.passive_available(s, passives.WEAPON_6, 9))
+	testing.expect(t, passives.passive_available(s, passives.WEAPON_6, 10))
 }
 
 // Every passive has an icon recipe (tools/icons/passives.json), and the icon
 // `mise run assets:icons` makes from it is in the assets tree, under the name
-// the reward screen looks for: the passives.Passive in lower case. The recipe
+// the reward screen looks for, its Passive_Def.name. The recipe
 // check needs nothing but the repository; the file check skips without the
 // assets tree.
 @(test)
@@ -547,8 +546,8 @@ every_passive_has_an_icon :: proc(t: ^testing.T) {
 	if !assets {
 		log.info("icon files not checked: needs the extracted assets tree")
 	}
-	for pa in passives.Passive {
-		name := strings.to_lower(fmt.tprint(pa), context.temp_allocator)
+	for i in 0 ..< passives.passive_count() {
+		name := passives.passive_def(passives.Passive(i)).name
 		found := false
 		for icon in recipe.icons {
 			found ||= icon.name == name
@@ -589,7 +588,7 @@ rear_gun_fires_one_volley_to_the_sides :: proc(t: ^testing.T) {
 	}
 	p := sim.player_at(s, 0)
 	p.weapons.air.weapon = i32(rear)
-	passives.levels_of(s, 0)[.Weapon_3] = 3
+	passives.levels_of(s, 0)[passives.WEAPON_3] = 3
 	p.invulnerable_always, p.invulnerable = true, true
 
 	seen: [dynamic]i32

@@ -71,9 +71,10 @@ reward_begin :: proc(s: ^sim.State, input: sim.Frame_Input) -> bool {
 		return false
 	}
 	next := sim.session_levels(s)[sim.single(s, sim.Level_Info).number].number
-	pool: [len(Passive)]Passive
+	pool: [passives.MAX_PASSIVES]Passive
 	n: i32
-	for pa in Passive {
+	for id in 0 ..< passives.passive_count() {
+		pa := Passive(id)
 		if !passives.passive_available(s, pa, next) {
 			continue
 		}

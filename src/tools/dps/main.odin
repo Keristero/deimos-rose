@@ -458,8 +458,9 @@ dps_only :: proc(ws: []Weapon_Case, name: string) -> ([]Weapon_Case, bool) {
 dps_configs :: proc(alloc := context.allocator) -> []Config {
 	out := make([dynamic]Config, alloc)
 	append(&out, Config{})
-	for &def, pa in passives.PASSIVES {
-		for l in 1 ..= def.levels {
+	for i in 0 ..< passives.passive_count() {
+		pa := passives.Passive(i)
+		for l in 1 ..= passives.passive_def(pa).levels {
 			append(&out, Config{true, pa, l})
 		}
 	}
@@ -480,10 +481,17 @@ config_name :: proc(c: Config) -> string {
 	return fmt.tprintf("%s %d", passive_name(c.passive), c.level)
 }
 
+// "weapon_1" as "Weapon 1".
 passive_name :: proc(p: passives.Passive) -> string {
-	n, _ := fmt.enum_value_to_string(p)
-	s, _ := strings.replace_all(n, "_", " ", context.temp_allocator)
-	return s
+	s := transmute([]u8)strings.clone(passives.passive_def(p).name, context.temp_allocator)
+	for &c, i in s {
+		if c == '_' {
+			c = ' '
+		} else if (i == 0 || s[i - 1] == ' ') && c >= 'a' && c <= 'z' {
+			c -= 'a' - 'A'
+		}
+	}
+	return string(s)
 }
 
 // The policies worth trying for a weapon under a loadout: taps at every
@@ -498,7 +506,7 @@ weapon_policies :: proc(w: Weapon_Case, c: Config, out: ^[dynamic]Policy) {
 	if w.ground {
 		return
 	}
-	auto_charge := c.has && c.passive == .Auto_Charge
+	auto_charge := c.has && c.passive == passives.AUTO_CHARGE
 	if w.charge {
 		append(out, Policy{.Charge, 0})
 	}

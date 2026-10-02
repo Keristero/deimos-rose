@@ -296,14 +296,14 @@ charge_rate_paces_power_levels :: proc(t: ^testing.T) {
 	h := sim.player_at(s, 0).weapons
 	lv := passives.levels_of(s, 0)
 	testing.expect_value(t, cw_levels_in_300(s, h), 100)
-	lv^[.Improved_Charge] = 1
+	lv^[passives.IMPROVED_CHARGE] = 1
 	testing.expect_value(t, cw_levels_in_300(s, h), 110)
-	lv^[.Improved_Charge] = 3
+	lv^[passives.IMPROVED_CHARGE] = 3
 	testing.expect_value(t, cw_levels_in_300(s, h), 130)
-	lv^[.Improved_Charge] = 0
-	lv^[.Auto_Charge] = 1
+	lv^[passives.IMPROVED_CHARGE] = 0
+	lv^[passives.AUTO_CHARGE] = 1
 	testing.expect_value(t, cw_levels_in_300(s, h), 50)
-	lv^[.Improved_Charge] = 3
+	lv^[passives.IMPROVED_CHARGE] = 3
 	testing.expect_value(t, cw_levels_in_300(s, h), 80)
 }
 
@@ -320,9 +320,9 @@ auto_charge_level_2_never_overheats :: proc(t: ^testing.T) {
 	h := sim.player_at(s, 0).weapons
 	lv := passives.levels_of(s, 0)
 	testing.expect_value(t, stats.powerup_overload_time(s, h, 0), 180)
-	lv^[.Auto_Charge] = 1
+	lv^[passives.AUTO_CHARGE] = 1
 	testing.expect_value(t, stats.powerup_overload_time(s, h, 0), 270)
-	lv^[.Auto_Charge] = 2
+	lv^[passives.AUTO_CHARGE] = 2
 	testing.expect_value(t, stats.powerup_overload_time(s, h, 0), 0)
 
 	// Build a charge with the button up for 400 steps: the step it began
@@ -340,7 +340,7 @@ auto_charge_level_2_never_overheats :: proc(t: ^testing.T) {
 		}
 		return
 	}
-	lv^[.Auto_Charge] = 1
+	lv^[passives.AUTO_CHARGE] = 1
 	charging, overheated := idle(s, h, 10)
 	testing.expect(t, charging > 0, "Auto Charge must charge with the button up")
 	testing.expect_value(t, h.air_powerup.state, 2)
@@ -349,7 +349,7 @@ auto_charge_level_2_never_overheats :: proc(t: ^testing.T) {
 
 	h.air_powerup = {entity = -1}
 	h.air_idle = 0
-	lv^[.Auto_Charge] = 2
+	lv^[passives.AUTO_CHARGE] = 2
 	charging, overheated = idle(s, h, 500)
 	testing.expect(t, charging > 0)
 	testing.expect_value(t, overheated, -1)
@@ -373,7 +373,7 @@ overcharge_shows_the_charge_past_the_weapons_own_max :: proc(t: ^testing.T) {
 	h.air.weapon = 0
 	h.air_powerup = {state = 1, level = 20, entity = -1}
 	testing.expect_value(t, stats.player_overcharge(s, p), 0)
-	passives.levels_of(s, 0)^[.Improved_Charge] = 3
+	passives.levels_of(s, 0)^[passives.IMPROVED_CHARGE] = 3
 	testing.expect_value(t, stats.powerup_max_level(s, h, 0), 26)
 	testing.expect_value(t, stats.player_overcharge(s, p), 0)
 	h.air_powerup.level = 23
@@ -413,7 +413,7 @@ extra_lanes_follow_the_spread_not_the_list :: proc(t: ^testing.T) {
 	out: [stats.MAX_LANES + stats.MAX_EXTRA_SPAWNS]stats.Weapon_Spawn
 	n := stats.weapon_spawns(s, 0, 0, false, out[:])
 	testing.expect_value(t, n, 2) // no passive: the list as it is, bar the empty entry
-	passives.levels_of(s, 0)^[.Weapon_1] = 1
+	passives.levels_of(s, 0)^[passives.WEAPON_1] = 1
 	n = stats.weapon_spawns(s, 0, 0, false, out[:])
 	if testing.expect_value(t, n, 3) {
 		for x, i in ([3]i32{-8, 0, 8}) {
@@ -448,7 +448,7 @@ no_reward_screen_when_nothing_is_left_to_take :: proc(t: ^testing.T) {
 	// The fixture's weapons are not the passives' weapons, so only the four
 	// ship passives could be offered.
 	s := cw_session(cw_two_level_defs(), session_mods(true, false))
-	passives.levels_of(s, 0)^ = #partial {.Improved_Manoeuvring = 2, .Auto_Charge = 2, .Improved_Charge = 3, .Shield_Regen = 3}
+	passives.levels_of(s, 0)^ = {passives.IMPROVED_MANOEUVRING = 2, passives.AUTO_CHARGE = 2, passives.IMPROVED_CHARGE = 3, passives.SHIELD_REGEN = 3}
 	tr := sim.Level_Transition.None
 	for i := 0; tr == .None && i < 10_000; i += 1 {
 		tr = sim.session_step(s, {})
@@ -469,7 +469,7 @@ reward_screen_waits_only_for_players_with_something_to_take :: proc(t: ^testing.
 	defer vmem.arena_destroy(&arena)
 	context.allocator = vmem.arena_allocator(&arena)
 	s := cw_session(cw_two_level_defs(), session_mods(true, false), .Co_Op)
-	maxed := #partial passives.Passive_Levels{.Improved_Manoeuvring = 2, .Auto_Charge = 2, .Improved_Charge = 3, .Shield_Regen = 3}
+	maxed := passives.Passive_Levels{passives.IMPROVED_MANOEUVRING = 2, passives.AUTO_CHARGE = 2, passives.IMPROVED_CHARGE = 3, passives.SHIELD_REGEN = 3}
 	passives.levels_of(s, 0)^ = maxed
 	for i := 0; i < 10_000 && !easy_mode.reward_open(s); i += 1 {
 		testing.expect(t, !sim.session_frozen(s))
@@ -616,7 +616,7 @@ shields_stop_refilling_at_full :: proc(t: ^testing.T) {
 	p := sim.player_at(s, 0)
 	p.state = .Playing
 	p.shields = 100
-	passives.levels_of(s, 0)^[.Shield_Regen] = 3 // no wait, 2% a second
+	passives.levels_of(s, 0)^[passives.SHIELD_REGEN] = 3 // no wait, 2% a second
 	for i in i32(0) ..< 60 {
 		cw_regen_step(s, p, i)
 	}
@@ -736,7 +736,7 @@ bacta_gun_extra_lanes_continue_its_fan :: proc(t: ^testing.T) {
 	if bg == sim.NO_WEAPON {
 		return
 	}
-	passives.levels_of(s, 0)^[.Weapon_2] = 2
+	passives.levels_of(s, 0)^[passives.WEAPON_2] = 2
 	out: [stats.MAX_LANES + stats.MAX_EXTRA_SPAWNS]stats.Weapon_Spawn
 	n := stats.weapon_spawns(s, bg, 0, false, out[:])
 	shots, flashes := 0, 0
@@ -774,7 +774,7 @@ direct_fire_extra_volley_follows_two_steps_later :: proc(t: ^testing.T) {
 		return
 	}
 	f.defs.weapons[rg].spawns = f.defs.weapons[ion].spawns
-	passives.levels_of(s, 0)^[.Weapon_3] = 3
+	passives.levels_of(s, 0)^[passives.WEAPON_3] = 3
 	cw_fly(s, rg)
 	shot := sim.res_id("icb ")
 	seen := make(map[i32]bool)
@@ -816,7 +816,7 @@ spawner_extra_volley_is_one_more_volley :: proc(t: ^testing.T) {
 	}
 	plain := volley(s, &seen, bullet)
 	testing.expect(t, plain > 0 && plain % 3 == 0, "the Photon Beam fires volleys of three")
-	passives.levels_of(s, 0)^[.Weapon_4] = 3
+	passives.levels_of(s, 0)^[passives.WEAPON_4] = 3
 	testing.expect_value(t, volley(s, &seen, bullet), plain + 3)
 }
 
@@ -851,7 +851,7 @@ ion_cannon_level_3_shots_accelerate :: proc(t: ^testing.T) {
 		testing.expect_value(t, sim.speed_from_vector(sim.entity_at(s, plain[0]).vel), full)
 	}
 
-	passives.levels_of(s, 0)^[.Weapon_1] = 3
+	passives.levels_of(s, 0)^[passives.WEAPON_1] = 3
 	shaped: [dynamic]i32
 	weapon_system.spawn_air(s, h, at)
 	cw_new_of(s, &seen, shot, &shaped)

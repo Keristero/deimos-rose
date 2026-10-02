@@ -558,7 +558,7 @@ a_shaped_spawner_fires_extra_lanes_and_to_the_sides :: proc(t: ^testing.T) {
 	testing.expect_value(t, headings(plain[:]), [4]int{2, 2, 0, 0})
 	testing.expect_value(t, len(volley(t, s, rear)), 4)
 
-	levels^[.Weapon_3] = 3 // side fire
+	levels^[passives.WEAPON_3] = 3 // side fire
 	sides := volley(t, s, rear)
 	testing.expect_value(t, len(sides), 6)
 	testing.expect_value(t, headings(sides[:]), [4]int{2, 2, 1, 1})
@@ -574,7 +574,7 @@ a_shaped_spawner_fires_extra_lanes_and_to_the_sides :: proc(t: ^testing.T) {
 	}
 
 	levels^ = {}
-	levels^[.Weapon_1] = 1 // one extra projectile
+	levels^[passives.WEAPON_1] = 1 // one extra projectile
 	testing.expect_value(t, len(volley(t, s, ion)), 5)
 }
 

@@ -16,7 +16,7 @@
 //       {"sprite": "edut", "frame": 1, "fit": 11, "x": 26, "y": 26}]}]}
 //
 // Each icon is written to <out dir>/<name>.png. The game finds a passive's
-// icon by its sim.Passive name in lower case, so a new passive needs only a
+// icon by its Passive_Def.name (plugins/passives), so a new passive needs only a
 // recipe entry of that name and `mise run assets:icons`.
 //
 // Only raylib's CPU-side image functions are used: no window, no audio

@@ -30,20 +30,6 @@ NONE :: sim.NONE
 Stat :: sim.Stat
 Stat_Total :: sim.Stat_Total
 
-Passive :: enum u8 {
-	Improved_Manoeuvring,
-	Auto_Charge,
-	Improved_Charge,
-	Shield_Regen,
-	Ground_Variant_1,
-	Weapon_1,
-	Weapon_2,
-	Weapon_3,
-	Weapon_4,
-	Weapon_5,
-	Weapon_6,
-}
-
 Mod_Kind :: enum u8 {
 	Increase,
 	Decrease,
@@ -63,6 +49,9 @@ Mod :: struct {
 }
 
 Passive_Def :: struct {
+	name:   string, // lower case, and unique: its icon is assets/icons/passives/<name>.png
+	label:  string, // as the reward screen names it
+	plugin: sim.Plugin_ID, // another plugin's passive names it (passive_register); this plugin's own leave it CORE
 	levels: u8,
 	// NONE for a ship passive. A weapon passive's modifiers apply to that
 	// weapon's own shots alone, and it is only offered while the weapon can
@@ -86,8 +75,45 @@ WEAPON_PLASMA_BOMB :: Res_ID{'p', 'l', 'b', 'o'}
 WEAPON_CHAINGUN :: Res_ID{'a', 'i', 'c', 'g'}
 WEAPON_DISCHARGE_BEAM :: Res_ID{'a', 'i', 'd', 'b'}
 
-PASSIVES := [Passive]Passive_Def {
+// The passives this plugin brings, in the order the design lists them.
+// Their ids are fixed; other plugins' passives follow them, numbered as
+// they register (passive_register).
+Own :: enum u8 {
+	Improved_Manoeuvring,
+	Auto_Charge,
+	Improved_Charge,
+	Shield_Regen,
+	Ground_Variant_1,
+	Weapon_1,
+	Weapon_2,
+	Weapon_3,
+	Weapon_4,
+	Weapon_5,
+	Weapon_6,
+}
+
+// A passive, by its id: this plugin's own first (Own), then other plugins'.
+Passive :: distinct u8
+
+IMPROVED_MANOEUVRING :: Passive(Own.Improved_Manoeuvring)
+AUTO_CHARGE :: Passive(Own.Auto_Charge)
+IMPROVED_CHARGE :: Passive(Own.Improved_Charge)
+SHIELD_REGEN :: Passive(Own.Shield_Regen)
+GROUND_VARIANT_1 :: Passive(Own.Ground_Variant_1)
+WEAPON_1 :: Passive(Own.Weapon_1)
+WEAPON_2 :: Passive(Own.Weapon_2)
+WEAPON_3 :: Passive(Own.Weapon_3)
+WEAPON_4 :: Passive(Own.Weapon_4)
+WEAPON_5 :: Passive(Own.Weapon_5)
+WEAPON_6 :: Passive(Own.Weapon_6)
+
+MAX_PASSIVES :: 32
+
+@(private = "file")
+OWN := [Own]Passive_Def {
 	.Improved_Manoeuvring = {
+		name   = "improved_manoeuvring",
+		label  = "IMPROVED MANOEUVRING",
 		levels = 2,
 		weapon = NONE,
 		mods = {
@@ -96,6 +122,8 @@ PASSIVES := [Passive]Passive_Def {
 		},
 	},
 	.Auto_Charge = {
+		name   = "auto_charge",
+		label  = "AUTO CHARGE",
 		levels = 2,
 		weapon = NONE,
 		mods = {
@@ -106,6 +134,8 @@ PASSIVES := [Passive]Passive_Def {
 		},
 	},
 	.Improved_Charge = {
+		name   = "improved_charge",
+		label  = "IMPROVED CHARGE",
 		levels = 3,
 		weapon = NONE,
 		mods = {
@@ -114,6 +144,8 @@ PASSIVES := [Passive]Passive_Def {
 		},
 	},
 	.Shield_Regen = {
+		name   = "shield_regen",
+		label  = "SHIELD REGENERATION",
 		levels = 3,
 		weapon = NONE,
 		mods = {
@@ -126,6 +158,8 @@ PASSIVES := [Passive]Passive_Def {
 		},
 	},
 	.Ground_Variant_1 = {
+		name   = "ground_variant_1",
+		label  = "REVERSE PLASMA BOMB",
 		levels = 3,
 		weapon = WEAPON_PLASMA_BOMB,
 		mods = {
@@ -150,6 +184,8 @@ PASSIVES := [Passive]Passive_Def {
 	// nothing to a lone target, and a firing delay only counts once it
 	// rounds to a whole step less.
 	.Weapon_1 = {
+		name   = "weapon_1",
+		label  = "ION CANNON UPGRADE",
 		levels = 3,
 		weapon = WEAPON_ION_CANNON,
 		mods = {
@@ -163,6 +199,8 @@ PASSIVES := [Passive]Passive_Def {
 		},
 	},
 	.Weapon_2 = {
+		name   = "weapon_2",
+		label  = "BACTA GUN UPGRADE",
 		levels = 3,
 		weapon = WEAPON_BACTA_GUN,
 		mods = {
@@ -172,6 +210,8 @@ PASSIVES := [Passive]Passive_Def {
 		},
 	},
 	.Weapon_3 = {
+		name   = "weapon_3",
+		label  = "REAR GUN UPGRADE",
 		levels = 3,
 		weapon = WEAPON_REAR_GUN,
 		mods = {
@@ -184,6 +224,8 @@ PASSIVES := [Passive]Passive_Def {
 		},
 	},
 	.Weapon_4 = {
+		name   = "weapon_4",
+		label  = "PHOTON BEAM UPGRADE",
 		levels = 3,
 		weapon = WEAPON_PHOTON_BEAM,
 		mods = {
@@ -194,6 +236,8 @@ PASSIVES := [Passive]Passive_Def {
 		},
 	},
 	.Weapon_5 = {
+		name   = "weapon_5",
+		label  = "CHAINGUN UPGRADE",
 		levels = 3,
 		weapon = WEAPON_CHAINGUN,
 		mods = {
@@ -206,6 +250,8 @@ PASSIVES := [Passive]Passive_Def {
 		},
 	},
 	.Weapon_6 = {
+		name   = "weapon_6",
+		label  = "DISCHARGE BEAM UPGRADE",
 		levels = 3,
 		weapon = WEAPON_DISCHARGE_BEAM,
 		mods = {
@@ -220,8 +266,41 @@ PASSIVES := [Passive]Passive_Def {
 	},
 }
 
-Passive_Levels :: [Passive]u8
+@(private = "file")
+registered: sim.Registry(Passive_Def, MAX_PASSIVES - len(Own))
 
+// Adds another plugin's passive, from its registration step, and returns
+// its id. Its def.plugin is that plugin: the passive is offered only while
+// the plugin is on, and its modifiers count through this plugin's stat
+// provider, so they need this plugin on too.
+passive_register :: proc(def: Passive_Def, loc := #caller_location) -> Passive {
+	assert(def.plugin != sim.CORE, "passives: a registered passive names its plugin", loc)
+	return Passive(len(Own) + sim.registry_add(&registered, def, loc))
+}
+
+// How many passives there are: ids run from 0 to one short of this.
+passive_count :: #force_inline proc "contextless" () -> int {
+	return len(Own) + registered.count
+}
+
+passive_def :: proc "contextless" (pa: Passive) -> ^Passive_Def {
+	if int(pa) < len(Own) {
+		return &OWN[Own(pa)]
+	}
+	return &registered.items[int(pa) - len(Own)]
+}
+
+passive_by_name :: proc "contextless" (name: string) -> (Passive, bool) {
+	for i in 0 ..< passive_count() {
+		if passive_def(Passive(i)).name == name {
+			return Passive(i), true
+		}
+	}
+	return 0, false
+}
+
+// The levels a player holds of each passive, by id.
+Passive_Levels :: [MAX_PASSIVES]u8
 
 // A modifier's value at `level` (1-based): the last entry up to it that is
 // not x. ok is false when there is none, and the modifier does nothing.
@@ -238,8 +317,9 @@ mod_value :: proc "contextless" (m: Mod, level: u8) -> (v: i16, ok: bool) {
 // weapon the stat is for (NONE for the ship): a weapon passive only counts
 // for its own weapon.
 stat_total :: proc "contextless" (levels: ^Passive_Levels, stat: Stat, weapon: Res_ID) -> (t: Stat_Total) {
-	for &def, pa in PASSIVES {
-		lv := levels[pa]
+	for i in 0 ..< passive_count() {
+		def := passive_def(Passive(i))
+		lv := levels[i]
 		if lv == 0 || (def.weapon != NONE && def.weapon != weapon) {
 			continue
 		}
@@ -268,7 +348,7 @@ stat_total :: proc "contextless" (levels: ^Passive_Levels, stat: Stat, weapon: R
 
 
 passive_maxed :: #force_inline proc "contextless" (levels: ^Passive_Levels, pa: Passive) -> bool {
-	return levels[pa] >= PASSIVES[pa].levels
+	return levels[pa] >= passive_def(pa).levels
 }
 
 // Whether a passive may be offered on the way into level `next`: a weapon
@@ -278,7 +358,11 @@ passive_maxed :: #force_inline proc "contextless" (levels: ^Passive_Levels, pa: 
 // (sim.weapons_kept) a weapon is kept once unlocked, so its passive is
 // offered from then on.
 passive_available :: proc "contextless" (s: ^sim.State, pa: Passive, next: i32) -> bool {
-	w := PASSIVES[pa].weapon
+	def := passive_def(pa)
+	if !sim.mod_on(s, def.plugin) {
+		return false
+	}
+	w := def.weapon
 	if w == NONE {
 		return true
 	}
@@ -315,8 +399,8 @@ provide :: proc "contextless" (s: ^sim.State, player: i32, stat: Stat, weapon: R
 @(private = "file")
 shapes :: proc "contextless" (s: ^sim.State, player: i32, weapon: Res_ID) -> bool {
 	levels := levels_of(s, player)
-	for &def, pa in PASSIVES {
-		if def.weapon == weapon && levels[pa] > 0 {
+	for i in 0 ..< passive_count() {
+		if passive_def(Passive(i)).weapon == weapon && levels[i] > 0 {
 			return true
 		}
 	}

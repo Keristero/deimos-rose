@@ -26,7 +26,7 @@ left room, and what is still provisional. The cross-cutting choice is D36 in
   - `Start` gains a flags byte (`START_EASY`), so both peers begin the same
     session.
   - Both packets still decode in their old, shorter forms (as flags 0).
-- **The reward screen** (`sim/reward.odin`) is part of the simulation. After
+- **The reward screen** (`plugins/easy_mode/reward.odin`) is part of the simulation. After
   a level's tally, `session_step` opens it instead of advancing, as long as
   another level is to come. Because it is stepped, snapshotted and rolled
   back like play, and a reconnect resync copies it with the rest of `State`,
@@ -35,12 +35,18 @@ left room, and what is still provisional. The cross-cutting choice is D36 in
     Only the frame count moves, plus one RNG draw per option when it opens.
   - Once it closes, the same step's `level_transition` moves on to the next
     level.
-- **The passives** (`sim/passives.odin`) are held per player as a level per
-  passive, in `Player.passives`.
-  - They are kept across levels and cleared by `player_setup` when a session
-    starts.
+- **The passives** (`plugins/passives`) are held per player as a level per
+  passive, in the `Passive_State` component on the player's entity.
+  - They are kept across levels, and start at none with each session.
   - Every stat is worked out from the levels held whenever it is needed. It
     is never stored.
+  - The plugin's own passives have fixed ids (`passives.Own`). Another
+    plugin adds its own with `passive_register` from its registration step,
+    naming itself as the passive's `plugin`: the passive is offered only
+    while that plugin is on, and its ids follow the plugin's in
+    registration order.
+  - Each `Passive_Def` carries its `name` (lower case; its icon and the DPS
+    report go by it) and the `label` the reward screen shows.
 - **Presentation** (`plugins/easy_mode/view/reward.odin`,
   `plugins/passives/view/passives.odin`):
   - The overlay is drawn over the dimmed play area. The HUD stays as it
@@ -54,7 +60,7 @@ left room, and what is still provisional. The cross-cutting choice is D36 in
 ## Icons
 
 Each passive's icon is a 32x32 PNG in `assets/icons/passives/`, named after
-its `sim.Passive` in lower case (`shield_regen.png`), which is how the
+its `Passive_Def.name` (`shield_regen.png`), which is how the
 reward screen finds it. The icons are composited from the game's own
 sprites by `mise run assets:icons` (`tools/icons`), so they can be rebuilt
 from an extraction like everything else in `assets/`. `assets:all` runs the

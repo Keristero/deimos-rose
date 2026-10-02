@@ -610,7 +610,7 @@ a_backwards_crosshair_sits_behind_the_ship :: proc(t: ^testing.T) {
 	}
 	p.weapons.ground.weapon = bomb
 	p.weapons.crosshair_shown = true
-	passives.levels_of(s, p.number)^[.Ground_Variant_1] = 1
+	passives.levels_of(s, p.number)^[passives.GROUND_VARIANT_1] = 1
 	h := f32(sim.view_height(s.defs))
 	half := f32(lifecycle.halve(p.weapons.crosshair.dims.y))
 	c := p.weapons.crosshair
