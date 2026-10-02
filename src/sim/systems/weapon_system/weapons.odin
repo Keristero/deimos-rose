@@ -142,6 +142,7 @@ weapons_appear :: proc(s: ^sim.State, h: sim.Weapons, level_start: bool) {
 	h.ground_held = 0
 	h.air_idle, h.volleys_left, h.volley_pace, h.ground_pace = 0, 0, 0, 0
 	h.air_windup = 0
+	h.ground_charging, h.ground_aim = false, 0
 	if w, ok := level_start_weapon(s, sim.WEP_GROUND); ok && level_start {
 		h.queued_ground = w
 	}
@@ -183,7 +184,7 @@ change_weapon :: proc(s: ^sim.State, h: sim.Weapons, type: sim.Res_ID, weapon: i
 	case sim.WEP_GROUND:
 		if h.ground.weapon == weapon {
 			h.queued_ground = sim.NO_WEAPON
-		} else if h.ground_powerup.state == 0 {
+		} else if h.ground_powerup.state == 0 && !h.ground_charging {
 			h.ground.weapon = weapon
 			h.ground.count, h.ground.pending = 0, 0
 			h.ground.flag_a, h.ground.flag_b = false, true
@@ -245,6 +246,14 @@ weapons_process :: proc(
 		powerup_release(s, h.air_powerup.entity, time)
 		result = .Released
 	}
+	// A plugin's ground charge (stats.ground_charges) is its own: it
+	// releases apart from the original's power-up, whose release would also
+	// clear an air overload.
+	gw := sim.weapon_def(s, h.ground.weapon)
+	ground_powered := gw.powerup_ground_activation_spawn != sim.NONE || gw.powerup_ground_release_spawn != sim.NONE
+	if !ground_powered && (h.ground_charging || stats.ground_charges(s, h)) {
+		ground_charge_process(s, h, at, ground)
+	}
 	if !ground && (h.ground_powerup.state == 1 || h.ground_powerup.state == 2) {
 		h.ground_powerup.state = 3
 		h.ground_powerup.time = time
@@ -254,8 +263,7 @@ weapons_process :: proc(
 	if !sim.weapon_def(s, h.air.weapon).auto_repeat {
 		air_powerup_process(s, h, time, at, h.air.weapon, auto_charge ? h.air_idle : h.air_held, &result)
 	}
-	gw := sim.weapon_def(s, h.ground.weapon)
-	if gw.powerup_ground_activation_spawn != sim.NONE || gw.powerup_ground_release_spawn != sim.NONE {
+	if ground_powered {
 		sim.unported(s, 0x44741a) // ground power-up
 	}
 
@@ -398,6 +406,64 @@ spawn_ground :: proc(s: ^sim.State, h: sim.Weapons, at: sim.Vec) {
 		stats.shape_spawn(s, &req, h.player, h.ground.weapon)
 		reach := max(sim.trunc_i32(backwards ? h.crosshair.loc.y - h.loc.y : h.loc.y - h.crosshair.loc.y), 0)
 		req.speed_scale = f32(reach) / f32(abs(wd.crosshair_y_offset))
+		lifecycle.eg_request_spawn(s, req)
+	}
+	if wd.crosshair_spawn_on_activation != sim.NONE {
+		lifecycle.spawn_at(s, wd.crosshair_spawn_on_activation, h.crosshair.loc, h.player)
+	}
+}
+
+// The ground weapon's charge (stats.ground_charges): held long enough it
+// begins, the crosshair turns about the ship while it lasts, and letting
+// go drops the bomb (spawn_ground_charge) and brings the crosshair back
+// ahead. Lost with the stat, the charge ends without a bomb.
+ground_charge_process :: proc(s: ^sim.State, h: sim.Weapons, at: sim.Vec, ground: bool) {
+	if !h.ground_charging {
+		h.ground_charging = ground && stats.GROUND_CHARGE_HOLD <= h.ground_held
+		return
+	}
+	if !stats.ground_charges(s, h) {
+		h.ground_charging, h.ground_aim = false, 0
+		return
+	}
+	if ground {
+		h.ground_aim = stats.ground_aim_next(s, h)
+		return
+	}
+	spawn_ground_charge(s, h, at)
+	h.ground_charging, h.ground_aim = false, 0
+	if h.queued_ground != sim.NO_WEAPON {
+		change_weapon(s, h, sim.WEP_GROUND, h.queued_ground)
+		h.queued_ground = sim.NO_WEAPON
+	}
+}
+
+// A charged bomb: the ground weapon's spawns with their first projectile
+// alone, turned with the crosshair and sped to reach it as spawn_ground's
+// are, tagged as the charge's. Then the crosshair's activation spawn.
+spawn_ground_charge :: proc(s: ^sim.State, h: sim.Weapons, at: sim.Vec) {
+	wd := sim.weapon_def(s, h.ground.weapon)
+	turn := h.ground_aim
+	d := h.crosshair.loc - h.loc
+	reach := sim.m_sqrt(sim.trunc_i32(d.x * d.x + d.y * d.y))
+	bomb := false
+	for &sp in wd.spawns {
+		if sp.unit == sim.NONE {
+			continue
+		}
+		if stats.unit_is_projectile(s, sp.unit) {
+			if bomb {
+				continue
+			}
+			bomb = true
+		}
+		req := sim.spawn_request(sp.unit)
+		req.owner_player = h.player
+		req.loc = at + stats.turn_offset({f32(sp.x_loc), f32(sp.y_loc)}, turn)
+		req.explicit_heading = sp.set_heading || turn != 0
+		req.heading = stats.wrap_angle(sp.angle + turn)
+		stats.shape_spawn(s, &req, h.player, h.ground.weapon, charge = true)
+		req.speed_scale = reach / f32(abs(wd.crosshair_y_offset))
 		lifecycle.eg_request_spawn(s, req)
 	}
 	if wd.crosshair_spawn_on_activation != sim.NONE {

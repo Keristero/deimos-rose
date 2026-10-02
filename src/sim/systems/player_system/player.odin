@@ -408,7 +408,13 @@ player_move :: proc(s: ^sim.State, p: sim.Player, time: i32) {
 		c := p.weapons.crosshair
 		loc := sim.Vec{f32(gw.crosshair_x_offset) + p.loc.x, f32(p.crosshair_reach) + f32(gw.crosshair_y_offset) + p.loc.y}
 		half := lifecycle.halve(c.dims.y)
-		if backwards {
+		if turn := p.weapons.ground_aim; turn != 0 {
+			// Turned about the ship by the ground weapon's charge
+			// (stats.ground_aim_next), and kept on screen.
+			ahead := -f32(p.crosshair_reach + gw.crosshair_y_offset)
+			loc = p.loc + stats.turn_offset({f32(gw.crosshair_x_offset), -stats.crosshair_turned_reach(ahead, turn)}, turn)
+			loc.y = clamp(loc.y, f32(half), f32(h - half))
+		} else if backwards {
 			// Behind the ship at half the reach, kept on screen at the bottom.
 			loc.y = p.loc.y - f32(p.crosshair_reach + gw.crosshair_y_offset) / 2
 			if f32(h) < loc.y + f32(half) {

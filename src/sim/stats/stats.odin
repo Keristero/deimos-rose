@@ -237,6 +237,63 @@ ground_fires_backwards :: proc "contextless" (s: ^sim.State, h: ^sim.Weapon_Hand
 	return weapon_stat(s, h.player, h.ground.weapon, .Fires_Backwards).enabled
 }
 
+// The ground weapon's charge (Ground_Charge), which the original does not
+// have: its one ground weapon has no power-up. Fire-ground held on past
+// the burst a press fires charges one bomb, aimed by the crosshair, which
+// may turn about the ship meanwhile; letting go drops it. Its stats are
+// the charge's (charge_stat), so a passive can make that bomb heavier
+// without touching the burst.
+
+// Steps fire-ground is held before the charge begins. Provisional: the
+// air weapons' own powerup_air_time_until_activation.
+GROUND_CHARGE_HOLD :: 15
+
+// How fast the crosshair turns while charged. Provisional: picked to
+// swing round behind in half a second, and to circle the ship in two.
+CHARGE_SWING_DEGREES_A_SECOND :: 360
+CHARGE_ORBIT_DEGREES_A_SECOND :: 180
+
+// Whether the ground weapon charges: Ground_Charge, on a weapon without a
+// power-up of its own in its data (which is the original's, unported).
+ground_charges :: proc "contextless" (s: ^sim.State, h: ^sim.Weapon_Handler) -> bool {
+	if h.ground.weapon == sim.NO_WEAPON {
+		return false
+	}
+	gw := sim.weapon_def(s, h.ground.weapon)
+	if gw.powerup_ground_activation_spawn != sim.NONE || gw.powerup_ground_release_spawn != sim.NONE {
+		return false
+	}
+	return charge_stat(s, h.player, h.ground.weapon, .Ground_Charge).enabled
+}
+
+// Where a charged crosshair has turned to a step on: round behind the ship
+// and held there (Charge_Aim_Behind), or on round it (Charge_Aim_Around).
+ground_aim_next :: proc "contextless" (s: ^sim.State, h: ^sim.Weapon_Handler) -> i32 {
+	if charge_stat(s, h.player, h.ground.weapon, .Charge_Aim_Around).enabled {
+		return wrap_angle(h.ground_aim + max(CHARGE_ORBIT_DEGREES_A_SECOND / step_hz(s), 1))
+	}
+	if charge_stat(s, h.player, h.ground.weapon, .Charge_Aim_Behind).enabled {
+		return min(h.ground_aim + max(CHARGE_SWING_DEGREES_A_SECOND / step_hz(s), 1), 180)
+	}
+	return h.ground_aim
+}
+
+// How far from the ship a crosshair `ahead` px in front of it stands once
+// turned `turn` degrees about it: on an ellipse, half as far behind, the
+// reach the backwards bomb had (there is less room behind the ship than
+// ahead), and three quarters to the sides.
+crosshair_turned_reach :: proc "contextless" (ahead: f32, turn: i32) -> f32 {
+	return ahead * (3 + sim.m_cos(wrap_angle(turn))) / 4
+}
+
+// An offset from the ship, turned `turn` degrees clockwise on screen: the
+// way a heading of `turn` faces.
+turn_offset :: proc "contextless" (v: sim.Vec, turn: i32) -> sim.Vec {
+	t := wrap_angle(turn)
+	c, sn := sim.m_cos(t), sim.m_sin(t)
+	return {v.x * c - v.y * sn, v.x * sn + v.y * c}
+}
+
 // A weapon is direct-fire when its spawn list holds player projectiles
 // itself; otherwise it spawns a spawner of them (the Rear Gun, the Photon
 // Beam), whose own spawn sets are the lanes.

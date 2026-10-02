@@ -132,6 +132,25 @@ passive has a recipe entry and, when the assets tree is present, a file.
   - A shot carries its weapon (`shaped_by`) and scope (`shaped_charge`)
     from spawn onwards, so a passive can shape it after it spawns. A
     weapon nothing shapes leaves its shots untagged, as the original's.
+- **The ground weapon's charge** (`Ground_Charge`). The original's one
+  ground weapon has no power-up, so a passive can give it one of its own
+  (`stats.ground_charges`, `weapon_system.ground_charge_process`):
+  - A press still drops the usual burst. Held on for
+    `GROUND_CHARGE_HOLD` steps, the charge begins; letting go drops one
+    bomb, the weapon's first projectile and the rest of its spawns.
+  - The bomb is the charge's (`charge = true`), so a charge passive can
+    make it heavier without touching the burst.
+  - While it is held the crosshair may turn about the ship
+    (`Weapon_Handler.ground_aim`): round behind it and held there
+    (`Charge_Aim_Behind`), or on round it (`Charge_Aim_Around`). The
+    bomb's spawns turn with it and are sped to reach it. Letting go
+    brings the crosshair back ahead.
+  - A turned crosshair stands on an ellipse about the ship
+    (`stats.crosshair_turned_reach`): the full reach ahead, half of it
+    behind (there is less room behind the ship), and kept on screen.
+  - The charge is the handler's own (`ground_charging`), apart from the
+    original's ground power-up. Its release does not clear an air
+    overload, as that power-up's would.
 - **Offering.**
   - There are `min(choosers + 2, available)` options, drawn without repeats:
     three for one player, four for two (the design's first count, one more
@@ -326,6 +345,11 @@ Each of these is marked in the code, with what would settle it:
 - The accelerating shots' even climb over `ACCEL_SECONDS`. The design says
   when they are back to full speed, not how they get there.
 - `REWARD_RESUME_DELAY` = 10 steps.
+- `GROUND_CHARGE_HOLD` = 15 steps before the ground weapon's charge
+  begins: the air weapons' own time until activation.
+- `CHARGE_SWING_DEGREES_A_SECOND` = 360 and
+  `CHARGE_ORBIT_DEGREES_A_SECOND` = 180: a charged crosshair swings
+  behind in half a second, and circles the ship in two.
 - `LANE_SPACING` = 12 px, for a weapon with a single lane.
 - The icons' compositions (see Icons) are a first pass, not a
   designed set.

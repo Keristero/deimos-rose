@@ -1793,3 +1793,23 @@ extra damage must not reach the shots.
   and keeps reading its damage and width in the shots' scope. Its passive
   was tuned with the release sharing them, as plugins/new_weapon_passives
   records.
+
+### D68 — The ground weapon's charge is a plugin's, apart from its power-up
+
+notes/extra-weapons-and-passives-3.md gives the ground weapon a charge
+attack, aimed by a crosshair that turns about the ship. The original's
+one ground weapon has no power-up, and the ground power-up it might have
+had (0x44741a) is not ported.
+
+- **Its own state.** The charge is held in `Weapon_Handler.ground_charging`,
+  not in `ground_powerup`. The original's release of a ground power-up
+  also ends the air one's overload. Kept apart, the charge cannot reach
+  that, or be mistaken for the unported power-up.
+- **Only where there is no power-up.** A ground weapon whose data has a
+  power-up still reports it unported, charge or not.
+- **Its stats are the charge's scope (D67).** The bomb it drops is tagged
+  as the charge's, so a passive that makes it heavier leaves the burst as
+  it was.
+- **The crosshair's turn is the handler's** (`ground_aim`), so a rollback
+  restores it with the rest. At 0 the crosshair is placed by the
+  original's code untouched.

@@ -73,6 +73,9 @@ STAT_DISPLAY := [sim.Stat]Stat_Display {
 	.Projectile_Damage        = {"DAMAGE", .Percent, nil},
 	.Random_Spread_Range      = {"SPREAD", .Percent, nil},
 	.Shot_Width               = {"BEAM WIDTH", .Percent, nil},
+	.Ground_Charge            = {"CHARGED BOMB", .Toggle, nil},
+	.Charge_Aim_Behind        = {"AIMS BEHIND", .Toggle, .Ground_Charge},
+	.Charge_Aim_Around        = {"AIMS AROUND", .Toggle, .Ground_Charge},
 }
 
 // A stat's value for a player holding `levels`, as the reward screen shows

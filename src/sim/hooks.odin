@@ -204,6 +204,9 @@ Stat :: enum u8 {
 	Projectile_Damage,        // the damage each shot, and what it spawns, deals
 	Random_Spread_Range,      // how far either side of its heading a shot may stray
 	Shot_Width,               // how wide a shot cast as a line, not flown, is
+	Ground_Charge,            // holding the ground weapon charges one heavier bomb, dropped on release
+	Charge_Aim_Behind,        // while it is charged the crosshair swings round behind the ship
+	Charge_Aim_Around,        // while it is charged the crosshair circles the ship
 }
 
 
