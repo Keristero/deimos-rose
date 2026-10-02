@@ -95,7 +95,9 @@ air_shot_can_hit :: proc "contextless" (s: ^sim.State, e: sim.Entity) -> bool {
 }
 
 // FUN_0041b920: collisions between a "harmless to players" entity (player
-// shots and their kin) and the entities it can hit, in group order.
+// shots and their kin) and the entities it can hit, in group order. Not
+// the original's: an air shot that hits the ground (Hits_Ground) can hit
+// the ground targets it overlaps as well.
 entity_collisions :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) {
 	me := lifecycle.object_bounds(e.obj)
 	if sim.prefab_is(s, es.prefab, player_projectile) && me.bottom < 0 {
@@ -107,7 +109,7 @@ entity_collisions :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) {
 			continue
 		}
 		op := sim.prefab_of(s, o)
-		if !shot_hits(s, es.prefab, op) {
+		if !shot_hits(s, es.prefab, op) && !(e.ground > 0 && sim.prefab_is(s, op, ground_shot_targets)) {
 			continue
 		}
 		ob := lifecycle.object_bounds(o.obj)

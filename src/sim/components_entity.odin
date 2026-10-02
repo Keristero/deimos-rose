@@ -374,6 +374,10 @@ Shaped :: struct {
 	// The damage a wearing shot has left to give (Wears_Down,
 	// stats.wear_pool), 0 for one that does not wear.
 	wear:          f32,
+	// An air shot's factor on its damage to a ground target it flies
+	// over (Hits_Ground, stats.ground_share), 0 for one that cannot hit
+	// them.
+	ground:        f32,
 }
 
 // One pool entity: its components, as G_Entity's fields. A view, passed by

@@ -209,6 +209,13 @@ passive has a recipe entry and, when the assets tree is present, a file.
   hit delay nor starts it, so it does not turn the shots away, and shows
   nothing of a hit. The clouds are the session's (`passives.Clouds`), so
   a rollback restores them, and are gone when the level ends.
+- **Air shots on the ground** (`Hits_Ground`, D75). An air shot's
+  collisions are tested against air targets only, in the original. One
+  whose scope has the stat is tested against the ground targets it
+  overlaps as well (`Shaped.ground`, set as it spawns), and hits them for
+  its damage scaled by `Ground_Damage`. It takes their damage back, as
+  it would an air target's, so a shot spent on the ground does not fly
+  on.
 - **Offering.**
   - There are `min(choosers + 2, available)` options, drawn without repeats:
     three for one player, four for two (the design's first count, one more

@@ -90,6 +90,14 @@ carries on to another target. It is replaced 12 steps later.
   it dies. This is the one scenario where overkill is wasted, and where
   damage that carries through a kill (the Discharge Beam's leftover)
   counts.
+- **Ground target:** one Laser Tank copy where the single air target
+  stands, for an air weapon with a passive whose shots can hit the
+  ground (`Hits_Ground`, Weapon 1 Charge), bare and with those passives
+  only. The bare weapon deals nothing there, so the scenario adds only
+  what such a passive reaches. The weapon's own DPS, and every average,
+  stay over the other four, with what a passive adds on the ground added
+  in, as a target behind adds for most weapons. No other passive's row
+  changes. Only that weapon's passive table shows the column.
 
 Both ground positions come from the crosshair's own sums (`ground_aim` in
 `tools/dps`: the sum ahead is copied from

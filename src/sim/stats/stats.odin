@@ -575,6 +575,15 @@ wear_size :: proc "contextless" (s: ^sim.State, e: sim.Entity, left: f32) -> f32
 	return size * max(left / full, WEAR_MIN_SIZE)
 }
 
+// Hits_Ground: an air shot also hits the ground targets it flies over,
+// for its damage scaled by Ground_Damage; 0 when it cannot.
+ground_share :: proc "contextless" (s: ^sim.State, e: sim.Entity) -> f32 {
+	if sim.unit_of(s, e).is_ground_based || !shaped_stat(s, e, .Hits_Ground).enabled {
+		return 0
+	}
+	return max(scale_f32(1, shaped_stat(s, e, .Ground_Damage).percent), 0)
+}
+
 // Accelerating shots leave at the scaled initial speed and speed up evenly
 // until they are back to their unit's own speed ACCEL_SECONDS later
 // (notes/extra-weapon-passives-and-base-adjustments.md: "only get back to
@@ -601,6 +610,7 @@ shaped_entity_init :: proc(s: ^sim.State, e: sim.Entity, time: i32) {
 			e.dims_dirty = true
 		}
 		e.wear = wear_pool(s, e)
+		e.ground = ground_share(s, e)
 		speed := sim.speed_from_vector(e.vel)
 		if e.stationary || speed == 0 {
 			return

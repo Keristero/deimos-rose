@@ -1964,3 +1964,31 @@ which "deal small amounts of damage to enemies inside them".
 - Nothing calls a `Shot_Hit` that no plugin registers, and
   `entity_damage` has no caller in the core: oracle:diff and the goldens
   did not change until the passive was offered.
+
+### D75 — An air shot can hit the ground, for a share of its damage
+
+notes/extra-weapons-and-passives-3.md asks for an Ion Cannon charge
+upgrade whose "fired projectiles can also hit ground targets, damage is
+reduced but the penalty goes down each level".
+
+- **Two core stats.** `Hits_Ground` lets a shaped air shot hit ground
+  targets as well as air ones. `Ground_Damage` scales its damage to
+  them. Both are read in the shot's own scope (D67). The share is set on
+  the shot as it spawns (`Shaped.ground`, `stats.ground_share`), so
+  `entity_collisions` tests it against the ground targets it overlaps
+  (`ground_shot_targets`, the ground's counterpart of
+  `air_shot_targets`), and `collide_entities` scales the damage it deals
+  them.
+- **A hit like any other.** The target hits the shot back, as an air
+  target would, so a shot spent on a tank does not fly on to the air
+  enemy past it. Air shots and ground units are drawn on different
+  layers, but they share the play field's coordinates, so the overlap is
+  the same test.
+- **Measured on its own target.** The DPS report adds a ground target
+  for an air weapon with such a passive. The bare weapon deals nothing
+  there, so it adds only what the passive reaches, and the averages
+  stay over the four scenarios, as a target behind does: no other
+  passive's row changes.
+- Without the stat the share is 0 and every shot's candidates and
+  damage are the original's: the goldens did not change until the
+  passive was offered.

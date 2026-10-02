@@ -84,6 +84,8 @@ STAT_DISPLAY := [sim.Stat]Stat_Display {
 	.Wears_Down               = {"WEARING SHOTS", .Toggle, nil},
 	.Hit_Cloud                = {"CORROSIVE CLOUDS", .Toggle, nil},
 	.Cloud_Lifetime           = {"CLOUD TIME", .Percent, .Hit_Cloud},
+	.Hits_Ground              = {"HITS GROUND", .Toggle, nil},
+	.Ground_Damage            = {"GROUND DAMAGE", .Percent, .Hits_Ground},
 }
 
 // A stat's value for a player holding `levels`, as the reward screen shows

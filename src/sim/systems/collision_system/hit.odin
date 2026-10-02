@@ -132,7 +132,12 @@ collide_entities :: proc(s: ^sim.State, e, o: sim.Entity, time: i32) {
 	e_passes := sim.prefab_has(s, sim.prefab_of(s, e), Passes_Hits_To_Owner)
 	shot_hit(s, o, hit_taker(s, e, e_passes, e.owner), stats.shot_damage(s, o, ou.damage), time)
 	o_passes := sim.prefab_has(s, sim.prefab_of(s, o), Passes_Hits_To_Owner)
-	shot_hit(s, e, hit_taker(s, o, o_passes, e.owner), stats.shot_damage(s, e, eu.damage), time)
+	damage := stats.shot_damage(s, e, eu.damage)
+	if e.ground > 0 && ou.is_ground_based {
+		// An air shot on a ground target (Hits_Ground) deals its share.
+		damage *= e.ground
+	}
+	shot_hit(s, e, hit_taker(s, o, o_passes, e.owner), damage, time)
 }
 
 // `by` hits `target` for `damage`: entity_hit, for the player `by` belongs

@@ -18,7 +18,10 @@
 // targets die: each has a real enemy's shields, is replaced a moment after
 // it is shot down, and only the shields taken off count, so what a weapon
 // wastes on overkill is seen, and what it carries through a kill (the
-// Discharge Beam's leftover damage) is too.
+// Discharge Beam's leftover damage) is too. A fifth, one ground target
+// ahead, is measured only for an air weapon with a passive whose shots can
+// hit the ground (Hits_Ground): the bare weapon deals nothing there, so it
+// adds only what that passive reaches.
 //
 // A weapon is fired under every input policy weapon_policies lists, and the
 // report keeps two sets: primary fire (the best of the taps, and of holding
@@ -114,6 +117,7 @@ Scenario :: enum u8 {
 	Cluster,
 	Behind,
 	Wave,
+	Ground, // an air weapon's shots on a ground target: ground_measured
 }
 
 SCENARIO_NAMES := [Scenario]string {
@@ -121,7 +125,13 @@ SCENARIO_NAMES := [Scenario]string {
 	.Cluster = "Cluster of 5",
 	.Behind  = "Target behind",
 	.Wave    = "Wave of 9",
+	.Ground  = "Ground target",
 }
+
+// The scenarios every weapon is measured in, and the averages are over.
+// Ground is left out: a bare air weapon deals nothing there, so what a
+// passive reaches there is added to them, as behind is for most weapons.
+EVERY_WEAPON :: bit_set[Scenario]{.Single, .Cluster, .Behind, .Wave}
 
 // The two sets the report keeps.
 Mode :: enum u8 {
@@ -528,6 +538,9 @@ dps_jobs :: proc(sh: ^Shared, alloc := context.allocator) -> []Job {
 			clear(&pols)
 			weapon_policies(w, c, &pols)
 			for sc in Scenario {
+				if sc == .Ground && !(ground_measured(w) && (!c.has || passive_hits_ground(c.passive))) {
+					continue
+				}
 				for p in pols {
 					append(&out, Job{wi, sc, ci, p})
 				}
@@ -548,6 +561,31 @@ dps_worker :: proc(data: rawptr) {
 		sh.outcomes[i] = dps_run(sh.defs, sh.weapons[j.weapon], j.scenario, config_levels(sh.configs[j.config]), j.policy, sh.steps)
 		free_all(context.temp_allocator)
 	}
+}
+
+// Whether an air weapon has a passive whose shots can hit the ground: the
+// Ground scenario is measured for it, bare and with those passives.
+ground_measured :: proc(w: Weapon_Case) -> bool {
+	if w.ground {
+		return false
+	}
+	for i in 0 ..< passives.passive_count() {
+		pa := passives.Passive(i)
+		if wid := passives.passive_def(pa).weapon; (wid == {} || wid == w.id) && passive_hits_ground(pa) {
+			return true
+		}
+	}
+	return false
+}
+
+// Whether a passive lets an air weapon's shots hit the ground.
+passive_hits_ground :: proc(p: passives.Passive) -> bool {
+	for mod in passives.passive_def(p).mods {
+		if mod.stat == .Hits_Ground {
+			return true
+		}
+	}
+	return false
 }
 
 // Whether a passive gives the ground weapon a charge.
@@ -635,6 +673,10 @@ dps_run :: proc(d: ^sim.Defs, w: Weapon_Case, sc: Scenario, levels: passives.Pas
 	switch sc {
 	case .Single, .Behind:
 		offsets = CLUSTER[:1]
+	case .Ground:
+		// Where the single air target would stand, on the ground.
+		offsets = CLUSTER[:1]
+		unit = GROUND_TARGET
 	case .Cluster:
 		offsets = CLUSTER[:]
 	case .Wave:

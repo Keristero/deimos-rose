@@ -237,6 +237,8 @@ Stat :: enum u8 {
 	Wears_Down,               // a shot is not stopped by what it hits: it gives a store of damage, shrinking as it does
 	Hit_Cloud,                // a shot's hit leaves a cloud that harms what lingers in it
 	Cloud_Lifetime,           // how long such a cloud lingers
+	Hits_Ground,              // an air shot also hits the ground targets it flies over
+	Ground_Damage,            // how much of its damage such a shot deals them
 }
 
 
