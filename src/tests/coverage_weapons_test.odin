@@ -482,7 +482,7 @@ reward_screen_waits_only_for_players_with_something_to_take :: proc(t: ^testing.
 		return
 	}
 	testing.expect(t, sim.session_frozen(s), "the reward screen must freeze the presentation")
-	testing.expect_value(t, rw.count, 3)
+	testing.expect_value(t, rw.count, 4)
 	for k in 0 ..< rw.count {
 		testing.expect(t, !easy_mode.reward_selectable(s, 0, k), "a maxed passive must not be selectable")
 		testing.expect(t, easy_mode.reward_selectable(s, 1, k))

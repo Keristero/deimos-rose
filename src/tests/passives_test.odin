@@ -172,9 +172,9 @@ reward_screen_takes_every_players_choice :: proc(t: ^testing.T) {
 	if !testing.expect(t, rw.active, "the reward screen must open after the tally") {
 		return
 	}
-	// Two choosers: three options, none repeated. The fixture's weapons are
-	// not the passives' weapons, so only the four ship passives can come up.
-	testing.expect_value(t, rw.count, 3)
+	// Two choosers: four options, none repeated. The fixture's weapons are
+	// not the passives' weapons, so the four ship passives are all there is.
+	testing.expect_value(t, rw.count, 4)
 	for k in 0 ..< rw.count {
 		testing.expect(t, passives.passive_def(rw.options[k]).weapon == sim.NONE)
 		for j in 0 ..< k {
@@ -182,7 +182,7 @@ reward_screen_takes_every_players_choice :: proc(t: ^testing.T) {
 		}
 	}
 	testing.expect_value(t, rw.cursor[0], 0)
-	testing.expect_value(t, rw.cursor[1], 2)
+	testing.expect_value(t, rw.cursor[1], 3)
 
 	time, frame := sim.single(s, sim.Clock).time, sim.frame_of(s)
 	press :: proc(s: ^sim.State, a, b: sim.Buttons) -> sim.Level_Transition {
@@ -198,6 +198,7 @@ reward_screen_takes_every_players_choice :: proc(t: ^testing.T) {
 	sim.session_step(s, {})
 	press(s, {.Fire_Air}, {.Left})
 	testing.expect(t, rw.locked[0])
+	press(s, {}, {.Left})
 	testing.expect_value(t, rw.cursor[1], 1)
 	testing.expect(t, !easy_mode.reward_selectable(s, 1, 1))
 	testing.expect_value(t, sim.session_step(s, {{}, {.Fire_Air}}), sim.Level_Transition.None)
@@ -212,8 +213,8 @@ reward_screen_takes_every_players_choice :: proc(t: ^testing.T) {
 	testing.expect_value(t, rw.cursor[0], 0)
 	// Left from the first option wraps to the last.
 	press(s, {.Left}, {})
-	testing.expect_value(t, rw.cursor[0], 2)
-	want0, want1 := rw.options[2], rw.options[1]
+	testing.expect_value(t, rw.cursor[0], 3)
+	want0, want1 := rw.options[3], rw.options[1]
 	testing.expect_value(t, sim.single(s, sim.Clock).time, time) // the game stands still
 	testing.expect(t, sim.frame_of(s) > frame, "the frame count still moves")
 
@@ -247,14 +248,14 @@ no_reward_screen_after_the_last_level :: proc(t: ^testing.T) {
 }
 
 @(test)
-reward_options_are_one_more_than_the_players :: proc(t: ^testing.T) {
+reward_options_are_two_more_than_the_players :: proc(t: ^testing.T) {
 	defs := two_level_defs()
 	s := new(sim.State, context.temp_allocator)
 	defer sim.destroy(s)
 	sim.init(s, sim.Session{seed = 11, level_id = defs.levels[0].id, game_type = .Single, mods = session_mods(true, false)}, defs)
 	play_to_level_end(s)
 	testing.expect(t, easy_mode.reward_of(s).active)
-	testing.expect_value(t, easy_mode.reward_of(s).count, 2)
+	testing.expect_value(t, easy_mode.reward_of(s).count, 3)
 	testing.expect(t, !easy_mode.reward_of(s).choosing[1], "an absent player does not choose")
 	// A passive already at its top level for the only chooser is not offered.
 	sim.init(s, sim.Session{seed = 11, level_id = defs.levels[0].id, game_type = .Single, mods = session_mods(true, false)}, defs)

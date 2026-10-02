@@ -14,7 +14,9 @@ import "dr:sim"
 
 Passive :: passives.Passive
 
-MAX_REWARD_OPTIONS :: sim.MAX_PLAYERS + 1
+// One per player, and two more: three alone, four in co-op
+// (notes/extra-weapons-and-passives-3.md).
+MAX_REWARD_OPTIONS :: sim.MAX_PLAYERS + 2
 
 // At most this many options to a row (plugins/easy_mode/view draws the
 // grid the same way); more wrap onto further rows.
@@ -56,7 +58,7 @@ reward_due :: proc "contextless" (s: ^sim.State) -> bool {
 		int(sim.single(s, sim.Level_Info).number) < len(sim.session_levels(s))
 }
 
-// Opens the reward screen: one option per chooser plus one, drawn without
+// Opens the reward screen: one option per chooser plus two, drawn without
 // repeats from the passives someone can still take on the next level.
 // false, and no screen, when nobody is choosing or nothing is left.
 reward_begin :: proc(s: ^sim.State, input: sim.Frame_Input) -> bool {
@@ -89,7 +91,7 @@ reward_begin :: proc(s: ^sim.State, input: sim.Frame_Input) -> bool {
 	if n == 0 {
 		return false
 	}
-	r.count = min(choosers + 1, n)
+	r.count = min(choosers + 2, n)
 	// A partial Fisher-Yates shuffle: the first `count` of the pool.
 	for k in 0 ..< r.count {
 		j := sim.roll_int(s, k, n - 1, SITE_REWARD_SHUFFLE)

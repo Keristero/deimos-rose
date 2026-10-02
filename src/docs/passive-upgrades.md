@@ -116,7 +116,9 @@ passive has a recipe entry and, when the assets tree is present, a file.
   `weapon`). A passive's shots carry `passive_tag` from spawn onwards, so the
   passive can shape them after they spawn.
 - **Offering.**
-  - There are `min(choosers + 1, available)` options, drawn without repeats.
+  - There are `min(choosers + 2, available)` options, drawn without repeats:
+    three for one player, four for two (the design's first count, one more
+    than the players, was raised by notes/extra-weapons-and-passives-3.md).
     A chooser is any player still in the game (not Gone).
   - A passive is available if it is not at its top level for at least one
     chooser.
