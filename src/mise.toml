@@ -91,6 +91,52 @@ headless() {
 headless "$DR_BUILD/deimos-editor$DR_EXT" ${PROJECT:+"$PROJECT"} -shot="${OUT:-$DR_BUILD/editor.png}" "$@"
 """
 
+[tasks."editor:export"]
+description = "Export a level-editor campaign as a data plugin headlessly: CAMPAIGN=path/name.drcampaign.json [TO=dir, else plugins/<its name>]; prints what was wrong and fails when nothing could be written"
+depends = ["build:editor"]
+run = """
+set -e
+headless() {
+  if command -v xvfb-run >/dev/null; then set -- xvfb-run -a -s "-screen 0 640x480x24" "$@"; fi
+  env DISPLAY= WAYLAND_DISPLAY= "$@"
+}
+headless "$DR_BUILD/deimos-editor$DR_EXT" -export="$CAMPAIGN" ${TO:+-to="$TO"}
+"""
+
+[tasks."editor:play-check"]
+description = "Export the fixture campaign (tests/fixtures/campaign) as the level editor does and play each of its levels in the game headlessly, from -level and -row as Play runs it, each to a shot in build/play-check; fails when a level does not export, load or reach its shot. Needs the extracted assets, and skips without them"
+depends = ["build", "build:editor"]
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+if [ ! -d "$DR_ASSETS/data/unde" ]; then
+  echo "editor:play-check: no extracted assets in $DR_ASSETS, skipped"
+  exit 0
+fi
+OUT="$DR_BUILD/play-check"
+rm -rf "$OUT"
+mkdir -p "$OUT/home"
+headless() {
+  if command -v xvfb-run >/dev/null; then set -- xvfb-run -a -s "-screen 0 1280x1024x24" env DR_XVFB=1 "$@"; fi
+  # A home of its own, so the game's preferences and progress are its own
+  # (a classic-mode preference would refuse a campaign).
+  env DISPLAY= WAYLAND_DISPLAY= HOME="$OUT/home" XDG_DATA_HOME="$OUT/home/data" XDG_CONFIG_HOME="$OUT/home/config" "$@"
+}
+headless "$DR_BUILD/deimos-editor$DR_EXT" -export="$DR_SRC/tests/fixtures/campaign/fixture_play.drcampaign.json" -to="$OUT/plugins/fixture_play"
+for level in Ridge:400 Ford:200; do
+  name=${level%%:*} row=${level##*:}
+  headless env DR_ASSETS="$DR_ASSETS" DR_SHOT="$OUT/$name" DR_SHOT_AT=120 \
+    "$DR_BUILD/deimos$DR_EXT" -plugins "$OUT/plugins" -campaign fixture_play -level "$name" -row "$row" >"$OUT/$name.log" 2>&1 || true
+  grep -E "^wrote|^-level|^-campaign" "$OUT/$name.log" || true
+  [ -f "$OUT/$name-0120.png" ] || { echo "editor:play-check: $name reached no shot (see $OUT/$name.log)" >&2; exit 1; }
+  # The player is one entity: more are the level's units, spawned from its
+  # placements in view.
+  n=$(sed -nE 's/^wrote .*step 120, ([0-9]+) entities.*/\1/p' "$OUT/$name.log")
+  [ "${n:-0}" -gt 1 ] || { echo "editor:play-check: none of $name's units spawned" >&2; exit 1; }
+done
+echo "editor:play-check: both levels played, shots in $OUT"
+'''
+
 [tasks.dist]
 description = "Lay out the release folder, dist/deimos: the built binary (build or build:windows first), assets/ and each plugin's content in plugins/<name>/ (every file of src/plugins that is not Odin source; D51). CI zips it"
 run = '''

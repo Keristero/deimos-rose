@@ -12,8 +12,8 @@ stage by stage. The decisions are D51–D63 in [decisions.md](decisions.md).
 | 5 — Terrain renderer, le07 proof of concept | **complete** | D55, below |
 | 6 — Recovering the 12 originals' heightmaps | **complete** | D56, D57, below |
 | 7 — The editor | **complete** | D58, below |
-| 8 — Materials, structures, placement, scenery models | **complete** but for the exit, which is Stage 9's | D60, D61, D62, D63, below |
-| 9 — Export and Play | not started | |
+| 8 — Materials, structures, placement, scenery models | **complete**; its exit plays in Stage 9 but for a plugin's unit | D60, D61, D62, D63, below |
+| 9 — Export and Play, campaigns built in the editor | **complete** | D64, below |
 | 10 — HD layers, Remastered Levels | not started | |
 
 ## Stage 5: the terrain renderer
@@ -207,7 +207,7 @@ game, and `dist` puts it in the release zip.
 
 The window is the panel on the left, the level in the middle, the whole
 level on the right with the part in view outlined, and a status line. The
-panel has Open, Save, Undo, Redo and New, then eight tabs. Open shows the
+panel has Open, Save, Undo, Redo and New, then nine tabs. Open shows the
 system's file dialog for a level project; where there is none, it opens
 the path typed in above it, as Save saves to it.
 
@@ -227,7 +227,9 @@ the path typed in above it, as Save saves to it.
   tilted view to look at the relief.
 - **Units** (Stage 8, below): the level's units.
 - **Level** (Stage 8, below): the level's names, words, music and sky, and
-  the weapons it starts with.
+  the weapons it starts with; and its preview (Stage 9).
+- **Campaign** (Stage 9, below): the levels of a campaign, its export, and
+  Play.
 
 The wheel and a touchpad's two fingers scroll up and down the level and
 across it when it is wider than the view (Shift turns the wheel across),
@@ -235,7 +237,7 @@ middle-drag pans, and clicking or dragging on the overview centres the
 view there. The overview's box is the part in view, its width as well
 as its rows when zoomed in. Ctrl+wheel, a touchpad's pinch, and Ctrl+=
 and Ctrl+- zoom about the mouse, and Ctrl+0 goes back to 1x. Ctrl+Z, Ctrl+Y and
-Ctrl+S undo, redo and save; 1-4 pick the brush, `[` and `]` size it, `L`
+Ctrl+S undo, redo and save; F5 plays the level (Stage 9); 1-4 pick the brush, `[` and `]` size it, `L`
 and `T` toggle the light and the tilt. A project dropped on the window
 opens.
 
@@ -996,3 +998,164 @@ models from above.
   does not name imports opaque. Only the library's builder pairs those
   maps.
 - The export of the models' shadows into the level's map is Stage 9's.
+
+## Stage 9: export and Play
+
+A campaign is a file of its own, `<name>.drcampaign.json`. It holds the
+plugin's name, label and words, three switches, and its levels' projects
+in play order, saved relative to the file so a folder of them moves as
+one. The editor's **Campaign** tab builds one:
+- Open, Save and New, and a dropped campaign file opens;
+- the name (the plugin's folder), label, description and version;
+- the classic look (the maps through the originals' 15-bit colour), free
+  of the originals' art (decision 5 of the plan), and on by default;
+- the levels: add the level open, or a project from a file; move them up
+  and down, take one out, or open it;
+- where to export, the first plugins folder the game searches by
+  default, and Export.
+
+**Export** checks every level, and writes nothing while anything would
+keep one from playing. Then it writes a level a frame, with a progress
+bar, so the editor stays responsive. Each level becomes:
+- `data/levels/leNN.json`, its record, numbered in play order;
+- `images/im16/<campaign>_leNN_map.png`, the map drawn lit, 480 wide;
+- `<campaign>_leNN_preview.png`, the preview (below);
+- `<campaign>_leNN_mask.png`, the water mask at 1/5 scale: pure blue,
+  which the game reads as 0x001f, where most of a 5x5 cell is under the
+  water, white elsewhere, and all white when the water is hidden.
+
+Last comes `plugin.json`: the levels by identifier, the dependencies the
+units and start weapons need, and `"made_with": "deimos-rising level
+editor"`. An export never writes into a folder holding a plugin without
+that mark, so Classic Levels cannot be overwritten. Exporting again
+removes the records and images of levels since taken out.
+
+The level open is exported as it is in the editor, unsaved changes and
+all. The other levels are loaded from their files.
+
+What stops an export:
+- a campaign name that is not lower case letters, digits and `_` (the
+  game skips any other folder), or `classic_levels`;
+- no levels, or more than 99;
+- a level with no identifier, or one another level has;
+- a level not 480 wide;
+- a unit or start weapon in neither the game nor a plugin;
+- "free of the originals' art" with an asset from them: a material or
+  model tagged `original-derived`, or a colour, water or occlusion layer,
+  which only the recovery tools make;
+- a folder holding a plugin the editor did not make.
+
+What it warns of, and writes anyway: no label, no name, no music or
+music that is not installed, a sky that is not installed, a level
+shorter than its preview.
+
+**Play**, or F5, exports the level open alone, as the campaign
+`editor_play`, into `editor-play/` in the user's data. Then it starts the
+game beside the editor:
+
+    deimos -plugins <user data>/editor-play -campaign editor_play -level <identifier> -row <n>
+
+The row puts the bottom of the game's view where the bottom of the
+editor's is, so the first thing the player meets is what was in view.
+Playing again closes the game Play started last. When the level cannot
+be played yet, the Campaign tab opens on the problems.
+
+From the command line, `deimos-editor -export=CAMPAIGN [-to=DIR]` exports
+with no window, prints the problems, and exits 1 when nothing was
+written. `mise run editor:export CAMPAIGN=...` runs it headlessly.
+
+### The preview
+
+The originals' previews are a 438x918 crop of the map, averaged down
+exactly 3x to 146x306, then given a vignette and a warmer, softer tone
+(notes/headless-3d-to-2d-findings.md). `terrain.preview_make` does the
+same. Its look, `terrain/preview_look.odin`, is fitted to the originals
+by `mise run preview:fit` (`tools/preview_fit`), in four steps:
+- it finds each original's crop by luminance correlation at all nine
+  phases of the downscale;
+- it leaves out the two that match under 0.95: le05 (0.80) and le07
+  (0.93) were cut from other renders of their maps;
+- over the other ten, it fits a blur, a colour mix that keeps grey grey,
+  a tone curve per channel, and a vignette across and down, by
+  alternating least squares with smoothed curves;
+- `SHOTS=DIR` writes each original beside the look's preview.
+
+| Look | RMS (0-255) | Luminance correlation |
+|---|---|---|
+| A tone curve and a round vignette | 17.6 | |
+| **Blur 0.35, colour mix, tone, vignette across and down** | **9.4** | 0.99 each |
+
+The plan's bar was the 0.93-0.97 the originals score against their own
+maps by template matching. The vignette darkens the
+ends to a third and the sides only to 0.88.
+
+The crop is the project's own (project version 3), and starts at the
+bottom of the level, in the middle across, where most of the originals'
+were. The **Level** tab shows the preview as Level Select will, and
+outlines its crop on the map and the overview. To move the crop, click
+or drag on the map, or use "Where the view is" and "The level's start".
+
+### Verified
+
+- `tests/terrain`:
+  - the crop averages 3x from where it starts, and defaults to the start;
+  - the look darkens the edges;
+  - the crop saves with the project, is kept on the map, and is the
+    default for a version 2 project;
+  - a mask cell is water when most of it is under the water, part cells
+    at the edge included, and none is when the water is hidden.
+- `tests/editor`:
+  - each thing that stops an export is reported, and nothing is written
+    with it. A folder of someone else's plugin is left byte for byte;
+  - a campaign file keeps its levels relative to itself, and opens with
+    them absolute;
+  - Play's command line, and its row, kept on the map;
+  - a two-level campaign is exported with the open level's unsaved edit.
+    It is read back with the game's own readers: plugin.json's levels in
+    order, each record's ids and images, the map and preview at their
+    sizes, and every mask cell as the heights say. Exported again with
+    one level, the other's record and images are gone.
+- `mise run editor:play-check` (14 s once built; skips without the
+  extracted assets):
+  - exports `tests/fixtures/campaign`, two synthetic levels with a river,
+    a ridge and some of the game's units, as the editor does;
+  - plays each in the game from `-level` and `-row`, as Play does, to a
+    shot;
+  - fails unless both load and their units spawn (11 and 4 entities at
+    step 120).
+
+  By eye, both shots show the map, its river and units, and the HUD.
+- The first three recovered originals exported as a campaign (28 s with
+  the classic look). Their masks match the originals' at IoU 0.945,
+  0.961 and 0.981. The originals' were drawn by hand round the shores,
+  and these are cut at the water's height. Vista, played with `-row
+  1500`, shows its exported map and units.
+- By eye: the Campaign tab with a campaign open, and the Level tab's
+  preview and crop outlines, drawn by `editor:shot`.
+
+### Not as planned
+
+- **The project is not copied into the plugin.** The plan had the export
+  write it beside the records. A plugin is what the game plays. The
+  projects and the campaign file are the source, and a project with its
+  layers is many times the size of what the game reads.
+- **Image ids carry the campaign's name.** im16 ids are one namespace
+  across every plugin, the first found winning, so two campaigns'
+  `le01_map` would collide.
+- **The provenance check is by layer as well as by tag.** A recovered
+  project's colour, water and occlusion layers are baked from the
+  original maps, and the editor makes none of its own. A layer the
+  editor can paint later will need its own mark.
+- **A level's identifier is required**, as the game's `-level` and the
+  manifest both find levels by it.
+
+### Still open
+
+- HD maps and the deferred layers are Stage 10's.
+- The plan's Stage 8 exit has a level with placements from two plugins.
+  Export lists a plugin's units' plugin as a dependency, and the
+  `tests/editor` case checks the core's, but no check has played a
+  plugin's unit yet.
+- `tools/terrain_mod` still packages Recovered Levels with the
+  originals' previews and masks. It could export through the editor
+  now.

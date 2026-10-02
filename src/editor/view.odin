@@ -196,7 +196,9 @@ view_prepare :: proc(e: ^Editor, area: rl.Rectangle) {
 		}
 		terrain.render_into(&e.renderer, p, {output = v.live_light ? .Lit : .Albedo, scale = 1}, v.overview)
 		v.overview_stale = false
+		e.level_panel.preview_stale = true
 	}
+	level_preview_prepare(e)
 	if v.tilted {
 		view_tilted(v, p, area)
 	}
@@ -226,7 +228,11 @@ view_draw :: proc(e: ^Editor, l: Layout) {
 		if Tab(e.tab) == .Models {
 			models_draw(e, o)
 		}
-		if v.over_map && Tab(e.tab) != .Units && !(Tab(e.tab) == .Models && Models_Mode(e.scenery.mode) == .Select) {
+		if Tab(e.tab) == .Level {
+			b := preview_box(p)
+			rl.DrawRectangleLinesEx({o.x + b.x * v.zoom, o.y + b.y * v.zoom, b.width * v.zoom, b.height * v.zoom}, 2, PREVIEW_COLOUR)
+		}
+		if v.over_map && Tab(e.tab) != .Units && Tab(e.tab) != .Level && !(Tab(e.tab) == .Models && Models_Mode(e.scenery.mode) == .Select) {
 			brush_outline(e, o)
 		}
 	}
@@ -244,7 +250,19 @@ view_draw :: proc(e: ^Editor, l: Layout) {
 		}
 		b := overview_box(v, p, area, s, r)
 		rl.DrawRectangleLinesEx({b.x - 1, b.y - 1, b.width + 2, b.height + 2}, 1, {255, 220, 90, 255})
+		if Tab(e.tab) == .Level {
+			c := preview_box(p)
+			rl.DrawRectangleLinesEx({r.x + c.x * s, r.y + c.y * s, c.width * s, c.height * s}, 1, PREVIEW_COLOUR)
+		}
 	}
+}
+
+// The preview's crop, in map pixels, and the colour it is outlined in.
+PREVIEW_COLOUR :: rl.Color{110, 200, 240, 255}
+
+preview_box :: proc(p: ^terrain.Project) -> rl.Rectangle {
+	at := terrain.preview_crop_clamp(p.preview, p.width, p.length)
+	return {f32(at.x), f32(at.y), terrain.PREVIEW_CROP_WIDTH, terrain.PREVIEW_CROP_HEIGHT}
 }
 
 // Drawn smaller than it was rendered, the view is mipmapped, made again

@@ -1,6 +1,6 @@
 package editor_tests
 
-// The level editor (Stages 7 and 8 of notes/level-editor-plan.md). The
+// The level editor (Stages 7 to 9 of notes/level-editor-plan.md). The
 // brush, undo, the light's JSON and placing units run anywhere; the editor itself draws, so its
 // cases share one hidden window and skip when there is no display (mise
 // run test runs them under xvfb-run), as tests/terrain's do. The le07 case
@@ -290,6 +290,7 @@ editor_draws :: proc(t: ^testing.T) {
 	units_draw_on_the_map(t)
 	materials_through_the_editor(t)
 	models_through_the_editor(t)
+	export_writes_a_plugin(t)
 	le07_sculpt_relight_save_reopen(t)
 }
 

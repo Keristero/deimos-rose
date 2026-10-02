@@ -591,7 +591,9 @@ from two plugins exports and plays (Stage 9).
 ## Stage 9: export and the play button
 
 **Export** writes a data plugin (Stage 2): `plugin.json`, `levels/<id>.json`
-and the project. Each level also gets:
+and the project. *As built:* not the project: the plugin is the export,
+and a campaign file (`.drcampaign.json`) lists the projects it is made
+from. The editor's Campaign tab builds it (D64). Each level also gets:
 - the map at 480 wide, 1555-quantised when the plugin wants the classic look;
 - the water mask at 1/5 scale, pure 0x001F blue where terrain is under the
   water height;
@@ -605,7 +607,9 @@ and the project. Each level also gets:
 Fit the tone curve from the 12 original crop and preview pairs. The findings'
 template matching scored 0.93-0.97 on the originals, so a generated preview
 of an original map should reach the same range. The editor lets the author
-move the crop.
+move the crop. *As built:* a blur, a colour mix, a tone curve per channel
+and a vignette across and down, fitted to ten originals, come within 9.4
+RMS at 0.99 correlation each.
 
 **Validation before writing:**
 - every unit resolves;
@@ -620,10 +624,16 @@ move the crop.
   `-plugins <scratch> -campaign <name> -level <id> -row <current view row>`.
 - In development, it uses `build/deimos`.
 
+*As built:* the scratch folder is `editor-play/` in the user's data, and the
+row puts the game's view's bottom where the editor's is.
+
 **Tests:**
 - Exporting a fixture project yields a plugin that Stage 2's loader accepts.
 - Its mask matches a mask computed from the fixture's heights.
 - A generated preview of a fixture map matches a hand-made reference.
+
+*As built:* so, read back with the game's own readers; and `mise run
+editor:play-check` plays an exported fixture campaign in the game.
 
 **Exit:** from the editor, play a new level starting at the current scroll
 position.

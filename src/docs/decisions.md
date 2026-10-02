@@ -1656,3 +1656,46 @@ Stage 8's scenery models (docs/level-editor.md).
 
 The game is unchanged. `oracle:diff` is exact, and tests/golden is
 unchanged.
+
+### D64 — Campaigns built in the editor: a campaign file, exports the editor marks as its own, ids that carry the campaign
+
+Stage 9's export and Play (docs/level-editor.md).
+
+- **A campaign is a file of its own**, `<name>.drcampaign.json`, holding
+  the plugin's words and switches and its levels' projects in play
+  order, saved relative to it. A campaign's levels are its own
+  projects, and one project can be in two campaigns, so the list is
+  not part of any project. The plugin is the export, made again from
+  the file at any time, and the projects are not copied into it.
+- **The editor writes only into a plugin it made.** Its `plugin.json`
+  carries `"made_with": "deimos-rising level editor"`. An export into a
+  folder whose manifest lacks it is refused. So is the name
+  `classic_levels`. Within its own folder, an export removes the records
+  and images of levels taken out, which would otherwise still be found
+  by identifier.
+- **Image ids carry the campaign's name**, as `<campaign>_leNN_map`,
+  `_preview` and `_mask`. im16 ids are one namespace across all plugins,
+  the first found winning (data.plugin_media_add). Level ids stay
+  `le01` to `le99` in play order, as a campaign's levels are its own
+  (D53).
+- **Nothing is written while a level cannot play.** Every level is
+  checked first: its identifier, unique in the campaign; its width; its
+  units and start weapons, whose plugins become the campaign's
+  dependencies; and provenance. Warnings (no name, no music) do not
+  stop it.
+- **Provenance is by tag and by layer.** "Free of the originals' art"
+  is refused when a material or model is tagged `original-derived`, or
+  when the project has a colour, water or occlusion layer. Only the
+  recovery tools make those layers, from the original maps. A layer the
+  editor can make itself will need a mark of its own.
+- **Play is an export into the user's data**, as the campaign
+  `editor_play` in `editor-play/`, never into a plugins folder the game
+  searches unasked. The game is started beside the editor with
+  `-plugins`, `-campaign`, `-level` and `-row` (D54). Its view's bottom
+  is where the editor's is.
+- **The preview's look is fitted, not hand-tuned**, by `tools/preview_fit`
+  from the originals and generated into `terrain/preview_look.odin`. The
+  crop is the project's own (project version 3).
+
+The game is unchanged. `oracle:diff` is exact, and tests/golden is
+unchanged.

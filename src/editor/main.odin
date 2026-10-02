@@ -1,14 +1,18 @@
 package editor
 
-// The level editor (Stages 7 and 8 of notes/level-editor-plan.md): sculpt
+// The level editor (Stages 7 to 9 of notes/level-editor-plan.md): sculpt
 // a level project's terrain, paint its materials, put down its trees and
-// rocks, light it, set its water and wind, place its units, and save it.
+// rocks, light it, set its water and wind, place its units, and save it;
+// put levels together as a campaign, export it as a plugin, and play.
 //
-//   deimos-editor [<project>] [-new=ROWS] [-shot=OUT.png] [-size=WxH] [-row=N] [-left=N] [-zoom=0.25..4] [-tilt=DEGREES] [-tab=terrain|paint|models|light|water|view|units|level] [-select=N] [-unlit]
+//   deimos-editor [<project>] [-new=ROWS] [-campaign=FILE] [-shot=OUT.png] [-size=WxH] [-row=N] [-left=N] [-zoom=0.25..4] [-tilt=DEGREES] [-tab=terrain|paint|models|light|water|view|units|level|campaign] [-select=N] [-unlit]
+//   deimos-editor -export=CAMPAIGN [-to=DIR]
 //
 // With no project it starts a new level, 480 wide and -new rows long
-// (3600 by default). -shot draws one frame in a hidden window, writes it
-// and exits: `mise run editor:shot`. The other flags set up the view, for
+// (3600 by default). -campaign opens a campaign in the Campaign tab.
+// -shot draws one frame in a hidden window, writes it and exits: `mise run
+// editor:shot`. -export exports a campaign as a plugin, into -to or the
+// plugins root, in a hidden window, prints what was wrong, and exits. The other flags set up the view, for
 // shots above all. The units come from the assets tree, $DR_ASSETS or
 // ./assets, and the data plugins beside it; the material library from its
 // materials/, and the model library and its brush profiles from models/.
@@ -31,7 +35,7 @@ EDITOR_VERSION :: #config(DR_VERSION, "dev")
 WINDOW_WIDTH :: 1280
 WINDOW_HEIGHT :: 900
 
-USAGE :: "usage: deimos-editor [<project>] [-new=ROWS] [-shot=OUT.png] [-size=WxH] [-row=N] [-left=N] [-zoom=0.25..4] [-tilt=DEGREES] [-tab=terrain|paint|models|light|water|view|units|level] [-select=N] [-unlit]"
+USAGE :: "usage: deimos-editor [<project>] [-new=ROWS] [-campaign=FILE] [-shot=OUT.png] [-size=WxH] [-row=N] [-left=N] [-zoom=0.25..4] [-tilt=DEGREES] [-tab=terrain|paint|models|light|water|view|units|level|campaign] [-select=N] [-unlit]\n       deimos-editor -export=CAMPAIGN [-to=DIR]"
 
 main :: proc() {
 	flags := make(map[string]string, context.temp_allocator)
@@ -72,6 +76,7 @@ main :: proc() {
 		width, height = w, h
 	}
 	shot := flags["shot"] or_else ""
+	export := flags["export"] or_else ""
 
 	// The units a level can place: the originals' and the data plugins'
 	// (D52). No compiled plugin is in the editor, so none of theirs.
@@ -88,7 +93,7 @@ main :: proc() {
 	}
 
 	rl.SetTraceLogLevel(.WARNING)
-	rl.SetConfigFlags(shot != "" ? {.WINDOW_HIDDEN} : {.WINDOW_RESIZABLE})
+	rl.SetConfigFlags(shot != "" || export != "" ? {.WINDOW_HIDDEN} : {.WINDOW_RESIZABLE})
 	rl.InitWindow(i32(width), i32(height), "Deimos Rising level editor")
 	if !rl.IsWindowReady() {
 		fmt.eprintln("deimos-editor: no window (for a shot, run it under xvfb-run)")
@@ -109,6 +114,13 @@ main :: proc() {
 	library_load(&e.library, root)
 	model_library_load(&e.scenery, root)
 	profiles_load(&e.scenery, root)
+	if export != "" {
+		os.exit(export_command(&e, export, flags["to"] or_else "") ? 0 : 1)
+	}
+	if path, given := flags["campaign"]; given && !campaign_open(&e, path) {
+		fmt.eprintfln("deimos-editor: cannot open campaign %s", path)
+		os.exit(1)
+	}
 	if len(plain) == 1 {
 		if !editor_open(&e, plain[0]) {
 			fmt.eprintfln("deimos-editor: cannot open %s", plain[0])
@@ -197,4 +209,26 @@ main :: proc() {
 			fmt.eprintln("deimos-editor: unsaved changes lost: cannot write", path)
 		}
 	}
+}
+
+// -export: the campaign at `path` exported, into `dir` or where the
+// Campaign tab would; what was wrong printed.
+@(private = "file")
+export_command :: proc(e: ^Editor, path, dir: string) -> bool {
+	if !campaign_open(e, path) {
+		fmt.eprintfln("deimos-editor: cannot open campaign %s", path)
+		return false
+	}
+	cp := &e.campaign_panel
+	to := dir != "" ? dir : campaign_dir(cp)
+	x: Export
+	defer export_destroy(&x)
+	ok := export_run(e, &x, &cp.campaign, to)
+	for p in x.problems {
+		fmt.eprintfln("%s: %s", p.fatal ? "error" : "warning", p.text)
+	}
+	if ok {
+		fmt.printfln("exported %d levels to %s", len(cp.campaign.levels), to)
+	}
+	return ok
 }

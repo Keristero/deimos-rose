@@ -20,8 +20,9 @@ import "core:strings"
 import "dr:data"
 
 PROJECT_FORMAT :: "deimos-rising.level-project"
-// 2 added the scenery models; a version 1 project has none.
-PROJECT_VERSION :: 2
+// 2 added the scenery models; a version 1 project has none. 3 added the
+// preview's crop; an older project's is preview_crop_default.
+PROJECT_VERSION :: 3
 PROJECT_SUFFIX :: ".drproj.json"
 // Heights are stored in 1/32 of a map pixel: up to 2048 pixels high.
 HEIGHT_UNIT :: f32(1) / 32
@@ -82,6 +83,9 @@ Project :: struct {
 	models:          [dynamic]Model,
 	model_files:     [dynamic]Model_File,
 	instances:       [dynamic]Instance,
+	// Where the level's preview is cut from the map, its top left in map
+	// pixels (preview.odin).
+	preview:         [2]int,
 }
 
 // A new project: flat ground, the originals' light, no water.
@@ -97,6 +101,7 @@ project_make :: proc(width, length: int, allocator := context.allocator) -> (p: 
 	p.instances = make([dynamic]Instance, allocator)
 	p.level.background = {0, 0, width, length}
 	p.level.lighting = data.LIGHTING_MEASURED
+	p.preview = preview_crop_default(width, length)
 	return
 }
 
@@ -122,6 +127,7 @@ Json_Project :: struct {
 	level:           data.Json_Level `json:"level"`,
 	models:          []Model         `json:"models"`,
 	instances:       []Instance      `json:"instances"`,
+	preview:         [2]int          `json:"preview"`,
 }
 
 // Saves to `path` (…/<name>.drproj.json) and its side files beside it,
@@ -146,6 +152,7 @@ project_save :: proc(p: ^Project, path: string) -> bool {
 		level           = p.level,
 		models          = p.models[:],
 		instances       = p.instances[:],
+		preview         = p.preview,
 	}
 	j.level.placements = p.placements[:]
 	full: string
@@ -248,6 +255,9 @@ project_load :: proc(path: string, allocator := context.allocator) -> (p: Projec
 		}
 	}
 	p.cliff, p.shore, p.level = j.cliff, j.shore, j.level
+	if j.version >= 3 {
+		p.preview = preview_crop_clamp(j.preview, p.width, p.length)
+	}
 	append(&p.placements, ..p.level.placements)
 	p.level.placements = nil
 	append(&p.models, ..j.models)

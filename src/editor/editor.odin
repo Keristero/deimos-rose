@@ -54,6 +54,8 @@ Editor :: struct {
 	// The models, their library and the brush's profiles.
 	scenery:       Scenery,
 	level_panel:   Level_Panel,
+	// The campaign being built, its export and the game Play started.
+	campaign_panel: Campaign_Panel,
 	// The touchpad's pinch and smooth scroll, in a window; none in a shot.
 	gestures:      Gestures,
 	// The system's file dialog, in a window; none in a shot.
@@ -72,6 +74,7 @@ editor_init :: proc(e: ^Editor) {
 	placing_init(&e.placing)
 	e.paint.material, e.paint.library_pick = -1, -1
 	e.level_panel.editing = -1
+	campaign_panel_init(&e.campaign_panel)
 	scenery_init(&e.scenery)
 	style_dark()
 }
@@ -84,6 +87,8 @@ editor_destroy :: proc(e: ^Editor) {
 	library_destroy(&e.library)
 	scenery_destroy(&e.scenery)
 	placing_destroy(&e.placing)
+	campaign_panel_destroy(&e.campaign_panel)
+	level_panel_destroy(&e.level_panel)
 	arena_free(e.arena)
 	e.arena, e.has_project = nil, false
 }
@@ -142,6 +147,7 @@ editor_take :: proc(e: ^Editor, p: terrain.Project, arena: ^virtual.Arena) {
 	e.scenery.dragging, e.scenery.changing = false, false
 	e.paint.material = len(p.materials) > 0 ? 0 : -1
 	e.level_panel.editing = -1
+	e.level_panel.preview_stale = true
 	terrain.renderer_init(&e.renderer, &e.project)
 	view_reset(&e.view, &e.project)
 }

@@ -22,6 +22,7 @@ Tab :: enum c.int {
 	View,
 	Units,
 	Level,
+	Campaign,
 }
 
 // An action that would lose unsaved changes, asked for once already.
@@ -40,6 +41,7 @@ Panel :: struct {
 	message:           [256]u8,
 	message_until:     f64,
 	dragging_overview: bool,
+	dragging_preview:  bool,
 }
 
 // Rows scrolled by a notch of the wheel.
@@ -90,7 +92,6 @@ style_dark :: proc() {
 }
 
 // True when the action can go ahead: nothing unsaved, or asked twice.
-@(private = "file")
 guarded :: proc(e: ^Editor, action: Pending) -> bool {
 	if !e.dirty || e.pending == action {
 		e.pending = .None
@@ -104,6 +105,7 @@ guarded :: proc(e: ^Editor, action: Pending) -> bool {
 // One frame in the window.
 editor_frame :: proc(e: ^Editor) {
 	l := layout(f32(rl.GetScreenWidth()), f32(rl.GetScreenHeight()))
+	campaign_update(e, view_rows(&e.view, l.view))
 	editor_input(e, l)
 	view_prepare(e, l.view)
 	rl.BeginDrawing()
@@ -148,6 +150,9 @@ take_file :: proc(e: ^Editor, path: string, guard: bool) {
 		if !guard || guarded(e, .Open) {
 			open_reporting(e, path)
 		}
+	case strings.has_suffix(path, CAMPAIGN_SUFFIX):
+		campaign_open_reporting(e, path)
+		e.tab = c.int(Tab.Campaign)
 	case strings.has_suffix(lower, ".glb") || strings.has_suffix(lower, ".gltf") || strings.has_suffix(lower, ".obj"):
 		if k := editor_model_import(e, path); k >= 0 {
 			e.tab = c.int(Tab.Models)
@@ -175,8 +180,18 @@ dialog_input :: proc(e: ^Editor) -> (open: bool) {
 	case failed && e.dialog.purpose == .Project:
 		// No portal after all: Open is what it was, the path typed in.
 		open_reporting(e, strings.clone(editor_path(e), context.temp_allocator))
+	case failed && e.dialog.purpose == .Campaign:
+		campaign_open_reporting(e, strings.clone(campaign_path(&e.campaign_panel), context.temp_allocator))
+	case failed && e.dialog.purpose == .Campaign_Level:
+		editor_message(e, "No file dialog here: open the level, then add it")
 	case failed:
 		editor_message(e, "No file dialog here: drop the file on the window")
+	case path != "" && e.dialog.purpose == .Campaign_Level:
+		if campaign_add(e, path) {
+			editor_message(e, "Added %s", path)
+		} else {
+			editor_message(e, "Cannot add %s: not a level project", path)
+		}
 	case path != "":
 		take_file(e, path, false)
 	}
@@ -191,7 +206,7 @@ editor_input :: proc(e: ^Editor, l: Layout) {
 		return
 	}
 	mouse := rl.GetMousePosition()
-	typing := e.path_edit || e.length_edit || e.level_panel.editing >= 0 || e.scenery.name_edit
+	typing := e.path_edit || e.length_edit || e.level_panel.editing >= 0 || e.scenery.name_edit || campaign_typing(&e.campaign_panel)
 	in_view := rl.CheckCollisionPointRec(mouse, l.view)
 	in_overview := rl.CheckCollisionPointRec(mouse, l.overview)
 	rows := view_rows(v, l.view)
@@ -235,6 +250,18 @@ editor_input :: proc(e: ^Editor, l: Layout) {
 	// The brush, or in the Units tab the units, or the models to select.
 	if Tab(e.tab) == .Units {
 		units_input(e)
+	} else if Tab(e.tab) == .Level {
+		// The preview's crop goes where the map is clicked, and follows a
+		// drag.
+		if rl.IsMouseButtonPressed(.LEFT) && v.over_map {
+			e.dragging_preview = true
+		}
+		if !rl.IsMouseButtonDown(.LEFT) {
+			e.dragging_preview = false
+		}
+		if e.dragging_preview && in_view {
+			preview_centre(e, v.cursor)
+		}
 	} else if Tab(e.tab) == .Models && Models_Mode(e.scenery.mode) == .Select {
 		models_select_input(e)
 	} else if rl.IsMouseButtonPressed(.LEFT) && v.over_map {
@@ -288,6 +315,8 @@ editor_input :: proc(e: ^Editor, l: Layout) {
 		editor_redo(e)
 	case ctrl && rl.IsKeyPressed(.S):
 		save_reporting(e)
+	case rl.IsKeyPressed(.F5):
+		editor_play(e)
 	case rl.IsKeyPressed(.PAGE_UP):
 		v.row -= rows * 0.9
 	case rl.IsKeyPressed(.PAGE_DOWN):
@@ -331,7 +360,6 @@ height_at :: proc(p: ^terrain.Project, x, y: int) -> f32 {
 	return p.heights[i]
 }
 
-@(private = "file")
 open_reporting :: proc(e: ^Editor, path: string) {
 	if editor_open(e, path) {
 		editor_message(e, "Opened %s", path)
@@ -392,12 +420,15 @@ panel_draw :: proc(e: ^Editor, area, view: rl.Rectangle) {
 	}
 	y += ROW + 8
 
-	// Two rows, raygui's "\n": eight do not fit across.
-	tw := (w - 3 * 2) / 4
-	rl.GuiToggleGroup({x, y, tw, 20}, "Terrain;Paint;Models;Light\nWater;View;Units;Level", &e.tab)
-	y += 2 * ROW + 8
+	// Three rows, raygui's "\n": nine do not fit across.
+	tw := (w - 2 * 2) / 3
+	rl.GuiToggleGroup({x, y, tw, 20}, "Terrain;Paint;Models\nLight;Water;View\nUnits;Level;Campaign", &e.tab)
+	y += 3 * ROW + 4
 	if Tab(e.tab) != .Level {
 		level_panel_leave(e)
+	}
+	if Tab(e.tab) != .Campaign {
+		campaign_panel_leave(e)
 	}
 
 	lighting := p.level.lighting
@@ -503,7 +534,9 @@ panel_draw :: proc(e: ^Editor, area, view: rl.Rectangle) {
 	case .Units:
 		units_panel(e, x, &y, w, area.y + area.height)
 	case .Level:
-		level_panel(e, x, &y, w)
+		level_panel(e, x, &y, w, area.y + area.height, view)
+	case .Campaign:
+		campaign_panel(e, x, &y, w, area.y + area.height)
 	}
 	if p.level.lighting != lighting || v.live_light != live {
 		v.view_stale = true

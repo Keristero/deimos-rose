@@ -1,8 +1,11 @@
 package terrain_tests
 
-// Level previews (Stage 9): where the crop goes, the 3x average, and the
-// fitted look's shape.
+// Level previews (Stage 9): where the crop goes, the 3x average, the
+// fitted look's shape, and the crop kept in the project; and the media
+// mask an export makes beside it.
 
+import "core:os"
+import "core:strings"
 import "core:testing"
 
 import "dr:terrain"
@@ -67,4 +70,81 @@ preview_look_darkens_the_edges :: proc(t: ^testing.T) {
 	for c in 0 ..< 3 {
 		testing.expect(t, look.tone[c][8] > look.tone[c][4] && look.tone[c][12] > look.tone[c][8], "the tone rises")
 	}
+}
+
+// The crop is the project's: saved, opened again where it was, and kept
+// on the map. A project from before it had one gets the default.
+@(test)
+preview_crop_saves_with_the_project :: proc(t: ^testing.T) {
+	os.make_directory_all(OUT)
+	p := terrain.project_make(480, 1200, context.temp_allocator)
+	testing.expect_value(t, p.preview, terrain.preview_crop_default(480, 1200))
+	p.preview = {17, 140}
+	path :: OUT + "/preview.drproj.json"
+	testing.expect(t, terrain.project_save(&p, path))
+	q, ok := terrain.project_load(path, context.temp_allocator)
+	if !testing.expect(t, ok) {
+		return
+	}
+	testing.expect_value(t, q.preview, [2]int{17, 140})
+
+	// Off the map, it is brought back on.
+	p.preview = {400, 5000}
+	testing.expect(t, terrain.project_save(&p, path))
+	q, _ = terrain.project_load(path, context.temp_allocator)
+	testing.expect_value(t, q.preview, [2]int{480 - terrain.PREVIEW_CROP_WIDTH, 1200 - terrain.PREVIEW_CROP_HEIGHT})
+
+	// Version 2 had no crop: whatever the file holds, it is the default.
+	blob, _ := os.read_entire_file(path, context.temp_allocator)
+	old, replaced := strings.replace(string(blob), `"version": 3`, `"version": 2`, 1, context.temp_allocator)
+	testing.expect(t, replaced, "the project's version is not where it was")
+	testing.expect(t, os.write_entire_file(path, transmute([]u8)old) == nil)
+	q, ok = terrain.project_load(path, context.temp_allocator)
+	testing.expect(t, ok)
+	testing.expect_value(t, q.preview, terrain.preview_crop_default(480, 1200))
+}
+
+// A mask cell is water where most of its ground is below the surface, and
+// nowhere when the water is hidden; a part cell at the edge counts what
+// it covers.
+@(test)
+media_mask_takes_the_majority :: proc(t: ^testing.T) {
+	C :: terrain.MEDIA_CELL
+	p := terrain.project_make(3 * C, C + 2, context.temp_allocator)
+	for &h in p.heights {
+		h = 20
+	}
+	p.level.water = {height = 10, visible = true}
+	under :: proc(p: ^terrain.Project, cell, n: int) {
+		for i in 0 ..< n {
+			p.heights[(i / C) * p.width + cell * C + i % C] = 2
+		}
+	}
+	under(&p, 0, C * C / 2 + 1) // most of the first cell: water
+	under(&p, 1, C * C / 2) // not most of the second: ground
+	for x in 0 ..< 3 * C {
+		p.heights[C * p.width + x] = 2 // the part cells' first row of two
+	}
+	p.heights[(C + 1) * p.width + 2 * C] = 2 // and the third's second
+
+	water :: [3]u8{0, 0, 255}
+	ground :: [3]u8{255, 255, 255}
+	at :: proc(m: terrain.Picture, x, y: int) -> [3]u8 {
+		px := m.pixels[(y * m.width + x) * 3:]
+		return {px[0], px[1], px[2]}
+	}
+	m := terrain.media_mask_make(&p, context.temp_allocator)
+	if !testing.expect_value(t, [2]int{m.width, m.height}, [2]int{3, 2}) {
+		return
+	}
+	testing.expect_value(t, at(m, 0, 0), water)
+	testing.expect_value(t, at(m, 1, 0), ground)
+	testing.expect_value(t, at(m, 2, 0), ground)
+	// Half of a part cell is not most of it; all of it is.
+	testing.expect_value(t, at(m, 0, 1), ground)
+	testing.expect_value(t, at(m, 2, 1), water)
+
+	p.level.water.visible = false
+	m = terrain.media_mask_make(&p, context.temp_allocator)
+	testing.expect_value(t, at(m, 0, 0), ground)
 }

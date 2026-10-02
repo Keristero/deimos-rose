@@ -43,6 +43,40 @@ water_from_mask :: proc(mask: Picture, width, height, cell: int, allocator := co
 	return water
 }
 
+// The media mask, the originals' water for the simulation: one pixel per
+// MEDIA_CELL map pixels square, full blue where most of the cell's ground
+// is under the water's surface, white elsewhere, as theirs are (cat1 is
+// 96x720 for a 480x3600 map, its pixels (0, 0, 255) and (255, 255, 255)
+// only). The game reads it as 15-bit colour, and water is 0x001f
+// (data.media_mask_from_png). A level whose water is hidden has none.
+media_mask_make :: proc(p: ^Project, allocator := context.allocator) -> Picture {
+	w, h := (p.width + MEDIA_CELL - 1) / MEDIA_CELL, (p.length + MEDIA_CELL - 1) / MEDIA_CELL
+	mask := picture_make(w, h, 3, 8, allocator)
+	water := p.level.water
+	for my in 0 ..< h {
+		for mx in 0 ..< w {
+			under, all := 0, 0
+			for y in my * MEDIA_CELL ..< min((my + 1) * MEDIA_CELL, p.length) {
+				for x in mx * MEDIA_CELL ..< min((mx + 1) * MEDIA_CELL, p.width) {
+					all += 1
+					if water.visible && p.heights[y * p.width + x] < water.height {
+						under += 1
+					}
+				}
+			}
+			px := mask.pixels[(my * w + mx) * 3:][:3]
+			if 2 * under > all {
+				px[0], px[1], px[2] = 0, 0, 255
+			} else {
+				px[0], px[1], px[2] = 255, 255, 255
+			}
+		}
+	}
+	return mask
+}
+
+MEDIA_CELL :: 5
+
 luminance :: proc(pic: Picture, allocator := context.allocator) -> []f32 {
 	l := make([]f32, pic.width * pic.height, allocator)
 	for &v, i in l {
