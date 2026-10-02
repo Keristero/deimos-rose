@@ -1,5 +1,7 @@
 package tests
 
+import "core:os"
+import "core:strings"
 import "core:testing"
 
 import "dr:game"
@@ -25,7 +27,7 @@ session_mods :: proc(easy, weapons: bool, online := false) -> sim.Mods {
 	if weapons {
 		want += {int(new_weapons.ID), int(chaingun.ID)}
 	}
-	return sim.mods_session(sim.mods_with_deps(want))
+	return sim.mods_session(sim.mods_switch_on({}, want))
 }
 
 @(test)
@@ -148,6 +150,29 @@ plugins_from_start_flags :: proc(t: ^testing.T) {
 	}
 }
 
+// Every plugin folder with code is in the build: game/plugins.odin imports
+// it, or nothing registers it and its content is never offered.
+@(test)
+plugins_folders_are_all_in_the_build :: proc(t: ^testing.T) {
+	entries, err := os.read_all_directory_by_path("plugins", context.temp_allocator)
+	if !testing.expect(t, err == nil, "the plugins folder must be there") {
+		return
+	}
+	for e in entries {
+		if e.type != .Directory {
+			continue
+		}
+		files, _ := os.read_all_directory_by_path(e.fullpath, context.temp_allocator)
+		for f in files {
+			if strings.has_suffix(f.name, ".odin") {
+				_, ok := sim.plugin_find(e.name)
+				testing.expectf(t, ok, "plugins/%s is not registered: is it imported in game/plugins.odin?", e.name)
+				break
+			}
+		}
+	}
+}
+
 // Netplay's plugin is in a session exactly when it is online, whatever the
 // mods passed in say.
 @(test)
@@ -161,7 +186,7 @@ plugins_netplay_only_online :: proc(t: ^testing.T) {
 // label, whatever order the packages registered them in.
 @(test)
 mods_page_lists_a_tree_of_needs :: proc(t: ^testing.T) {
-	want := []string{"extra_prefs", "fps_unlock", "accent", "loadout", "new_weapons", "chaingun", "passives", "easy_mode", "netplay"}
+	want := []string{"extra_prefs", "fps_unlock", "accent", "loadout", "new_weapons", "chaingun", "new_weapon_passives", "passives", "easy_mode", "netplay"}
 	got := game.mods_order()
 	testing.expect_value(t, len(got), len(want))
 	for id, i in got {

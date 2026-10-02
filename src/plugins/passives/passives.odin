@@ -69,15 +69,10 @@ WEAPON_REAR_GUN :: Res_ID{'a', 'i', 'r', 'g'}
 WEAPON_PHOTON_BEAM :: Res_ID{'a', 'i', 'p', 'b'}
 WEAPON_PLASMA_BOMB :: Res_ID{'p', 'l', 'b', 'o'}
 
-// Weapon 5 and 6 are the plugins' weapons, the Chaingun (plugins/chaingun)
-// and the Discharge Beam (plugins/new_weapons). Their passives are offered
-// only while those plugins are on (passive_available).
-WEAPON_CHAINGUN :: Res_ID{'a', 'i', 'c', 'g'}
-WEAPON_DISCHARGE_BEAM :: Res_ID{'a', 'i', 'd', 'b'}
-
 // The passives this plugin brings, in the order the design lists them.
 // Their ids are fixed; other plugins' passives follow them, numbered as
-// they register (passive_register).
+// they register (passive_register): Weapon 5 and 6, for the plugins'
+// weapons, are New Weapon Upgrades' (plugins/new_weapon_passives).
 Own :: enum u8 {
 	Improved_Manoeuvring,
 	Auto_Charge,
@@ -88,8 +83,6 @@ Own :: enum u8 {
 	Weapon_2,
 	Weapon_3,
 	Weapon_4,
-	Weapon_5,
-	Weapon_6,
 }
 
 // A passive, by its id: this plugin's own first (Own), then other plugins'.
@@ -104,8 +97,6 @@ WEAPON_1 :: Passive(Own.Weapon_1)
 WEAPON_2 :: Passive(Own.Weapon_2)
 WEAPON_3 :: Passive(Own.Weapon_3)
 WEAPON_4 :: Passive(Own.Weapon_4)
-WEAPON_5 :: Passive(Own.Weapon_5)
-WEAPON_6 :: Passive(Own.Weapon_6)
 
 MAX_PASSIVES :: 32
 
@@ -233,35 +224,6 @@ OWN := [Own]Passive_Def {
 			// takes over; 40% with it would be +90%.
 			{.Firing_Delay, .Decrease, {20, 40, 10}},
 			{.Extra_Volley, .Extra, {X, X, 1}},
-		},
-	},
-	.Weapon_5 = {
-		name   = "weapon_5",
-		label  = "CHAINGUN UPGRADE",
-		levels = 3,
-		weapon = WEAPON_CHAINGUN,
-		mods = {
-			// A burst of 10 rounds takes 20 steps, and the gap after it is
-			// the firing delay's 30 less those; these close 40%, 60% and all
-			// of it (26, 24, 20), so level 3 fires without a break. The
-			// rounds' spread widens with it.
-			{.Firing_Delay, .Decrease, {13, 20, 33}},
-			{.Random_Spread_Range, .Increase, {25, 50, 100}},
-		},
-	},
-	.Weapon_6 = {
-		name   = "weapon_6",
-		label  = "DISCHARGE BEAM UPGRADE",
-		levels = 3,
-		weapon = WEAPON_DISCHARGE_BEAM,
-		mods = {
-			// The damage bases the charge too (+13/26/53% on it); the beam's
-			// width takes the damage's percentage as well as its own.
-			// The design's 10/20/30% damage gains only 7/14/21%: in the wave
-			// a pulse already kills what it hits, so only the single and
-			// cluster targets gain.
-			{.Projectile_Damage, .Increase, {15, 30, 60}},
-			{.Shot_Width, .Increase, {10, 20, 30}},
 		},
 	},
 }

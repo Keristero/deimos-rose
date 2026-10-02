@@ -3,7 +3,6 @@ package tests
 import "core:testing"
 import vmem "core:mem/virtual"
 
-import "dr:data"
 import net "dr:net"
 import "dr:plugins/new_weapons"
 import "dr:sim"
@@ -19,23 +18,15 @@ import "dr:sim"
 @(test)
 netplay_peer_keeps_the_other_players_beams :: proc(t: ^testing.T) {
 	arena: vmem.Arena
-	defs, loaded := assets_defs(t, &arena, "plugins/new_weapons/data")
+	defs, loaded := content_defs(t, &arena, "plugins/new_weapons/data")
 	if !loaded {
 		return
 	}
 	defer vmem.arena_destroy(&arena)
 	alloc := vmem.arena_allocator(&arena)
 	context.allocator = alloc // the states' worlds go in the arena too
-	if _, ok := data.extra_defs_load(&defs, alloc); !testing.expect(t, ok) {
-		return
-	}
-	db := -1
-	for &w, i in defs.weapons {
-		if w.id == sim.res_id("aidb") {
-			db = i
-		}
-	}
-	if !testing.expect(t, db >= 0, "no Discharge Beam in plugins/new_weapons") {
+	db := weapon_index(t, &defs, sim.res_id("aidb"))
+	if db < 0 {
 		return
 	}
 

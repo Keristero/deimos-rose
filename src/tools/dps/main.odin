@@ -45,9 +45,11 @@ import "core:time"
 
 import "dr:data"
 // The new weapons' keys and how they fire: a Discharge Beam fires only with
-// its plugin linked in, as in the game.
-import _ "dr:plugins/chaingun"
-import _ "dr:plugins/new_weapons"
+// its plugin linked in, as in the game. Their passives are a plugin's too.
+import "dr:plugins/chaingun"
+import "dr:plugins/loadout"
+import "dr:plugins/new_weapons"
+import _ "dr:plugins/new_weapon_passives"
 import "dr:plugins/passives"
 // The original game's systems, which a session runs.
 import _ "dr:sim/core"
@@ -571,8 +573,11 @@ dps_run :: proc(d: ^sim.Defs, w: Weapon_Case, sc: Scenario, levels: passives.Pas
 	s := new(sim.State)
 	defer free(s)
 	defer sim.destroy(s)
-	mods := sim.mods_session(sim.mods_with_deps({int(passives.ID)}))
+	// As a player with Passive Upgrades and the new weapons has them.
+	mods := sim.mods_session(sim.mods_switch_on({}, {int(passives.ID), int(new_weapons.ID), int(chaingun.ID)}))
 	sim.init(s, sim.Session{seed = SEED, level_id = d.levels[0].id, game_type = .Single, mods = mods}, d)
+	// The weapon is handed over below, not chosen on the loadout screen.
+	loadout.loadout_of(s).shown = sim.single(s, sim.Level_Info).played
 	p := sim.player_at(s, 0)
 	for i := 0; i < ENTRY_STEPS && p.state != .Playing; i += 1 {
 		sim.session_step(s, {})
@@ -638,8 +643,13 @@ dps_run :: proc(d: ^sim.Defs, w: Weapon_Case, sc: Scenario, levels: passives.Pas
 			b += {button}
 		}
 		sim.session_step(s, {b, {}})
-		// The air weapon charges under Auto Charge while the Plasma Bomb is
-		// fired, but its shots cannot reach a ground target.
+		if w.ground {
+			// Under Auto Charge the air weapon would charge while the Plasma
+			// Bomb is fired, and its shots cannot reach a ground target. Left
+			// to overload, it shot the ship down a few seconds in: which it
+			// did depended on the air weapon the loadout handed over.
+			h.air_idle = 0
+		}
 		o.charged ||= !w.ground && h.air_powerup.state != 0
 		for i in 0 ..< len(offsets) {
 			if sc == .Wave {

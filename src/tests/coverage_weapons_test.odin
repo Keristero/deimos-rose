@@ -3,7 +3,6 @@ package tests
 import "core:testing"
 import vmem "core:mem/virtual"
 
-import "dr:data"
 import "dr:plugins/chaingun"
 import "dr:plugins/easy_mode"
 import "dr:plugins/loadout"
@@ -671,25 +670,10 @@ Assets_Fixture :: struct {
 // once the ship is in play. The caller sets context.allocator to the arena.
 @(private = "file")
 cw_assets_fixture :: proc(t: ^testing.T, f: ^Assets_Fixture, easy: bool) -> bool {
-	f.defs = assets_defs(t, &f.arena, "plugins/new_weapons/data") or_return
-	alloc := vmem.arena_allocator(&f.arena)
-	context.allocator = alloc
-	if _, ok := data.extra_defs_load(&f.defs, alloc); !testing.expect(t, ok) {
-		return false
-	}
+	f.defs = content_defs(t, &f.arena, "plugins/new_weapons/data") or_return
+	context.allocator = vmem.arena_allocator(&f.arena)
 	f.s = new(sim.State)
 	return play_start(t, f.s, sim.Session{seed = 1, level_id = f.defs.levels[0].id, game_type = .Single, mods = session_mods(easy, true)}, &f.defs)
-}
-
-@(private = "file")
-cw_weapon :: proc(t: ^testing.T, d: ^sim.Defs, id: sim.Res_ID) -> i32 {
-	for &w, i in d.weapons {
-		if w.id == id {
-			return i32(i)
-		}
-	}
-	testing.expectf(t, false, "no weapon %v in the data", id)
-	return sim.NO_WEAPON
 }
 
 // Player 1 flies `w`, as a loadout holding it would.
@@ -732,7 +716,7 @@ bacta_gun_extra_lanes_continue_its_fan :: proc(t: ^testing.T) {
 	}
 	context.allocator = vmem.arena_allocator(&f.arena)
 	s := f.s
-	bg := cw_weapon(t, &f.defs, passives.WEAPON_BACTA_GUN)
+	bg := weapon_index(t, &f.defs, passives.WEAPON_BACTA_GUN)
 	if bg == sim.NO_WEAPON {
 		return
 	}
@@ -768,8 +752,8 @@ direct_fire_extra_volley_follows_two_steps_later :: proc(t: ^testing.T) {
 	}
 	context.allocator = vmem.arena_allocator(&f.arena)
 	s := f.s
-	rg := cw_weapon(t, &f.defs, passives.WEAPON_REAR_GUN)
-	ion := cw_weapon(t, &f.defs, passives.WEAPON_ION_CANNON)
+	rg := weapon_index(t, &f.defs, passives.WEAPON_REAR_GUN)
+	ion := weapon_index(t, &f.defs, passives.WEAPON_ION_CANNON)
 	if rg == sim.NO_WEAPON || ion == sim.NO_WEAPON {
 		return
 	}
@@ -799,7 +783,7 @@ spawner_extra_volley_is_one_more_volley :: proc(t: ^testing.T) {
 	}
 	context.allocator = vmem.arena_allocator(&f.arena)
 	s := f.s
-	pb := cw_weapon(t, &f.defs, passives.WEAPON_PHOTON_BEAM)
+	pb := weapon_index(t, &f.defs, passives.WEAPON_PHOTON_BEAM)
 	if pb == sim.NO_WEAPON {
 		return
 	}
@@ -832,7 +816,7 @@ ion_cannon_level_3_shots_accelerate :: proc(t: ^testing.T) {
 	}
 	context.allocator = vmem.arena_allocator(&f.arena)
 	s := f.s
-	ion := cw_weapon(t, &f.defs, passives.WEAPON_ION_CANNON)
+	ion := weapon_index(t, &f.defs, passives.WEAPON_ION_CANNON)
 	if ion == sim.NO_WEAPON {
 		return
 	}
@@ -883,7 +867,7 @@ full_charge_releases_itself_when_the_weapon_says_so :: proc(t: ^testing.T) {
 	}
 	context.allocator = vmem.arena_allocator(&f.arena)
 	s := f.s
-	ion := cw_weapon(t, &f.defs, passives.WEAPON_ION_CANNON)
+	ion := weapon_index(t, &f.defs, passives.WEAPON_ION_CANNON)
 	h := sim.player_at(s, 0).weapons
 	if !testing.expect_value(t, h.air.weapon, ion) {
 		return
@@ -929,7 +913,7 @@ chaingun_release_fires_a_pair_a_level :: proc(t: ^testing.T) {
 	}
 	context.allocator = vmem.arena_allocator(&f.arena)
 	s := f.s
-	cg := cw_weapon(t, &f.defs, sim.res_id("aicg"))
+	cg := weapon_index(t, &f.defs, sim.res_id("aicg"))
 	if cg == sim.NO_WEAPON {
 		return
 	}
@@ -984,7 +968,7 @@ discharge_beam_spent_on_a_kill_stops_there :: proc(t: ^testing.T) {
 	}
 	context.allocator = vmem.arena_allocator(&f.arena)
 	s := f.s
-	db := cw_weapon(t, &f.defs, sim.res_id("aidb"))
+	db := weapon_index(t, &f.defs, sim.res_id("aidb"))
 	if db == sim.NO_WEAPON {
 		return
 	}
@@ -1014,7 +998,7 @@ ground_weapon_spawns_at_the_crosshair :: proc(t: ^testing.T) {
 	}
 	context.allocator = vmem.arena_allocator(&f.arena)
 	s := f.s
-	bomb := cw_weapon(t, &f.defs, passives.WEAPON_PLASMA_BOMB)
+	bomb := weapon_index(t, &f.defs, passives.WEAPON_PLASMA_BOMB)
 	h := sim.player_at(s, 0).weapons
 	if !testing.expect_value(t, h.ground.weapon, bomb) {
 		return

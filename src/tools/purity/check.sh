@@ -5,7 +5,8 @@
 #
 # The ECS library the sim is built on, and the sim half of every plugin,
 # run inside the simulation step, so they are held to the same rule. A
-# plugin's presentation lives in its view/ subfolder, which is exempt.
+# plugin's presentation lives in its view/ subfolder, and its tests in
+# tests/, which are exempt.
 set -euo pipefail
 SRC="${DR_SRC:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 [ -d "$SRC/sim" ] || { echo "purity: no sim/ directory yet"; exit 0; }
@@ -16,11 +17,12 @@ while IFS= read -r d; do DIRS+=("$d"); done < <(
 [ -d "$SRC/third_party/odecs" ] && DIRS+=("$SRC/third_party/odecs")
 if [ -d "$SRC/plugins" ]; then
     while IFS= read -r d; do DIRS+=("$d"); done < <(
-        find "$SRC/plugins" -name '*.odin' -not -path '*/view/*' -printf '%h\n' | sort -u)
+        find "$SRC/plugins" -name '*.odin' -not -path '*/view/*' -not -path '*/tests/*' -printf '%h\n' | sort -u)
 fi
 BANNED='vendor:raylib|core:os|core:fmt|core:time|core:math/rand|core:thread|core:net|dr:game|dr:render|dr:ui|dr:prefs|dr:net'
 for d in "${DIRS[@]}"; do
-    # Only this folder's own files: a plugin's view/ is a separate package.
+    # Only this folder's own files: a plugin's view/ and tests/ are
+    # separate packages.
     files=$(find "$d" -maxdepth 1 -name '*.odin')
     [ -n "$files" ] || continue
     # shellcheck disable=SC2086

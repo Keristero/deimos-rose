@@ -337,22 +337,13 @@ chaingun_loads_as_new_content :: proc(t: ^testing.T) {
 @(test)
 aimed_volley_turns_towards_an_air_enemy :: proc(t: ^testing.T) {
 	arena: vmem.Arena
-	defs, loaded := assets_defs(t, &arena, "plugins/chaingun/data")
+	defs, loaded := content_defs(t, &arena, "plugins/chaingun/data")
 	if !loaded {
 		return
 	}
 	defer vmem.arena_destroy(&arena)
-	alloc := vmem.arena_allocator(&arena)
-	if _, ok := data.extra_defs_load(&defs, alloc); !testing.expect(t, ok) {
-		return
-	}
-	cg := i32(-1)
-	for &w, i in defs.weapons {
-		if w.id == sim.res_id("aicg") {
-			cg = i32(i)
-		}
-	}
-	if !testing.expect(t, cg >= 0) {
+	cg := weapon_index(t, &defs, sim.res_id("aicg"))
+	if cg < 0 {
 		return
 	}
 	// Stage 1 once the ship is in play (the mine is spawned only then), and

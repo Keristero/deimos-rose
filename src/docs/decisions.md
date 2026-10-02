@@ -1753,3 +1753,16 @@ Passive Upgrades on. Off by default, nobody would find it.
   that the file does not mention comes on with its dependencies, so a
   companion new to the build reaches a player who already has them. An
   older build ignores the line.
+- **New Weapon Upgrades** (`plugins/new_weapon_passives`) is the first.
+  It registers Weapon 5 and 6 (`passives.passive_register`), which
+  Passive Upgrades carried before. They keep their names, so the icons
+  and the golden runs, which go by name, are unchanged.
+- **A plugin owns its tests**, in `plugins/<name>/tests`, a package with
+  its own `@(init)`. `mise run test` runs each, `check` vets them, and
+  `coverage` counts them. The helpers every package shares are in
+  `tests/support`. A test in `tests/` that asked for a plugin's content
+  moves there as that plugin's tests are next touched.
+- **Every plugin folder with code must be imported by
+  `game/plugins.odin`**, or nothing registers it. A test now says so:
+  the new plugin was missing at first, and only a golden run's reward
+  pool showed it.

@@ -119,10 +119,12 @@ comes up twice, build the tool for it rather than a third ad-hoc script.
 **Tests must not require the original game data.** Use synthetic fixtures.
 Integration checks against `game/` are fine but must skip cleanly when absent,
 so CI runs for someone without a copy of the game. A test of the extracted
-content starts from `assets_defs` (`src/tests/setup.odin`), which does the
-skipping; `play_start`, `unit_spawn` and `mine_spawn` there, and the `Link`
-between two netplay sessions in `src/tests/link.odin`, are the shared
-fixtures. Reach for them before writing another.
+content starts from `assets_defs` (`src/tests/support`), which does the
+skipping; `content_defs`, `weapon_index`, `play_start`, `unit_spawn` and
+`mine_spawn` there, and the `Link` between two netplay sessions in
+`src/tests/link.odin`, are the shared fixtures. Reach for them before
+writing another. A plugin owns the tests of what it adds, in
+`src/plugins/<name>/tests` (`mise run test` runs each).
 
 **Never commit the original game itself.** `orig/`, `game/`, `src/build/`
 and `src/.deps/` are ignored. The one exception is `src/assets/` — the

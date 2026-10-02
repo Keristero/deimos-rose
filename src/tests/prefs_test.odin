@@ -197,7 +197,9 @@ prefs_legacy_extras_become_mods :: proc(t: ^testing.T) {
 	defaults := prefs.defaults().mods
 	testing.expect_value(t, prefs.parse("high_refresh_rate=1").mods, defaults + {int(fps_unlock.ID)})
 	testing.expect_value(t, prefs.parse("accent_colours=0").mods, defaults - {int(accent.ID)})
-	testing.expect_value(t, prefs.parse("easy_mode=1").mods, sim.mods_with_deps(defaults + {int(easy_mode.ID)}))
+	// Easy Mode, with Passive Upgrades, brings the companion New Weapons
+	// was waiting for (D66).
+	testing.expect_value(t, prefs.parse("easy_mode=1").mods, sim.mods_switch_on(defaults, {int(easy_mode.ID)}))
 	// Without New Weapons, the loadout it brought stays on: it is a mod of
 	// its own now. The Chaingun, which needs it, goes with it.
 	testing.expect_value(t, prefs.parse("new_weapons=0").mods, defaults - {int(new_weapons.ID), int(chaingun.ID)})

@@ -8,7 +8,6 @@ import "core:testing"
 import vmem "core:mem/virtual"
 
 import net "dr:net"
-import "dr:data"
 import "dr:plugins/easy_mode"
 import "dr:plugins/passives"
 import "dr:sim"
@@ -382,7 +381,8 @@ rollback_session_converges_through_the_reward_screen :: proc(t: ^testing.T) {
 @(test)
 weapon_passives_shape_the_real_weapons :: proc(t: ^testing.T) {
 	arena: vmem.Arena
-	defs, loaded := assets_defs(t, &arena)
+	// The plugins' weapons too, for the passives other plugins register.
+	defs, loaded := content_defs(t, &arena)
 	if !loaded {
 		return
 	}
@@ -390,22 +390,10 @@ weapon_passives_shape_the_real_weapons :: proc(t: ^testing.T) {
 	if !testing.expect(t, len(defs.levels) > 0, "the level list must load") {
 		return
 	}
-	// The plugins' weapons too, for Weapon 5 and 6.
-	if _, ok := data.extra_defs_load(&defs, vmem.arena_allocator(&arena)); !testing.expect(t, ok) {
-		return
-	}
 	s := new(sim.State, context.temp_allocator)
 	defer sim.destroy(s)
 	sim.init(s, sim.Session{seed = 1, level_id = defs.levels[0].id, game_type = .Single, mods = session_mods(true, false)}, &defs)
 
-	index :: proc(d: ^sim.Defs, id: sim.Res_ID) -> i32 {
-		for &w, i in d.weapons {
-			if w.id == id {
-				return i32(i)
-			}
-		}
-		return -1
-	}
 	projectiles :: proc(s: ^sim.State, spawns: []stats.Weapon_Spawn) -> (n: int) {
 		for sp in spawns {
 			ui := sim.unit_index(s.defs, sp.unit)
@@ -418,8 +406,8 @@ weapon_passives_shape_the_real_weapons :: proc(t: ^testing.T) {
 	out, before: [64]stats.Weapon_Spawn
 	p := sim.player_at(s, 0)
 
-	ion := index(&defs, passives.WEAPON_ION_CANNON)
-	if !testing.expect(t, ion >= 0, "no Ion Cannon in the data") {
+	ion := weapon_index(t, &defs, passives.WEAPON_ION_CANNON)
+	if ion < 0 {
 		return
 	}
 	nb := stats.weapon_spawns(s, ion, 0, false, before[:])
@@ -451,8 +439,8 @@ weapon_passives_shape_the_real_weapons :: proc(t: ^testing.T) {
 	testing.expect_value(t, n, nb)
 
 	// The plasma bomb, backwards: every spawn mirrored behind the ship.
-	bomb := index(&defs, passives.WEAPON_PLASMA_BOMB)
-	if !testing.expect(t, bomb >= 0, "no Plasma Bomb in the data") {
+	bomb := weapon_index(t, &defs, passives.WEAPON_PLASMA_BOMB)
+	if bomb < 0 {
 		return
 	}
 	passives.levels_of(s, p.number)^ = {passives.GROUND_VARIANT_1 = 1}
@@ -477,48 +465,13 @@ weapon_passives_shape_the_real_weapons :: proc(t: ^testing.T) {
 		if def.weapon == sim.NONE {
 			continue
 		}
-		testing.expectf(t, index(&defs, def.weapon) >= 0, "%s's weapon is not in the data", def.name)
+		testing.expectf(t, weapon_index(t, &defs, def.weapon) >= 0, "%s's weapon is not in the data", def.name)
+		// A plugin's passive only while that plugin is on, as no other
+		// plugin is in this session.
+		if def.plugin != sim.CORE {
+			testing.expectf(t, !passives.passive_available(s, passives.Passive(i), i32(len(defs.levels))), "%s offered without its plugin", def.name)
+		}
 	}
-	// A plugin weapon's passive only while its plugin is on: the Chaingun
-	// and the Discharge Beam are not in this session.
-	testing.expect(t, !passives.passive_available(s, passives.WEAPON_5, 9))
-	testing.expect(t, !passives.passive_available(s, passives.WEAPON_6, 10))
-
-	// The Chaingun's rounds stray further with its passive; a unit that
-	// flies straight still does, and another weapon's shots are left alone.
-	cg := index(&defs, passives.WEAPON_CHAINGUN)
-	passives.levels_of(s, p.number)^ = {passives.WEAPON_5 = 3}
-	by := stats.shot_shaper(s, 0, cg)
-	testing.expect(t, by != 0)
-	testing.expect_value(t, stats.heading_tolerance(s, 0, by, 8), 16)
-	testing.expect_value(t, stats.heading_tolerance(s, 0, by, 0), 0)
-	testing.expect_value(t, stats.heading_tolerance(s, 0, by, 270), 360)
-	testing.expect_value(t, stats.heading_tolerance(s, 0, stats.shot_shaper(s, 0, ion), 8), 8)
-	testing.expect_value(t, stats.heading_tolerance(s, 0, 0, 8), 8)
-}
-
-// With their plugins on, the Chaingun's and the Discharge Beam's passives
-// are offered from the level each weapon is.
-@(test)
-chaingun_passive_offered_with_its_plugin :: proc(t: ^testing.T) {
-	arena: vmem.Arena
-	defs, loaded := assets_defs(t, &arena)
-	if !loaded {
-		return
-	}
-	defer vmem.arena_destroy(&arena)
-	if !testing.expect(t, len(defs.levels) > 0, "the level list must load") {
-		return
-	}
-	if _, ok := data.extra_defs_load(&defs, vmem.arena_allocator(&arena)); !testing.expect(t, ok) {
-		return
-	}
-	s := new(sim.State, context.temp_allocator)
-	defer sim.destroy(s)
-	sim.init(s, sim.Session{seed = 1, level_id = defs.levels[0].id, game_type = .Single, mods = session_mods(true, true)}, &defs)
-	testing.expect(t, passives.passive_available(s, passives.WEAPON_5, 9))
-	testing.expect(t, !passives.passive_available(s, passives.WEAPON_6, 9))
-	testing.expect(t, passives.passive_available(s, passives.WEAPON_6, 10))
 }
 
 // Every passive has an icon recipe (tools/icons/passives.json), and the icon

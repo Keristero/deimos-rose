@@ -238,7 +238,7 @@ run = [
   "odin check ui $DR_COLL -vet -strict-style -no-entry-point",
   "odin check oracle $DR_COLL -vet -strict-style -no-entry-point",
   # A data plugin's folder holds no code (D52).
-  "for p in plugins/*/ plugins/*/view/; do ls $p*.odin >/dev/null 2>&1 || continue; odin check $p $DR_COLL -vet -strict-style -no-entry-point || exit 1; done",
+  "for p in plugins/*/ plugins/*/view/ plugins/*/tests/; do ls $p*.odin >/dev/null 2>&1 || continue; odin check $p $DR_COLL -vet -strict-style -no-entry-point || exit 1; done",
   "odin check tools/extract $DR_COLL -vet -strict-style",
   "odin check tools/verify  $DR_COLL -vet -strict-style",
   "odin check tools/records $DR_COLL -vet -strict-style",
@@ -260,18 +260,20 @@ run = [
   "odin check editor $DR_COLL -vet -strict-style",
   "odin check tests/editor $DR_COLL -vet -strict-style -no-entry-point",
   "odin check tests $DR_COLL -vet -strict-style -no-entry-point",
+  "odin check tests/support $DR_COLL -vet -strict-style -no-entry-point",
   "odin check tests/data_plugins $DR_COLL -vet -strict-style -no-entry-point",
   # Every package again as the other OS CI builds on would see it: a
   # `when ODIN_OS` block or a Linux-only file can leave an import unused
   # only there, which failed the Windows build (CI run 36967083184).
-  "other=windows_amd64; [ \"$OS\" = Windows_NT ] && other=linux_amd64; for p in game sim sim/*/ sim/systems/*/ data net prefs render ui oracle terrain editor plugins/*/ plugins/*/view/ tools/*/ tests tests/data_plugins tests/terrain tests/editor; do ls $p/*.odin >/dev/null 2>&1 || continue; e=-no-entry-point; grep -qs '^main ::' $p/*.odin && e=; odin check $p $DR_COLL -vet -strict-style $e -target:$other || exit 1; done",
+  "other=windows_amd64; [ \"$OS\" = Windows_NT ] && other=linux_amd64; for p in game sim sim/*/ sim/systems/*/ data net prefs render ui oracle terrain editor plugins/*/ plugins/*/view/ plugins/*/tests/ tools/*/ tests tests/support tests/data_plugins tests/terrain tests/editor; do ls $p/*.odin >/dev/null 2>&1 || continue; e=-no-entry-point; grep -qs '^main ::' $p/*.odin && e=; odin check $p $DR_COLL -vet -strict-style $e -target:$other || exit 1; done",
 ]
 
 [tasks.test]
-description = "Run the Odin test suite: tests/, then tests/data_plugins, a package of its own because it registers the fixture plugins in tests/fixtures/plugins (D52), then tests/terrain and tests/editor, which draw through GL under xvfb-run (skipped without a display), tests/editor on a D-Bus of its own (dbus-run-session)"
+description = "Run the Odin test suite: tests/, then each plugin's own (plugins/<name>/tests, the tests of what that plugin adds), then tests/data_plugins, a package of its own because it registers the fixture plugins in tests/fixtures/plugins (D52), then tests/terrain and tests/editor, which draw through GL under xvfb-run (skipped without a display), tests/editor on a D-Bus of its own (dbus-run-session)"
 depends = ["setup"]
 run = [
   "odin test tests $DR_COLL $DR_LINK -out:$DR_BUILD/tests$DR_EXT",
+  "for p in plugins/*/tests/; do ls $p*.odin >/dev/null 2>&1 || continue; odin test $p $DR_COLL $DR_LINK -out:$DR_BUILD/tests-$(basename $(dirname $p))$DR_EXT || exit 1; done",
   "odin test tests/data_plugins $DR_COLL $DR_LINK -out:$DR_BUILD/tests-data-plugins$DR_EXT",
   # Never on the desktop: under xvfb-run, or with no display at all, when
   # the GL cases skip.
@@ -289,6 +291,8 @@ run = [
   "python3 tools/coverage/coverage.py instrument . $DR_BUILD/coverage",
   "rm -f $DR_BUILD/coverage/hits.bin",
   "DR_COV_OUT=$DR_BUILD/coverage/hits.bin odin test $DR_BUILD/coverage/tests -collection:dr=$DR_BUILD/coverage $DR_LINK -out:$DR_BUILD/coverage/run-tests$DR_EXT",
+  # The plugins' own tests mark the same counters.
+  "for p in $DR_BUILD/coverage/plugins/*/tests/; do ls $p*.odin >/dev/null 2>&1 || continue; DR_COV_OUT=$DR_BUILD/coverage/hits.bin odin test $p -collection:dr=$DR_BUILD/coverage $DR_LINK -out:$DR_BUILD/coverage/run-tests-$(basename $(dirname $p))$DR_EXT || exit 1; done",
   "python3 tools/coverage/coverage.py report $DR_BUILD/coverage",
 ]
 

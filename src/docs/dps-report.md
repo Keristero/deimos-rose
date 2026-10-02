@@ -133,8 +133,13 @@ been confirmed.
 
 - **"A fast DPS check for each weapon."** Every air weapon and the ground
   weapon in `Defs.weapons` are checked, the Chaingun and the Discharge
-  Beam included. They are loaded from `plugins/<plugin>` and flown without a
-  New Weapons session.
+  Beam included. They are loaded from `plugins/<plugin>` and flown in a
+  session with Passive Upgrades, New Weapons, the Chaingun and New Weapon
+  Upgrades on, as a player has them. The loadout screen is skipped, and
+  the weapon is handed over directly. On a Plasma Bomb run the air weapon
+  is kept from charging. Under Auto Charge it would overload: with the
+  loadout's first weapon in the air slot, that shot the ship down a few
+  seconds in.
 - **"Every passive, at each possible level."** One passive at a time, not
   combinations. There are 25 levels, and combinations would multiply them.
 - **The report.** There is one section per set. Weapons are sorted by

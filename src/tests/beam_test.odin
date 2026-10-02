@@ -3,10 +3,8 @@ package tests
 import "core:testing"
 import vmem "core:mem/virtual"
 
-import "dr:data"
 import "dr:plugins/loadout"
 import "dr:plugins/new_weapons"
-import "dr:plugins/passives"
 import "dr:sim"
 import "dr:sim/systems/weapon_system"
 
@@ -23,27 +21,18 @@ Beam_Fixture :: struct {
 	db:    i32, // the Discharge Beam's weapon index
 }
 
-// Stage 1 in a New Weapons session, once the ship is in play; with easy
-// mode's passives too if `easy`.
+// Stage 1 in a New Weapons session, once the ship is in play.
 @(private = "file")
-beam_fixture :: proc(t: ^testing.T, f: ^Beam_Fixture, easy := false) -> bool {
-	f.defs = assets_defs(t, &f.arena, "plugins/new_weapons/data") or_return
+beam_fixture :: proc(t: ^testing.T, f: ^Beam_Fixture) -> bool {
+	f.defs = content_defs(t, &f.arena, "plugins/new_weapons/data") or_return
+	f.db = weapon_index(t, &f.defs, sim.res_id("aidb"))
+	if f.db < 0 {
+		return false
+	}
 	alloc := vmem.arena_allocator(&f.arena)
-	if _, ok := data.extra_defs_load(&f.defs, alloc); !testing.expect(t, ok) {
-		return false
-	}
-	f.db = -1
-	for &w, i in f.defs.weapons {
-		if w.id == sim.res_id("aidb") {
-			f.db = i32(i)
-		}
-	}
-	if !testing.expect(t, f.db >= 0, "no Discharge Beam in plugins/new_weapons") {
-		return false
-	}
 	f.s = new(sim.State, alloc)
 	context.allocator = alloc // the state's world goes in the arena too
-	return play_start(t, f.s, sim.Session{seed = 1, level_id = f.defs.levels[0].id, game_type = .Single, mods = session_mods(easy, true)}, &f.defs)
+	return play_start(t, f.s, sim.Session{seed = 1, level_id = f.defs.levels[0].id, game_type = .Single, mods = session_mods(false, true)}, &f.defs)
 }
 
 @(test)
@@ -226,51 +215,5 @@ discharge_beam_winds_up_before_each_pulse :: proc(t: ^testing.T) {
 			gap := fired[k] - fired[k - 1]
 			testing.expectf(t, gap == cycle || gap == cycle + 1, "pulses %d steps apart, want %d", gap, cycle)
 		}
-	}
-}
-
-
-// The Weapon 6 passive: its damage scales a pulse and a release; the
-// beam's width takes the damage's percentage and its own.
-@(test)
-discharge_beam_passive_hits_harder_and_wider :: proc(t: ^testing.T) {
-	f: Beam_Fixture
-	defer vmem.arena_destroy(&f.arena)
-	if !beam_fixture(t, &f, true) {
-		return
-	}
-	s := f.s
-	pl := sim.player_at(s, 0)
-	h := pl.weapons
-	h.air.weapon = f.db
-	wd := &f.defs.weapons[f.db]
-	b := new_weapons.beam_def(wd)
-	at := sim.Vec{208, 420}
-	top := wd.powerup_air_max_power_level
-	wall := mine_spawn(t, s, at + {0, -100}, 100)
-	if wall.obj == nil {
-		return
-	}
-	passives.levels_of(s, pl.number)^ = {passives.WEAPON_6 = 3}
-	dmg := i32(passives.passive_def(passives.WEAPON_6).mods[0].at[2])
-	wide := i32(passives.passive_def(passives.WEAPON_6).mods[1].at[2])
-	scale := proc(v: f32, pct: i32) -> f32 {return v * f32(100 + pct) / 100}
-
-	s.effects.count = 0
-	new_weapons.beam_shot(s, h, wd, at, sim.single(s, sim.Clock).time)
-	testing.expect(t, abs(100 - wall.shields - scale(b.damage, dmg)) < 1e-3, "a pulse deals the scaled damage")
-	shots := new_weapons.beam_shots(s)
-	if testing.expect_value(t, len(shots), 1) {
-		testing.expect(t, abs(shots[0].width - scale(b.width, dmg + wide)) < 1e-3, "a pulse is as wide as both percentages")
-	}
-
-	wall.last_hit = -100
-	before := wall.shields
-	s.effects.count = 0
-	new_weapons.beam_release(s, h, wd, at, top, sim.single(s, sim.Clock).time)
-	testing.expect(t, abs(before - wall.shields - scale(b.release_damage, dmg)) < 1e-3, "a release deals the scaled damage")
-	shots = new_weapons.beam_shots(s)
-	if testing.expect_value(t, len(shots), 1) {
-		testing.expect(t, abs(shots[0].width - scale(b.release_width, dmg + wide)) < 1e-3)
 	}
 }

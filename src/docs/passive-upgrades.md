@@ -45,6 +45,13 @@ left room, and what is still provisional. The cross-cutting choice is D36 in
     naming itself as the passive's `plugin`: the passive is offered only
     while that plugin is on, and its ids follow the plugin's in
     registration order.
+  - **New Weapon Upgrades** (`plugins/new_weapon_passives`) adds Weapon 5
+    and 6 that way. It needs Passive Upgrades and New Weapons, and is a
+    companion of both (D66): on wherever they are, so a player can keep
+    the new weapons and turn their upgrades off. Its tests are its own
+    (`plugins/new_weapon_passives/tests`), as each plugin owns the tests
+    of what it adds; `tests/support` holds the helpers every test package
+    shares.
   - Each `Passive_Def` carries its `name` (lower case; its icon and the DPS
     report go by it) and the `label` the reward screen shows.
 - **Presentation** (`plugins/easy_mode/view/reward.odin`,
@@ -229,8 +236,9 @@ is `plbo`, the Plasma Bomb, the only ground weapon.
 - **Weapon 5** (Chaingun, `plugins/chaingun`) and **Weapon 6** (Discharge
   Beam, `plugins/new_weapons`) are the plugins' weapons, from
   [notes/extra-weapon-passives-and-base-adjustments.md](../../notes/extra-weapon-passives-and-base-adjustments.md).
-  Their passives are offered only while the weapon's plugin is on
-  (`passive_available` asks `sim.weapon_allowed`).
+  New Weapon Upgrades (`plugins/new_weapon_passives`) registers them, so
+  they are offered only while it is on, and each only while its weapon's
+  plugin is too (`passive_available` asks `sim.weapon_allowed`).
 - **Weapon 5.** "Fires continuously" is read as closing the gap between
   bursts. A burst of 10 rounds takes 20 steps, and the firing delay is 30,
   so level 3's 33% off (20 steps) leaves no gap. `random_spread_range`
