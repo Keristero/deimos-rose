@@ -6,9 +6,9 @@ harden toward y = 0. On open ground (smooth grass, clear of water, canopy
 and buildings) the script makes strongholds: turrets (Laser and Pulse tanks
 and Panzers emplaced, swivel guns, popups, twin guns, radars) with a bonus
 station and a hidden secret behind them. Between them it puts air waves,
-which the classic levels place ahead of a ground group, a scroll-pausing
-script at the middle (03p2, Flippers until the ground is cleared) and the
-end script (04e1) on dry land near the north. Which units come where is
+which the classic levels place ahead of a ground group, scroll-pausing
+mid scripts (02m1, 03p2, 04m2) and the end script (04e1) on dry land. The
+count is the classic levels' average per 3600 px (about 47 placements). Which units come where is
 fixed by the seed, so a rerun gives the same level.
 
     populate.py PROJECT.drproj.json MAP.png MASK.png
@@ -28,6 +28,10 @@ SITE_REACH = 120  # open-ground disks this close make one stronghold
 MIN_DISK = 14  # the smallest open disk's radius, in pixels
 SITE_GAP = 350  # strongholds are at least this far apart along the map
 UNIT_SEP = 26
+# The classic levels' average per 3600 px of map (12 levels, 47 placements):
+# air units, combat ground units, bonus stations and secrets, scroll scripts.
+AIR_TOTAL, COMBAT_TOTAL, BONUS_TOTAL = 18, 13, 9
+SCRIPTS = (("02m1", 0.72), ("03p2", 0.5), ("04m2", 0.3))  # mid-level scripts, by the share of the way north
 EDGE_MARGIN = 48  # ground units keep this far from the screen's left and right edges
 
 # Turrets by how late in the level they are: (unit, stationary, terrain effects).
@@ -104,13 +108,15 @@ def place(project, rgb8, mask):
             add(unit, "air ", 70 + step * (i + 0.5), y + rnd.randint(-20, 20))
 
     taken = []
+    scale = h / 3600
     stands = sites(dist)
-    for n, (sx, sy, reach) in enumerate(stands):
+    weights = [0.5 + (1 - sy / h) for _, sy, _ in stands]  # later strongholds are bigger
+    combat = [max(2, round(COMBAT_TOTAL * scale * wt / sum(weights))) for wt in weights]
+    bonus_left, air_left = round(BONUS_TOTAL * scale), round(AIR_TOTAL * scale)
+    for (sx, sy, reach), count in zip(stands, combat):
         progress = 1 - sy / h
-        count = 4 + round(10 * progress)
         pool = EASY if progress < 0.5 else EASY + HARD
-        units = [rnd.choice(pool) for _ in range(count)]
-        for unit, stationary, effects in units:
+        for unit, stationary, effects in (rnd.choice(pool) for _ in range(count)):
             for _ in range(300):
                 x, y = sx + rnd.uniform(-reach, reach), sy + rnd.uniform(-reach, reach)
                 xi, yi = int(min(max(x, 0), w - 1)), int(min(max(y, 0), h - 1))
@@ -121,23 +127,28 @@ def place(project, rgb8, mask):
             taken.append((x, y))
             add(unit, "grnd", x, y, 180 + rnd.choice([-45, -30, -15, 0, 15, 30, 45]), stationary, effects)
         for unit in ("bsgr", "sess" if progress < 0.7 else "sels"):
-            spot = nearest(sx, sy, dist >= 4, taken)
+            spot = nearest(sx, sy, dist >= 4, taken) if bonus_left > 0 else None
             if spot:
+                bonus_left -= 1
                 taken.append(spot)
                 add(unit, "grnd", *spot)
-        # Air ahead of the stronghold (south of it), harder the later it is.
-        air(AIR_LATE if progress > 0.5 else AIR_EARLY, min(h - 60, sy + 330), 3 + round(2 * progress))
-    # Air between: a gauntlet every SITE_GAP not covered by a stronghold.
-    covered = [s[1] for s in stands]
-    for y in range(h - 250, 150, -SITE_GAP // 2):
-        if all(abs(y - c) > 200 for c in covered):
-            air(AIR_LATE if y < h / 2 else AIR_EARLY, y, 3 + (1 if y < h / 2 else 0))
-    dry = (from_water > 12) & (dist >= 0)
+    # Air waves of 3 or 4, one ahead (south) of each stronghold and the rest
+    # spread along the map, until the average's air count is used.
+    waves = [min(h - 60, sy + 330) for _, sy, _ in stands]
+    spread = max(0, round(air_left / 3.5) - len(waves))
+    waves += [int(h - 250 - (h - 400) * (i + 0.5) / max(spread, 1)) for i in range(spread)] if spread else []
+    for y in sorted(waves, reverse=True):
+        if air_left <= 0:
+            break
+        count = min(air_left, 3 + (y < h / 2))
+        air(AIR_LATE if y < h / 2 else AIR_EARLY, y, count)
+        air_left -= count
+    dry = from_water > 12
     dry[:, :EDGE_MARGIN] = False
     dry[:, w - EDGE_MARGIN :] = False
-    mid = nearest(w // 2, h // 2, dry, [], span=300)
-    end = nearest(w // 2, min(150, h // 4), dry, [], span=200)
-    for unit, spot in (("03p2", mid), ("04e1", end)):
+    for unit, share in SCRIPTS + (("04e1", None),):
+        y = min(150, h // 4) if share is None else int(h * (1 - share))
+        spot = nearest(w // 2, y, dry, [], span=300)
         if spot:
             add(unit, "grnd", *spot)
     out.sort(key=lambda p: -p["y"])

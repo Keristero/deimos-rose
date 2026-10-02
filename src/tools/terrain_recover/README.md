@@ -60,7 +60,8 @@ for the originals, moving the shores to the art's own, with Marigold on the
 CPU (Marigold itself only runs on the GPU, whatever `DEVICE` is). The project is in `work/aerial/<id>/project/`.
 `populate.py` then fills the project with units after the classic
 levels: strongholds of turrets (emplaced tanks, panzers, swivel guns, popups)
-with a bonus station and a secret on the open grass, harder toward the
+with a bonus station and a secret on the open grass (about the classic
+levels' 47 placements a 3600 px level), harder toward the
 north end, air waves ahead of them, a scroll-pausing script at the middle
 and the end script. Ground units keep 48 px from the screen's edges. Edit
 them in the editor. The sun's angle is not known: pass
