@@ -357,7 +357,7 @@ run_menu_shot :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, r
 	case "level_select_easy":
 		// Outside classic mode, with the Easy Mode toggle on.
 		ps.saved.classic, ps.launch.classic, r.classic = false, false, false
-		ps.saved.mods = sim.mods_with_deps(ps.saved.mods + {int(easy_mode.ID)})
+		ps.saved.mods = sim.mods_switch_on(ps.saved.mods, {int(easy_mode.ID)})
 		flow.pending_game_type = .Single
 		flow.mode = .Level_Select
 		level_select_init(&flow, &flow.level_select)
@@ -569,7 +569,7 @@ run_menu_shot :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, r
 		// Not saved: a screenshot leaves the player's preferences alone.
 		ps.saved.classic, ps.launch.classic, r.classic = false, false, false
 		others := sh.alone ? sim.Mods{} : prefs.defaults().mods
-		ps.saved.mods = sim.mods_with_deps(others + {int(sh.plugin)})
+		ps.saved.mods = sim.mods_switch_on(others, {int(sh.plugin)})
 		flow_start_session(&flow, 0x1234_5678, sh.co_op ? .Co_Op : .Single, sh.level)
 		if err := sh.setup(state, name); err != "" {
 			fmt.eprintfln("%s: %s", name, err)

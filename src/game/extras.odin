@@ -28,10 +28,10 @@ prefs_mods :: proc(ps: ^Prefs_State) -> sim.Mods {
 	}
 	mods := ps.saved.mods
 	if ps.launch.high_refresh_rate {
-		mods = sim.mods_with_deps(mods + {int(fps_unlock.ID)})
+		mods = sim.mods_switch_on(mods, {int(fps_unlock.ID)})
 	}
 	if id, ok := launch_campaign(ps.launch); ok && id != sim.CORE {
-		mods = sim.mods_with_deps(mods + {int(id)})
+		mods = sim.mods_switch_on(mods, {int(id)})
 	}
 	return sim.mods_resolve(mods)
 }
@@ -45,7 +45,7 @@ prefs_mod_on :: proc(ps: ^Prefs_State, id: sim.Plugin_ID) -> bool {
 prefs_mod_toggle :: proc(ps: ^Prefs_State, id: sim.Plugin_ID) {
 	if ps.launch.high_refresh_rate {
 		// The menu now shows and controls what is live.
-		ps.saved.mods = sim.mods_with_deps(ps.saved.mods + {int(fps_unlock.ID)})
+		ps.saved.mods = sim.mods_switch_on(ps.saved.mods, {int(fps_unlock.ID)})
 		ps.launch.high_refresh_rate = false
 	}
 	prefs.mod_toggle(&ps.saved.mods, id)

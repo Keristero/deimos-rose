@@ -1730,3 +1730,26 @@ levels played with no water.
 
 The maps are pixel for pixel the ones the script drew. The masks match the
 originals' at 0.945–0.981 IoU. The game is unchanged.
+
+### D66 — Companion plugins: what two plugins add together
+
+Some content belongs to two plugins at once: upgrades for New Weapons'
+weapons need Passive Upgrades for the upgrades and New Weapons for the
+weapons. Neither plugin should carry it, or a player could not keep
+both and turn it off. As a plugin of its own that depends on both, the
+existing kinds fit badly. Default-on, it would bring Passive Upgrades
+in for every new player, and the lobby's New Weapons switch would turn
+Passive Upgrades on. Off by default, nobody would find it.
+
+- **A companion** (`sim.Plugin.companion`) is on wherever its
+  dependencies all are, and never brings them in. It comes on as the
+  last of them does (`sim.mods_switch_on`), which is what every "turn
+  this on" path now calls: the Mods page, the lobby, Level Select's
+  Easy Mode switch, launch flags, and an older build's Start flags. A
+  player turns it off alone. Turning something else on does not bring
+  it back while its dependencies stayed on.
+- **Saved as off, not on.** Preferences list a companion on a
+  `mods_off=` line when its dependencies are on and it is off. One
+  that the file does not mention comes on with its dependencies, so a
+  companion new to the build reaches a player who already has them. An
+  older build ignores the line.

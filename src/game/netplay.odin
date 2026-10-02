@@ -464,7 +464,7 @@ netplay_shot_due :: proc() -> bool {
 netplay_lobby_start_from_flag :: proc(nl: ^Netplay, saved: ^prefs.Prefs, mode: string) {
 	if netplay_test_end > 0 && mode == "host" {
 		// For this run only: nothing here saves the preferences.
-		saved.mods = sim.mods_with_deps(saved.mods + {int(easy_mode.ID)})
+		saved.mods = sim.mods_switch_on(saved.mods, {int(easy_mode.ID)})
 	}
 	nl.local_name = saved.netplay_name
 	nl.local_hue = saved.settings[accent_view.HUE_P1]

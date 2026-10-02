@@ -88,7 +88,9 @@ Prefs :: struct {
 	netplay_name: Name,
 	// The mods this player has on (sim/plugins.odin), all off in classic
 	// mode. Saved by name: a plugin's ID is only its place in this build's
-	// registry.
+	// registry. A companion (sim.Plugin.companion) is saved as off instead,
+	// where its dependencies are on: one new to the build then comes on
+	// for a player who has them.
 	mods:     sim.Mods,
 	// The mods' settings (settings.odin), by Setting_ID.
 	settings: [MAX_SETTINGS]int,
@@ -144,12 +146,13 @@ defaults :: proc() -> Prefs {
 		sfx_volume   = 100,
 		music_volume = 100,
 	}
+	on: sim.Mods
 	for pl, id in sim.registered_plugins() {
 		if pl.default_on {
-			p.mods += {id}
+			on += {id}
 		}
 	}
-	p.mods = sim.mods_with_deps(p.mods)
+	p.mods = sim.mods_switch_on({}, on)
 	for s, id in registered_settings() {
 		p.settings[id] = s.default
 	}
@@ -225,15 +228,8 @@ format :: proc(p: ^Prefs, allocator := context.allocator) -> string {
 	fmt.sbprintf(&sb, "diagnostics=%d\n", p.diagnostics ? 1 : 0)
 	fmt.sbprintf(&sb, "classic=%d\n", p.classic ? 1 : 0)
 	fmt.sbprintf(&sb, "netplay_name=%s\n", name_string(&p.netplay_name))
-	fmt.sbprint(&sb, "mods=")
-	sep := ""
-	for pl, id in sim.registered_plugins() {
-		if id in p.mods {
-			fmt.sbprintf(&sb, "%s%s", sep, pl.name)
-			sep = ","
-		}
-	}
-	fmt.sbprint(&sb, "\n")
+	format_mods(&sb, "mods", p.mods)
+	format_mods(&sb, "mods_off", sim.mods_companions(p.mods) - p.mods)
 	for s, id in registered_settings() {
 		fmt.sbprintf(&sb, "%s=%d\n", s.key, p.settings[id])
 	}
@@ -243,6 +239,30 @@ format :: proc(p: ^Prefs, allocator := context.allocator) -> string {
 		}
 	}
 	return strings.to_string(sb)
+}
+
+@(private = "file")
+format_mods :: proc(sb: ^strings.Builder, key: string, mods: sim.Mods) {
+	fmt.sbprintf(sb, "%s=", key)
+	sep := ""
+	for pl, id in sim.registered_plugins() {
+		if id in mods {
+			fmt.sbprintf(sb, "%s%s", sep, pl.name)
+			sep = ","
+		}
+	}
+	fmt.sbprint(sb, "\n")
+}
+
+@(private = "file")
+parse_mods :: proc(value: string) -> (mods: sim.Mods) {
+	names := value
+	for mod in strings.split_iterator(&names, ",") {
+		if id, ok := sim.plugin_find(strings.trim_space(mod)); ok {
+			mods += {int(id)}
+		}
+	}
+	return
 }
 
 // Starts from defaults() and applies whatever lines it understands, so a
@@ -257,7 +277,7 @@ parse :: proc(text: string) -> Prefs {
 	p := defaults()
 	from_file: [sim.MAX_PLAYERS]bit_set[Action]
 	have_mods := false
-	legacy_on, legacy_off: sim.Mods
+	legacy_on, legacy_off, mods_off: sim.Mods
 	rest := text
 	for line in strings.split_lines_iterator(&rest) {
 		eq := strings.index_byte(line, '=')
@@ -281,13 +301,9 @@ parse :: proc(text: string) -> Prefs {
 			name_set(&p.netplay_name, value)
 		case "mods":
 			have_mods = true
-			p.mods = {}
-			names := value
-			for mod in strings.split_iterator(&names, ",") {
-				if id, ok := sim.plugin_find(strings.trim_space(mod)); ok {
-					p.mods += {int(id)}
-				}
-			}
+			p.mods = parse_mods(value)
+		case "mods_off":
+			mods_off = parse_mods(value)
 		case:
 			if id, ok := setting_by_key(name); ok {
 				if v, vok := strconv.parse_int(value); vok {
@@ -310,8 +326,10 @@ parse :: proc(text: string) -> Prefs {
 			}
 		}
 	}
-	if !have_mods {
-		p.mods = sim.mods_with_deps(sim.mods_resolve(p.mods - legacy_off) + legacy_on)
+	if have_mods {
+		p.mods = (p.mods + sim.mods_companions(p.mods)) - mods_off
+	} else {
+		p.mods = sim.mods_switch_on(sim.mods_resolve(p.mods - legacy_off), legacy_on)
 	}
 	drop_colliding_defaults(&p, from_file)
 	return p

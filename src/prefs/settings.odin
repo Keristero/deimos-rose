@@ -70,12 +70,13 @@ setting_by_key :: proc(key: string) -> (Setting_ID, bool) {
 	return {}, false
 }
 
-// Turns a mod on with what it depends on, or off with what depends on it:
-// the Mods page never leaves a mod on without its dependencies.
+// Turns a mod on with what it depends on (and the companions that
+// completes), or off with what depends on it: the Mods page never leaves a
+// mod on without its dependencies.
 mod_toggle :: proc(mods: ^sim.Mods, id: sim.Plugin_ID) {
 	if int(id) in mods^ {
 		mods^ = sim.mods_resolve(mods^ - {int(id)})
 	} else {
-		mods^ = sim.mods_with_deps(mods^ + {int(id)})
+		mods^ = sim.mods_switch_on(mods^, {int(id)})
 	}
 }

@@ -39,6 +39,12 @@ Plugin :: struct {
 	session:     bool,
 	// On for a player who has never visited the Mods page.
 	default_on:  bool,
+	// What two plugins add together, on wherever its dependencies all
+	// are: it comes on as the last of them does (mods_switch_on), and a
+	// player turns it off alone. Unlike default_on, it never brings its
+	// dependencies in: New Weapons' passives come with Passive Upgrades
+	// and New Weapons, but turn neither on.
+	companion:   bool,
 	// Needs its own content, in plugins/<name>/ (D51): off when that did
 	// not load (Defs.content, mods_with_content).
 	content:     bool,
@@ -133,16 +139,9 @@ mods_resolve :: proc "contextless" (want: Mods) -> Mods {
 	for {
 		dropped := false
 		for id in 1 ..< plugins.count {
-			if id not_in mods {
-				continue
-			}
-			for dep in plugins.items[id].deps {
-				d, ok := plugin_find(dep)
-				if !ok || int(d) not_in mods {
-					mods -= {id}
-					dropped = true
-					break
-				}
+			if id in mods && !deps_in(id, mods) {
+				mods -= {id}
+				dropped = true
 			}
 		}
 		if !dropped {
@@ -185,9 +184,50 @@ mods_with_content :: proc "contextless" (mods: Mods, loaded: Mods) -> Mods {
 	return mods_resolve(mods - missing)
 }
 
+// `mods` with `on` turned on: with what each needs (mods_with_deps), and
+// the companions whose dependencies that completes. A companion whose
+// dependencies were all on already stays as it was: a player who turned
+// it off has it off still.
+mods_switch_on :: proc "contextless" (mods: Mods, on: Mods) -> Mods {
+	out := mods_with_deps(mods + on)
+	for {
+		added := false
+		for id in 1 ..< plugins.count {
+			if id not_in out && plugins.items[id].companion && deps_in(id, out) && !deps_in(id, mods) {
+				out += {id}
+				added = true
+			}
+		}
+		if !added {
+			return out
+		}
+	}
+}
+
+// The companions that `mods` has every dependency of, on or not.
+mods_companions :: proc "contextless" (mods: Mods) -> (out: Mods) {
+	for id in 1 ..< plugins.count {
+		if plugins.items[id].companion && deps_in(id, mods) {
+			out += {id}
+		}
+	}
+	return
+}
+
+@(private = "file")
+deps_in :: proc "contextless" (id: int, mods: Mods) -> bool {
+	for dep in plugins.items[id].deps {
+		if d, ok := plugin_find(dep); !ok || int(d) not_in mods {
+			return false
+		}
+	}
+	return true
+}
+
 // The default-on plugins that need `id`, directly or through others: what
 // a switch that stands for a whole group (the lobby's New Weapons) turns
-// back on with it, where each has no switch of its own.
+// back on with it, where each has no switch of its own. Companions are
+// not among them: turning the group on brings those (mods_switch_on).
 mods_default_dependants :: proc "contextless" (id: Plugin_ID) -> Mods {
 	under := Mods{int(id)}
 	for {
