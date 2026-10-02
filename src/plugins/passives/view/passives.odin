@@ -75,6 +75,7 @@ STAT_DISPLAY := [sim.Stat]Stat_Display {
 	.Ground_Charge            = {"CHARGED BOMB", .Toggle, nil},
 	.Charge_Aim_Behind        = {"AIMS BEHIND", .Toggle, .Ground_Charge},
 	.Charge_Aim_Around        = {"AIMS AROUND", .Toggle, .Ground_Charge},
+	.Chains                   = {"CHAIN BEAM", .Toggle, nil},
 }
 
 // A stat's value for a player holding `levels`, as the reward screen shows

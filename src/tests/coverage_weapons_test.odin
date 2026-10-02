@@ -983,7 +983,7 @@ discharge_beam_spent_on_a_kill_stops_there :: proc(t: ^testing.T) {
 	new_weapons.beam_fire(s, sim.player_at(s, 0).weapons, wd, at, 1, new_weapons.beam_def(wd).width, false, sim.single(s, sim.Clock).time)
 	testing.expect(t, near.deleted, "the first target must die")
 	testing.expect(t, !far.deleted && far.shields == 1, "nothing is left for the second")
-	testing.expect(t, len(new_weapons.beam_shots(s)) == 1 && new_weapons.beam_shots(s)[0].to_y == near.loc.y, "the beam stops at the kill")
+	testing.expect(t, len(new_weapons.beam_shots(s)) == 1 && new_weapons.beam_shots(s)[0].to.y == near.loc.y, "the beam stops at the kill")
 }
 
 // Priv_Spawn_Ground spawns the weapon's crosshair spawn at the crosshair

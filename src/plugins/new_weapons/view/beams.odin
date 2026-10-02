@@ -5,16 +5,18 @@ package new_weapons_view
 // in the session's Beam_Log; each step, this takes those still fading, as
 // an effect system (render/render_systems.odin). Reading the log rather than
 // the step's effect events is what shows the other player's beams in
-// netplay: they fire on steps a rollback replays (beam.odin). Each is a line straight up
-// from the gun to where it stopped, drawn additively over the air enemies
-// and under the ships: a wide glow fading to its edges, the beam's own
-// width in red, and a bright core, all narrowing as they fade. A charged
-// beam is wider and brighter and lasts longer.
+// netplay: they fire on steps a rollback replays (beam.odin). Each run of a
+// beam is a line from where it set out to where it stopped (straight up
+// from the gun, or from target to target for a chain), drawn additively
+// over the air enemies and under the ships: a wide glow fading to its
+// edges, the beam's own width in red, and a bright core, all narrowing as
+// they fade. A charged beam is wider and brighter and lasts longer.
 //
 // Provisional: every size and colour here was picked by eye.
 
 
 import rl "vendor:raylib"
+import "vendor:raylib/rlgl"
 
 import "dr:plugins/new_weapons"
 import "dr:render"
@@ -102,32 +104,70 @@ beams_draw :: proc(r: ^render.Renderer, scale, side, t: f32) {
 		if k <= 0 {
 			continue
 		}
-		x := b.from.x - side
-		top := max(b.to_y, -8)
-		bottom := b.from.y
-		width := b.width * (0.4 + 0.6 * k)
+		from, to := screen(b.from, scale, side), screen({b.to.x, max(b.to.y, -8)}, scale, side)
+		width := b.width * (0.4 + 0.6 * k) * scale
 		bright: f32 = b.charged ? 1.2 : 1
-		band :: proc(x, top, bottom, w: f32, c: rl.Color, a: f32, scale: f32) {
-			col := c
-			col.a = u8(clamp(a, 0, 1) * 255)
-			rl.DrawRectangleRec({(render.VIEW_X + x - w / 2) * scale, top * scale, w * scale, (bottom - top) * scale}, col)
-		}
 		// The glow falls off from the middle to nothing at either edge.
-		glow :: proc(x, top, bottom, w: f32, c: rl.Color, a: f32, scale: f32) {
-			mid, edge := c, c
-			mid.a, edge.a = u8(clamp(a, 0, 1) * 255), 0
-			h := (bottom - top) * scale
-			rl.DrawRectangleGradientEx({(render.VIEW_X + x - w / 2) * scale, top * scale, w / 2 * scale, h}, edge, edge, mid, mid)
-			rl.DrawRectangleGradientEx({(render.VIEW_X + x) * scale, top * scale, w / 2 * scale, h}, mid, mid, edge, edge)
-		}
-		glow(x, top, bottom, width * 3, BEAM_GLOW, 0.6 * k * bright, scale)
-		band(x, top, bottom, width, BEAM_BODY, 0.85 * k * bright, scale)
-		band(x, top, bottom, max(width * 0.4, 1), BEAM_CORE, k, scale)
-		if b.to_y > 0 {
+		run(from, to, width * 3, BEAM_GLOW, 0.6 * k * bright, true)
+		run(from, to, width, BEAM_BODY, 0.85 * k * bright, false)
+		run(from, to, max(width * 0.4, scale), BEAM_CORE, k, false)
+		if b.to.y > 0 {
 			// Where it stopped: a flare the width of the glow.
-			rl.DrawCircleV({(render.VIEW_X + x) * scale, b.to_y * scale}, width * 1.5 * scale, {BEAM_GLOW.r, BEAM_GLOW.g, BEAM_GLOW.b, u8(0.6 * k * 255)})
-			rl.DrawCircleV({(render.VIEW_X + x) * scale, b.to_y * scale}, width * 0.6 * scale, {BEAM_CORE.r, BEAM_CORE.g, BEAM_CORE.b, u8(k * 255)})
+			rl.DrawCircleV(to, width * 1.5, with_alpha(BEAM_GLOW, 0.6 * k))
+			rl.DrawCircleV(to, width * 0.6, with_alpha(BEAM_CORE, k))
 		}
 	}
 	rl.EndBlendMode()
+}
+
+@(private = "file")
+screen :: #force_inline proc(v: sim.Vec, scale, side: f32) -> rl.Vector2 {
+	return {(render.VIEW_X + v.x - side) * scale, v.y * scale}
+}
+
+@(private = "file")
+with_alpha :: proc(c: rl.Color, a: f32) -> rl.Color {
+	col := c
+	col.a = u8(clamp(a, 0, 1) * 255)
+	return col
+}
+
+// A band `w` wide along the run from `a` to `b`, in window pixels: solid,
+// or with `fade` falling off from the middle to nothing at its edges. Drawn
+// as triangles whose corners carry the colour, which a beam at any angle
+// needs and raylib's rectangles, square to the screen, cannot give.
+@(private = "file")
+run :: proc(a, b: rl.Vector2, w: f32, c: rl.Color, alpha: f32, fade: bool) {
+	d := b - a
+	l := rl.Vector2Length(d)
+	if l <= 0 {
+		return
+	}
+	n := rl.Vector2{-d.y, d.x} / l * (w / 2)
+	mid, edge := with_alpha(c, alpha), with_alpha(c, fade ? 0 : alpha)
+	rlgl.Begin(rlgl.TRIANGLES)
+	quad(a - n, b - n, b, a, edge, edge, mid, mid)
+	quad(a, b, b + n, a + n, mid, mid, edge, edge)
+	rlgl.End()
+}
+
+// Two triangles over the corners in order, each wound the way raylib draws
+// a face (counter-clockwise on screen, y down).
+@(private = "file")
+quad :: proc(p0, p1, p2, p3: rl.Vector2, c0, c1, c2, c3: rl.Color) {
+	tri :: proc(a, b, c: rl.Vector2, ca, cb, cc: rl.Color) {
+		b, c, cb, cc := b, c, cb, cc
+		if (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x) > 0 {
+			b, c, cb, cc = c, b, cc, cb
+		}
+		vertex :: proc(v: rl.Vector2, col: rl.Color) {
+			rlgl.Color4ub(col.r, col.g, col.b, col.a)
+			rlgl.Vertex2f(v.x, v.y)
+		}
+		vertex(a, ca)
+		vertex(b, cb)
+		vertex(c, cc)
+	}
+	tri(p0, p1, p2, c0, c1, c2)
+	tri(p0, p2, p3, c0, c2, c3)
 }

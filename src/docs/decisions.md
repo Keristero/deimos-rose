@@ -1839,3 +1839,30 @@ picked", and for the first to replace it the same way.
   bomb measured behind against its single target ahead. No other
   passive's Gain changed: none of them reaches a scenario its bare
   weapon cannot.
+
+### D70 — A beam is a list of runs, and its chain is a stat
+
+notes/extra-weapons-and-passives-3.md asks for a Discharge Beam charge
+upgrade whose beam "chains to the next closest enemy that has not already
+been hit" in place of piercing straight on.
+
+- **Runs, not one line.** `beam_fire` pushes one `Beam_Event` for each
+  straight run, from `from` to `to`, and the view draws each at any
+  angle. A straight beam is still one run, from the gun to where it
+  stopped, so the event a beam was before is the first run of a chain.
+  The events and the log (`Beam_Log`, up from 32 to 64 entries for a
+  chain's runs) are presentation; the state and the goldens are as
+  before.
+- **A core stat.** `Chains` is a toggle in the core's Stat enum, read in
+  the beam's scope (D67), so a pulse passive or a charge passive can
+  turn it on. It names a way a shot cast as a line behaves, not the
+  passive that grants it.
+- **The nearest from the kill, on screen.** "Next closest" is measured
+  from the target just killed, among those an air shot can hit that are
+  on screen and not yet hit. Ties go to the lower entity number, so a
+  rollback picks the same target.
+- **The same stops.** A chain ends where a straight beam would: a target
+  left standing, one the hit delay protects, or the damage spent. Its
+  damage is carried the same way, so against one tough target a chained
+  beam deals what a straight one does.
+

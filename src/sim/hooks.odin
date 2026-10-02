@@ -206,6 +206,7 @@ Stat :: enum u8 {
 	Ground_Charge,            // holding the ground weapon charges one heavier bomb, dropped on release
 	Charge_Aim_Behind,        // while it is charged the crosshair swings round behind the ship
 	Charge_Aim_Around,        // while it is charged the crosshair circles the ship
+	Chains,                   // a shot cast as a line jumps from each target it kills to the nearest it has not hit
 }
 
 

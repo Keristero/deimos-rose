@@ -151,7 +151,7 @@ passive has a recipe entry and, when the assets tree is present, a file.
     sped by the crosshair's distance along that way. Letting go brings
     the crosshair back ahead.
   - A turned crosshair stands on an ellipse about the ship
-    (`stats.crosshair_turned_reach`): the full reach ahead, half of it
+    (`stats.crosshair_turned`): the full reach ahead, half of it
     behind (there is less room behind the ship), and kept on screen.
   - The charge is the handler's own (`ground_charged`, the steps it has
     been held), apart from the original's ground power-up. Its release does not clear an air

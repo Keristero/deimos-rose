@@ -98,14 +98,14 @@ discharge_beam_carries_leftover_damage :: proc(t: ^testing.T) {
 	testing.expect(t, !aside.deleted && aside.shields == 1, "off the line is not hit")
 	if testing.expect_value(t, len(new_weapons.beam_shots(s)), 1) {
 		ev := new_weapons.beam_shots(s)[0]
-		testing.expect_value(t, ev.to_y, far.loc.y)
+		testing.expect_value(t, ev.to.y, far.loc.y)
 		testing.expect(t, !ev.charged && ev.from.x == at.x && ev.from.y < at.y)
 	}
 	// Again on the same step: the hit delay protects the third, and the
 	// beam stops there without dealing anything.
 	new_weapons.beam_fire(s, h, wd, at, 2.5, new_weapons.beam_def(wd).width, false, sim.single(s, sim.Clock).time)
 	testing.expect(t, abs(far.shields - 4.5) < 1e-4)
-	testing.expect_value(t, new_weapons.beam_shots(s)[1].to_y, far.loc.y)
+	testing.expect_value(t, new_weapons.beam_shots(s)[1].to.y, far.loc.y)
 }
 
 // With nothing to stop it, the beam goes off the top of the screen.
@@ -125,7 +125,7 @@ discharge_beam_leaves_the_screen :: proc(t: ^testing.T) {
 	s.effects.count = 0
 	new_weapons.beam_fire(s, sim.player_at(s, 0).weapons, wd, {8, 420}, 2, new_weapons.beam_def(wd).width, false, sim.single(s, sim.Clock).time)
 	testing.expect(t, one.deleted)
-	testing.expect(t, len(new_weapons.beam_shots(s)) == 1 && new_weapons.beam_shots(s)[0].to_y < 0)
+	testing.expect(t, len(new_weapons.beam_shots(s)) == 1 && new_weapons.beam_shots(s)[0].to.y < 0)
 }
 
 // A release deals the charge's damage in one beam, in proportion to the

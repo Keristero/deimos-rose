@@ -162,14 +162,27 @@ that plays the wind-up sound.
   reached against the weapon's own max. A part charge deals part, and
   Improved Charge's higher max deals more than the full 6.0. The width
   never falls below the pulse's. It pierces as a pulse does.
-- **Drawing.** Each beam is pushed as a `Beam_Event`, a plugin's effect
-  event (`sim/queue_effects.odin`) that lasts the step, like the particle
-  and blur queues: where it started, where it stopped, its width and
-  whether it was charged. The plugin's view,
+- **Chaining.** A beam whose scope has the core's `Chains` stat (a
+  pulse's, or with a charge passive the charge's) goes straight up only
+  as far as its first target. From each kill it jumps to the nearest
+  target on screen that an air shot can hit and it has not hit yet
+  (`beam_chain_next`; a tie goes to the lower entity number), with the
+  same carried damage. It stops on the same terms as a straight beam:
+  a target left standing, one the hit delay protects, damage spent, or
+  no target left. The jumps are capped at 16, `MAX_BEAM_LINKS`; a full
+  charge runs out of damage after about seven of the wave's targets.
+- **Drawing.** Each straight run of a beam is pushed as a `Beam_Event`,
+  a plugin's effect event (`sim/queue_effects.odin`) that lasts the step,
+  like the particle and blur queues: where it started, where it stopped,
+  its width and whether it was charged. A straight beam is one run; a
+  chain is one more for each jump, from the target it jumped from.
+  The event is packed to fit the queue's 32 bytes. The plugin's view,
   `plugins/new_weapons/view/beams.odin`, is an effect system that keeps
   each for 6 steps (12 charged) and draws them over the air enemies and
   under the ships, additively, as a soft red glow three times the beam's
-  width, a red body and a white core, with a flare where it stopped. It
+  width, a red body and a white core, with a flare where it stopped. A run
+  at an angle is drawn as triangles with a colour at each corner, which
+  raylib's rectangles, square to the screen, cannot give. It
   fades from the first frame.
   - While a press winds up, `plugins/new_weapons/view/precharge.odin`
     draws red motes drawn in to the gun, 3 a step starting 20–36 px out.
