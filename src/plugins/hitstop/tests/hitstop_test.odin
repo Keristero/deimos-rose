@@ -205,3 +205,11 @@ the_embedded_clips_decode :: proc(t: ^testing.T) {
 	testing.expect(t, view.announcer_frames("super_duper") > 2000)
 	testing.expect_value(t, view.announcer_frames("nope"), 0)
 }
+
+@(test)
+combo_left_drains_and_ends :: proc(t: ^testing.T) {
+	testing.expect_value(t, view.combo_left(1, 0, 0, 0), 0) // a lone kill is no combo
+	testing.expect_value(t, view.combo_left(3, 10, 10, 0), 1)
+	testing.expect(t, abs(view.combo_left(3, 10, 10 + view.STREAK_WINDOW / 2, 0) - 0.5) < 0.001)
+	testing.expect_value(t, view.combo_left(3, 10, 10 + view.STREAK_WINDOW, 0), 0)
+}

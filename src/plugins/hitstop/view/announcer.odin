@@ -16,6 +16,7 @@ import rl "vendor:raylib"
 
 @(private = "file") voice: rl.Sound
 @(private = "file") voiced: bool
+@(private = "file") VOICE_GAIN :: 2.5 // over the mix: the clips peak just under full scale, the blow and the music are louder
 
 // The embedded clip called `name` ("07", "super"), by its file.
 @(private = "file")
@@ -92,7 +93,7 @@ announce :: proc(n: int, volume: f32) {
 	wave := rl.Wave{frameCount = u32(len(pcm)), sampleRate = 22050, sampleSize = 16, channels = 1, data = raw_data(pcm)}
 	voice = rl.LoadSoundFromWave(wave) // copies
 	voiced = true
-	rl.SetSoundVolume(voice, clamp(volume, 0, 1))
+	rl.SetSoundVolume(voice, clamp(volume, 0, 1) * VOICE_GAIN)
 	rl.SetSoundPitch(voice, 1)
 	rl.PlaySound(voice)
 }

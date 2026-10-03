@@ -39,9 +39,9 @@ Cam :: struct {
 @(private = "file") driven: bool // the slowdown, sound and reverb are set by the cam
 
 // Each player's kill streak, the step of their last kill, and the step.
-@(private = "file") streak: [sim.MAX_PLAYERS]int
-@(private = "file") last_kill: [sim.MAX_PLAYERS]int
-@(private = "file") steps: int
+streak: [sim.MAX_PLAYERS]int
+last_kill: [sim.MAX_PLAYERS]int
+steps: int
 
 register :: proc() {
 	render.effect_system_register({name = "hitstop", plugin = hitstop.ID, step = step, clear = clear})
@@ -52,6 +52,13 @@ register :: proc() {
 		enabled = enabled,
 		apply   = apply,
 		destroy = destroy,
+	})
+	render.post_pass_register({
+		name    = "hitstop combo",
+		plugin  = hitstop.ID,
+		after   = combo_after[:],
+		enabled = combo_enabled,
+		apply   = combo_apply,
 	})
 }
 
@@ -73,8 +80,15 @@ cam_hold_at :: proc(at: sim.Vec, progress: f32, streak := 1) {
 	staged = Cam{true, 0, at, false, 1, 1, streak, progress}
 }
 
+// Player 1's combo as if `count` kills in, a quarter of its window gone (the
+// screenshots'; the cam, as ever, is a separate thing).
+combo_hold_at :: proc(count: int) {
+	staged_combo = count
+}
+
 // Kept until the next step, as a level start forgets what is already up.
 @(private = "file") staged: Maybe(Cam)
+@(private = "file") staged_combo: Maybe(int)
 
 @(private = "file")
 clear :: proc() {
@@ -91,6 +105,9 @@ step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles) {
 	steps += 1
 	if c, ok := staged.?; ok {
 		cam, staged = c, nil
+	}
+	if n, ok := staged_combo.?; ok {
+		streak[0], last_kill[0], staged_combo = n, steps - STREAK_WINDOW / 4, nil
 	}
 	strength := r.setting[STRENGTH]
 	hold := 0

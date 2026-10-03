@@ -31,3 +31,15 @@
   `MENU=hitstop DR_HITSTOP_AT=0.5 mise run menu-shot` (the cam started by
   hand, 0 to 1 through it; DR_HITSTOP_STREAK=108 names a streak).
 - Provisional: lengths, zoom and styling were picked by eye.
+
+## Combo meter
+
+While a player's kill streak is 2 or more, flaming `N COMBO` text and a
+flaming meter show at the field's top (player 1 left, player 2 right). The
+meter drains over the streak window (4 s of game time, so slow-motion stretches
+it) and the combo ends when it empties. `view/combo.odin`, a post pass after
+the lighting so it stays bright; look with `MENU=hitstop DR_HITSTOP_COMBO=25
+mise run menu-shot`.
+
+The announcer is played at 2.5x the sound volume, unslowed, and each kill's
+call cuts off the previous one.
