@@ -12,7 +12,7 @@ STEP_HZ :: 30 // a step of the game, in seconds: 1 / STEP_HZ
 
 MAX_HOLD :: 15 // steps, for an ordinary hit however hard
 TAKEDOWN_SECONDS :: 2.8 // the kill cam, on the clock
-STREAK_WINDOW :: 120 // steps (4 s of the game) a kill streak is kept alive between kills
+STREAK_WINDOW :: 240 // steps (8 s of the game) a kill streak is kept alive between kills
 
 // Steps to hold for a hit of `damage`, scaled by the setting `strength`
 // (percent, 0 turns it off): 1 + 3 * sqrt(damage). Damage in this game is

@@ -20,7 +20,7 @@
   both more for more damage (`view/reverb.odin`). The screen shakes hard as
   the blow lands (shake_power: `0.25 + 0.25 * sqrt(damage)`, all of it from 9
   damage up), and a deep boom, synthesised in `view/boom.odin`, plays.
-- Kill streaks: each player's kills within 4 s of game time of the last go on
+- Kill streaks: each player's kills within 8 s of game time of the last go on
   their streak; its name is shown and spoken by an announcer (`view/announcer.odin`).
   Titles are `announcer/streaks.txt` (line N is streak N, 1 Takedown to 50);
   past 50 they come round again prefixed "Super", past 100 "Super Duper". The
@@ -36,7 +36,7 @@
 
 While a player's kill streak is 2 or more, flaming `N COMBO` text and a
 flaming meter show at the field's top (player 1 left, player 2 right). The
-meter drains over the streak window (4 s of game time, so slow-motion stretches
+meter drains over the streak window (8 s of game time, so slow-motion stretches
 it) and the combo ends when it empties. `view/combo.odin`, a post pass after
 the lighting so it stays bright; look with `MENU=hitstop DR_HITSTOP_COMBO=25
 mise run menu-shot`.
