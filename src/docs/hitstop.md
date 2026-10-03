@@ -7,8 +7,8 @@
   queues it is cleared each step and is not state or checksummed.
 - The plugin's view turns each step's hits into a hold: `Renderer.hold` steps
   during which `flow_held` (game/flow.odin) skips the simulation step, so the
-  simulation itself is untouched. The length is `round(sqrt(damage) / 2)` steps
-  (at least 1, at most 10), scaled by the HITSTOP setting.
+  simulation itself is untouched. The length is `round(1 + 3 * sqrt(damage))` steps
+  (at least 1, at most 15), scaled by the HITSTOP setting.
 - A kill that deals more than 3x what the unit had left starts the kill cam:
   54 steps held, a post pass zooms the finished frame in on the unit (with
   letterbox bars) and draws TAKEDOWN in the game font.

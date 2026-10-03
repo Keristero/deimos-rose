@@ -9,18 +9,19 @@ import "dr:sim"
 
 STEP_HZ :: 30 // a step of the game, in seconds: 1 / STEP_HZ
 
-MAX_HOLD :: 10 // steps, for an ordinary hit however hard
+MAX_HOLD :: 15 // steps, for an ordinary hit however hard
 TAKEDOWN_STEPS :: 54 // steps the kill cam lasts
 TAKEDOWN_RATIO :: 3.0 // damage over the target's shields that earns it
 
 // Steps to hold for a hit of `damage`, scaled by the setting `strength`
-// (percent, 0 turns it off). A square root, so a shot is a flicker and a
-// bomb a beat: 4 damage is a step, 16 two, 100 five.
+// (percent, 0 turns it off): 1 + 3 * sqrt(damage). Damage in this game is
+// small (a Photon Beam shot is 0.5, a Flipper has 0.8 shields), so a shot is
+// 3 steps, a hit of 1 is 4 and a hit of 10 is 10.
 hold_steps :: proc "contextless" (damage: f32, strength: int) -> int {
 	if damage <= 0 || strength <= 0 {
 		return 0
 	}
-	n := int(math.round(math.sqrt(damage) * 0.5 * f32(strength) / 100))
+	n := int(math.round((1 + 3 * math.sqrt(damage)) * f32(strength) / 100))
 	return clamp(n, 1, MAX_HOLD)
 }
 

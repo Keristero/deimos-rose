@@ -11,18 +11,18 @@ import "dr:sim"
 @(test)
 harder_hits_hold_longer :: proc(t: ^testing.T) {
 	testing.expect_value(t, view.hold_steps(0, 100), 0)
-	testing.expect_value(t, view.hold_steps(1, 100), 1) // every collision holds at least a step
-	testing.expect_value(t, view.hold_steps(16, 100), 2)
-	testing.expect_value(t, view.hold_steps(100, 100), 5)
-	testing.expect(t, view.hold_steps(400, 100) > view.hold_steps(100, 100))
+	testing.expect_value(t, view.hold_steps(0.5, 100), 3) // a shot is felt
+	testing.expect_value(t, view.hold_steps(1, 100), 4)
+	testing.expect_value(t, view.hold_steps(10, 100), 10)
+	testing.expect(t, view.hold_steps(40, 100) > view.hold_steps(10, 100))
 	testing.expect_value(t, view.hold_steps(1e9, 100), view.MAX_HOLD)
 }
 
 @(test)
 the_setting_scales_the_hold_and_zero_turns_it_off :: proc(t: ^testing.T) {
-	testing.expect_value(t, view.hold_steps(100, 0), 0)
-	testing.expect_value(t, view.hold_steps(100, 50), 3)
-	testing.expect(t, view.hold_steps(100, 100) > view.hold_steps(100, 50))
+	testing.expect_value(t, view.hold_steps(1, 0), 0)
+	testing.expect_value(t, view.hold_steps(1, 50), 2)
+	testing.expect(t, view.hold_steps(1, 200) > view.hold_steps(1, 100))
 }
 
 @(test)
