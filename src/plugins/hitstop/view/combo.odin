@@ -34,7 +34,7 @@ combo_enabled :: proc(r: ^render.Renderer) -> bool {
 			return true
 		}
 	}
-	return false
+	return style_any()
 }
 
 combo_apply :: proc(r: ^render.Renderer, f: ^render.Post_Frame, src: rl.Texture2D) {
@@ -46,6 +46,9 @@ combo_apply :: proc(r: ^render.Renderer, f: ^render.Post_Frame, src: rl.Texture2
 			continue
 		}
 		combo_draw(r, field, f.scale, p, streak[p], left)
+	}
+	for p in 0 ..< sim.MAX_PLAYERS {
+		style_draw(r, field, f.scale, p, field[3] * (0.32 + f32(p / 2) * 0.2))
 	}
 }
 
@@ -89,7 +92,6 @@ combo_draw :: proc(r: ^render.Renderer, field: [4]f32, scale: f32, player, count
 
 // Tongues of fire rising from the line `y` over `w` pixels from `x`, as tall
 // as `rise` at most; `n` of them, each at its own phase of its rise.
-@(private = "file")
 flames :: proc(x, y, w, rise: f32, n: int, t, scale: f32, seed: int) {
 	for i in 0 ..< n {
 		h := f32(i * 7919 + seed * 104729) * 0.6180339
@@ -137,7 +139,6 @@ draw_flame_text :: proc(r: ^render.Renderer, text: string, x, y, k, t: f32) {
 	}
 }
 
-@(private = "file")
 text_width :: proc(r: ^render.Renderer, text: string) -> f32 {
 	width: f32
 	for c in transmute([]u8)text {
@@ -148,7 +149,6 @@ text_width :: proc(r: ^render.Renderer, text: string) -> f32 {
 	return width
 }
 
-@(private = "file")
 text_height :: proc(r: ^render.Renderer) -> f32 {
 	if _, src, ok := render.frame_rect(&r.textures, render.FONT, render.glyph_of('0')); ok {
 		return src.height

@@ -15,7 +15,7 @@ unit_sound :: proc "contextless" (id: sim.Res_ID, min_vol, max_vol, prio: i32, m
 }
 
 // G_Entity::Hit. Returns the shield damage dealt.
-entity_hit :: proc(s: ^sim.State, e: sim.Entity, damage: f32, player: i32, time: i32) -> f32 {
+entity_hit :: proc(s: ^sim.State, e: sim.Entity, damage: f32, player: i32, time: i32, source: i32 = -1) -> f32 {
 	if e.deleted {
 		return 0
 	}
@@ -37,7 +37,7 @@ entity_hit :: proc(s: ^sim.State, e: sim.Entity, damage: f32, player: i32, time:
 	if st.invulnerable_shields_do_not_deplete_on_collision {
 		e.shields = before
 	}
-	sim.hit_record(s, {loc = e.loc, damage = damage, shields = before, scrolls_sideways = e.scrolls_sideways, killed = e.shields <= 0, by = player,
+	sim.hit_record(s, {loc = e.loc, damage = damage, shields = before, scrolls_sideways = e.scrolls_sideways, killed = e.shields <= 0, by = player, source = source,
 		enemy = player >= 0 && player < sim.MAX_PLAYERS && e.owner_player == -1 && u.score > 0})
 	if st.on_hit_change_state_delay != 0 && st.on_hit_change_to != "" &&
 	   e.hit_state_time + st.on_hit_change_state_delay < time {
@@ -153,13 +153,13 @@ shot_hit :: proc(s: ^sim.State, by, target: sim.Entity, damage: f32, time: i32) 
 		return
 	}
 	if by.wear <= 0 {
-		dealt := entity_hit(s, target, damage, by.owner_player, time)
+		dealt := entity_hit(s, target, damage, by.owner_player, time, by.unit)
 		if by.shaped_by != 0 {
 			sim.shot_hit_run(s, by, target, dealt, time)
 		}
 		return
 	}
-	dealt := entity_hit(s, target, min(damage, by.wear), by.owner_player, time)
+	dealt := entity_hit(s, target, min(damage, by.wear), by.owner_player, time, by.unit)
 	sim.shot_hit_run(s, by, target, dealt, time)
 	by.wear -= dealt
 	if by.wear <= stats.WEAR_SPENT {

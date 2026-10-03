@@ -20,6 +20,11 @@ hitstop_shot :: proc(s: ^sim.State, name: string) -> string {
 	}
 	at, ok := strconv.parse_f32(os.get_env("DR_HITSTOP_AT", context.temp_allocator))
 	streak, _ := strconv.parse_int(os.get_env("DR_HITSTOP_STREAK", context.temp_allocator))
+	if g, gok := strconv.parse_f32(os.get_env("DR_HITSTOP_STYLE", context.temp_allocator)); gok {
+		style_hold_at(g)
+		combo_hold_at(max(int(g * 20), 2))
+		return ""
+	}
 	if combo, _ := strconv.parse_int(os.get_env("DR_HITSTOP_COMBO", context.temp_allocator)); combo > 0 {
 		combo_hold_at(combo)
 		return ""

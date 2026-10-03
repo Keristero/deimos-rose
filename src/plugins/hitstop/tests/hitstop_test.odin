@@ -213,3 +213,34 @@ combo_left_drains_and_ends :: proc(t: ^testing.T) {
 	testing.expect(t, abs(view.combo_left(3, 10, 10 + view.STREAK_WINDOW / 2, 0) - 0.5) < 0.001)
 	testing.expect_value(t, view.combo_left(3, 10, 10 + view.STREAK_WINDOW, 0), 0)
 }
+
+@(test)
+style_grades_and_gain :: proc(t: ^testing.T) {
+	testing.expect_value(t, view.style_rank(0), 0)
+	testing.expect_value(t, view.style_rank(0.5), 3)
+	testing.expect_value(t, view.style_rank(1), 7)
+	testing.expect(t, abs(view.style_progress(0.325) - 0.5) < 0.001)
+	// A tool not used lately earns the most; one spammed, a tenth of it.
+	hist: [view.STYLE_HISTORY]i32
+	testing.expect(t, abs(view.style_gain(hist, 0, 7) - 0.05) < 0.0001)
+	hist = {7, 7, 7, 7, 7, 7}
+	testing.expect(t, abs(view.style_gain(hist, 6, 7) - 0.005) < 0.0001)
+	testing.expect(t, view.style_gain(hist, 6, 8) > view.style_gain(hist, 6, 7))
+	// It drains faster the higher it stands, and a hit taken costs a third.
+	testing.expect(t, view.style_drain(1) > view.style_drain(0))
+	st := view.Style{gauge = 1}
+	view.style_struck(&st)
+	testing.expect(t, abs(st.gauge - 0.65) < 0.0001)
+	// Spamming one weapon cannot reach the top, mixing four can.
+	spam, mix := view.Style{}, view.Style{}
+	for i in 0 ..< 600 {
+		view.style_step(&spam)
+		view.style_step(&mix)
+		if i % 10 == 0 {
+			view.style_hit(&spam, 1, false, 0)
+			view.style_hit(&mix, i32(i / 10 % 4), false, 0)
+		}
+	}
+	testing.expect(t, spam.gauge < mix.gauge)
+	testing.expect(t, view.style_rank(spam.gauge) < 4)
+}

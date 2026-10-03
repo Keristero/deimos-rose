@@ -14,6 +14,8 @@ Hit_Event :: struct {
 	player:           bool, // the target is a player, not a unit
 	by:               i32,  // the player credited with the hit, -1 for none
 	enemy:            bool, // a unit worth points, struck by a player: not scenery, a shot or a bonus
+	source:           i32,  // the unit index of the shot that struck, -1 for a collision
+	victim:           i32,  // the player struck, when `player`
 }
 
 MAX_HIT_EVENTS :: 16

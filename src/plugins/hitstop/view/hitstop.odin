@@ -86,14 +86,20 @@ combo_hold_at :: proc(count: int) {
 	staged_combo = count
 }
 
+// Player 1's style gauge at `g` (the screenshots').
+style_hold_at :: proc(g: f32) {
+	staged_style = g
+}
+
 // Kept until the next step, as a level start forgets what is already up.
 @(private = "file") staged: Maybe(Cam)
 @(private = "file") staged_combo: Maybe(int)
+@(private = "file") staged_style: Maybe(f32)
 
 @(private = "file")
 clear :: proc() {
 	cam = {}
-	streak, last_kill, steps = {}, {}, 0
+	streak, last_kill, steps, style = {}, {}, 0, {}
 }
 
 // Takes the step's collisions: each kill of an enemy goes on its killer's
@@ -106,13 +112,24 @@ step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles) {
 	if c, ok := staged.?; ok {
 		cam, staged = c, nil
 	}
+	if g, ok := staged_style.?; ok {
+		style[0].gauge, staged_style = g, nil
+	}
 	if n, ok := staged_combo.?; ok {
 		streak[0], last_kill[0], staged_combo = n, steps - STREAK_WINDOW / 4, nil
+	}
+	for &st in style {
+		style_step(&st)
 	}
 	strength := r.setting[STRENGTH]
 	hold := 0
 	took: Maybe(sim.Hit_Event)
 	for ev in s.hits.events[:s.hits.count] {
+		if ev.player && ev.victim >= 0 && int(ev.victim) < sim.MAX_PLAYERS {
+			style_struck(&style[ev.victim])
+		} else if ev.enemy && ev.by >= 0 && int(ev.by) < sim.MAX_PLAYERS && ev.source >= 0 {
+			style_hit(&style[ev.by], ev.source, ev.killed, rl.GetTime())
+		}
 		if is_takedown(ev) && strength > 0 {
 			who := clamp(int(ev.by), 0, sim.MAX_PLAYERS - 1)
 			streak[who] = streak_after(streak[who], last_kill[who], steps)

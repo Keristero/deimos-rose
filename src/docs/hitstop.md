@@ -43,3 +43,16 @@ mise run menu-shot`.
 
 The announcer is played at 2.5x the sound volume, unslowed, and each kill's
 call cuts off the previous one.
+
+## Style grade
+
+Each player has a style gauge (`view/style.odin`) shown under the combo as a
+big letter, its name and a gauge for the grade in progress. Grades, from the
+bottom: D Dreary, C Cheeky, B Brash, A Audacious, S Spectacular, SS Scorching
+Swagger, SSS Sinfully Slick Showman, SSSXTricky2 Xtreme Trickster Deux (the
+gauge from 0.97). Each hit on an enemy adds 0.05, less by a quarter for each
+time the same shot (the unit of the shot, `Hit_Event.source`) was among the
+last six, down to a tenth; a kill adds 0.04. The gauge drains every step,
+0.0008 at the bottom to 0.0048 at the top, so only a mix of weapons holds the
+top grades; a hit taken keeps 65% of it. S and up burn. All the numbers are
+provisional. Look with `MENU=hitstop DR_HITSTOP_STYLE=0.9 mise run menu-shot`.
