@@ -496,7 +496,7 @@
     "albedo": "",
     "normal": "recovered_levels_le04_normal",
     "height": "",
-    "shadow_mask": "",
+    "shadow_mask": "recovered_levels_le04_shadow",
     "hd_map": "",
     "specular": "recovered_levels_le04_specular"
   }

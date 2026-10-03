@@ -109,6 +109,12 @@ Item :: struct {
 	// flash, a glowing object. Post passes read it (post.odin), for a glow
 	// and for the light it casts. Drawing ignores it.
 	emit:     f32,
+	// A shot on its way down to the ground (a ground weapon's), which is
+	// high above it when let go and on it when it lands: `falling` says it is
+	// one, `descent` how far down it is, 0 to 1. A post pass lights the
+	// ground more the nearer it is. Drawing ignores both.
+	falling:  bool,
+	descent:  f32,
 }
 
 // Accents (Extras, never in classic mode): drawn through
@@ -419,8 +425,10 @@ Draw_Accent :: struct {
 	lighten:  f32, // with recolour: towards white (the unlocked crosshair)
 }
 
-// `turn` draws the frame rotated by that many degrees clockwise.
-draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shadow: bool, prev: ^sim.Game_Object = nil, accent := Draw_Accent{}, turn: f32 = 0, player_shot := false) {
+// `turn` draws the frame rotated by that many degrees clockwise. `fall` is
+// how far down a shot to the ground has come (fall_of), -1 for what does not
+// fall.
+draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shadow: bool, prev: ^sim.Game_Object = nil, accent := Draw_Accent{}, turn: f32 = 0, player_shot := false, fall: f32 = -1) {
 	if r.dump {
 		_, _, ok := frame_rect(&r.textures, o.sprite, o.frame)
 		if !ok || o.visibility <= 0 {
@@ -485,6 +493,7 @@ draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shad
 			texture = tex, src = src, dst = dst, tint = {255, 255, 255, alpha},
 			effect = accent.recolour ? .Recolour : .None, hue = accent.hue, sat = ACCENT_SATURATION,
 			lighten = accent.lighten, rotation = turn, emit = emission_of(o, player_shot),
+			falling = fall >= 0, descent = max(fall, 0),
 		})
 	}
 	if accent.trim {
@@ -541,6 +550,37 @@ emission_of :: proc "contextless" (o: ^sim.Game_Object, player_shot: bool) -> f3
 		return 1
 	}
 	return o.glowing ? 0.6 : 0
+}
+
+// How far down a shot to the ground has come: 0 as it leaves the ship, 1 as
+// it lands, and -1 for everything that does not fall. A unit that is
+// ground-based and owned by a player is a ground weapon's shot, or what it
+// leaves (the Plasma Bomb "plbo" and its hit flash "pbhf" are the only ones
+// today). It is up in the air until the flight ends. The bomb's state timer
+// is the flight -- "Flight" runs 19 steps at 6 pixels, the throw to the
+// crosshair 121 up the screen -- and a state that ends the unit (the bomb's
+// "Dwindle & Delete", where it hits, and the flash that follows) is the
+// landing.
+//
+// `behind` is how far back from the last step the picture is, when it is
+// interpolated between that step and the one before (1 - alpha), so the fall
+// is as smooth as the picture.
+fall_of :: proc(s: ^sim.State, e: sim.Entity, u: ^sim.Unit, behind: f32 = 0) -> f32 {
+	if e.owner_player < 0 || !u.is_ground_based || e.draw_to_terrain {
+		return -1
+	}
+	// The clock has moved on from the step the entity was last processed in.
+	steps := f32(sim.single(s, sim.Clock).time - e.state_time - 1) - behind
+	to := sim.state_of(s, e).on_timer_change_to
+	landed := to == "" || to == "none" || to == "Destroy" || to == "Delete"
+	return fall_progress(max(steps, 0), e.timer, landed)
+}
+
+fall_progress :: proc "contextless" (steps: f32, timer: i32, landed: bool) -> f32 {
+	if landed || timer <= 0 {
+		return 1
+	}
+	return clamp(steps / f32(timer), 0, 1)
 }
 
 // A shot from a ground weapon takes its owner's accent: the units the

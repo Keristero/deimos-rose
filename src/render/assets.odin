@@ -18,6 +18,7 @@ import "dr:sim"
 Plate :: struct {
 	texture: rl.Texture2D,
 	frames:  []data.Json_Frame,
+	image:   string, // where the PNG is
 }
 
 // A handful of independent playback handles sharing one clip's sample data
@@ -40,6 +41,12 @@ Textures :: struct {
 	plates:  map[sim.Res_ID]Plate,
 	terrain: map[string]rl.Texture2D, // by im16 image id
 	images:  map[string]rl.Texture2D, // by im16 image id -- menu backgrounds, not level-tied
+
+	// The plugins drawn with (Renderer.mods), for the texture packs they
+	// bring: redrawn images that stand in for the game's own.
+	mods:      sim.Mods,
+	pack:      map[string]rl.Texture2D, // by the redrawn file's path; id 0 for one that would not load
+	pack_size: map[u32]rl.Vector2, // by texture id: the redrawn image's real size in pixels
 
 	// Classic mode: im16 images as the original showed them, through
 	// QuickTime's gamma (im16_load). main.odin copies it in every frame.
@@ -66,12 +73,14 @@ textures_load :: proc(t: ^Textures, root: string, audio: bool = true) {
 	t.plates = make(map[sim.Res_ID]Plate, len(t.assets.sprites))
 	t.terrain = make(map[string]rl.Texture2D)
 	t.images = make(map[string]rl.Texture2D)
+	t.pack = make(map[string]rl.Texture2D)
+	t.pack_size = make(map[u32]rl.Vector2)
 	for &p in t.assets.sprites {
 		tex := rl.LoadTexture(strings.clone_to_cstring(p.image, context.temp_allocator))
 		if tex.id == 0 {
 			continue
 		}
-		t.plates[p.id] = Plate{texture = tex, frames = p.frames}
+		t.plates[p.id] = Plate{texture = tex, frames = p.frames, image = p.image}
 	}
 
 	t.sounds = make(map[sim.Res_ID]Sound_Clip, audio ? len(t.assets.sounds) : 0)
@@ -102,6 +111,9 @@ textures_unload :: proc(t: ^Textures) {
 	for _, tex in t.images {
 		rl.UnloadTexture(tex)
 	}
+	for _, tex in t.pack {
+		rl.UnloadTexture(tex)
+	}
 	for _, clip in t.sounds {
 		for i in 1 ..< SOUND_VOICES {
 			rl.UnloadSoundAlias(clip.voices[i])
@@ -114,6 +126,8 @@ textures_unload :: proc(t: ^Textures) {
 	delete(t.plates)
 	delete(t.terrain)
 	delete(t.images)
+	delete(t.pack)
+	delete(t.pack_size)
 	delete(t.sounds)
 	delete(t.music)
 }
@@ -186,11 +200,14 @@ quicktime_gamma_table :: proc() -> (tab: [32]u8) {
 // An im16 image, cached in `cache` by id -- with QuickTime's gamma applied
 // in classic mode, cached beside the plain one as "<id>@qt".
 im16_texture :: proc(t: ^Textures, cache: ^map[string]rl.Texture2D, id: string) -> (rl.Texture2D, bool) {
-	key := t.quicktime_gamma ? fmt.tprintf("%s@qt", id) : id
+	// A pack's redrawn menu image stands in for the original (not a level's
+	// terrain: see data.TEXTURE_PACK_DIRS), kept beside it under "<id>@hd".
+	hd_path, scale, hd := image_pack(t, cache, id)
+	key := t.quicktime_gamma ? fmt.tprintf("%s@qt", id) : hd ? fmt.tprintf("%s@hd", id) : id
 	if tex, ok := cache[key]; ok {
 		return tex, tex.id != 0
 	}
-	img := rl.LoadImage(strings.clone_to_cstring(data.assets_image_path(&t.assets, id), context.temp_allocator))
+	img := rl.LoadImage(strings.clone_to_cstring(hd ? hd_path : data.assets_image_path(&t.assets, id), context.temp_allocator))
 	if img.data == nil {
 		return {}, false
 	}
@@ -206,8 +223,29 @@ im16_texture :: proc(t: ^Textures, cache: ^map[string]rl.Texture2D, id: string) 
 	if tex.id == 0 {
 		return {}, false
 	}
-	cache[t.quicktime_gamma ? strings.clone(key) : id] = tex
+	pack_adopt(t, &tex, scale)
+	cache[t.quicktime_gamma || hd ? strings.clone(key) : id] = tex
 	return tex, true
+}
+
+// The pack's redrawn file for the menu image `id`, when `cache` is the menu
+// images and a pack in use has one.
+@(private = "file")
+image_pack :: proc(t: ^Textures, cache: ^map[string]rl.Texture2D, id: string) -> (path: string, scale: i32, ok: bool) {
+	if cache != &t.images || !pack_active(t) {
+		return
+	}
+	return data.assets_texture_pack(&t.assets, t.mods, fmt.tprintf("images/im16/%s.png", id))
+}
+
+// A redrawn texture, drawn by the original's size (see pack_texture); not
+// when `scale` is 0, the original's own.
+@(private = "file")
+pack_adopt :: proc(t: ^Textures, tex: ^rl.Texture2D, scale: i32) {
+	if scale > 1 {
+		t.pack_size[tex.id] = {f32(tex.width), f32(tex.height)}
+		tex.width, tex.height = tex.width / scale, tex.height / scale
+	}
 }
 
 // A full-screen im16 image not tied to any level (menu backgrounds: "back",
@@ -222,11 +260,12 @@ im16_texture :: proc(t: ^Textures, cache: ^map[string]rl.Texture2D, id: string) 
 // A menu background tinted rose, built from the im16 image the first time
 // it is asked for and cached beside the original under "<id>@rose".
 menu_image_rose :: proc(t: ^Textures, id: string) -> (rl.Texture2D, bool) {
-	key := fmt.tprintf("%s@rose", id)
+	hd_path, scale, hd := image_pack(t, &t.images, id)
+	key := fmt.tprintf(hd ? "%s@rose@hd" : "%s@rose", id)
 	if tex, ok := t.images[key]; ok {
 		return tex, true
 	}
-	img := rl.LoadImage(strings.clone_to_cstring(data.assets_image_path(&t.assets, id), context.temp_allocator))
+	img := rl.LoadImage(strings.clone_to_cstring(hd ? hd_path : data.assets_image_path(&t.assets, id), context.temp_allocator))
 	if img.data == nil {
 		return {}, false
 	}
@@ -243,6 +282,7 @@ menu_image_rose :: proc(t: ^Textures, id: string) -> (rl.Texture2D, bool) {
 	if tex.id == 0 {
 		return {}, false
 	}
+	pack_adopt(t, &tex, scale)
 	t.images[strings.clone(key)] = tex
 	return tex, true
 }
@@ -260,7 +300,69 @@ frame_rect :: proc(t: ^Textures, sprite: sim.Res_ID, frame: i32) -> (rl.Texture2
 		return {}, {}, false
 	}
 	f := p.frames[frame]
-	return p.texture, {f32(f.x), f32(f.y), f32(f.w), f32(f.h)}, true
+	tex := p.texture
+	if rel, packed := pack_rel(t, p.image); packed {
+		if hd, found := pack_texture(t, rel, {tex.width, tex.height}); found {
+			tex = hd
+		}
+	}
+	return tex, {f32(f.x), f32(f.y), f32(f.w), f32(f.h)}, true
+}
+
+// The texture packs stand in for the images only outside classic mode,
+// which shows the original's.
+@(private = "file")
+pack_active :: proc(t: ^Textures) -> bool {
+	return !t.quicktime_gamma && len(t.assets.texture_packs) > 0 && t.mods != {}
+}
+
+// `path` as the original's tree names it ("sprites/im08/BAGU.png"), when
+// it is under the assets root and a pack is drawn with.
+@(private = "file")
+pack_rel :: proc(t: ^Textures, path: string) -> (rel: string, ok: bool) {
+	if !pack_active(t) || !strings.has_prefix(path, t.assets.root) {
+		return
+	}
+	rel = path[len(t.assets.root):]
+	return strings.trim_prefix(rel, "/"), true
+}
+
+// The redrawn texture a pack in use has for the image at `rel`, when there
+// is one. Its width and height are the original's (`logical`), so every
+// place that draws it by those sizes and its frame rectangles is unchanged
+// and the extra pixels are only more detail; what needs the real size asks
+// texture_pixels. Loaded on first use, and kept.
+@(private = "file")
+pack_texture :: proc(t: ^Textures, rel: string, logical: [2]i32) -> (rl.Texture2D, bool) {
+	path, scale, ok := data.assets_texture_pack(&t.assets, t.mods, rel)
+	if !ok {
+		return {}, false
+	}
+	if tex, cached := t.pack[path]; cached {
+		return tex, tex.id != 0
+	}
+	tex := rl.LoadTexture(strings.clone_to_cstring(path, context.temp_allocator))
+	if tex.id != 0 {
+		if logical.x * scale != tex.width || logical.y * scale != tex.height {
+			// Not the size the pack said: unusable, and the original stays.
+			rl.UnloadTexture(tex)
+			tex = {}
+		} else {
+			t.pack_size[tex.id] = {f32(tex.width), f32(tex.height)}
+			tex.width, tex.height = logical.x, logical.y
+		}
+	}
+	t.pack[strings.clone(path)] = tex
+	return tex, tex.id != 0
+}
+
+// A texture's size in pixels: the width and height it carries, unless it is
+// a pack's redrawn one, which carries the original's.
+texture_pixels :: proc(t: ^Textures, tex: rl.Texture2D) -> [2]i32 {
+	if size, ok := t.pack_size[tex.id]; ok {
+		return {i32(size.x), i32(size.y)}
+	}
+	return {tex.width, tex.height}
 }
 
 // A ship's trim, for the accent hues: the metal that is silver on player

@@ -30,6 +30,11 @@ Json_Plugin :: struct {
 	// A campaign's levels, by identifier, in play order (D53). Each is a
 	// data/levels/*.json in the plugin's folder.
 	levels:      []string `json:"levels"`,
+	// Set when the plugin's textures/ folder holds the game's images redrawn
+	// at this many times their size, laid out as the game's own tree is
+	// (sprites/im08/X.png, images/im16/X.png): drawn in their place, at the
+	// original's size, while the plugin is on. 0 or 1: it has none.
+	texture_scale: int `json:"texture_scale"`,
 }
 
 PLUGIN_MANIFEST :: "plugin.json"
@@ -41,7 +46,7 @@ CLASSIC_LEVELS :: "classic_levels"
 
 // The subfolders that make a plugin folder hold content.
 @(private = "file")
-CONTENT_DIRS :: [?]string{"data", "sprites", "images", "audio"}
+CONTENT_DIRS :: [?]string{"data", "sprites", "images", "audio", "textures"}
 
 @(private = "file")
 extra_roots: [dynamic]string
@@ -83,8 +88,8 @@ LIST_SEPARATOR :: ";" when ODIN_OS == .Windows else ":"
 
 // Where a plugin's own content is, if it has any: the folder found for it
 // by plugins_discover, else `<root>/<plugin name>` under the first root
-// that has one with content. Content is data/, sprites/, images/im16/ and
-// audio/, each laid out as the game's own tree is. A plugin whose folder
+// that has one with content. Content is data/, sprites/, images/im16/, audio/ and
+// textures/, each laid out as the game's own tree is. A plugin whose folder
 // holds only code has none.
 plugin_content_dir :: proc(id: sim.Plugin_ID) -> (dir: string, found: bool) {
 	name := sim.registered_plugins()[id].name

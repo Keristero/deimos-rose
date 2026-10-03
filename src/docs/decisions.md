@@ -2096,3 +2096,38 @@ using raylib's own capabilities and without costing image quality.
   (degrees clockwise from up) and unit are assumed. The other items of the
   note are listed in [realtime-effects.md](realtime-effects.md).
 - Classic mode, `sim/` and the goldens are unchanged.
+
+### D79 — A shot that falls tells the post pass how far it has fallen
+
+- **Why.** An air-to-ground shot (the Plasma Bomb) should read as coming down
+  from the ship: its light should be faint high up and strong, reaching into
+  shadow, as it lands.
+- **How.** `render.Item` carries `falling` and `descent` (0 at launch, 1 at
+  the ground), set from the shot's state timer by `fall_of`, interpolated with
+  the frame. Drawing ignores them; the lighting plugin reads them and
+  scales the light's gain, and a second "reach into shadow" term.
+- **Why in the alpha.** raylib binds only four extra samplers, all used, so the
+  reach is packed in the light map's alpha (premultiplied additive blend)
+  and the composite lifts the shadowed pixels by it. Shadow is the level's
+  `layers.shadow_mask`, exported by the editor from the terrain renderer's
+  Shadow output (so it includes trees' and models' shadows, and no dark
+  paint); merged with the specular mask into one texture, for the same
+  sampler limit. A level without a mask falls back to dark pixels.
+- Classic mode, `sim/` and the goldens are unchanged.
+
+### D80 — HD textures are a plugin's `textures/` folder, drawn at the original's size
+
+- **Why.** A 2x redraw of every sprite and menu image (Nomos SPAN, chosen by
+  `tools/hd_textures`'s benchmark; see its README) should be an optional look,
+  not a change to the original's assets, and the core should not know of it.
+- **How.** A plugin whose manifest sets `texture_scale` and has a `textures/`
+  folder laid out as the game's tree is (`sprites/im08/X.png`,
+  `images/im16/X.png`) is a texture pack. While it is among the plugins drawn
+  with (`Renderer.mods`), `frame_rect` and the menu images use its file in
+  place of the original. The redrawn `Texture2D` carries the original's width
+  and height, so every draw site, frame rectangle and UV is unchanged and only
+  the pixel density differs; `render.texture_pixels` gives the real size to
+  whoever reads pixels back (the lighting plugin's light colours). Textures
+  load on first use and stay, so switching the plugin takes effect at once.
+- Level maps are not in a pack (terrain burning is at map resolution), and
+  classic mode ignores packs.

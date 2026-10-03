@@ -838,6 +838,7 @@ draw_banner :: proc(line, sub: cstring) {
 flow_set_accents :: proc(fl: ^Flow, r: ^render.Renderer) {
 	r.accents = {}
 	r.mods = fl.state.session.mods
+	defer r.textures.mods = r.mods
 	if fl.mode == .Attract || prefs_classic(fl.prefs) {
 		return
 	}

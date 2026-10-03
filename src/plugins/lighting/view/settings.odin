@@ -12,7 +12,7 @@ GLOW_STRENGTH: prefs.Setting_ID // how strong the glow of what shines is
 
 register :: proc() {
 	LIGHT_STRENGTH = prefs.setting_register({plugin = lighting.ID, key = "light_strength", label = "LIGHT STRENGTH", kind = .Percent, default = 60})
-	GLOW_STRENGTH = prefs.setting_register({plugin = lighting.ID, key = "glow_strength", label = "GLOW STRENGTH", kind = .Percent, default = 50})
+	GLOW_STRENGTH = prefs.setting_register({plugin = lighting.ID, key = "glow_strength", label = "GLOW STRENGTH", kind = .Percent, default = 35})
 }
 
 @(init)

@@ -12,8 +12,10 @@ package water_view
 // bends the reflection; a reflection, a sky with clouds that drift with the
 // wind; and the sun's glint on the wave faces.
 //
-// Provisional: no ripples from shots on the ground yet; the sky and the
-// glint are procedural, not the level's skybox; the wind's units (a
+// Where a ground shot lands in the water a ring goes out and bounces off the
+// banks (ripples.odin), added to the same slope.
+//
+// Provisional: the sky and the glint are procedural, not the level's skybox; the wind's units (a
 // strength of 1 drifts 48 pixels a second) and every gain were picked by
 // eye. See docs/realtime-effects.md.
 
@@ -45,7 +47,7 @@ State :: struct {
 	colour:    [3]f32,
 	sun:       [3]f32,       // towards the sun
 	loc:       struct {
-		time, mask_size, strength, tint, wind, rough, sun: i32,
+		time, mask_size, strength, tint, wind, rough, sun, ripples, ripple_px: i32,
 	},
 }
 
@@ -75,10 +77,20 @@ clear :: proc() {
 		rl.UnloadTexture(st.mask)
 	}
 	st.mask, st.keyed, st.built = {}, nil, false
+	ripples_clear()
 }
 
 @(private = "file")
 step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles) {
+	build(r, s)
+	if st.mask.id != 0 && r.setting[STRENGTH] > 0 {
+		ripples_step(s)
+	}
+}
+
+// Makes the mask, and what is read from the level's record, once a level.
+@(private = "file")
+build :: proc(r: ^render.Renderer, s: ^sim.State) {
 	lv := sim.level_def(s)
 	key := raw_data(lv.media)
 	if st.built && key == st.keyed {
@@ -107,6 +119,7 @@ step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles) {
 	rl.SetTextureFilter(st.mask, .BILINEAR)
 	rl.SetTextureWrap(st.mask, .CLAMP)
 	st.size = {f32(lv.media_w * lv.media_scale), f32(lv.media_h * lv.media_scale)}
+	ripples_build(lv.media, int(lv.media_w), int(lv.media_scale), st.size)
 
 	st.wind, st.roughness, st.colour = {}, 0.15, {0.35, 0.5, 0.6}
 	st.sun = {0.4, 0.5, 0.77}
@@ -133,6 +146,7 @@ step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles) {
 
 @(private = "file")
 FRAGMENT :: `#version 330
+#define RIPPLE_SLOPE 6.0     // how much a ripple's slope bends the reflection
 in vec2 fragTexCoord;
 uniform sampler2D texture0; // the water mask
 uniform float time;
@@ -142,6 +156,8 @@ uniform vec3 tint;
 uniform vec2 wind;          // pixels a second
 uniform float rough;        // 0 glassy .. 1 stormy
 uniform vec3 sun;
+uniform sampler2D ripples;  // the height of the ripples, over the same area as the mask
+uniform vec2 ripplePx;      // a ripple cell, in texture coordinates
 out vec4 finalColor;
 
 float hash(vec2 p) {
@@ -184,6 +200,11 @@ void main() {
 		n += k[i] * a[i] * cos(ph) * amp;
 	}
 
+	// Ripples from shots that landed: the slope of their height.
+	n += RIPPLE_SLOPE * 0.5 * vec2(
+		texture(ripples, fragTexCoord + vec2(ripplePx.x, 0.0)).r - texture(ripples, fragTexCoord - vec2(ripplePx.x, 0.0)).r,
+		texture(ripples, fragTexCoord + vec2(0.0, ripplePx.y)).r - texture(ripples, fragTexCoord - vec2(0.0, ripplePx.y)).r);
+
 	// The sky the water mirrors: bent by the slope, clouds drifting.
 	vec2 q = p * 0.0045 + n * 0.5 + wind * time * 0.0004;
 	float c = smoothstep(0.42, 0.78, fbm(q));
@@ -216,6 +237,8 @@ draw :: proc(r: ^render.Renderer, scale, side, t: f32) {
 		st.loc.wind = rl.GetShaderLocation(st.shader, "wind")
 		st.loc.rough = rl.GetShaderLocation(st.shader, "rough")
 		st.loc.sun = rl.GetShaderLocation(st.shader, "sun")
+		st.loc.ripples = rl.GetShaderLocation(st.shader, "ripples")
+		st.loc.ripple_px = rl.GetShaderLocation(st.shader, "ripplePx")
 	}
 	// What draw_terrain shows, in the same place, taken from the mask.
 	w, h := f32(render.PLAY_W), f32(render.PLAY_H)
@@ -234,6 +257,9 @@ draw :: proc(r: ^render.Renderer, scale, side, t: f32) {
 	rl.SetShaderValue(st.shader, st.loc.wind, &st.wind, .VEC2)
 	rl.SetShaderValue(st.shader, st.loc.rough, &st.roughness, .FLOAT)
 	rl.SetShaderValue(st.shader, st.loc.sun, &st.sun, .VEC3)
+	rl.SetShaderValueTexture(st.shader, st.loc.ripples, ripple_texture())
+	cell := ripple_cell()
+	rl.SetShaderValue(st.shader, st.loc.ripple_px, &cell, .VEC2)
 	rl.DrawTexturePro(st.mask, src, dst, {}, 0, rl.WHITE)
 	rl.EndShaderMode()
 }

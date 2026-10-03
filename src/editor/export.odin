@@ -471,7 +471,7 @@ level_image :: proc(campaign: string, place: int, what: string, allocator := con
 	return fmt.aprintf("%s_%s_%s", campaign, level_id(place), what, allocator = allocator)
 }
 
-// The level's map, preview, media mask, and the specular and normal masks as im16 images, and its record.
+// The level's map, preview, media mask, and the specular, normal and shadow masks as im16 images, and its record.
 @(private = "file")
 level_write :: proc(e: ^Editor, x: ^Export, p: ^terrain.Project) -> bool {
 	c := &x.campaign
@@ -497,15 +497,22 @@ level_write :: proc(e: ^Editor, x: ^Export, p: ^terrain.Project) -> bool {
 	mask := terrain.media_mask_make(p, context.temp_allocator)
 	specular := terrain.specular_mask_make(p, context.temp_allocator)
 	normal := terrain.normal_mask_make(p, context.temp_allocator)
+	// Where the sun reaches, as the map was drawn: the ground's and the
+	// scenery's cast shadows, 255 in the light and 0 in the dark.
+	shadow, shadow_ok := terrain.render(own ? &r : &e.renderer, p, {output = .Shadow}, context.temp_allocator)
+	if !shadow_ok {
+		return false
+	}
 	l := p.level
 	l.id = level_id(place)
 	l.background = {0, 0, p.width, p.length}
 	l.background_image = level_image(c.name, place, "map")
 	l.preview_image = level_image(c.name, place, "preview")
 	l.media_mask = level_image(c.name, place, "mask")
-	// The lighting's layers: how glossy the ground is and which way it faces (terrain/specular.odin).
+	// The lighting's layers: how glossy the ground is, which way it faces (terrain/specular.odin) and where it is in shadow.
 	l.layers.specular = level_image(c.name, place, "specular")
 	l.layers.normal = level_image(c.name, place, "normal")
+	l.layers.shadow_mask = level_image(c.name, place, "shadow")
 	l.placements = p.placements[:]
 	if l.name == "" {
 		l.name = l.identifier
@@ -520,10 +527,10 @@ level_write :: proc(e: ^Editor, x: ^Export, p: ^terrain.Project) -> bool {
 			x.written[strings.clone(slashed(here), virtual.arena_allocator(&x.arena))] = true
 		}
 	}
-	for img in ([5]struct {
+	for img in ([6]struct {
 			id:  string,
 			pic: terrain.Picture,
-		}{{l.background_image, pic}, {l.preview_image, preview}, {l.media_mask, mask}, {l.layers.specular, specular}, {l.layers.normal, normal}}) {
+		}{{l.background_image, pic}, {l.preview_image, preview}, {l.media_mask, mask}, {l.layers.specular, specular}, {l.layers.normal, normal}, {l.layers.shadow_mask, shadow}}) {
 		path := strings.concatenate({images, "/", img.id, ".png"}, context.temp_allocator)
 		if !terrain.png_write(path, img.pic) {
 			return false

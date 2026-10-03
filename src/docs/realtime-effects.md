@@ -7,11 +7,11 @@ still open. The extension point and its reasons are in decisions.md D78.
 
 - `render/post.odin`: the post-pass chain, free when unused.
 - `plugins/lighting` (+ `view/`): LIGHT STRENGTH and GLOW STRENGTH sliders on
-  the Extras page (default 60 and 50, plugin off by default). Lights come
+  the Extras page (default 60 and 35, plugin off by default). Lights come
   from `Item.emit` and bright particles, each in its sprite's colour, up to
   96 a frame; the glow is the same things blurred.
-- Ground layers for the lighting, exported with every level (`layers.specular`
-  and `layers.normal`, full-resolution PNGs beside the map, from
+- Ground layers for the lighting, exported with every level (`layers.specular`,
+  `layers.normal` and `layers.shadow_mask`, full-resolution PNGs beside the map, from
   `terrain/specular.odin`): a **specular mask** (a material's `gloss`, else a
   guess from the colour; trees dull it; ground under the water is wet, the
   shore damp) and a **normal mask** (from the heights and canopy, unsmoothed).
@@ -19,9 +19,17 @@ still open. The extension point and its reasons are in decisions.md D78.
   from the light map's slope, since the map does not keep each light) and adds
   a highlight in the light's colour where the ground is glossy and faces
   halfway to the eye. A level without them gets flat ground of default gloss.
+  The **shadow mask** is the terrain renderer's own Shadow output (255 where
+  the sun reaches, ground and scenery shadows alike); the lighting merges it
+  with the specular mask into one texture, since the composite has no
+  sampler to spare. A level without one falls back to dark pixels.
   `plugins/recovered_levels` is re-exported (`mise run terrain:mod`) with them
   (about 40 MB of normals, 14 MB of specular). Verify: `deimos -campaign
   recovered_levels` with `MENU=lighting`.
+- Depth for air-to-ground shots (the Plasma Bomb): a light on a falling shot
+  starts dim and grows towards the ground (`Item.falling`/`descent`, from the
+  shot's state timer; render.fall_of), and near the end it also lifts the
+  level's shadows (its shadow mask), the reach carried in the light map's alpha. `lighting_bomb_*` shots show it (`MENU=lighting_bomb_shadow`).
 - `plugins/wind` (+ `view/`): WIND STRENGTH slider; blows the visual
   particles by the level's wind.
 - `plugins/water` (+ `view/`): WATER STRENGTH slider (default 60, off by
@@ -29,6 +37,10 @@ still open. The extension point and its reasons are in decisions.md D78.
   mask, drawn over the ground and under the air units: wind-driven waves, a
   sky with drifting clouds reflected and bent by them, the sun's glint.
   Costs nothing outside the water. `MENU=water` shows stage 5's river.
+  Ripples: a Plasma Bomb that lands in the water starts a wave (a wave
+  equation on a 2-pixel grid over the level, only near the view running, the
+  land a wall so it reflects off the banks), slow because the view is so far
+  out; `MENU=water_splash` and `water_splash_late` show it.
 - `mise run menu-shot MENU=lighting` shows a shot in flight with the lighting
   on (stage 7).
 
@@ -42,7 +54,7 @@ still open. The extension point and its reasons are in decisions.md D78.
   the heights' grain shows under light (tried, set aside).
 - Sprite albedo, emissive and normal recovery, units "more metallic" than
   terrain; enemy fire's emissive textures (their shots do not shine yet).
-- Water: ripples from ground shots, refraction of the bed and a
+- Water: ripples from the ship and from air shots, a wake, refraction of the bed and a
   transparency control (the art already has the water translucent over the
   bed); drawn in the effects order, so an air unit's shadow over water is
   tinted too.

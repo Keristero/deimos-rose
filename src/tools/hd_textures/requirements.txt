@@ -1,0 +1,7 @@
+# torch is installed first, from the CPU index, by `mise run hd:textures:setup`:
+# these jobs never use a GPU.
+spandrel
+numpy
+pillow
+scikit-image
+huggingface_hub

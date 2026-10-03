@@ -97,6 +97,7 @@ setting_set :: proc(ps: ^Prefs_State, id: prefs.Setting_ID, v: int) {
 @(private = "file") EXTRAS_SCROLL_X :: 440
 @(private = "file") EXTRAS_BACK_Y :: 436
 @(private = "file") EXTRAS_NOTE_Y :: 404
+@(private = "file") EXTRAS_RESET_X :: 510
 
 // Accent Color's preview: both players' ships as a local game draws them
 // -- each in its own hue, with Self Outline on player 1's, the ship this
@@ -111,6 +112,7 @@ Extras_Page :: struct {
 	scroll:  ui.Scroll_Rows,
 	toggles: [prefs.MAX_SETTINGS]ui.Text_Button,
 	back:    ui.Text_Button,
+	reset:   ui.Text_Button, // the sliders back to their defaults
 }
 
 // The settings listed: those of the saved mods, dimmed but still there in
@@ -126,6 +128,30 @@ extras_listed :: proc(ps: ^Prefs_State, out: ^[prefs.MAX_SETTINGS]prefs.Setting_
 		}
 	}
 	return out[:n]
+}
+
+// Whether the page has sliders for the reset button to act on.
+@(private = "file")
+extras_has_sliders :: proc(listed: []prefs.Setting_ID) -> bool {
+	for id in listed {
+		if prefs.registered_settings()[id].kind == .Percent {
+			return true
+		}
+	}
+	return false
+}
+
+// Puts every listed slider (not the toggles or the colours) back to its
+// default, and saves.
+@(private = "file")
+extras_reset_sliders :: proc(ps: ^Prefs_State, listed: []prefs.Setting_ID) {
+	settings := prefs.registered_settings()
+	for id in listed {
+		if settings[id].kind == .Percent {
+			ps.saved.settings[id] = prefs.setting_clean(id, settings[id].default)
+		}
+	}
+	prefs_state_save(ps)
 }
 
 // Where the listed setting at `row` sits on the page; false when it is
@@ -152,6 +178,7 @@ extras_page_layout :: proc(r: ^render.Renderer, x: ^Extras_Page, ps: ^Prefs_Stat
 		}
 	}
 	ui.text_button_relabel(r, &x.back, "BACK", render.SCREEN_W / 2, EXTRAS_BACK_Y)
+	ui.text_button_relabel(r, &x.reset, "RESET SLIDERS", EXTRAS_RESET_X, EXTRAS_BACK_Y)
 }
 
 // Returns true when the page is left (Back or Escape).
@@ -190,6 +217,9 @@ extras_page_update :: proc(r: ^render.Renderer, x: ^Extras_Page, ps: ^Prefs_Stat
 				prefs_state_save(ps)
 			}
 		}
+	}
+	if extras_has_sliders(listed) && ui.text_button_update(r, &x.reset, mouse, dt) {
+		extras_reset_sliders(ps, listed)
 	}
 	return ui.text_button_update(r, &x.back, mouse, dt) || rl.IsKeyPressed(.ESCAPE)
 }
@@ -240,6 +270,9 @@ extras_page_draw :: proc(r: ^render.Renderer, x: ^Extras_Page, ps: ^Prefs_State)
 		note = "SETTINGS FOR THE MODS THAT ARE ON -- NONE APPLY IN CLASSIC MODE"
 	}
 	ui.menu_draw_text(r, note, render.SCREEN_W / 2, EXTRAS_NOTE_Y, dim, .Centre)
+	if extras_has_sliders(listed) {
+		ui.text_button_draw(r, &x.reset)
+	}
 	ui.text_button_draw(r, &x.back)
 }
 

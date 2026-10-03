@@ -15,6 +15,12 @@ package lighting_view
 //           units it falls on, plus a little of its own; then the glow
 //           added on. Shadowed ground has its own colour in the map, so a
 //           light reveals it.
+//   falling A shot falling to the ground (render.Item.falling) is drawn
+//           into the light map's alpha channel as well, which says how far
+//           its light reaches into shadow. A shot in the air lights the
+//           ground faintly and leaves its shadows dark; as it comes down
+//           its light grows and then fills the shadows, so the ground seems
+//           to rise to meet it: a depth cue, since the shot is drawn flat.
 //
 // Cost per frame: a light is one quad into a 640x480 target, the glow a few
 // full-screen draws into 320x240 targets, and the composite one draw. Both
@@ -27,8 +33,10 @@ package lighting_view
 // notes/realtime-lighting-and-effects.md for what recovers them.
 
 import "core:math"
+import "core:strings"
 
 import rl "vendor:raylib"
+import "vendor:raylib/rlgl"
 
 import "dr:data"
 import "dr:plugins/lighting"
@@ -47,6 +55,9 @@ import "dr:sim"
 // How bright a highlight is on the glossiest ground under a full light.
 @(private = "file") SPECULAR_GAIN :: 1.6
 @(private = "file") SPARK_MIN_LUMA :: 0.55 // a spark casts light when it is at least this bright
+// A shot falling to the ground lights it at this share of its full light
+// when let go, and the rest as the square of how far down it is.
+@(private = "file") FALL_AIR_LIGHT :: 0.2
 
 @(private = "file")
 Colour_Key :: [5]i32 // texture id, then the frame's rectangle
@@ -75,6 +86,11 @@ State :: struct {
 	// The ground's gloss where a level has no specular mask: one pixel.
 	plain:      rl.Texture2D,
 	flat:       rl.Texture2D, // and its normal where it has none: facing straight up
+	// The level's specular and shadow masks in one texture (gloss in red,
+	// light in alpha), made once a level, where it has a shadow mask.
+	ground:     rl.Texture2D,
+	ground_key: string,
+	shadow_loc: i32,
 	// The specular textures given their filter (they are cached by the renderer).
 	filtered:   map[u32]bool,
 	light_k:    i32,
@@ -132,6 +148,10 @@ COMPOSITE_SHADER :: `#version 330
 #define LIGHT_LEAN 6.0       // how far the light map's slope leans a light's direction
 #define NORMAL_GAIN 4.0      // how strongly the ground's slope shades under a light
 #define SPECULAR_POWER 14.0  // how tight a highlight is
+#define TILT_REACH 24.0      // map pixels over which the ground's general tilt is taken out
+#define SHADOW_FILL 0.6      // how much of its colour a shadow takes from a shot that is down
+#define SHADOW_LUMA_LO 0.10  // brightness at and below which a pixel is all shadow
+#define SHADOW_LUMA_HI 0.50  // and at and above which none
 in vec2 fragTexCoord;
 uniform sampler2D texture0; // the scene
 uniform sampler2D lights;
@@ -144,15 +164,30 @@ uniform float glowGain;
 uniform float specGain;
 uniform vec2 canvas;        // the canvas's size, in pixels
 uniform vec4 field;         // the play field in canvas pixels: left, top, width, height
+uniform float hasShadow;    // 1 where the specular texture's alpha is the level's shadow mask
 uniform vec4 mapRect;       // the map's pixels showing: left, top, width, height, over the map's size
 out vec4 finalColor;
 void main() {
 	vec3 scene = texture(texture0, fragTexCoord).rgb;
-	vec3 light = texture(lights, fragTexCoord).rgb * lightGain;
+	vec4 lightMap = texture(lights, fragTexCoord);
+	vec3 light = lightMap.rgb * lightGain;
 	vec3 halo = texture(glow, fragTexCoord).rgb * glowGain;
 	// The light shows the colour it falls on, and a little of its own where
 	// that is dark, so a spark over black ground still lights something.
 	vec3 lit = scene * (1.0 + 0.9 * light) + 0.05 * light;
+
+	// A shot that is nearly down lights shadow as well. The multiplication
+	// above leaves a shadow as dark against the ground round it as before;
+	// this is what a light that close adds on top, which a shadow does not
+	// keep out: each shadowed pixel takes the light's colour, in its own
+	// hue. How far it reaches is the light map's alpha, and its colour is
+	// the map's own. Which pixels are in shadow is the level's shadow mask;
+	// a level without one has the dark pixels stand in.
+	float reach = lightMap.a * lightGain;
+	vec3 reachColour = lightMap.rgb / max(max(lightMap.r, max(lightMap.g, lightMap.b)), 0.02);
+	float luma = dot(scene, vec3(0.299, 0.587, 0.114));
+	float darkByLuma = 1.0 - smoothstep(SHADOW_LUMA_LO, SHADOW_LUMA_HI, luma);
+	vec3 hue = scene / max(max(scene.r, max(scene.g, scene.b)), 0.05);
 
 	// The ground, where the play field is: its normal and gloss at the map's
 	// pixel. Light maps do not keep where each light is, but the way they
@@ -165,18 +200,33 @@ void main() {
 	vec2 f = (px - field.xy) / field.zw;
 	if (f.x >= 0.0 && f.x <= 1.0 && f.y >= 0.0 && f.y <= 1.0) {
 		vec2 uv = mapRect.xy + f * mapRect.zw;
-		float gloss = texture(specular, uv).r;
+		vec4 ground = texture(specular, uv);
+		float gloss = ground.r;
+		float dark = mix(darkByLuma, 1.0 - ground.a, hasShadow);
+		lit += reach * reachColour * hue * dark * SHADOW_FILL;
 		vec3 n = normalize(texture(normals, uv).rgb * 2.0 - 1.0);
+		// The recovered ground tilts one way on the whole (the heights were
+		// fitted to the sun's shading, so slopes face it): shade by the
+		// slope against the ground around it, or every light would favour
+		// the side that tilt faces.
+		vec2 around = 1.0 / vec2(textureSize(normals, 0)) * TILT_REACH;
+		vec2 tilt = n.xy;
+		for (int i = 0; i < 8; i++) {
+			float a = 0.785398 * float(i);
+			tilt += (texture(normals, uv + vec2(cos(a), sin(a)) * around).rg * 2.0 - 1.0);
+		}
+		vec2 slope = n.xy - tilt / 9.0;
 		float bright = dot(light, vec3(0.333));
 		float gx = dot(texture(lights, fragTexCoord + vec2(lightPx.x, 0.0)).rgb - texture(lights, fragTexCoord - vec2(lightPx.x, 0.0)).rgb, vec3(0.333));
 		float gy = dot(texture(lights, fragTexCoord + vec2(0.0, lightPx.y)).rgb - texture(lights, fragTexCoord - vec2(0.0, lightPx.y)).rgb, vec3(0.333));
 		// Texture rows run up the screen, the map's down: the map's y is -gy.
 		vec2 toward = vec2(gx, -gy);
 		vec3 l = normalize(vec3(toward * LIGHT_LEAN / max(bright, 0.02), 1.0));
-		float shade = dot(n, l) - l.z; // 0 on flat ground
+		float shade = dot(slope, l.xy) / max(l.z, 0.2); // 0 on ground like its surroundings
 		lit += scene * light * clamp(shade * NORMAL_GAIN, -0.6, 0.9);
 		float detail = 0.5 + 1.0 * dot(scene, vec3(0.299, 0.587, 0.114));
-		float glint = pow(max(dot(n, normalize(l + vec3(0.0, 0.0, 1.0))), 0.0), SPECULAR_POWER);
+		vec3 facing = normalize(vec3(slope, sqrt(max(1.0 - dot(slope, slope), 0.05))));
+		float glint = pow(max(dot(facing, normalize(l + vec3(0.0, 0.0, 1.0))), 0.0), SPECULAR_POWER);
 		lit += gloss * specGain * light * light * detail * glint;
 	}
 	finalColor = vec4(lit + halo, 1.0);
@@ -199,6 +249,7 @@ ensure :: proc(f: ^render.Post_Frame) {
 		st.canvas_loc = rl.GetShaderLocation(st.composite, "canvas")
 		st.field_loc = rl.GetShaderLocation(st.composite, "field")
 		st.map_loc = rl.GetShaderLocation(st.composite, "mapRect")
+		st.shadow_loc = rl.GetShaderLocation(st.composite, "hasShadow")
 		st.filtered = make(map[u32]bool)
 		gloss := rl.GenImageColor(1, 1, {u8(SPECULAR_DEFAULT * 255), 0, 0, 255})
 		rl.ImageFormat(&gloss, .UNCOMPRESSED_GRAYSCALE)
@@ -221,7 +272,7 @@ ensure :: proc(f: ^render.Post_Frame) {
 				dy := (f32(y) + 0.5) / FALLOFF_SIZE * 2 - 1
 				d := clamp(1 - math.sqrt(dx * dx + dy * dy), 0, 1)
 				v := u8(255 * d * d)
-				px[y * FALLOFF_SIZE + x] = {v, v, v, 255}
+				px[y * FALLOFF_SIZE + x] = {v, v, v, v}
 			}
 		}
 		st.falloff = rl.LoadTextureFromImage(img)
@@ -265,6 +316,8 @@ destroy :: proc() {
 	rl.UnloadTexture(st.falloff)
 	rl.UnloadTexture(st.plain)
 	rl.UnloadTexture(st.flat)
+	rl.UnloadTexture(st.ground)
+	delete(st.ground_key)
 	delete(st.filtered)
 	rl.UnloadShader(st.blur)
 	rl.UnloadShader(st.composite)
@@ -281,23 +334,28 @@ destroy :: proc() {
 // dim sprite still makes a bright light of its hue. Read from the plate
 // once, and kept.
 @(private = "file")
-shine_colour :: proc(it: render.Item) -> rl.Color {
+shine_colour :: proc(r: ^render.Renderer, it: render.Item) -> rl.Color {
 	key := Colour_Key{i32(it.texture.id), i32(it.src.x), i32(it.src.y), i32(it.src.width), i32(it.src.height)}
 	if c, ok := st.colours[key]; ok {
 		return c
 	}
 	img, have := st.plates[it.texture.id]
 	if !have {
-		img = rl.LoadImageFromTexture(it.texture)
+		// A texture pack's redrawn plate carries the original's size.
+		whole := it.texture
+		size := render.texture_pixels(&r.textures, it.texture)
+		whole.width, whole.height = size.x, size.y
+		img = rl.LoadImageFromTexture(whole)
 		rl.ImageFormat(&img, .UNCOMPRESSED_R8G8B8A8)
 		st.plates[it.texture.id] = img
 	}
 	sum: [3]f32
 	weight: f32
 	px := ([^]rl.Color)(img.data)[:img.width * img.height]
-	x0, y0 := int(it.src.x), int(it.src.y)
-	for y in y0 ..< min(y0 + int(it.src.height), int(img.height)) {
-		for x in x0 ..< min(x0 + int(it.src.width), int(img.width)) {
+	k := f32(img.width) / f32(max(it.texture.width, 1)) // redrawn plates: more pixels per frame pixel
+	x0, y0 := int(it.src.x * k), int(it.src.y * k)
+	for y in y0 ..< min(y0 + int(it.src.height * k), int(img.height)) {
+		for x in x0 ..< min(x0 + int(it.src.width * k), int(img.width)) {
 			c := px[y * int(img.width) + x]
 			a := f32(c.a)
 			sum += {f32(c.r), f32(c.g), f32(c.b)} * a
@@ -322,6 +380,9 @@ Light :: struct {
 	radius: f32,
 	colour: rl.Color,
 	gain:   f32, // 0..1
+	// 0..1: how far into shadow it reaches (the light map's alpha); only a
+	// shot that is nearly down does.
+	reach:  f32,
 }
 
 // What shines this frame: the shining items, and bright sparks.
@@ -334,12 +395,22 @@ gather :: proc(r: ^render.Renderer, f: ^render.Post_Frame, out: ^[MAX_LIGHTS]Lig
 				continue
 			}
 			size := max(it.dst.width, it.dst.height)
-			out[n] = {
+			gain := it.emit * f32(it.tint.a) / 255
+			l := Light {
 				at     = {(it.dst.x + it.dst.width / 2 + render.VIEW_X) * f.scale, (it.dst.y + it.dst.height / 2) * f.scale},
 				radius = (size * LIGHT_REACH + LIGHT_MIN_RADIUS) * f.scale,
-				colour = shine_colour(it),
-				gain   = it.emit * f32(it.tint.a) / 255,
+				colour = shine_colour(r, it),
+				gain   = gain,
 			}
+			if it.falling {
+				// The light grows as the square of the fall and the reach
+				// into shadow as its cube, so shadows stay dark until the
+				// shot is close.
+				d := it.descent
+				l.gain = gain * (FALL_AIR_LIGHT + (1 - FALL_AIR_LIGHT) * d * d)
+				l.reach = gain * d * d * d
+			}
+			out[n] = l
 			n += 1
 		}
 	}
@@ -371,6 +442,14 @@ tinted :: proc(c: rl.Color, k: f32) -> rl.Color {
 	return {c.r, c.g, c.b, u8(clamp(k, 0, 1) * 255)}
 }
 
+// A colour already scaled by `gain`, with `reach` as its alpha, for the
+// light map's blend (prepare).
+@(private = "file")
+premultiplied :: proc(c: rl.Color, gain, reach: f32) -> rl.Color {
+	k := clamp(gain, 0, 1)
+	return {u8(f32(c.r) * k), u8(f32(c.g) * k), u8(f32(c.b) * k), u8(clamp(reach, 0, 1) * 255)}
+}
+
 @(private = "file")
 prepare :: proc(r: ^render.Renderer, f: ^render.Post_Frame) {
 	ensure(f)
@@ -380,12 +459,17 @@ prepare :: proc(r: ^render.Renderer, f: ^render.Post_Frame) {
 	if r.setting[LIGHT_STRENGTH] > 0 {
 		inv := 1 / f32(LIGHT_DIV)
 		rl.BeginTextureMode(st.light)
-		rl.ClearBackground(rl.BLACK)
-		rl.BeginBlendMode(.ADDITIVE)
+		// Cleared clear, not black: the alpha is the reach into shadow.
+		rl.ClearBackground({})
+		// Added as they are, colour and reach both already scaled (the
+		// falloff has its shape in its alpha too), so the colour takes the
+		// gain and the alpha takes the reach, apart.
+		rlgl.SetBlendFactorsSeparate(rlgl.ONE, rlgl.ONE, rlgl.ONE, rlgl.ONE, rlgl.FUNC_ADD, rlgl.FUNC_ADD)
+		rl.BeginBlendMode(.CUSTOM_SEPARATE)
 		src := rl.Rectangle{0, 0, FALLOFF_SIZE, FALLOFF_SIZE}
 		for l in lights[:n] {
 			rad := l.radius * inv
-			rl.DrawTexturePro(st.falloff, src, {l.at.x * inv - rad, l.at.y * inv - rad, rad * 2, rad * 2}, {}, 0, tinted(l.colour, l.gain))
+			rl.DrawTexturePro(st.falloff, src, {l.at.x * inv - rad, l.at.y * inv - rad, rad * 2, rad * 2}, {}, 0, premultiplied(l.colour, l.gain, l.reach))
 		}
 		rl.EndBlendMode()
 		rl.EndTextureMode()
@@ -449,6 +533,69 @@ prepare :: proc(r: ^render.Renderer, f: ^render.Post_Frame) {
 	}
 }
 
+// The level's specular and shadow masks as one texture: gloss in red, where
+// the sun reaches in alpha (a grey-alpha texture reads as r, r, r, a). The
+// composite has no sampler to spare for a second map-sized mask, so they
+// share one, built once a level. Not ok where the level has no shadow mask
+// (or one of another size than its specular).
+@(private = "file")
+ground_texture :: proc(r: ^render.Renderer, layers: data.Level_Layers) -> (tex: rl.Texture2D, ok: bool) {
+	key := strings.concatenate({layers.specular, "|", layers.shadow_mask}, context.temp_allocator)
+	if key != st.ground_key {
+		rl.UnloadTexture(st.ground)
+		st.ground = {}
+		delete(st.ground_key)
+		st.ground_key = strings.clone(key)
+		st.ground = ground_make(r, layers)
+	}
+	return st.ground, st.ground.id != 0
+}
+
+@(private = "file")
+ground_make :: proc(r: ^render.Renderer, layers: data.Level_Layers) -> (tex: rl.Texture2D) {
+	if layers.shadow_mask == "" {
+		return
+	}
+	load :: proc(r: ^render.Renderer, id: string) -> (img: rl.Image) {
+		if id == "" {
+			return
+		}
+		img = rl.LoadImage(strings.clone_to_cstring(data.assets_image_path(&r.textures.assets, id), context.temp_allocator))
+		if img.data != nil {
+			rl.ImageFormat(&img, .UNCOMPRESSED_GRAYSCALE)
+		}
+		return
+	}
+	shadow := load(r, layers.shadow_mask)
+	if shadow.data == nil {
+		return
+	}
+	defer rl.UnloadImage(shadow)
+	spec := load(r, layers.specular)
+	if spec.data != nil {
+		defer rl.UnloadImage(spec)
+		if spec.width != shadow.width || spec.height != shadow.height {
+			return
+		}
+	}
+	out := rl.GenImageColor(shadow.width, shadow.height, {})
+	rl.ImageFormat(&out, .UNCOMPRESSED_GRAY_ALPHA)
+	defer rl.UnloadImage(out)
+	n := int(shadow.width * shadow.height)
+	px := ([^]u8)(out.data)[:n * 2]
+	lit := ([^]u8)(shadow.data)[:n]
+	for i in 0 ..< n {
+		px[i * 2] = spec.data != nil ? ([^]u8)(spec.data)[i] : u8(SPECULAR_DEFAULT * 255)
+		px[i * 2 + 1] = lit[i]
+	}
+	tex = rl.LoadTextureFromImage(out)
+	if tex.id != 0 {
+		rl.SetTextureFilter(tex, .BILINEAR)
+		rl.SetTextureWrap(tex, .CLAMP)
+	}
+	return
+}
+
 // A level's layer image, filtered smooth and clamped at its edge once.
 @(private = "file")
 layer_texture :: proc(r: ^render.Renderer, id: string) -> (tex: rl.Texture2D, ok: bool) {
@@ -471,16 +618,23 @@ apply :: proc(r: ^render.Renderer, f: ^render.Post_Frame, src: rl.Texture2D) {
 	glow_gain := f32(r.setting[GLOW_STRENGTH]) / 100 * 1.8
 	// The ground's gloss: the level's specular mask, at the map's pixels.
 	spec, normals, map_rect := st.plain, st.flat, [4]f32{0, 0, 1, 1}
+	has_shadow := f32(0)
 	if s := f.state; s != nil {
 		level := sim.level_def(s)
 		if media := data.assets_level_media(&r.textures.assets, level.campaign, level.id); media != nil {
-			if tex, ok := layer_texture(r, media.layers.specular); ok {
+			tex, ok := ground_texture(r, media.layers)
+			if ok {
+				has_shadow = 1
+			} else {
+				tex, ok = layer_texture(r, media.layers.specular)
+			}
+			if ok {
 				spec = tex
 				mw, mh := f32(tex.width), f32(tex.height)
 				map_rect = {max(f.side + 32, 0) / mw, f.view_top / mh, f32(sim.view_width(s.defs)) / mw, f32(sim.view_height(s.defs)) / mh}
 			}
-			if tex, ok := layer_texture(r, media.layers.normal); ok {
-				normals = tex
+			if n, found := layer_texture(r, media.layers.normal); found {
+				normals = n
 			}
 		}
 	}
@@ -492,6 +646,7 @@ apply :: proc(r: ^render.Renderer, f: ^render.Post_Frame, src: rl.Texture2D) {
 	rl.SetShaderValue(st.composite, st.canvas_loc, &canvas, .VEC2)
 	rl.SetShaderValue(st.composite, st.field_loc, &field, .VEC4)
 	rl.SetShaderValue(st.composite, st.map_loc, &map_rect, .VEC4)
+	rl.SetShaderValue(st.composite, st.shadow_loc, &has_shadow, .FLOAT)
 	rl.SetShaderValueTexture(st.composite, st.spec_loc, spec)
 	rl.SetShaderValueTexture(st.composite, st.normal_loc, normals)
 	texel := [2]f32{1 / f32(st.light.texture.width), 1 / f32(st.light.texture.height)}

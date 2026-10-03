@@ -713,6 +713,37 @@ PY="$DR_HD_VENV/bin/python"; [ -x "$PY" ] || PY="$DR_HD_VENV/Scripts/python.exe"
 "$PY" tools/hd_upscale/upscale.py "${MAP:-jum2}" --images "$DR_PLUGINS/classic_levels/images/im16" --out "$DR_SRC/../work/hd/${MAP:-jum2}" "$@"
 """
 
+[tasks."hd:textures:setup"]
+description = "Create the CPU-only Python venv for the HD textures tools (hd:textures:bench, hd:textures) at $DR_SR_VENV"
+run = """
+set -e
+DR_SR_VENV="${DR_SR_VENV:-$HOME/.cache/deimos-rising/sr-venv}"
+[ -d "$DR_SR_VENV" ] || python3 -m venv "$DR_SR_VENV"
+PY="$DR_SR_VENV/bin/python"
+"$PY" -m pip install --upgrade pip
+"$PY" -m pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision
+"$PY" -m pip install -r tools/hd_textures/requirements.txt
+"$PY" -c "import torch, spandrel; print('torch', torch.__version__, 'threads', torch.get_num_threads(), 'spandrel', spandrel.__version__)"
+"""
+
+[tasks."hd:textures"]
+description = "Redraw the game's sprite plates and interface images at twice their size on the CPU (Nomos SPAN, chosen by hd:textures:bench) into plugins/hd_textures/textures/; resumable, minutes to an hour. ONLY='BAGU back' limits it to those files"
+run = """
+set -e
+PY="${DR_SR_VENV:-$HOME/.cache/deimos-rising/sr-venv}/bin/python"
+[ -x "$PY" ] || { echo "run 'mise run hd:textures:setup' first"; exit 1; }
+"$PY" tools/hd_textures/upscale.py --assets "$DR_ASSETS" --out plugins/hd_textures ${ONLY:+--only $ONLY} "$@"
+"""
+
+[tasks."hd:textures:bench"]
+description = "Compare 2x upscalers on the game's own sprites, on the CPU: each shrinks a sample of the sprites 2x, scales them back and is scored against the originals (PSNR, SSIM), with side-by-side sheets in work/hd_textures/bench/ (N=sprites in the sample, default 24)"
+run = """
+set -e
+PY="${DR_SR_VENV:-$HOME/.cache/deimos-rising/sr-venv}/bin/python"
+[ -x "$PY" ] || { echo "run 'mise run hd:textures:setup' first"; exit 1; }
+"$PY" tools/hd_textures/bench.py --assets "$DR_ASSETS" --out "$DR_SRC/../work/hd_textures/bench" --count "${N:-24}" "$@"
+"""
+
 [tasks."assets:records"]
 description = "Decode the tagged-text resources into JSON under assets/data/, and the levels under plugins/classic_levels/data/levels/"
 depends = ["setup"]

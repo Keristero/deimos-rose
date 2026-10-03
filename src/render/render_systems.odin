@@ -151,7 +151,8 @@ entities_render :: proc(r: ^Renderer, s: ^sim.State, f: ^Frame) {
 			continue
 		}
 		turn := e.turned ? f32(e.heading) : 0
-		draw_object(r, s, e.obj, u.casts_shadows, before, shot_accent(r, s, e), turn, e.owner_player >= 0)
+		behind := before != nil ? 1 - r.interp_alpha : 0
+		draw_object(r, s, e.obj, u.casts_shadows, before, shot_accent(r, s, e), turn, e.owner_player >= 0, fall_of(s, e, u, behind))
 	}
 }
 

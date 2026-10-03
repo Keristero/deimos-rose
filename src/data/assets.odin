@@ -148,6 +148,9 @@ Level_Layers :: struct {
 	// size (terrain/specular.odin).
 	normal:      string `json:"normal"`,
 	height:      string `json:"height"`,
+	// Where the sun reaches, one grey byte per map pixel at the map's size:
+	// 255 in the light, 0 in shadow (terrain.Output.Shadow). The lighting
+	// lets a shot that is down light shadow.
 	shadow_mask: string `json:"shadow_mask"`,
 	hd_map:      string `json:"hd_map"`,
 	// How glossy the ground is, one grey byte per map pixel at the map's
@@ -277,6 +280,65 @@ Assets :: struct {
 	// plugin adds media and never replaces the original's (D51).
 	plugin_images: map[string]string,
 	plugin_audio:  map[string]string,
+	// The plugins that redraw the game's images larger, in plugin order
+	// (assets_texture_pack).
+	texture_packs: []Texture_Pack,
+}
+
+// A plugin's textures/ folder: the game's images redrawn `scale` times
+// larger, found by the path the original has under the assets root.
+Texture_Pack :: struct {
+	plugin: sim.Plugin_ID,
+	scale:  i32,
+	files:  map[string]string, // "sprites/im08/BAGU.png" -> where the redrawn one is
+}
+
+// Which sub-folders of a texture pack are read: the sprite plates and the
+// interface images. Level maps are not: the terrain's burn marks are
+// written at the map's own resolution.
+TEXTURE_PACK_DIRS :: [?]string{"sprites/im08", "images/im16"}
+
+// The redrawn image for `rel` from the first of the plugins in `mods` that
+// has one, and how many times larger it is.
+assets_texture_pack :: proc(a: ^Assets, mods: sim.Mods, rel: string) -> (path: string, scale: i32, ok: bool) {
+	for &p in a.texture_packs {
+		if int(p.plugin) in mods {
+			if path, ok = p.files[rel]; ok {
+				return path, p.scale, true
+			}
+		}
+	}
+	return
+}
+
+@(private = "file")
+texture_packs_find :: proc(allocator := context.allocator) -> []Texture_Pack {
+	packs := make([dynamic]Texture_Pack, allocator)
+	for i in 1 ..< len(sim.registered_plugins()) {
+		dir, found := plugin_content_dir(sim.Plugin_ID(i))
+		if !found {
+			continue
+		}
+		m: Json_Plugin
+		if !read_json(strings.concatenate({dir, "/", PLUGIN_MANIFEST}, context.temp_allocator), &m, context.temp_allocator) || m.texture_scale < 2 {
+			continue
+		}
+		pack := Texture_Pack{plugin = sim.Plugin_ID(i), scale = i32(m.texture_scale), files = make(map[string]string, allocator)}
+		for sub in TEXTURE_PACK_DIRS {
+			paths, err := filepath.glob(strings.concatenate({dir, "/textures/", sub, "/*.png"}, context.temp_allocator), context.temp_allocator)
+			if err != nil {
+				continue
+			}
+			for path in paths {
+				rel := strings.concatenate({sub, "/", filepath.base(path)}, allocator)
+				pack.files[rel] = strings.concatenate({dir, "/textures/", rel}, allocator)
+			}
+		}
+		if len(pack.files) > 0 {
+			append(&packs, pack)
+		}
+	}
+	return packs[:]
 }
 
 // --- loading ---------------------------------------------------------------
@@ -330,6 +392,7 @@ assets_open :: proc(root: string, allocator := context.allocator) -> (a: Assets)
 	append(&indexes, Index{strings.concatenate({root, "/sprites/index.json"}, context.temp_allocator), root})
 	a.plugin_images = make(map[string]string, allocator)
 	a.plugin_audio = make(map[string]string, allocator)
+	a.texture_packs = texture_packs_find(allocator)
 	for i in 1 ..< len(sim.registered_plugins()) {
 		if dir, found := plugin_content_dir(sim.Plugin_ID(i)); found {
 			append(&indexes, Index{strings.concatenate({dir, "/sprites/index.json"}, context.temp_allocator), dir})

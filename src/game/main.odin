@@ -12,6 +12,7 @@ import "dr:data"
 import accent_view "dr:plugins/accent/view"
 import "dr:plugins/easy_mode"
 import "dr:plugins/fps_unlock"
+import "dr:plugins/lighting"
 import "dr:prefs"
 import "dr:render"
 import "dr:sim"
@@ -235,6 +236,8 @@ main :: proc() {
 		// Preferences edits ps in place; apply whatever it holds now.
 		renderer.classic = prefs_classic(&ps)
 		renderer.textures.quicktime_gamma = renderer.classic
+		// The menus' own; a game in play sets them with its session's.
+		renderer.textures.mods = prefs_mods(&ps)
 		diagnostics.enabled = prefs_diagnostics(&ps)
 		renderer.textures.sfx_volume = f32(ps.saved.sfx_volume) / 100
 		renderer.textures.music_volume = f32(ps.saved.music_volume) / 100
@@ -476,6 +479,15 @@ run_menu_shot :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, r
 			ps.saved.settings[accent_view.HUE_P1] = prefs.hue_wrap(hue)
 		}
 		ps.saved.settings[accent_view.SELF_OUTLINE] = 1
+	case "preferences_extras_sliders":
+		// The Extras page with Realtime Lighting on, so its sliders and the
+		// button that puts them back show; the glow is moved off its default.
+		flow.mode = .Preferences
+		flow.preferences.page = .Extras
+		prefs_mod_set(ps, lighting.ID, true)
+		if id, ok := prefs.setting_by_key("glow_strength"); ok {
+			ps.saved.settings[id] = 80
+		}
 	case "preferences_mods":
 		// The Mods page as a new player finds it.
 		flow.mode = .Preferences
@@ -616,6 +628,7 @@ run_menu_shot :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, r
 	r.canvas = rl.LoadRenderTexture(render.SCREEN_W * render.WINDOW_SCALE, render.SCREEN_H * render.WINDOW_SCALE)
 	rl.BeginTextureMode(r.canvas)
 	rl.ClearBackground(rl.Color{0, 0, 0, 255})
+	r.textures.mods += prefs_mods(ps) // as the main loop sets them
 	flow_draw(&flow, r, &fx, render.WINDOW_SCALE)
 	diagnostics_draw(&diag, flow.netplay_active, flow.netplay.ping_ms)
 	if name == "restarted" {

@@ -4,6 +4,7 @@ Each of these should have a toggle in the extra settings
 ### HD textures
 - Add a mise task to upsacle the graphics using a local AI model and batch processing, during the development of this task present the user with various results to find their prefernce that best represents a HD upscale of the original graphics without losing the soul of the original.
 - Use the selected technique to generate all the upscaled graphics
+- Status: done for sprites and interface images, as the HD Textures plugin (Nomos SPAN 2x; `mise run hd:textures`, see `src/tools/hd_textures/README.md`, D80). Level maps are not redrawn.
 
 ### Normal Maps
 - Write scripts to produce normal, specular, and roughness maps for all textures
