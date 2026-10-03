@@ -11,16 +11,18 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$OUT"
 say() { # name text
-  moonshine tts --voice kokoro_am_michael --text "$2" --out "$TMP/$1.wav" >/dev/null 2>&1
+  moonshine tts --voice kokoro_af_nicole --options speed=0.85 --text "$2" --out "$TMP/$1.wav" >/dev/null 2>&1
   ffmpeg -y -loglevel error -i "$TMP/$1.wav" \
     -af "silenceremove=start_periods=1:start_threshold=-45dB,areverse,silenceremove=start_periods=1:start_threshold=-45dB,areverse,loudnorm=I=-14:TP=-1" \
     -ar 22050 -ac 1 -c:a pcm_s16le "$OUT/$1.wav"
 }
+# Said husky and slow, each title with a tail from flirts.txt, cycled.
+mapfile -t flirts < "$HERE/flirts.txt"
 n=0
 while IFS= read -r line; do
   n=$((n + 1))
-  say "$(printf '%02d' "$n")" "$line"
+  say "$(printf '%02d' "$n")" "${line}${flirts[$(( (n - 1) % ${#flirts[@]} ))]}"
 done < "$HERE/streaks.txt"
-say super "Super"
-say super_duper "Super Duper"
+say super "Mmm, super..."
+say super_duper "Mmm, super duper..."
 ls "$OUT" | wc -l

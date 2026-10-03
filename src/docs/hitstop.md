@@ -56,3 +56,9 @@ last six, down to a tenth; a kill adds 0.04. The gauge drains every step,
 0.0008 at the bottom to 0.0048 at the top, so only a mix of weapons holds the
 top grades; a hit taken keeps 65% of it. S and up burn. All the numbers are
 provisional. Look with `MENU=hitstop DR_HITSTOP_STYLE=0.9 mise run menu-shot`.
+
+The announcer is husky and slow (Kokoro's af_nicole at 0.85 speed), each
+title with a tail from `announcer/flirts.txt` ("... oh yes", ", big boy") that
+is only spoken, not shown, and a brass air-horn sting (`view/horn.odin`,
+synthesized) plays under each call: one blast, two from a streak of 3, three
+from 6, higher with the streak.

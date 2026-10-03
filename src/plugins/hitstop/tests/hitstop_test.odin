@@ -244,3 +244,20 @@ style_grades_and_gain :: proc(t: ^testing.T) {
 	testing.expect(t, spam.gauge < mix.gauge)
 	testing.expect(t, view.style_rank(spam.gauge) < 4)
 }
+
+@(test)
+horns_blast_more_and_higher_with_the_streak :: proc(t: ^testing.T) {
+	testing.expect_value(t, view.horn_blasts(1), 1)
+	testing.expect_value(t, view.horn_blasts(4), 2)
+	testing.expect_value(t, view.horn_blasts(9), 3)
+	testing.expect(t, view.horn_pitch(9) > view.horn_pitch(1))
+	one := view.horn_samples(1, context.temp_allocator)
+	three := view.horn_samples(8, context.temp_allocator)
+	testing.expect(t, len(three) > len(one))
+	peak: f32
+	for v in three {
+		testing.expect(t, abs(v) <= 1)
+		peak = max(peak, abs(v))
+	}
+	testing.expect(t, peak > 0.5, "loud enough to hear")
+}

@@ -71,6 +71,7 @@ register_step :: proc "contextless" () {
 destroy :: proc() {
 	boom_destroy()
 	announcer_destroy()
+	horn_destroy()
 	reverb_destroy()
 }
 
@@ -144,6 +145,7 @@ step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles) {
 		r.hold = 0
 		boom_play(r.textures.sfx_volume)
 		announce(cam.streak, r.textures.sfx_volume)
+		horn_play(cam.streak, r.textures.sfx_volume)
 	} else if !cam.on {
 		r.hold = max(r.hold, hold)
 	}
