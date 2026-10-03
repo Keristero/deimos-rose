@@ -9,6 +9,8 @@ package game
 
 import _ "dr:plugins/accent"
 import _ "dr:plugins/accent/view"
+import _ "dr:plugins/hitstop"
+import _ "dr:plugins/hitstop/view"
 import _ "dr:plugins/lighting"
 import _ "dr:plugins/lighting/view"
 import _ "dr:plugins/wind"

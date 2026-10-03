@@ -616,6 +616,21 @@ flow_player_names :: proc(fl: ^Flow) -> (names: ui.Player_Names) {
 	return
 }
 
+// Whether this step is spent holding still (render.Renderer.hold): one
+// counted off, with the game as it was. A hold only means anything to a
+// session in play on this machine alone, so it ends with anything else.
+flow_held :: proc(fl: ^Flow, r: ^render.Renderer) -> bool {
+	if r.hold <= 0 {
+		return false
+	}
+	if fl.mode != .Playing || fl.netplay_active || sim.session_frozen(fl.state) {
+		r.hold = 0
+		return false
+	}
+	r.hold -= 1
+	return true
+}
+
 // The presentation effects' step, after a sim step. They freeze with the
 // game: under the netplay pause and the reward and loadout screens, which
 // all stop the sim's clock while it keeps stepping.

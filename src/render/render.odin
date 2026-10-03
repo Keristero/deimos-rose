@@ -284,6 +284,11 @@ Renderer :: struct {
 	// only while its plugin is on, so classic mode never sees them.
 	post:            Post_State,
 	setting:         [prefs.MAX_SETTINGS]int,
+	// Steps the game is held for (a plugin's view sets it, hitstop's): a
+	// session in play does not step while it is above zero, and each held
+	// step counts it down (game/flow.odin's flow_held). Never in netplay,
+	// whose peers step in lockstep. Presentation only.
+	hold:            int,
 }
 
 // Past this many pixels in one step, something jumped (a respawn, a new

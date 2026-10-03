@@ -273,6 +273,10 @@ main :: proc() {
 			if high {
 				render.interp_capture(interp_prev, state) // before this step; a step that changes nothing leaves them equal
 			}
+			if flow_held(&flow, &renderer) {
+				accumulator -= step_dt
+				continue
+			}
 			flow_step(&flow, &renderer, &fx)
 			if was_playing {
 				diagnostics_note_update(&diagnostics)

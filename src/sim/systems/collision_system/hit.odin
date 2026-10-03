@@ -37,6 +37,7 @@ entity_hit :: proc(s: ^sim.State, e: sim.Entity, damage: f32, player: i32, time:
 	if st.invulnerable_shields_do_not_deplete_on_collision {
 		e.shields = before
 	}
+	sim.hit_record(s, {loc = e.loc, damage = damage, shields = before, scrolls_sideways = e.scrolls_sideways, killed = e.shields <= 0})
 	if st.on_hit_change_state_delay != 0 && st.on_hit_change_to != "" &&
 	   e.hit_state_time + st.on_hit_change_state_delay < time {
 		e.hit_state_time = time

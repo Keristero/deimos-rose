@@ -58,6 +58,7 @@ player_hit :: proc(s: ^sim.State, p: sim.Player, damage: f32, time: i32) {
 		return
 	}
 	p.hit_time = time
+	sim.hit_record(s, {loc = p.loc, damage = damage, shields = p.shields, scrolls_sideways = p.scrolls_sideways, player = true})
 	if !p.invulnerable {
 		loss := f32(d.shield_base_hit_percentage) * damage
 		if loss > 0 {
