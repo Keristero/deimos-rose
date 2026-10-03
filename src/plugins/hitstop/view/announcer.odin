@@ -4,8 +4,9 @@ package hitstop_view
 // Moonshine TTS (announcer/generate.sh), are embedded: one per streak title
 // and the two prefixes. A streak past 50 plays "Super" and then its title,
 // past 100 "Super Duper", joined into one sound so they run on without a gap.
-// Slowed and deepened by the blow's damage; the kill cam's reverb is on the
-// mix, so it is on this too.
+// Always at normal speed and pitch, so it stays understandable: the kill
+// cam's audio slowdown leaves it alone (only the kill cam's reverb, on the
+// mix, is on it).
 
 import "core:fmt"
 
@@ -56,9 +57,9 @@ announcer_clips :: proc(n: int, allocator := context.temp_allocator) -> []string
 	return names[:]
 }
 
-// Calls streak `n` at `volume` (0..1), slowed to a pitch of `pitch`. Quiet
+// Calls streak `n` at `volume` (0..1), at normal pitch. Quiet
 // without an audio device or without the clips.
-announce :: proc(n: int, volume, pitch: f32) {
+announce :: proc(n: int, volume: f32) {
 	if !rl.IsAudioDeviceReady() {
 		return
 	}
@@ -89,7 +90,7 @@ announce :: proc(n: int, volume, pitch: f32) {
 	voice = rl.LoadSoundFromWave(wave) // copies
 	voiced = true
 	rl.SetSoundVolume(voice, clamp(volume, 0, 1))
-	rl.SetSoundPitch(voice, pitch)
+	rl.SetSoundPitch(voice, 1)
 	rl.PlaySound(voice)
 }
 

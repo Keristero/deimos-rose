@@ -109,7 +109,7 @@ step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles) {
 	if took != nil {
 		r.hold = 0
 		boom_play(r.textures.sfx_volume)
-		announce(cam.streak, r.textures.sfx_volume, 0.85 - 0.25 * cam.slow)
+		announce(cam.streak, r.textures.sfx_volume)
 	} else if !cam.on {
 		r.hold = max(r.hold, hold)
 	}
