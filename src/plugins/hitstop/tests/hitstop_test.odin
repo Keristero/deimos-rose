@@ -26,12 +26,9 @@ the_setting_scales_the_hold_and_zero_turns_it_off :: proc(t: ^testing.T) {
 }
 
 @(test)
-a_takedown_is_a_kill_of_over_three_times_the_shields :: proc(t: ^testing.T) {
-	kill := sim.Hit_Event{damage = 31, shields = 10, killed = true, enemy = true}
-	testing.expect(t, view.is_takedown(kill))
-	kill.damage = 30
-	testing.expect(t, !view.is_takedown(kill), "exactly three times is not more")
-	kill.damage = 31
+a_takedown_is_any_kill_of_an_enemy :: proc(t: ^testing.T) {
+	kill := sim.Hit_Event{damage = 0.1, shields = 10, killed = true, enemy = true}
+	testing.expect(t, view.is_takedown(kill), "however little it dealt")
 	kill.killed = false
 	testing.expect(t, !view.is_takedown(kill), "a blow that left it standing")
 	kill.killed = true
@@ -66,4 +63,49 @@ the_zoom_stays_inside_the_field :: proc(t: ^testing.T) {
 	testing.expect_value(t, far, [4]f32{240, 240, 208, 240})
 	whole := view.zoom_rect(field, {100, 100}, 1)
 	testing.expect_value(t, whole, field)
+}
+
+@(test)
+the_screen_shakes_hardest_at_the_blow_and_settles :: proc(t: ^testing.T) {
+	testing.expect_value(t, view.shake_at(0, 1), 1)
+	testing.expect(t, view.shake_at(0.3, 1) < view.shake_at(0.1, 1))
+	testing.expect(t, view.shake_at(0.7, 1) > 0, "a rumble under the text")
+	testing.expect_value(t, view.shake_at(1, 1), 0)
+	testing.expect_value(t, view.shake_at(0, 0.5), 0.5)
+}
+
+@(test)
+the_shake_follows_the_damage :: proc(t: ^testing.T) {
+	testing.expect(t, view.shake_power(0.5) >= 0.4, "a shot still shakes hard")
+	testing.expect(t, view.shake_power(4) > view.shake_power(0.5))
+	testing.expect_value(t, view.shake_power(9), 1)
+	testing.expect_value(t, view.shake_power(1e6), 1)
+	testing.expect(t, view.shake_power(0) >= 0.25)
+}
+
+@(test)
+the_boom_is_deep_loud_and_dies_away :: proc(t: ^testing.T) {
+	s := view.boom_samples(context.temp_allocator)
+	testing.expect_value(t, len(s), int(view.BOOM_RATE * view.BOOM_SECONDS))
+	peak :: proc(s: []f32) -> (m: f32) {
+		for v in s {
+			m = max(m, abs(v))
+		}
+		return
+	}
+	for v in s {
+		testing.expect(t, v >= -1 && v <= 1)
+	}
+	testing.expect(t, peak(s[:view.BOOM_RATE / 4]) > 0.9, "loud at the start")
+	testing.expect(t, peak(s[len(s) - 2000:]) < 0.2, "gone by the end")
+	// Deep: slow zero crossings in the body (under 100 Hz).
+	crossings := 0
+	body := s[view.BOOM_RATE / 2:view.BOOM_RATE]
+	for i in 1 ..< len(body) {
+		if (body[i - 1] < 0) != (body[i] < 0) {
+			crossings += 1
+		}
+	}
+	hz := f32(crossings) / 2 / (f32(len(body)) / view.BOOM_RATE)
+	testing.expect(t, hz < 100 && hz > 15, "a low boom")
 }

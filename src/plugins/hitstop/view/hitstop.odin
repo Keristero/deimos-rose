@@ -31,6 +31,7 @@ Cam :: struct {
 	start: f64,     // the clock, in seconds, when it began
 	at:    sim.Vec, // the unit, as it was hit
 	side:  bool,    // `at` follows the sideways scroll
+	power: f32,     // shake_power of the blow
 	fixed: Maybe(f32), // stand at this point of the cam (the screenshots, shots.odin)
 }
 
@@ -44,6 +45,7 @@ register :: proc() {
 		after   = {"lighting"},
 		enabled = enabled,
 		apply   = apply,
+		destroy = boom_destroy,
 	})
 }
 
@@ -55,7 +57,7 @@ register_step :: proc "contextless" () {
 // Starts the kill cam on `at`, standing at `progress` of the way through it
 // (the screenshots').
 cam_hold_at :: proc(at: sim.Vec, progress: f32) {
-	staged = Cam{true, 0, at, false, progress}
+	staged = Cam{true, 0, at, false, 1, progress}
 }
 
 // Kept until the next step, as a level start forgets what is already up.
@@ -79,8 +81,9 @@ step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles) {
 	hold := 0
 	for ev in s.hits.events[:s.hits.count] {
 		if is_takedown(ev) && strength > 0 {
-			cam = {true, rl.GetTime(), ev.loc, ev.scrolls_sideways, nil}
+			cam = {true, rl.GetTime(), ev.loc, ev.scrolls_sideways, shake_power(ev.damage), nil}
 			r.hold = TAKEDOWN_STEPS
+			boom_play(r.textures.sfx_volume)
 			return
 		}
 		hold = max(hold, hold_steps(ev.damage, strength))
@@ -117,7 +120,16 @@ apply :: proc(r: ^render.Renderer, f: ^render.Post_Frame, src: rl.Texture2D) {
 	// The scene texture is bottom-up: the rows count from its foot.
 	h := f32(src.height)
 	rl.SetTextureFilter(src, .BILINEAR)
-	rl.DrawTexturePro(src, {view[0], h - view[1] - view[3], view[2], -view[3]}, {field[0], field[1], field[2], field[3]}, {}, 0, rl.WHITE)
+	// Shaken hard: the picture is drawn a little larger than the field, moved
+	// and turned about its centre, and the play field's scissor trims the rest.
+	shake := shake_at(p, cam.power)
+	t := f32(rl.GetTime())
+	jx, jy := math.sin(t * 91) + math.sin(t * 57 + 1), math.cos(t * 83) + math.cos(t * 61 + 2)
+	roll := math.sin(t * 67) * 0.045 * shake
+	reach := 1 + 0.2 * shake
+	dw, dh := field[2] * reach, field[3] * reach
+	centre := rl.Vector2{field[0] + field[2] / 2 + jx * 0.5 * SHAKE_PX * f.scale * shake, field[1] + field[3] / 2 + jy * 0.5 * SHAKE_PX * f.scale * shake}
+	rl.DrawTexturePro(src, {view[0], h - view[1] - view[3], view[2], -view[3]}, {centre.x, centre.y, dw, dh}, {dw / 2, dh / 2}, math.to_degrees(roll), rl.WHITE)
 
 	// Bars and a dimming of the rest, as the shot sets up.
 	frame := frame_at(p)

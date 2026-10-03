@@ -11,7 +11,6 @@ STEP_HZ :: 30 // a step of the game, in seconds: 1 / STEP_HZ
 
 MAX_HOLD :: 15 // steps, for an ordinary hit however hard
 TAKEDOWN_STEPS :: 54 // steps the kill cam lasts
-TAKEDOWN_RATIO :: 3.0 // damage over the target's shields that earns it
 
 // Steps to hold for a hit of `damage`, scaled by the setting `strength`
 // (percent, 0 turns it off): 1 + 3 * sqrt(damage). Damage in this game is
@@ -25,11 +24,10 @@ hold_steps :: proc "contextless" (damage: f32, strength: int) -> int {
 	return clamp(n, 1, MAX_HOLD)
 }
 
-// A kill of an enemy by a player that dealt more than TAKEDOWN_RATIO times
-// the unit's shields. Not a player, scenery or a shot, and not one that had
-// nothing left to lose.
+// Any kill of an enemy by a player: not a player, scenery, a shot or a
+// bonus, and not one that had nothing left to lose.
 is_takedown :: proc "contextless" (ev: sim.Hit_Event) -> bool {
-	return ev.killed && ev.enemy && !ev.player && ev.shields > 0 && ev.damage > TAKEDOWN_RATIO * ev.shields
+	return ev.killed && ev.enemy && !ev.player && ev.shields > 0
 }
 
 // A rise from 0 to 1 over p in [a, b].
@@ -70,4 +68,20 @@ zoom_rect :: proc "contextless" (field: [4]f32, at: [2]f32, z: f32) -> [4]f32 {
 	x := clamp(at.x - w / 2, field[0], field[0] + field[2] - w)
 	y := clamp(at.y - h / 2, field[1], field[1] + field[3] - h)
 	return {x, y, w, h}
+}
+
+SHAKE_PX :: 46 // field pixels the picture throws at the worst of it
+
+// How hard a blow of `damage` shakes the screen, 0..1: a small hit is
+// still a heavy shake (0.5 damage is 0.43), and 9 or more is all of it.
+shake_power :: proc "contextless" (damage: f32) -> f32 {
+	return clamp(0.25 + 0.25 * math.sqrt(max(damage, 0)), 0.25, 1)
+}
+
+// How hard the screen shakes at `p` for a blow of `power` (shake_power):
+// all of it as the blow lands, falling away over the first half, and a
+// rumble under the text after.
+shake_at :: proc "contextless" (p, power: f32) -> f32 {
+	land := 1 - ramp(p, 0, 0.55)
+	return clamp(land * land + 0.12 * (1 - ramp(p, 0.55, 0.9)), 0, 1) * power
 }

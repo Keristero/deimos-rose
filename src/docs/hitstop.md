@@ -9,9 +9,12 @@
   during which `flow_held` (game/flow.odin) skips the simulation step, so the
   simulation itself is untouched. The length is `round(1 + 3 * sqrt(damage))` steps
   (at least 1, at most 15), scaled by the HITSTOP setting.
-- A kill that deals more than 3x what the unit had left starts the kill cam:
+- Any kill of an enemy by a player starts the kill cam:
   54 steps held, a post pass zooms the finished frame in on the unit (with
-  letterbox bars) and draws TAKEDOWN in the game font.
+  letterbox bars) and draws TAKEDOWN in the game font. The screen shakes
+  hard as the blow lands (shake_power: `0.25 + 0.25 * sqrt(damage)`, all of
+  it from 9 damage up), and a deep boom, synthesised in `view/boom.odin`,
+  plays.
 - `mise run test` covers the numbers (`plugins/hitstop/tests`). For a look:
   `MENU=hitstop DR_HITSTOP_AT=0.5 mise run menu-shot` (the cam started by
   hand, 0 to 1 through it).
