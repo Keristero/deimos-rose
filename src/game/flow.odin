@@ -651,6 +651,10 @@ flow_effects_step :: proc(fl: ^Flow, r: ^render.Renderer, fx: ^render.Effects) {
 	if sim.session_frozen(fl.state) {
 		return
 	}
+	// The plugins drawn with are this session's, not the last frame's: a
+	// session just started (in classic mode, say, after a game with plugins)
+	// must not run the effects of plugins it does not carry.
+	flow_set_accents(fl, r)
 	render.effects_step(fx, fl.state)
 	render.effect_systems_step(r, fl.state, &fx.particles)
 }

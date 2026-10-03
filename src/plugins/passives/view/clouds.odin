@@ -59,7 +59,11 @@ clouds_step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles) {
 	clear(&live)
 	time := sim.single(s, sim.Clock).time
 	level := sim.single(s, sim.Level_Info).played
-	for &c in passives.clouds_of(s).clouds {
+	held := passives.clouds_of(s)
+	if held == nil {
+		return // a session without the plugin
+	}
+	for &c in held.clouds {
 		if passives.cloud_live(&c, time, level) {
 			append(&live, Cloud_Fx{cloud = c, time = time})
 		}
