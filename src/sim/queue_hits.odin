@@ -12,6 +12,7 @@ Hit_Event :: struct {
 	scrolls_sideways: bool, // loc follows the background's sideways scroll
 	killed:           bool, // the hit emptied them
 	player:           bool, // the target is a player, not a unit
+	enemy:            bool, // a unit worth points, struck by a player: not scenery, a shot or a bonus
 }
 
 MAX_HIT_EVENTS :: 16

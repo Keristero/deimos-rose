@@ -25,10 +25,11 @@ hold_steps :: proc "contextless" (damage: f32, strength: int) -> int {
 	return clamp(n, 1, MAX_HOLD)
 }
 
-// A kill that dealt more than TAKEDOWN_RATIO times the unit's shields. Not
-// a player, and not one that had nothing left to lose.
+// A kill of an enemy by a player that dealt more than TAKEDOWN_RATIO times
+// the unit's shields. Not a player, scenery or a shot, and not one that had
+// nothing left to lose.
 is_takedown :: proc "contextless" (ev: sim.Hit_Event) -> bool {
-	return ev.killed && !ev.player && ev.shields > 0 && ev.damage > TAKEDOWN_RATIO * ev.shields
+	return ev.killed && ev.enemy && !ev.player && ev.shields > 0 && ev.damage > TAKEDOWN_RATIO * ev.shields
 }
 
 // A rise from 0 to 1 over p in [a, b].

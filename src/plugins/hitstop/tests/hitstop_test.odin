@@ -27,7 +27,7 @@ the_setting_scales_the_hold_and_zero_turns_it_off :: proc(t: ^testing.T) {
 
 @(test)
 a_takedown_is_a_kill_of_over_three_times_the_shields :: proc(t: ^testing.T) {
-	kill := sim.Hit_Event{damage = 31, shields = 10, killed = true}
+	kill := sim.Hit_Event{damage = 31, shields = 10, killed = true, enemy = true}
 	testing.expect(t, view.is_takedown(kill))
 	kill.damage = 30
 	testing.expect(t, !view.is_takedown(kill), "exactly three times is not more")
@@ -37,7 +37,9 @@ a_takedown_is_a_kill_of_over_three_times_the_shields :: proc(t: ^testing.T) {
 	kill.killed = true
 	kill.player = true
 	testing.expect(t, !view.is_takedown(kill), "never a player")
-	kill = {damage = 5, shields = 0, killed = true}
+	kill = {damage = 31, shields = 10, killed = true}
+	testing.expect(t, !view.is_takedown(kill), "scenery, a shot or a bonus is not an enemy")
+	kill = {damage = 5, shields = 0, killed = true, enemy = true}
 	testing.expect(t, !view.is_takedown(kill), "nothing left to take")
 }
 
