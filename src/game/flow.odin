@@ -250,10 +250,10 @@ pause_draw :: proc(fl: ^Flow, r: ^render.Renderer, scale: f32, paused: bool, not
 // (a local 2 Player session).
 @(private = "file")
 pause_key_pressed :: proc(fl: ^Flow) -> bool {
-	if binding_pressed(&fl.prefs.saved.bindings[0], .Pause) {
+	if binding_pressed(fl.prefs, 0, .Pause) {
 		return true
 	}
-	return sim.player_at(fl.state, 1).active && binding_pressed(&fl.prefs.saved.bindings[1], .Pause)
+	return sim.player_at(fl.state, 1).active && binding_pressed(fl.prefs, 1, .Pause)
 }
 
 flow_init :: proc(fl: ^Flow, root: string, defs: ^sim.Defs, state: ^sim.State, r: ^render.Renderer, ps: ^Prefs_State) {
@@ -502,9 +502,9 @@ flow_step :: proc(fl: ^Flow, r: ^render.Renderer, fx: ^render.Effects) {
 			// Player 2 is only in play in a local 2 Player session
 			// (player_setup: `game_type != .Single || number == 0`), and
 			// had no keys at all until Preferences gave them bindings.
-			input := sim.Frame_Input{gather_input(&fl.prefs.saved.bindings[0]), {}}
+			input := sim.Frame_Input{gather_input(fl.prefs, 0), {}}
 			if sim.player_at(fl.state, 1).active {
-				input[1] = gather_input(&fl.prefs.saved.bindings[1])
+				input[1] = gather_input(fl.prefs, 1)
 			}
 			// A local session pauses through flow (.Paused, the original's
 			// kind of pause), never the sim's netplay pause.

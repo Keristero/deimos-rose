@@ -74,10 +74,65 @@ Action :: enum u8 {
 BINDING_SLOTS :: 2
 Bindings :: [Action][BINDING_SLOTS]i32
 
+// What drives a local player: the keyboard's keys, or a controller's buttons
+// and sticks (Prefs.pad_bindings).
+Input_Kind :: enum u8 {
+	Keyboard,
+	Controller,
+}
+
+// A controller binding is 0 for none, a raylib GamepadButton (1..17), or a
+// stick/trigger axis pushed one way: PAD_AXIS + 2*axis, and 1 more for the
+// positive direction.
+PAD_NONE :: 0
+PAD_AXIS :: 100
+
+pad_axis_code :: proc "contextless" (axis: int, positive: bool) -> i32 {
+	return i32(PAD_AXIS + axis * 2 + (positive ? 1 : 0))
+}
+
+// The axis and direction of an axis code; not ok for a button or none.
+pad_axis_of :: proc "contextless" (code: i32) -> (axis: int, positive: bool, ok: bool) {
+	if code < PAD_AXIS {
+		return
+	}
+	return int(code - PAD_AXIS) / 2, (code - PAD_AXIS) % 2 == 1, true
+}
+
+// A controller's name as the system gives it, as chosen in Preferences.
+PAD_NAME_MAX :: 64
+
+Pad_Name :: struct {
+	buf: [PAD_NAME_MAX]u8,
+	len: int,
+}
+
+pad_name_string :: proc(n: ^Pad_Name) -> string {
+	return string(n.buf[:n.len])
+}
+
+pad_name_set :: proc(n: ^Pad_Name, text: string) {
+	out: Pad_Name
+	for i in 0 ..< len(text) {
+		if c := text[i]; c >= 0x20 && c <= 0x7e && out.len < PAD_NAME_MAX {
+			out.buf[out.len] = c
+			out.len += 1
+		}
+	}
+	n^ = out
+}
+
 VOLUME_STEP :: 10 // percent per click of the volume arrows
 
 Prefs :: struct {
 	bindings:     [sim.MAX_PLAYERS]Bindings,
+	// Each local player's device, and for a controller which one (its name
+	// and its place in the system's list, to tell two alike apart) and its
+	// buttons.
+	input:        [sim.MAX_PLAYERS]Input_Kind,
+	pad_name:     [sim.MAX_PLAYERS]Pad_Name,
+	pad_index:    [sim.MAX_PLAYERS]i32,
+	pad_bindings: [sim.MAX_PLAYERS]Bindings,
 	sfx_volume:   int, // percent, 0..100
 	music_volume: int, // percent, 0..100
 	fullscreen:   bool,
@@ -176,7 +231,36 @@ defaults :: proc() -> Prefs {
 		.Change_Air  = {KEY_SEMICOLON, KEY_NONE},
 		.Pause       = {KEY_NONE, KEY_NONE}, // the original has one pause key, player 1's
 	}
+	// A controller's: the d-pad and left stick to move, A and X to fire, B
+	// to change weapon, Start to pause (raylib's Xbox-style names).
+	for &b in p.pad_bindings {
+		b = {
+			.Up          = {1, pad_axis_code(1, false)}, // d-pad up, stick up
+			.Down        = {3, pad_axis_code(1, true)},
+			.Left        = {4, pad_axis_code(0, false)},
+			.Right       = {2, pad_axis_code(0, true)},
+			.Fire_Air    = {7, 12}, // A, right trigger
+			.Fire_Ground = {8, 10}, // X, left trigger
+			.Change_Air  = {6, 11}, // B, right bumper
+			.Pause       = {15, PAD_NONE}, // Start
+		}
+	}
 	return p
+}
+
+// Binds controller `code` to one slot of a player's, first taking it off
+// anything else of theirs it drove. PAD_NONE just clears.
+bind_pad :: proc(p: ^Prefs, player: int, button: Action, slot: int, code: i32) {
+	if code != PAD_NONE {
+		for &codes in p.pad_bindings[player] {
+			for &c in codes {
+				if c == code {
+					c = PAD_NONE
+				}
+			}
+		}
+	}
+	p.pad_bindings[player][button][slot] = code
 }
 
 // Binds `key` to one slot, first taking it off anything else it was bound
@@ -236,6 +320,14 @@ format :: proc(p: ^Prefs, allocator := context.allocator) -> string {
 	for b, player in p.bindings {
 		for keys, button in b {
 			fmt.sbprintf(&sb, "p%d.%s=%d,%d\n", player + 1, BUTTON_KEYS[button], keys[0], keys[1])
+		}
+	}
+	for player in 0 ..< sim.MAX_PLAYERS {
+		fmt.sbprintf(&sb, "p%d.input=%s\n", player + 1, p.input[player] == .Controller ? "controller" : "keyboard")
+		fmt.sbprintf(&sb, "p%d.pad=%s\n", player + 1, pad_name_string(&p.pad_name[player]))
+		fmt.sbprintf(&sb, "p%d.pad_index=%d\n", player + 1, p.pad_index[player])
+		for codes, button in p.pad_bindings[player] {
+			fmt.sbprintf(&sb, "p%d.pad.%s=%d,%d\n", player + 1, BUTTON_KEYS[button], codes[0], codes[1])
 		}
 	}
 	return strings.to_string(sb)
@@ -321,6 +413,9 @@ parse :: proc(text: string) -> Prefs {
 				}
 				continue
 			}
+			if parse_pad_line(name, value, &p) {
+				continue
+			}
 			if player, button, ok := parse_binding(name, value, &p); ok {
 				from_file[player] += {button}
 			}
@@ -398,6 +493,46 @@ parse_binding :: proc(name, value: string, p: ^Prefs) -> (player: int, button: A
 	}
 	p.bindings[player][button] = {i32(k0), i32(k1)}
 	return player, button, true
+}
+
+// A `p<N>.input`, `.pad`, `.pad_index` or `.pad.<action>` line.
+@(private = "file")
+parse_pad_line :: proc(name, value: string, p: ^Prefs) -> bool {
+	if len(name) < 4 || name[0] != 'p' || name[2] != '.' {
+		return false
+	}
+	player := int(name[1] - '1')
+	if player < 0 || player >= sim.MAX_PLAYERS {
+		return false
+	}
+	rest := name[3:]
+	switch rest {
+	case "input":
+		p.input[player] = value == "controller" ? .Controller : .Keyboard
+		return true
+	case "pad":
+		pad_name_set(&p.pad_name[player], value)
+		return true
+	case "pad_index":
+		if v, ok := strconv.parse_int(value); ok {
+			p.pad_index[player] = i32(clamp(v, 0, 15))
+		}
+		return true
+	}
+	if !strings.has_prefix(rest, "pad.") {
+		return false
+	}
+	comma := strings.index_byte(value, ',')
+	for key, b in BUTTON_KEYS {
+		if key == rest[4:] && comma >= 0 {
+			c0, ok0 := strconv.parse_int(value[:comma])
+			c1, ok1 := strconv.parse_int(value[comma + 1:])
+			if ok0 && ok1 {
+				p.pad_bindings[player][b] = {i32(c0), i32(c1)}
+			}
+		}
+	}
+	return true
 }
 
 @(private = "file")

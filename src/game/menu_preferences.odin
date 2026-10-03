@@ -16,6 +16,7 @@ package game
 // the only way to turn classic mode back off from inside the game (D30).
 
 import "core:fmt"
+import "core:strings"
 
 import rl "vendor:raylib"
 
@@ -24,13 +25,15 @@ import "dr:render"
 import "dr:sim"
 import "dr:ui"
 
-@(private = "file") PREFS_TITLE_Y :: 34
-@(private = "file") PREFS_PLAYER_Y :: 64
-@(private = "file") PREFS_KEYS_Y :: 92
-@(private = "file") PREFS_ROW :: 22
-@(private = "file") PREFS_RESET_Y :: 270
+@(private = "file") PREFS_TITLE_Y :: 18
+@(private = "file") PREFS_PLAYER_Y :: 44
+@(private = "file") PREFS_INPUT_Y :: 66
+@(private = "file") PREFS_PAD_Y :: 88
+@(private = "file") PREFS_KEYS_Y :: 114
+@(private = "file") PREFS_ROW :: 20
+@(private = "file") PREFS_RESET_Y :: 276
 @(private = "file") PREFS_OPTIONS_Y :: 300
-@(private = "file") PREFS_BACK_Y :: 436
+@(private = "file") PREFS_BACK_Y :: 438
 @(private = "file") PREFS_STATUS_Y :: 462
 
 @(private = "file") PREFS_LABEL_X :: 130  // left edge of each row's name
@@ -87,6 +90,10 @@ Preferences :: struct {
 	capture_button: prefs.Action,
 	capture_slot:   int,
 
+	input_toggle:             ui.Text_Button, // keyboard or controller, for the player shown
+	pad_prev, pad_next:       ui.Text_Button, // the controller, from the connected ones
+	pad_name:                 ui.Text_Button, // its name (a readout)
+
 	player_prev, player_next: ui.Text_Button,
 	keys:                     [prefs.Action][prefs.BINDING_SLOTS]ui.Text_Button,
 	reset:                    ui.Text_Button,
@@ -125,6 +132,53 @@ option_value :: proc(ps: ^Prefs_State, o: Option) -> string {
 	return ""
 }
 
+// The controller shown on the choice row: the one chosen, or what to do.
+@(private = "file")
+pad_choice_label :: proc(ps: ^Prefs_State, player: int) -> string {
+	if ps.saved.input[player] != .Controller {
+		return "(KEYBOARD)"
+	}
+	name := prefs.pad_name_string(&ps.saved.pad_name[player])
+	if id, ok := pad_of(ps, player); ok {
+		name = pad_name_of(id)
+	} else if name == "" {
+		return "NO CONTROLLER CONNECTED"
+	} else {
+		name = fmt.tprintf("%s (DISCONNECTED)", name)
+	}
+	upper, _ := strings.to_upper(name, context.temp_allocator)
+	if len(upper) > 34 {
+		upper = fmt.tprintf("%s...", upper[:31])
+	}
+	return upper
+}
+
+// Steps `player`'s controller to the next (or previous) of those connected,
+// remembering its name and place.
+@(private = "file")
+pad_choice_step :: proc(ps: ^Prefs_State, player: int, dir: int) {
+	connected := pads_connected()
+	if len(connected) == 0 {
+		return
+	}
+	at := -1
+	if id, ok := pad_of(ps, player); ok {
+		for c, i in connected {
+			if c == id {
+				at = i
+			}
+		}
+	}
+	next := (at + dir + len(connected)) % len(connected)
+	if at < 0 {
+		next = dir > 0 ? 0 : len(connected) - 1
+	}
+	id := connected[next]
+	prefs.pad_name_set(&ps.saved.pad_name[player], pad_name_of(id))
+	ps.saved.pad_index[player] = id
+	prefs_state_save(ps)
+}
+
 // Labels show live values (key names, volumes), so every button is
 // re-centred on its current label each frame before hit-testing.
 @(private = "file")
@@ -132,17 +186,22 @@ preferences_layout :: proc(r: ^render.Renderer, p: ^Preferences, ps: ^Prefs_Stat
 	ui.text_button_relabel(r, &p.player_prev, "<", PREFS_VALUE_X - PREFS_ARROW_DX, PREFS_PLAYER_Y)
 	ui.text_button_relabel(r, &p.player_next, ">", PREFS_VALUE_X + PREFS_ARROW_DX, PREFS_PLAYER_Y)
 	slot_x := PREFS_SLOT_X
+	pad := ps.saved.input[p.player] == .Controller
+	ui.text_button_relabel(r, &p.input_toggle, pad ? "CONTROLLER" : "KEYBOARD", PREFS_VALUE_X, PREFS_INPUT_Y)
+	ui.text_button_relabel(r, &p.pad_prev, "<", PREFS_VALUE_X - 150, PREFS_PAD_Y)
+	ui.text_button_relabel(r, &p.pad_next, ">", PREFS_VALUE_X + 150, PREFS_PAD_Y)
+	ui.text_button_relabel(r, &p.pad_name, pad_choice_label(ps, p.player), PREFS_VALUE_X, PREFS_PAD_Y)
 	for button in prefs.Action {
 		y := PREFS_KEYS_Y + f32(button) * PREFS_ROW
 		for slot in 0 ..< prefs.BINDING_SLOTS {
-			label := key_name(ps.saved.bindings[p.player][button][slot])
+			label := pad ? pad_code_name(ps.saved.pad_bindings[p.player][button][slot]) : key_name(ps.saved.bindings[p.player][button][slot])
 			if p.capturing && p.capture_button == button && p.capture_slot == slot {
-				label = "PRESS A KEY"
+				label = pad ? "PRESS BUTTON" : "PRESS A KEY"
 			}
 			ui.text_button_relabel(r, &p.keys[button][slot], label, slot_x[slot], y)
 		}
 	}
-	ui.text_button_relabel(r, &p.reset, fmt.tprintf("RESET PLAYER %d KEYS", p.player + 1), render.SCREEN_W / 2, PREFS_RESET_Y)
+	ui.text_button_relabel(r, &p.reset, fmt.tprintf("RESET PLAYER %d %s", p.player + 1, pad ? "BUTTONS" : "KEYS"), render.SCREEN_W / 2, PREFS_RESET_Y)
 	for o in Option {
 		y := option_y(o)
 		if o == .Mods {
@@ -191,6 +250,23 @@ preferences_update :: proc(fl: ^Flow, r: ^render.Renderer, p: ^Preferences) {
 	if prev || next {
 		p.player = (p.player + (next ? 1 : sim.MAX_PLAYERS - 1)) % sim.MAX_PLAYERS
 	}
+	if ui.text_button_update(r, &p.input_toggle, mouse, dt) {
+		kind := ps.saved.input[p.player] == .Controller ? prefs.Input_Kind.Keyboard : .Controller
+		ps.saved.input[p.player] = kind
+		if kind == .Controller && prefs.pad_name_string(&ps.saved.pad_name[p.player]) == "" {
+			pad_choice_step(ps, p.player, 1) // the first connected, if any
+		}
+		prefs_state_save(ps)
+	}
+	if ps.saved.input[p.player] == .Controller {
+		if ui.text_button_update(r, &p.pad_prev, mouse, dt) {
+			pad_choice_step(ps, p.player, -1)
+		}
+		if ui.text_button_update(r, &p.pad_next, mouse, dt) {
+			pad_choice_step(ps, p.player, 1)
+		}
+		_ = ui.update_hover_click(p.pad_name.rect, &p.pad_name.hover_time, mouse, dt)
+	}
 	for button in prefs.Action {
 		for slot in 0 ..< prefs.BINDING_SLOTS {
 			if ui.text_button_update(r, &p.keys[button][slot], mouse, dt) {
@@ -202,9 +278,17 @@ preferences_update :: proc(fl: ^Flow, r: ^render.Renderer, p: ^Preferences) {
 		// Re-bound one key at a time so any default the other player has
 		// since taken is moved back, not left bound twice.
 		d := prefs.defaults()
-		for keys, button in d.bindings[p.player] {
-			for k, slot in keys {
-				prefs.bind(&ps.saved, p.player, button, slot, k)
+		if ps.saved.input[p.player] == .Controller {
+			for codes, button in d.pad_bindings[p.player] {
+				for c, slot in codes {
+					prefs.bind_pad(&ps.saved, p.player, button, slot, c)
+				}
+			}
+		} else {
+			for keys, button in d.bindings[p.player] {
+				for k, slot in keys {
+					prefs.bind(&ps.saved, p.player, button, slot, k)
+				}
 			}
 		}
 		prefs_state_save(ps)
@@ -250,6 +334,27 @@ preferences_update :: proc(fl: ^Flow, r: ^render.Renderer, p: ^Preferences) {
 	}
 }
 
+// The first button pressed, or stick or trigger pushed past the deadzone, on
+// controller `id` this frame, as a binding code.
+@(private = "file")
+pad_input_pressed :: proc(id: i32) -> (code: i32, ok: bool) {
+	if b := rl.GetGamepadButtonPressed(); b != .UNKNOWN && rl.IsGamepadButtonPressed(id, b) {
+		return i32(b), true
+	}
+	for axis in 0 ..< int(rl.GetGamepadAxisCount(id)) {
+		v := rl.GetGamepadAxisMovement(id, rl.GamepadAxis(axis))
+		// The triggers rest at -1 on some pads: only a push towards +1 counts.
+		if axis >= 4 {
+			if v > 0.8 {
+				return prefs.pad_axis_code(axis, true), true
+			}
+		} else if abs(v) > 0.7 {
+			return prefs.pad_axis_code(axis, v > 0), true
+		}
+	}
+	return
+}
+
 // The first key pressed after a binding's button was clicked becomes that
 // binding. Escape cancels and Backspace clears the slot, so neither can be
 // bound -- both are needed to operate this screen from the keyboard. A
@@ -258,6 +363,24 @@ preferences_update :: proc(fl: ^Flow, r: ^render.Renderer, p: ^Preferences) {
 preferences_capture :: proc(p: ^Preferences, ps: ^Prefs_State) {
 	if rl.IsMouseButtonPressed(.LEFT) || rl.IsMouseButtonPressed(.RIGHT) {
 		p.capturing = false
+		return
+	}
+	if ps.saved.input[p.player] == .Controller {
+		// Escape or Backspace on the keyboard cancel or clear; otherwise the
+		// first button pressed or stick pushed on the chosen controller.
+		if rl.IsKeyPressed(.ESCAPE) {
+			p.capturing = false
+		} else if rl.IsKeyPressed(.BACKSPACE) {
+			prefs.bind_pad(&ps.saved, p.player, p.capture_button, p.capture_slot, prefs.PAD_NONE)
+			prefs_state_save(ps)
+			p.capturing = false
+		} else if id, ok := pad_of(ps, p.player); ok {
+			if code, got := pad_input_pressed(id); got {
+				prefs.bind_pad(&ps.saved, p.player, p.capture_button, p.capture_slot, code)
+				prefs_state_save(ps)
+				p.capturing = false
+			}
+		}
 		return
 	}
 	key := rl.GetKeyPressed()
@@ -297,6 +420,16 @@ preferences_draw :: proc(r: ^render.Renderer, p: ^Preferences, ps: ^Prefs_State)
 	ui.text_button_draw(r, &p.player_prev)
 	ui.text_button_draw(r, &p.player_next)
 
+	pad := ps.saved.input[p.player] == .Controller
+	ui.menu_draw_text(r, "INPUT", PREFS_LABEL_X, PREFS_INPUT_Y + 5, header)
+	ui.text_button_draw(r, &p.input_toggle)
+	ui.menu_draw_text(r, "CONTROLLER", PREFS_LABEL_X, PREFS_PAD_Y + 5, header)
+	if pad {
+		ui.text_button_draw(r, &p.pad_prev)
+		ui.text_button_draw(r, &p.pad_next)
+	}
+	ui.text_button_draw(r, &p.pad_name, pad)
+
 	for button in prefs.Action {
 		y := PREFS_KEYS_Y + i32(button) * PREFS_ROW
 		ui.menu_draw_text(r, BUTTON_NAMES[button], PREFS_LABEL_X, y + 5, white)
@@ -322,12 +455,12 @@ preferences_draw :: proc(r: ^render.Renderer, p: ^Preferences, ps: ^Prefs_State)
 	status: string
 	switch {
 	case p.capturing:
-		status = fmt.tprintf("PLAYER %d %s: PRESS A KEY -- BACKSPACE CLEARS, ESC CANCELS",
-			p.player + 1, BUTTON_NAMES[p.capture_button])
+		status = fmt.tprintf("PLAYER %d %s: PRESS %s -- BACKSPACE CLEARS, ESC CANCELS",
+			p.player + 1, BUTTON_NAMES[p.capture_button], pad ? "A BUTTON OR PUSH A STICK" : "A KEY")
 	case p.player == 1:
-		status = "PLAYER 2'S KEYS ARE USED IN LOCAL 2 PLAYER GAMES"
+		status = "PLAYER 2'S CONTROLS ARE USED IN LOCAL 2 PLAYER GAMES"
 	case:
-		status = "PLAYER 1'S KEYS ARE ALSO YOURS IN NETPLAY"
+		status = "PLAYER 1'S CONTROLS ARE ALSO YOURS IN NETPLAY"
 	}
 	ui.menu_draw_text(r, status, render.SCREEN_W / 2, PREFS_STATUS_Y, dim, .Centre)
 }

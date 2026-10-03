@@ -1245,7 +1245,7 @@ netplay_playing_step :: proc(fl: ^Flow, r: ^render.Renderer, fx: ^render.Effects
 	// This machine's player, whichever slot it plays. Pause is one of its
 	// input bits (sim.session_step): it reaches the peer like any button,
 	// so both sides pause, and resume, on the same frame.
-	local := gather_input(&fl.prefs.saved.bindings[0])
+	local := gather_input(fl.prefs, 0)
 	net.rollback_session_advance(&nl.rs, local)
 	if held := sim.session_frozen(fl.state); held != nl.was_held {
 		nl.was_held = held

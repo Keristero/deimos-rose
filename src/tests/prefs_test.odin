@@ -219,3 +219,32 @@ prefs_mod_toggle_follows_dependencies :: proc(t: ^testing.T) {
 	prefs.mod_toggle(&mods, loadout.ID)
 	testing.expect_value(t, mods, sim.Mods{int(extra_prefs.ID)})
 }
+
+@(test)
+controller_choice_and_bindings_round_trip :: proc(t: ^testing.T) {
+	p := prefs.defaults()
+	p.input[1] = .Controller
+	prefs.pad_name_set(&p.pad_name[1], "Xbox Wireless Controller, 2nd=gen")
+	p.pad_index[1] = 2
+	prefs.bind_pad(&p, 1, .Fire_Air, 0, 9)
+	got := prefs.parse(prefs.format(&p, context.temp_allocator))
+	testing.expect_value(t, got, p)
+	testing.expect_value(t, got.input[0], prefs.Input_Kind.Keyboard)
+	testing.expect_value(t, prefs.pad_name_string(&got.pad_name[1]), "Xbox Wireless Controller, 2nd=gen")
+	testing.expect_value(t, got.pad_index[1], i32(2))
+	testing.expect_value(t, got.pad_bindings[1][.Fire_Air][0], i32(9))
+}
+
+@(test)
+binding_a_controller_input_frees_it_from_the_others_of_that_player :: proc(t: ^testing.T) {
+	p := prefs.defaults()
+	// A (7) fires air by default; bound to Pause it leaves Fire Air.
+	prefs.bind_pad(&p, 0, .Pause, 1, 7)
+	testing.expect_value(t, p.pad_bindings[0][.Fire_Air][0], i32(prefs.PAD_NONE))
+	testing.expect_value(t, p.pad_bindings[0][.Pause][1], i32(7))
+	testing.expect_value(t, p.pad_bindings[1][.Fire_Air][0], i32(7)) // the other player's own
+	axis, positive, ok := prefs.pad_axis_of(prefs.pad_axis_code(1, true))
+	testing.expect(t, ok && axis == 1 && positive)
+	_, _, is_axis := prefs.pad_axis_of(7)
+	testing.expect(t, !is_axis)
+}

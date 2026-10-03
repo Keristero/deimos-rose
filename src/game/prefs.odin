@@ -72,14 +72,87 @@ prefs_set_fullscreen :: proc(ps: ^Prefs_State, on: bool) {
 }
 
 
+// The stick deflection that counts as a push, 0..1.
+PAD_DEADZONE :: 0.5
+
+// The connected controllers' system ids, in order.
+pads_connected :: proc(allocator := context.temp_allocator) -> []i32 {
+	out := make([dynamic]i32, 0, 4, allocator)
+	for id in 0 ..< i32(16) {
+		if rl.IsGamepadAvailable(id) {
+			append(&out, id)
+		}
+	}
+	return out[:]
+}
+
+pad_name_of :: proc(id: i32) -> string {
+	return string(rl.GetGamepadName(id))
+}
+
+// The controller `player` has chosen, if it is connected: the one with the
+// saved name at the saved place, else the first with the name; with no name
+// saved, the one at the player's own place, else the first.
+pad_of :: proc(ps: ^Prefs_State, player: int) -> (id: i32, ok: bool) {
+	saved := ps.saved
+	name := prefs.pad_name_string(&saved.pad_name[player])
+	connected := pads_connected()
+	if name == "" {
+		for c in connected {
+			if int(c) == player {
+				return c, true
+			}
+		}
+		return len(connected) > 0 ? connected[0] : 0, len(connected) > 0
+	}
+	for c in connected {
+		if c == saved.pad_index[player] && pad_name_of(c) == name {
+			return c, true
+		}
+	}
+	for c in connected {
+		if pad_name_of(c) == name {
+			return c, true
+		}
+	}
+	return
+}
+
+// Whether controller binding `code` of pad `id` is held.
+pad_code_down :: proc(id: i32, code: i32) -> bool {
+	if code == prefs.PAD_NONE {
+		return false
+	}
+	if axis, positive, is_axis := prefs.pad_axis_of(code); is_axis {
+		v := rl.GetGamepadAxisMovement(id, rl.GamepadAxis(axis))
+		return positive ? v > PAD_DEADZONE : v < -PAD_DEADZONE
+	}
+	return rl.IsGamepadButtonDown(id, rl.GamepadButton(code))
+}
+
 // Presentation-side input capture: the simulation never reads a device.
 // Every button is read as held; the sim does its own edge detection (e.g.
 // weapons_process's `switch_ && !h.prev_switch` for Change_Air), so reading
 // Change_Air as a one-frame IsKeyPressed, as this once did, could only lose
-// a press that landed on a render frame with no sim step in it.
-gather_input :: proc(b: ^prefs.Bindings) -> sim.Buttons {
+// a press that landed on a render frame with no sim step in it. The keys or
+// the controller, as `player` chose in Preferences.
+gather_input :: proc(ps: ^Prefs_State, player: int) -> sim.Buttons {
 	out: sim.Buttons
-	for keys, action in b {
+	if ps.saved.input[player] == .Controller {
+		id, ok := pad_of(ps, player)
+		if !ok {
+			return out
+		}
+		for codes, action in ps.saved.pad_bindings[player] {
+			for c in codes {
+				if pad_code_down(id, c) {
+					out += {sim.Button(action)}
+				}
+			}
+		}
+		return out
+	}
+	for keys, action in ps.saved.bindings[player] {
 		for k in keys {
 			if k != prefs.KEY_NONE && rl.IsKeyDown(rl.KeyboardKey(k)) {
 				out += {sim.Button(action)}
@@ -89,14 +162,85 @@ gather_input :: proc(b: ^prefs.Bindings) -> sim.Buttons {
 	return out
 }
 
-// Whether any key bound to `action` went down this frame.
-binding_pressed :: proc(b: ^prefs.Bindings, action: prefs.Action) -> bool {
-	for k in b[action] {
-		if k != prefs.KEY_NONE && rl.IsKeyPressed(rl.KeyboardKey(k)) {
-			return true
+@(private = "file") axis_was: [sim.MAX_PLAYERS][prefs.Action][prefs.BINDING_SLOTS]bool
+
+// Whether `player`'s `action` went down this frame. Pause answers to the
+// keyboard's binding too, whatever the player drives with, so Escape always
+// pauses a game played on a controller.
+binding_pressed :: proc(ps: ^Prefs_State, player: int, action: prefs.Action) -> bool {
+	pressed := false
+	if ps.saved.input[player] == .Controller {
+		if id, ok := pad_of(ps, player); ok {
+			for c, slot in ps.saved.pad_bindings[player][action] {
+				down := pad_code_down(id, c)
+				if down && !axis_was[player][action][slot] && (c >= prefs.PAD_AXIS || rl.IsGamepadButtonPressed(id, rl.GamepadButton(c))) {
+					pressed = true
+				}
+				axis_was[player][action][slot] = down
+			}
+		}
+		if action != .Pause {
+			return pressed
 		}
 	}
-	return false
+	for k in ps.saved.bindings[player][action] {
+		if k != prefs.KEY_NONE && rl.IsKeyPressed(rl.KeyboardKey(k)) {
+			pressed = true
+		}
+	}
+	return pressed
+}
+
+// A short, upper-case name for controller binding `code`.
+pad_code_name :: proc(code: i32) -> string {
+	if code == prefs.PAD_NONE {
+		return "--"
+	}
+	if axis, positive, ok := prefs.pad_axis_of(code); ok {
+		names := [6]string{"LEFT STICK", "LEFT STICK", "RIGHT STICK", "RIGHT STICK", "LEFT TRIGGER", "RIGHT TRIGGER"}
+		dirs := [6][2]string{{"LEFT", "RIGHT"}, {"UP", "DOWN"}, {"LEFT", "RIGHT"}, {"UP", "DOWN"}, {"", ""}, {"", ""}}
+		if axis >= 0 && axis < 6 {
+			return strings.trim_space(fmt.tprintf("%s %s", names[axis], dirs[axis][positive ? 1 : 0]))
+		}
+		return fmt.tprintf("AXIS %d", axis)
+	}
+	#partial switch rl.GamepadButton(code) {
+	case .LEFT_FACE_UP:
+		return "DPAD UP"
+	case .LEFT_FACE_RIGHT:
+		return "DPAD RIGHT"
+	case .LEFT_FACE_DOWN:
+		return "DPAD DOWN"
+	case .LEFT_FACE_LEFT:
+		return "DPAD LEFT"
+	case .RIGHT_FACE_UP:
+		return "BUTTON Y"
+	case .RIGHT_FACE_RIGHT:
+		return "BUTTON B"
+	case .RIGHT_FACE_DOWN:
+		return "BUTTON A"
+	case .RIGHT_FACE_LEFT:
+		return "BUTTON X"
+	case .LEFT_TRIGGER_1:
+		return "LEFT BUMPER"
+	case .LEFT_TRIGGER_2:
+		return "LEFT TRIGGER"
+	case .RIGHT_TRIGGER_1:
+		return "RIGHT BUMPER"
+	case .RIGHT_TRIGGER_2:
+		return "RIGHT TRIGGER"
+	case .MIDDLE_LEFT:
+		return "BACK"
+	case .MIDDLE:
+		return "GUIDE"
+	case .MIDDLE_RIGHT:
+		return "START"
+	case .LEFT_THUMB:
+		return "LEFT STICK PRESS"
+	case .RIGHT_THUMB:
+		return "RIGHT STICK PRESS"
+	}
+	return fmt.tprintf("PAD %d", code)
 }
 
 // A short, upper-case name for a key, for the Preferences screen.
