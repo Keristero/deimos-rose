@@ -224,6 +224,7 @@ Renderer :: struct {
 	// and wrecks straight into it; this is the same buffer.
 	terrain:       rl.RenderTexture2D,
 	terrain_level: ^sim.Level_Def,
+	terrain_k: i32, // how many times the original's size the buffer is (terrain_prepare)
 	terrain_qt:    bool, // built with QuickTime's gamma (classic mode)
 	// The step whose marks the map holds, and whether this frame is the
 	// first drawn of a new one: marks go in once a step, however many
@@ -289,6 +290,11 @@ Renderer :: struct {
 	// step counts it down (game/flow.odin's flow_held). Never in netplay,
 	// whose peers step in lockstep. Presentation only.
 	hold:            int,
+	// How much slower than real time the game runs, 0 (normal) to just
+	// under 1: main.odin's accumulator takes (1 - slowdown) of each frame's
+	// time (flow_speed). Set by a plugin's view, hitstop's kill cam; the
+	// same rules as `hold`.
+	slowdown:        f32,
 }
 
 // Past this many pixels in one step, something jumped (a respawn, a new
@@ -732,7 +738,7 @@ present :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, scale: f32) 
 // The map buffer for a level: the image, plus every mark burned into it
 // since the level started. Rebuilt when the level changes.
 terrain_prepare :: proc(r: ^Renderer, s: ^sim.State) {
-	if r.terrain_level == sim.level_def(s) && r.terrain.id != 0 && r.terrain_qt == r.textures.quicktime_gamma {
+	if r.terrain_level == sim.level_def(s) && r.terrain.id != 0 && r.terrain_qt == r.textures.quicktime_gamma && r.terrain_k == terrain_scale(&r.textures, sim.level_def(s)) {
 		return
 	}
 	tex, ok := terrain_texture(&r.textures, sim.level_def(s))
@@ -742,14 +748,18 @@ terrain_prepare :: proc(r: ^Renderer, s: ^sim.State) {
 	if r.terrain.id != 0 {
 		rl.UnloadRenderTexture(r.terrain)
 	}
-	r.terrain = rl.LoadRenderTexture(tex.width, tex.height)
+	// A redrawn map (a texture pack's) is k times the original's size: the
+	// buffer is too, and every mark goes in at k times its place.
+	px := texture_pixels(&r.textures, tex)
+	r.terrain_k = px.x / max(tex.width, 1)
+	r.terrain = rl.LoadRenderTexture(px.x, px.y)
 	r.terrain_level = sim.level_def(s)
 	r.terrain_qt = r.textures.quicktime_gamma
 	rl.BeginTextureMode(r.terrain)
 	rl.ClearBackground(rl.BLACK)
 	// A render texture is bottom-up, so the map goes in flipped and every
 	// later read flips back.
-	rl.DrawTextureRec(tex, {0, 0, f32(tex.width), -f32(tex.height)}, {0, 0}, rl.WHITE)
+	rl.DrawTexturePro(tex, {0, 0, f32(tex.width), -f32(tex.height)}, {0, 0, f32(px.x), f32(px.y)}, {0, 0}, 0, rl.WHITE)
 	rl.EndTextureMode()
 	resume_canvas(r)
 }
@@ -807,8 +817,10 @@ terrain_draw :: proc(r: ^Renderer, tex: rl.Texture2D, src: rl.Rectangle, x, y: i
 	h := i32(src.height * scale)
 	flipped := src
 	flipped.height = -flipped.height // the buffer is bottom-up
-	top := f32(r.terrain.texture.height) - f32(y - lifecycle.halve(h)) - f32(h)
+	top := f32(r.terrain.texture.height / r.terrain_k) - f32(y - lifecycle.halve(h)) - f32(h)
 	dst := rl.Rectangle{f32(x - lifecycle.halve(w)), top, f32(w), f32(h)}
+	k := f32(r.terrain_k)
+	dst = {dst.x * k, dst.y * k, dst.width * k, dst.height * k}
 	rl.DrawTexturePro(tex, flipped, dst, {0, 0}, 0, tint)
 }
 
@@ -872,7 +884,8 @@ draw_terrain :: proc(r: ^Renderer, s: ^sim.State, scale: f32) {
 	left := max(r.side_scroll + 32, 0)
 	// The map went into the buffer flipped, so it reads like any other
 	// texture from here on. r.view_top is fractional when interpolating.
-	src := rl.Rectangle{left, r.view_top, w, h}
+	k := f32(r.terrain_k)
+	src := rl.Rectangle{left * k, r.view_top * k, w * k, h * k}
 	dst := rl.Rectangle{VIEW_X * scale, 0, w * scale, h * scale}
 	rl.DrawTexturePro(r.terrain.texture, src, dst, {0, 0}, 0, rl.WHITE)
 }

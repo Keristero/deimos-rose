@@ -109,3 +109,99 @@ the_boom_is_deep_loud_and_dies_away :: proc(t: ^testing.T) {
 	hz := f32(crossings) / 2 / (f32(len(body)) / view.BOOM_RATE)
 	testing.expect(t, hz < 100 && hz > 15, "a low boom")
 }
+
+@(test)
+the_slowdown_deepens_with_the_damage :: proc(t: ^testing.T) {
+	testing.expect(t, abs(view.slow_speed(0) - 0.30) < 1e-5)
+	testing.expect(t, abs(view.slow_speed(1) - 0.01) < 1e-5)
+	testing.expect(t, view.slow_speed(view.slow_power(4)) < view.slow_speed(view.slow_power(0.5)), "more damage, slower")
+	testing.expect_value(t, view.slow_power(9), 1)
+	testing.expect_value(t, view.speed_at(0, 1), 1) // real time before it
+	testing.expect(t, abs(view.speed_at(0.4, 1) - 0.01) < 1e-5) // the bottom of it
+	testing.expect_value(t, view.speed_at(1, 1), 1) // and back after
+	testing.expect(t, view.speed_at(0.4, 0) >= 0.3 - 1e-6)
+	testing.expect(t, view.speed_at(0.85, 1) > 0.01 && view.speed_at(0.85, 1) < 1, "easing out")
+}
+
+@(test)
+the_sound_slows_and_gets_reverb_with_the_damage :: proc(t: ^testing.T) {
+	testing.expect_value(t, view.audio_slow_at(0, 1), 0)
+	testing.expect(t, view.audio_slow_at(0.4, 1) > view.audio_slow_at(0.4, 0))
+	testing.expect(t, view.audio_slow_at(0.4, 1) < 1)
+	testing.expect(t, view.reverb_at(0.4, 1) > view.reverb_at(0.4, 0))
+	testing.expect_value(t, view.reverb_at(0, 1), 0)
+	testing.expect_value(t, view.reverb_at(1, 1), 0)
+}
+
+@(test)
+streaks_are_named_as_the_game_calls_them :: proc(t: ^testing.T) {
+	want := [8]string{"Takedown", "Multi Kill", "Oh Baby, a Triple", "Quad Kill", "Annihilation", "Six Kills", "Killamanjaro", "Project Octopath Killer"}
+	for name, i in want {
+		testing.expect_value(t, view.streak_phrase(i + 1), name)
+	}
+	testing.expect_value(t, view.streak_text(3), "OH BABY A TRIPLE")
+	testing.expect_value(t, view.streak_phrase(50), "Half Century Of Hell")
+	testing.expect_value(t, view.streak_phrase(51), "Super Takedown")
+	testing.expect_value(t, view.streak_phrase(100), "Super Half Century Of Hell")
+	testing.expect_value(t, view.streak_phrase(101), "Super Duper Takedown")
+	testing.expect_value(t, view.streak_phrase(205), "Super Duper Annihilation")
+	for n in 1 ..= 50 {
+		testing.expect(t, view.streak_title(n) != "", "every streak to 50 has a title")
+	}
+	testing.expect_value(t, view.streak_title(50 + 1), view.streak_title(1))
+}
+
+@(test)
+a_streak_lapses_after_its_window :: proc(t: ^testing.T) {
+	testing.expect_value(t, view.streak_after(0, 0, 5), 1)
+	testing.expect_value(t, view.streak_after(1, 10, 10 + view.STREAK_WINDOW), 2)
+	testing.expect_value(t, view.streak_after(4, 10, 10 + view.STREAK_WINDOW + 1), 1)
+}
+
+@(test)
+every_streak_has_a_clip :: proc(t: ^testing.T) {
+	for n in 1 ..= 160 {
+		clips := view.announcer_clips(n, context.temp_allocator)
+		testing.expect(t, len(clips) >= 1 && len(clips) <= 2)
+	}
+	testing.expect_value(t, len(view.announcer_clips(1, context.temp_allocator)), 1)
+	testing.expect_value(t, len(view.announcer_clips(51, context.temp_allocator)), 2)
+	testing.expect_value(t, view.announcer_clips(101, context.temp_allocator)[0], "super_duper")
+	testing.expect_value(t, view.announcer_clips(8, context.temp_allocator)[0], "08")
+}
+
+@(test)
+the_reverb_leaves_silence_alone_and_rings_after_a_click :: proc(t: ^testing.T) {
+	rv := new(view.Reverb)
+	defer free(rv)
+	quiet := make([]f32, 2000, context.temp_allocator)
+	view.reverb_process(rv, quiet, 1)
+	for v in quiet {
+		testing.expect_value(t, v, 0)
+	}
+	click := make([]f32, 8000, context.temp_allocator)
+	click[0], click[1] = 1, 1
+	view.reverb_process(rv, click, 0.8)
+	tail: f32
+	for v in click[4000:] {
+		tail = max(tail, abs(v))
+	}
+	testing.expect(t, tail > 0.001, "a tail well after the click")
+	testing.expect(t, tail < 1, "and it does not run away")
+	dry := make([]f32, 400, context.temp_allocator)
+	dry[10], dry[11] = 0.5, 0.5
+	view.reverb_process(rv, dry, 0)
+	testing.expect_value(t, dry[10], 0.5) // no wet, no change
+}
+
+@(test)
+the_embedded_clips_decode :: proc(t: ^testing.T) {
+	for n in 1 ..= 50 {
+		for name in view.announcer_clips(n, context.temp_allocator) {
+			testing.expect(t, view.announcer_frames(name) > 2000, "a spoken clip")
+		}
+	}
+	testing.expect(t, view.announcer_frames("super") > 2000)
+	testing.expect(t, view.announcer_frames("super_duper") > 2000)
+	testing.expect_value(t, view.announcer_frames("nope"), 0)
+}

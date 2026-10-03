@@ -591,6 +591,7 @@ flow_music_update :: proc(fl: ^Flow, r: ^render.Renderer) {
 				rl.ResumeMusicStream(fl.music)
 			}
 		}
+		rl.SetMusicPitch(fl.music, 1 - r.textures.audio_slow)
 		rl.UpdateMusicStream(fl.music)
 	}
 	fl.music_paused = fl.music.frameCount != 0 && (fl.mode == .Paused || (fl.mode == .Playing && netplay_plugin.paused(fl.state)))
@@ -629,6 +630,18 @@ flow_held :: proc(fl: ^Flow, r: ^render.Renderer) -> bool {
 	}
 	r.hold -= 1
 	return true
+}
+
+// How fast the game runs this frame, 1 for real time: what a plugin's view
+// slowed it to (Renderer.slowdown, the kill cam's). A slowdown only means
+// anything to a session in play on this machine alone, so it ends with
+// anything else, and the sound's with it.
+flow_speed :: proc(fl: ^Flow, r: ^render.Renderer) -> f64 {
+	if fl.mode != .Playing || fl.netplay_active || sim.session_frozen(fl.state) {
+		r.slowdown, r.textures.audio_slow = 0, 0
+		return 1
+	}
+	return f64(clamp(1 - r.slowdown, 0.001, 1))
 }
 
 // The presentation effects' step, after a sim step. They freeze with the

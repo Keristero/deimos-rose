@@ -267,7 +267,7 @@ main :: proc() {
 			renderer.shadows = !renderer.shadows
 		}
 		flow_handle_input(&flow, &renderer)
-		accumulator += f64(rl.GetFrameTime())
+		accumulator += f64(rl.GetFrameTime()) * flow_speed(&flow, &renderer)
 		for steps := 0; accumulator >= step_dt && steps < MAX_STEPS_PER_FRAME; steps += 1 {
 			was_playing := flow.mode == .Playing
 			if high {

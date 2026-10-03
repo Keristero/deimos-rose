@@ -4,13 +4,15 @@ package hitstop_view
 // functions of numbers, so the tests need no window.
 
 import "core:math"
+import "core:strings"
 
 import "dr:sim"
 
 STEP_HZ :: 30 // a step of the game, in seconds: 1 / STEP_HZ
 
 MAX_HOLD :: 15 // steps, for an ordinary hit however hard
-TAKEDOWN_STEPS :: 54 // steps the kill cam lasts
+TAKEDOWN_SECONDS :: 2.8 // the kill cam, on the clock
+STREAK_WINDOW :: 120 // steps (4 s of the game) a kill streak is kept alive between kills
 
 // Steps to hold for a hit of `damage`, scaled by the setting `strength`
 // (percent, 0 turns it off): 1 + 3 * sqrt(damage). Damage in this game is
@@ -84,4 +86,94 @@ shake_power :: proc "contextless" (damage: f32) -> f32 {
 shake_at :: proc "contextless" (p, power: f32) -> f32 {
 	land := 1 - ramp(p, 0, 0.55)
 	return clamp(land * land + 0.12 * (1 - ramp(p, 0.55, 0.9)), 0, 1) * power
+}
+
+// How much damage slows the game for the kill cam, 0..1: 9 or more is all.
+slow_power :: proc "contextless" (damage: f32) -> f32 {
+	return clamp(math.sqrt(max(damage, 0)) / 3, 0, 1)
+}
+
+// The speed the game runs at in the middle of the kill cam: 30% for a light
+// blow down to 1% for a heavy one.
+SLOW_LIGHTEST :: 0.30
+SLOW_HEAVIEST :: 0.01
+slow_speed :: proc "contextless" (power: f32) -> f32 {
+	return SLOW_LIGHTEST + (SLOW_HEAVIEST - SLOW_LIGHTEST) * clamp(power, 0, 1)
+}
+
+// How far into the slow-motion the kill cam is at `p`: it drops into it in
+// the first tenth, stays, and comes back out over the last quarter.
+slow_at :: proc "contextless" (p: f32) -> f32 {
+	return ramp(p, 0, 0.1) * (1 - ramp(p, 0.72, 1))
+}
+
+// The game's speed at `p` through a kill cam of `power` (slow_power).
+speed_at :: proc "contextless" (p, power: f32) -> f32 {
+	return 1 - slow_at(p) * (1 - slow_speed(power))
+}
+
+// How much slower the sound plays at `p`: a heavier blow drags it down
+// further, to about half speed.
+audio_slow_at :: proc "contextless" (p, power: f32) -> f32 {
+	return slow_at(p) * (0.25 + 0.3 * power)
+}
+
+// How much reverb is on the sound at `p`, 0..1, growing with the damage.
+reverb_at :: proc "contextless" (p, power: f32) -> f32 {
+	return slow_at(p) * (0.3 + 0.7 * power)
+}
+
+// A kill streak's titles: line N of announcer/streaks.txt is streak N.
+STREAK_TITLES :: #load("../announcer/streaks.txt", string)
+STREAK_TITLE_COUNT :: 50
+
+// Which of the 50 titles streak `n` (1 or more) is named by, 1 to 50: past
+// 50 they come round again.
+streak_index :: proc "contextless" (n: int) -> int {
+	return (max(n, 1) - 1) % STREAK_TITLE_COUNT + 1
+}
+
+// 0 for none, 1 for Super (51 to 100), 2 for Super Duper (101 on).
+streak_tier :: proc "contextless" (n: int) -> int {
+	return min((max(n, 1) - 1) / STREAK_TITLE_COUNT, 2)
+}
+
+// The title line of streak `n`, as spoken ("Oh Baby, a Triple").
+streak_title :: proc(n: int) -> string {
+	want := streak_index(n)
+	rest := STREAK_TITLES
+	for i := 1; ; i += 1 {
+		line, _, more := strings.partition(rest, "\n")
+		if i == want {
+			return strings.trim_space(line)
+		}
+		if more == "" {
+			return ""
+		}
+		rest = more
+	}
+}
+
+// What is spoken and shown for streak `n`: "Takedown", "Quad Kill", ...,
+// "Super Takedown" past 50, "Super Duper Takedown" past 100.
+streak_phrase :: proc(n: int, allocator := context.temp_allocator) -> string {
+	prefix := [3]string{"", "Super ", "Super Duper "}
+	return strings.concatenate({prefix[streak_tier(n)], streak_title(n)}, allocator)
+}
+
+// What is drawn: the phrase, upper case, without its commas.
+streak_text :: proc(n: int, allocator := context.temp_allocator) -> string {
+	up, _ := strings.to_upper(streak_phrase(n, allocator), allocator)
+	text, _ := strings.remove_all(up, ",", allocator)
+	return text
+}
+
+// A player's streak after a kill at step `now`, from their `count` and the
+// step of their last kill: it goes on within STREAK_WINDOW steps, else it
+// starts again at 1.
+streak_after :: proc "contextless" (count, last, now: int) -> int {
+	if count > 0 && now - last <= STREAK_WINDOW {
+		return count + 1
+	}
+	return 1
 }

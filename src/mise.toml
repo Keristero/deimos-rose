@@ -380,6 +380,10 @@ description = "Our menu render beside the original's (MENU=main); slow, needs or
 depends = ["build"]
 run = "bash tools/oracle/menu_compare.sh"
 
+[tasks."hitstop:announcer"]
+description = "Regenerate the kill-streak announcer's clips (plugins/hitstop/announcer/streaks.txt) with Moonshine TTS and ffmpeg into plugins/hitstop/view/clips; commit the result. Never plays on a device"
+run = "bash plugins/hitstop/announcer/generate.sh"
+
 [tasks."menu-shot"]
 description = "Render one of our own menu screens headlessly, no comparison (MENU=main [OUT=path]; MENU=restarted checks a new game starts with none of the last one's particles; DR_SHOT_HUE=63 sets the accent on preferences_extras; MENU=preferences_extras_sliders shows the Extras page with Realtime Lighting on, MENU=preferences_mods shows the Mods page, and preferences_mods_end its last rows (DR_PLUGINS=$PWD/tests/fixtures/plugins:$PWD/plugins adds the data plugin fixtures; MENU=level_select_campaigns shows Level Select on the fixture campaign, and netplay_lobby_campaigns the host's lobby); MENU=reward, reward_2p and level_select_easy show easy mode; MENU=loadout, loadout_2p, loadout_placed, chaingun, chaingun_charge, chaingun_release, discharge_windup, discharge and discharge_charge show New Weapons; MENU=rear_gun_side shows the Rear Gun's side volleys) -- for a quick look, or debug MENU cases from run_menu_shot"
 depends = ["build"]
