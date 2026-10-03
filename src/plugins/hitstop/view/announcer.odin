@@ -61,6 +61,7 @@ announcer_clips :: proc(n: int, allocator := context.temp_allocator) -> []string
 // without an audio device or without the clips.
 announce :: proc(n: int, volume: f32) {
 	if !rl.IsAudioDeviceReady() {
+		rl.TraceLog(.WARNING, "announcer: no audio device")
 		return
 	}
 	pcm := make([dynamic]i16, 0, 44100, context.temp_allocator)
@@ -80,8 +81,10 @@ announce :: proc(n: int, volume: f32) {
 		rl.UnloadWave(wave)
 	}
 	if len(pcm) == 0 {
+		rl.TraceLog(.WARNING, "announcer: streak %d has no clips", i32(n))
 		return
 	}
+	rl.TraceLog(.INFO, "announcer: streak %d, %d frames, volume %.2f", i32(n), i32(len(pcm)), volume)
 	if voiced {
 		rl.StopSound(voice)
 		rl.UnloadSound(voice)

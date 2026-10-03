@@ -53,7 +53,7 @@ boom_play :: proc(volume: f32) {
 		wave := rl.Wave{frameCount = u32(len(pcm)), sampleRate = BOOM_RATE, sampleSize = 16, channels = 1, data = raw_data(pcm)}
 		boom = rl.LoadSoundFromWave(wave) // copies
 	}
-	rl.SetSoundVolume(boom, clamp(volume, 0, 1))
+	rl.SetSoundVolume(boom, clamp(volume * 0.5, 0, 1)) // under the announcer
 	rl.PlaySound(boom)
 }
 
