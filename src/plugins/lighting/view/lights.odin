@@ -572,11 +572,12 @@ ground_make :: proc(r: ^render.Renderer, layers: data.Level_Layers) -> (tex: rl.
 	}
 	defer rl.UnloadImage(shadow)
 	spec := load(r, layers.specular)
-	if spec.data != nil {
-		defer rl.UnloadImage(spec)
-		if spec.width != shadow.width || spec.height != shadow.height {
-			return
-		}
+	// Not deferred inside a block: that would free it before it is read below.
+	defer if spec.data != nil {
+		rl.UnloadImage(spec)
+	}
+	if spec.data != nil && (spec.width != shadow.width || spec.height != shadow.height) {
+		return
 	}
 	out := rl.GenImageColor(shadow.width, shadow.height, {})
 	rl.ImageFormat(&out, .UNCOMPRESSED_GRAY_ALPHA)
