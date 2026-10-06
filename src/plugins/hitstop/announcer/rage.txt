@@ -1,0 +1,20 @@
+0	Good on ya, mate.
+0	Nice one.
+0	Too easy, mate.
+0	Beauty, bonzer.
+1	Strewth.
+1	Are ya dreaming, mate?
+1	Oi, settle down.
+1	Crikey, ya cheeky bugger.
+2	Oi! Pack it in!
+2	Ya flamin' drongo!
+2	Cut it out, ya galah!
+2	Bloody hell, mate!
+3	Ya mongrel!
+3	Ya absolute bloody mongrel!
+3	Stop bloody winning, ya mug!
+3	I'm gonna lose me bloody mind!
+4	Ya cheating mongrel, I'll pull ya bloody head off!
+4	Aaargh, bloody piss off already!
+4	I'm gonna lose me flamin' mind!
+4	Stone the bloody crows, stop it!

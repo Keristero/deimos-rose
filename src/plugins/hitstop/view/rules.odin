@@ -3,6 +3,7 @@ package hitstop_view
 // What a hit holds the game for, and how the kill cam moves: plain
 // functions of numbers, so the tests need no window.
 
+import "core:fmt"
 import "core:math"
 import "core:strings"
 
@@ -12,7 +13,8 @@ STEP_HZ :: 30 // a step of the game, in seconds: 1 / STEP_HZ
 
 MAX_HOLD :: 15 // steps, for an ordinary hit however hard
 TAKEDOWN_SECONDS :: 2.8 // the kill cam, on the clock
-STREAK_WINDOW :: 240 // steps (8 s of the game) a kill streak is kept alive between kills
+STREAK_WINDOW :: 420 // steps (14 s of the game) a kill streak is kept alive between kills
+STREAK_HIT_COST :: 50 // steps a player's streak loses each time they are struck
 
 // Steps to hold for a hit of `damage`, scaled by the setting `strength`
 // (percent, 0 turns it off): 1 + 3 * sqrt(damage). Damage in this game is
@@ -133,9 +135,36 @@ streak_index :: proc "contextless" (n: int) -> int {
 	return (max(n, 1) - 1) % STREAK_TITLE_COUNT + 1
 }
 
-// 0 for none, 1 for Super (51 to 100), 2 for Super Duper (101 on).
+// A streak's modifiers: line N of announcer/modifiers.txt is the prefix of
+// tier N, one tier for each 50 kills ("Super" from 51, "Super Duper" from 101,
+// on to "Final" from 1951). Past 2000 the last one stays.
+STREAK_MODIFIERS :: #load("../announcer/modifiers.txt", string)
+STREAK_MAX_TIER :: 39
+
+// 0 for none, then the tier of the modifier: 1 for Super (51 to 100), 2 for
+// Super Duper (101 to 150), ..., STREAK_MAX_TIER from 1951.
 streak_tier :: proc "contextless" (n: int) -> int {
-	return min((max(n, 1) - 1) / STREAK_TITLE_COUNT, 2)
+	return min((max(n, 1) - 1) / STREAK_TITLE_COUNT, STREAK_MAX_TIER)
+}
+
+// The modifier of `tier` (1 or more), "" for none.
+streak_modifier :: proc(tier: int) -> string {
+	rest := STREAK_MODIFIERS
+	for i := 1; rest != ""; i += 1 {
+		line, _, more := strings.partition(rest, "\n")
+		if i == tier {
+			return strings.trim_space(line)
+		}
+		rest = more
+	}
+	return ""
+}
+
+// The clip a modifier is spoken from: "super", "super_duper", "mega", ...
+streak_modifier_clip :: proc(tier: int, allocator := context.temp_allocator) -> string {
+	low, _ := strings.to_lower(streak_modifier(tier), allocator)
+	clip, _ := strings.replace_all(low, " ", "_", allocator)
+	return clip
 }
 
 // The title line of streak `n`, as spoken ("Oh Baby, a Triple").
@@ -155,10 +184,14 @@ streak_title :: proc(n: int) -> string {
 }
 
 // What is spoken and shown for streak `n`: "Takedown", "Quad Kill", ...,
-// "Super Takedown" past 50, "Super Duper Takedown" past 100.
+// "Super Takedown" past 50, "Super Duper Takedown" past 100, "Mega Takedown"
+// past 150, and so on.
 streak_phrase :: proc(n: int, allocator := context.temp_allocator) -> string {
-	prefix := [3]string{"", "Super ", "Super Duper "}
-	return strings.concatenate({prefix[streak_tier(n)], streak_title(n)}, allocator)
+	tier := streak_tier(n)
+	if tier == 0 {
+		return streak_title(n)
+	}
+	return strings.concatenate({streak_modifier(tier), " ", streak_title(n)}, allocator)
 }
 
 // What is drawn: the phrase, upper case, without its commas.
@@ -166,6 +199,13 @@ streak_text :: proc(n: int, allocator := context.temp_allocator) -> string {
 	up, _ := strings.to_upper(streak_phrase(n, allocator), allocator)
 	text, _ := strings.remove_all(up, ",", allocator)
 	return text
+}
+
+// The step a streak counts its last kill from once its player is struck:
+// earlier by STREAK_HIT_COST, so the meter drops a little (and a streak
+// that was nearly out is out).
+streak_struck :: proc "contextless" (count, last: int) -> int {
+	return count > 0 ? last - STREAK_HIT_COST : last
 }
 
 // A player's streak after a kill at step `now`, from their `count` and the
@@ -176,4 +216,53 @@ streak_after :: proc "contextless" (count, last, now: int) -> int {
 		return count + 1
 	}
 	return 1
+}
+
+// How hot a combo of `count` burns, 1 up to 20 and then on, a hundredfold
+// count (20 to 2000) taking it to 5: the flames' number and height follow.
+flame_heat :: proc "contextless" (count: int) -> f32 {
+	if count <= 20 {
+		return clamp(f32(count) / 20, 0, 1)
+	}
+	return 1 + 2 * math.log10(f32(min(count, 2000)) / 20)
+}
+
+// How tall the flames rise at `heat`: all of it to 1, a quarter of the rest.
+flame_rise :: proc "contextless" (heat: f32) -> f32 {
+	return min(heat, 1) + max(heat - 1, 0) * 0.25
+}
+
+// Player 2's announcer gets angrier with the streak: the stage (0 calm to
+// RAGE_STAGES - 1 furious) rises at these streaks.
+RAGE_STAGES :: 5
+RAGE_LINES :: 4 // lines for each stage in announcer/rage.txt
+@(rodata)
+RAGE_FROM := [RAGE_STAGES]int{1, 6, 16, 36, 101}
+
+// From this stage he shouts the titles and modifiers (the "_mad" clips).
+RAGE_SHOUTING :: 3
+
+rage_stage :: proc "contextless" (n: int) -> int {
+	stage := 0
+	for from, i in RAGE_FROM {
+		if n >= from {
+			stage = i
+		}
+	}
+	return stage
+}
+
+// The clip of the line he says after the title: one of the stage's lines,
+// by the streak so that it varies kill to kill.
+rage_clip :: proc(n: int, allocator := context.temp_allocator) -> string {
+	return fmt.aprintf("rage_%d_%d", rage_stage(n), max(n, 0) % RAGE_LINES, allocator = allocator)
+}
+
+// How fast and how loud he is at `n`: higher and louder as he loses it.
+rage_pitch :: proc "contextless" (n: int) -> f32 {
+	return 1 + 0.07 * f32(rage_stage(n))
+}
+
+rage_gain :: proc "contextless" (n: int) -> f32 {
+	return 1 + 0.15 * f32(rage_stage(n))
 }

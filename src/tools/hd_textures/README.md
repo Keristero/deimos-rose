@@ -38,13 +38,14 @@ What the numbers do not say:
 
 ## What is and is not redrawn
 
-Redrawn: every sprite plate (`sprites/im08`) and the interface images
-(`images/im16` of the core: menus, score bar). Frame rectangles stay the
-original's: the game draws the plate at its own size with more pixels in it.
+Redrawn: every sprite plate (`sprites/im08`), the interface images
+(`images/im16` of the core) and the level maps (each level's `background_image`
+in Classic Levels and Recovered Levels). Frame rectangles stay the original's:
+the game draws the plate at its own size with more pixels in it, and builds the
+terrain buffer at twice the size, burning marks in at twice their place.
 
-Not redrawn: the level maps. The terrain's burn marks are written into a CPU
-buffer at the map's resolution, so a 2x map would need a different terrain
-pipeline. The ship's accent trim (`ship_trim`) is built from the original
-PNGs and stays as it was.
+Not redrawn: the ship's accent trim (`ship_trim`), built from the original
+PNGs, and the lighting masks (mask, normal, shadow), which are sampled by
+position and need no more pixels. The output is about 390 MB, git-ignored.
 
 Classic mode never uses the plugin.

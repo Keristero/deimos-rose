@@ -2129,5 +2129,8 @@ using raylib's own capabilities and without costing image quality.
   the pixel density differs; `render.texture_pixels` gives the real size to
   whoever reads pixels back (the lighting plugin's light colours). Textures
   load on first use and stay, so switching the plugin takes effect at once.
-- Level maps are not in a pack (terrain burning is at map resolution), and
-  classic mode ignores packs.
+- Level maps are in the pack too: the terrain buffer is built at the redrawn
+  size (`Renderer.terrain_k`) and marks are burned in at k times their place,
+  so the whole world is at twice the resolution. Switching the plugin rebuilds
+  the buffer, so marks burned earlier in the level are lost. Classic mode
+  ignores packs.

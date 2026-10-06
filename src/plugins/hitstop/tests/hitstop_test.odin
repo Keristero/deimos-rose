@@ -144,7 +144,15 @@ streaks_are_named_as_the_game_calls_them :: proc(t: ^testing.T) {
 	testing.expect_value(t, view.streak_phrase(51), "Super Takedown")
 	testing.expect_value(t, view.streak_phrase(100), "Super Half Century Of Hell")
 	testing.expect_value(t, view.streak_phrase(101), "Super Duper Takedown")
-	testing.expect_value(t, view.streak_phrase(205), "Super Duper Annihilation")
+	testing.expect_value(t, view.streak_phrase(151), "Mega Takedown")
+	testing.expect_value(t, view.streak_phrase(205), "Ultra Annihilation")
+	testing.expect_value(t, view.streak_phrase(2000), "Final Half Century Of Hell")
+	testing.expect_value(t, view.streak_phrase(5000), "Final Half Century Of Hell")
+	testing.expect_value(t, view.streak_tier(2000), view.STREAK_MAX_TIER)
+	for tier in 1 ..= view.STREAK_MAX_TIER {
+		testing.expect(t, view.streak_modifier(tier) != "", "every tier to 2000 has a modifier")
+	}
+	testing.expect_value(t, view.streak_modifier(view.STREAK_MAX_TIER + 1), "")
 	for n in 1 ..= 50 {
 		testing.expect(t, view.streak_title(n) != "", "every streak to 50 has a title")
 	}
@@ -201,8 +209,9 @@ the_embedded_clips_decode :: proc(t: ^testing.T) {
 			testing.expect(t, view.announcer_frames(name) > 2000, "a spoken clip")
 		}
 	}
-	testing.expect(t, view.announcer_frames("super") > 2000)
-	testing.expect(t, view.announcer_frames("super_duper") > 2000)
+	for tier in 1 ..= view.STREAK_MAX_TIER {
+		testing.expect(t, view.announcer_frames(view.streak_modifier_clip(tier)) > 2000, "a spoken modifier")
+	}
 	testing.expect_value(t, view.announcer_frames("nope"), 0)
 }
 
@@ -260,4 +269,56 @@ horns_blast_more_and_higher_with_the_streak :: proc(t: ^testing.T) {
 		peak = max(peak, abs(v))
 	}
 	testing.expect(t, peak > 0.5, "loud enough to hear")
+}
+
+@(test)
+being_struck_takes_a_little_off_a_streak :: proc(t: ^testing.T) {
+	testing.expect_value(t, view.streak_struck(0, 100), 100) // no streak, nothing to lose
+	now := 100 + view.STREAK_WINDOW / 2
+	before := view.combo_left(3, 100, now, 0)
+	after := view.combo_left(3, view.streak_struck(3, 100), now, 0)
+	testing.expect(t, after < before && after > 0.2, "a hit costs a little, not the whole combo")
+}
+
+@(test)
+a_bigger_combo_burns_hotter_to_2000 :: proc(t: ^testing.T) {
+	testing.expect_value(t, view.flame_heat(0), 0)
+	testing.expect_value(t, view.flame_heat(20), 1)
+	testing.expect(t, view.flame_heat(21) > 1)
+	testing.expect(t, view.flame_heat(500) > view.flame_heat(100))
+	testing.expect(t, view.flame_heat(2000) > view.flame_heat(500))
+	testing.expect_value(t, view.flame_heat(9999), view.flame_heat(2000))
+	testing.expect(t, view.flame_rise(view.flame_heat(2000)) < view.flame_heat(2000))
+	testing.expect_value(t, view.flame_rise(0.5), 0.5)
+}
+
+@(test)
+player_two_has_an_australian_who_gets_angrier :: proc(t: ^testing.T) {
+	testing.expect_value(t, view.announcer_of(0), view.Announcer.Husky)
+	testing.expect_value(t, view.announcer_of(1), view.Announcer.Aussie)
+	testing.expect_value(t, view.rage_stage(1), 0)
+	testing.expect_value(t, view.rage_stage(5), 0)
+	testing.expect_value(t, view.rage_stage(6), 1)
+	testing.expect_value(t, view.rage_stage(100), 3)
+	testing.expect_value(t, view.rage_stage(2000), view.RAGE_STAGES - 1)
+	testing.expect(t, view.rage_pitch(200) > view.rage_pitch(10))
+	testing.expect(t, view.rage_gain(200) > view.rage_gain(10))
+	testing.expect_value(t, view.rage_pitch(1), 1)
+	// He says the title and then a line for his temper; the husky one does not.
+	clips := view.announcer_clips(8, context.temp_allocator, .Aussie)
+	testing.expect_value(t, len(clips), 2)
+	testing.expect_value(t, clips[0], "08")
+	testing.expect_value(t, len(view.announcer_clips(8, context.temp_allocator)), 1)
+	// Shouting from stage 3.
+	testing.expect_value(t, view.announcer_clips(40, context.temp_allocator, .Aussie)[0], "40_mad")
+	testing.expect_value(t, view.announcer_clips(40, context.temp_allocator)[0], "40")
+}
+
+@(test)
+the_australians_clips_are_all_embedded :: proc(t: ^testing.T) {
+	for n in 1 ..= 2000 {
+		for name in view.announcer_clips(n, context.temp_allocator, .Aussie) {
+			testing.expect(t, view.announcer_frames(name, .Aussie) > 2000, "a spoken clip")
+		}
+	}
 }

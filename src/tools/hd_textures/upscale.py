@@ -9,9 +9,9 @@ frame rectangles stay the original's: the game draws the plate at its own
 size, with more pixels in it. Transparency is kept: the colour goes through
 the network with the transparent pixels bled over, the alpha is resampled.
 
-Not here: the level maps (images/im16 of the Classic Levels plugin and the
-recovered levels), which the game burns marks into at the map's own
-resolution.
+The level maps too: every `background_image` of the levels in the --levels
+plugin folders, from their images/im16. The game builds the map's buffer at
+the redrawn size and burns its marks in at twice their place.
 
 Runs on the CPU and resumes: a picture already written by the same model is
 skipped.
@@ -20,6 +20,7 @@ skipped.
 from __future__ import annotations
 
 import argparse
+import json
 import time
 from pathlib import Path
 
@@ -38,17 +39,24 @@ def main() -> None:
     p.add_argument("--assets", required=True, type=Path)
     p.add_argument("--out", required=True, type=Path, help="the plugin's folder")
     p.add_argument("--model", default=MODEL, choices=[m for m in common.MODELS if common.MODELS[m]])
+    p.add_argument("--levels", nargs="*", default=[], type=Path, help="plugin folders whose levels' maps are redrawn")
     p.add_argument("--only", nargs="*", help="file stems, for a quick look")
     args = p.parse_args()
 
     up = common.load(args.model)
     stamp = f"{args.model} {common.MODELS[args.model][1]}"
     files = [f for sub in FOLDERS for f in sorted((args.assets / sub).glob("*.png")) if not args.only or f.stem in args.only]
+    for folder in args.levels:
+        for level in sorted((folder / "data" / "levels").glob("*.json")):
+            bg = json.loads(level.read_text()).get("background_image")
+            m = folder / "images" / "im16" / f"{bg}.png"
+            if bg and m.exists() and m not in files and (not args.only or m.stem in args.only):
+                files.append(m)
     marker = args.out / "textures" / ".model"
     redo = not marker.exists() or marker.read_text() != stamp
     start, pixels = time.time(), 0
     for n, src in enumerate(files):
-        rel = src.relative_to(args.assets)
+        rel = Path("images/im16") / src.name if src.parent.name == "im16" else src.relative_to(args.assets)
         dst = args.out / "textures" / rel
         if not redo and dst.exists():
             continue

@@ -38,6 +38,7 @@ combo_enabled :: proc(r: ^render.Renderer) -> bool {
 }
 
 combo_apply :: proc(r: ^render.Renderer, f: ^render.Post_Frame, src: rl.Texture2D) {
+	flame_amount = intensity(r.setting, FLAMES)
 	field := [4]f32{render.VIEW_X * f.scale, 0, render.PLAY_W * f.scale, render.PLAY_H * f.scale}
 	rl.DrawTexturePro(src, {field[0], f32(src.height) - field[1] - field[3], field[2], -field[3]}, {field[0], field[1], field[2], field[3]}, {}, 0, rl.WHITE)
 	for p in 0 ..< sim.MAX_PLAYERS {
@@ -65,14 +66,15 @@ combo_draw :: proc(r: ^render.Renderer, field: [4]f32, scale: f32, player, count
 		x = field[0] + field[2] * 0.97 - max(width, bar_w)
 	}
 	y := field[1] + field[3] * 0.16 + f32(player / 2) * field[3] * 0.1
-	heat := clamp(f32(count) / 20, 0, 1) // the hotter, the more flame
+	heat := flame_heat(count) // the hotter, the more flame, on to 2000
+	rise := flame_rise(heat)
 	t := f32(rl.GetTime())
 	// A sudden jolt the moment it grows, the text popping.
 	pop := 1 + 0.25 * max(0, 1 - f32(steps - last_kill[player]) / 6)
 	text_h := text_height(r) * k
 
 	rl.BeginBlendMode(.ALPHA)
-	flames(x, y + text_h * 0.9, width, text_h * (2 + 1.5 * heat), 18 + int(heat * 30), t, scale, player)
+	flames(x, y + text_h * 0.9, width, text_h * (2 + 1.5 * rise), 18 + int(heat * 30), t, scale, player)
 	rl.EndBlendMode()
 
 	draw_flame_text(r, text, x, y, k * pop, t)
@@ -85,22 +87,26 @@ combo_draw :: proc(r: ^render.Renderer, field: [4]f32, scale: f32, player, count
 	rl.DrawRectangleGradientV(i32(x), i32(by), i32(fill), i32(bh), rl.Color{255, 230, 90, 255}, rl.Color{230, 50, 10, 255})
 	rl.BeginBlendMode(.ALPHA)
 	// The flame licks up from the fill's front, and the whole bar glows.
-	flames(x + fill - bar_w * 0.06, by + bh, bar_w * 0.12, text_h * (1.6 + heat), 10 + int(heat * 14), t * 1.3, scale, player + 7)
+	flames(x + fill - bar_w * 0.06, by + bh, bar_w * 0.12, text_h * (1.6 + rise), 10 + int(heat * 14), t * 1.3, scale, player + 7)
 	flames(x, by + bh * 0.5, fill, bh * 1.5, 6 + int(left * 12), t * 0.9, scale, player + 13)
 	rl.EndBlendMode()
 }
 
+// How much fire there is, 1 as designed (the COMBO FLAMES setting, kept by
+// combo_apply for the frame).
+@(private = "file") flame_amount: f32 = 1
+
 // Tongues of fire rising from the line `y` over `w` pixels from `x`, as tall
 // as `rise` at most; `n` of them, each at its own phase of its rise.
 flames :: proc(x, y, w, rise: f32, n: int, t, scale: f32, seed: int) {
-	for i in 0 ..< n {
+	for i in 0 ..< int(f32(n) * flame_amount) {
 		h := f32(i * 7919 + seed * 104729) * 0.6180339
 		h -= math.floor(h)
 		g := f32(i * 6151 + seed * 15485863) * 0.7548776
 		g -= math.floor(g)
 		life := math.mod(t * (0.9 + 0.8 * g) + h * 3, 1)
 		fx := x + w * h + math.sin(t * 9 + h * 40) * 3 * scale * life
-		fy := y - rise * life * (0.55 + 0.45 * g)
+		fy := y - rise * flame_amount * life * (0.55 + 0.45 * g)
 		radius := (10 + 14 * g) * scale * (1 - life * 0.8)
 		alpha := u8(255 * min(1, (1 - life) * 1.6))
 		inner := rl.Color{255, u8(220 - 150 * life), u8(70 * (1 - life)), alpha}

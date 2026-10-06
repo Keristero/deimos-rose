@@ -17,11 +17,8 @@ import "core:math"
 import rl "vendor:raylib"
 
 import "dr:plugins/hitstop"
-import "dr:prefs"
 import "dr:render"
 import "dr:sim"
-
-STRENGTH: prefs.Setting_ID // how long a hit holds, percent of the default
 
 @(private = "file")
 Cam :: struct {
@@ -32,11 +29,19 @@ Cam :: struct {
 	power: f32,     // shake_power of the blow
 	slow:  f32,     // slow_power of the blow
 	streak: int,    // the kill streak it announces
+	who:    int,    // the player who has it
 	fixed: Maybe(f32), // stand at this point of the cam (the screenshots, shots.odin)
 }
 
 @(private = "file") cam: Cam
+// A living ground target is on screen (set each step): the kill cam does not
+// zoom then, so the fight stays readable.
+@(private = "file") ground_live: bool
 @(private = "file") driven: bool // the slowdown, sound and reverb are set by the cam
+
+// The longest streak each player has had the kill cam for this level: it
+// shows the first time a combo level is reached, not again on the way back up.
+@(private = "file") reached: [sim.MAX_PLAYERS]int
 
 // Each player's kill streak, the step of their last kill, and the step.
 streak: [sim.MAX_PLAYERS]int
@@ -78,7 +83,7 @@ destroy :: proc() {
 // Starts the kill cam for streak 1 on `at`, standing at `progress` of the
 // way through it, at full strength (the screenshots').
 cam_hold_at :: proc(at: sim.Vec, progress: f32, streak := 1) {
-	staged = Cam{true, 0, at, false, 1, 1, streak, progress}
+	staged = Cam{true, 0, at, false, 1, 1, streak, 0, progress}
 }
 
 // Player 1's combo as if `count` kills in, a quarter of its window gone (the
@@ -100,7 +105,7 @@ style_hold_at :: proc(g: f32) {
 @(private = "file")
 clear :: proc() {
 	cam = {}
-	streak, last_kill, steps, style = {}, {}, 0, {}
+	streak, last_kill, steps, style, reached = {}, {}, 0, {}, {}
 }
 
 // Takes the step's collisions: each kill of an enemy goes on its killer's
@@ -122,12 +127,14 @@ step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles) {
 	for &st in style {
 		style_step(&st)
 	}
+	ground_live = ground_target_on_screen(s)
 	strength := r.setting[STRENGTH]
 	hold := 0
 	took: Maybe(sim.Hit_Event)
 	for ev in s.hits.events[:s.hits.count] {
 		if ev.player && ev.victim >= 0 && int(ev.victim) < sim.MAX_PLAYERS {
 			style_struck(&style[ev.victim])
+			last_kill[ev.victim] = streak_struck(streak[ev.victim], last_kill[ev.victim])
 		} else if ev.enemy && ev.by >= 0 && int(ev.by) < sim.MAX_PLAYERS && ev.source >= 0 {
 			style_hit(&style[ev.by], ev.source, ev.killed, rl.GetTime())
 		}
@@ -135,7 +142,12 @@ step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles) {
 			who := clamp(int(ev.by), 0, sim.MAX_PLAYERS - 1)
 			streak[who] = streak_after(streak[who], last_kill[who], steps)
 			last_kill[who] = steps
-			cam = {true, rl.GetTime(), ev.loc, ev.scrolls_sideways, shake_power(ev.damage), slow_power(ev.damage), streak[who], nil}
+			if streak[who] <= reached[who] {
+				hold = max(hold, hold_steps(ev.damage, strength)) // seen already: an ordinary hit
+				continue
+			}
+			reached[who] = streak[who]
+			cam = {true, rl.GetTime(), ev.loc, ev.scrolls_sideways, shake_power(ev.damage), slow_power(ev.damage), streak[who], who, nil}
 			took = ev
 			continue
 		}
@@ -143,12 +155,32 @@ step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles) {
 	}
 	if took != nil {
 		r.hold = 0
-		boom_play(r.textures.sfx_volume)
-		announce(cam.streak, r.textures.sfx_volume)
-		horn_play(cam.streak, r.textures.sfx_volume)
+		vol := r.textures.sfx_volume
+		boom_play(vol * volume_scale(r.setting, BOOM_VOLUME))
+		announce(cam.streak, vol * volume_scale(r.setting, ANNOUNCER_VOLUME), announcer_of(cam.who))
+		horn_play(cam.streak, vol * volume_scale(r.setting, HORN_VOLUME))
 	} else if !cam.on {
 		r.hold = max(r.hold, hold)
 	}
+}
+
+// Whether a ground unit that can still be shot is in the play field.
+@(private = "file")
+ground_target_on_screen :: proc(s: ^sim.State) -> bool {
+	side := f32(sim.single(s, sim.Bgnd).side_scroll)
+	w, h := f32(sim.view_width(s.defs)), f32(sim.view_height(s.defs))
+	walk := sim.walk_entities(s)
+	for e in sim.walk_next(&walk) {
+		u := &s.defs.units[e.unit]
+		if !u.is_ground_based || u.player_projectile || u.harmless_to_players || e.draw_to_terrain || e.appear_delay >= 1 || e.shields <= 0 || u.score <= 0 {
+			continue
+		}
+		x := e.loc.x - (e.scrolls_sideways ? side : 0)
+		if x >= 0 && x <= w && e.loc.y >= 0 && e.loc.y <= h {
+			return true
+		}
+	}
+	return false
 }
 
 // The kill cam is up for TAKEDOWN_SECONDS. Each frame it also sets the
@@ -161,9 +193,9 @@ enabled :: proc(r: ^render.Renderer) -> bool {
 	}
 	if cam.on {
 		p := progress()
-		r.slowdown = 1 - speed_at(p, cam.slow)
-		r.textures.audio_slow = audio_slow_at(p, cam.slow)
-		reverb_set(reverb_at(p, cam.slow))
+		r.slowdown = (1 - speed_at(p, cam.slow)) * intensity(r.setting, SLOWMO)
+		r.textures.audio_slow = audio_slow_at(p, cam.slow) * intensity(r.setting, SLOWMO)
+		reverb_set(reverb_at(p, cam.slow) * intensity(r.setting, REVERB))
 		driven = true
 	} else if driven {
 		r.slowdown, r.textures.audio_slow = 0, 0
@@ -187,14 +219,14 @@ apply :: proc(r: ^render.Renderer, f: ^render.Post_Frame, src: rl.Texture2D) {
 	field := [4]f32{render.VIEW_X * f.scale, 0, render.PLAY_W * f.scale, render.PLAY_H * f.scale}
 	x := cam.at.x - (cam.side ? f.side : 0)
 	at := [2]f32{(x + render.VIEW_X) * f.scale, (cam.at.y) * f.scale}
-	z := zoom_at(p)
+	z := ground_live ? 1 : 1 + (zoom_at(p) - 1) * intensity(r.setting, ZOOM_AMOUNT)
 	view := zoom_rect(field, at, z)
 	// The scene texture is bottom-up: the rows count from its foot.
 	h := f32(src.height)
 	rl.SetTextureFilter(src, .BILINEAR)
 	// Shaken hard: the picture is drawn a little larger than the field, moved
 	// and turned about its centre, and the play field's scissor trims the rest.
-	shake := shake_at(p, cam.power)
+	shake := ground_live ? 0 : shake_at(p, cam.power) * intensity(r.setting, SHAKE) // no shaking larger or turned while there is a fight
 	t := f32(rl.GetTime())
 	jx, jy := math.sin(t * 91) + math.sin(t * 57 + 1), math.cos(t * 83) + math.cos(t * 61 + 2)
 	roll := math.sin(t * 67) * 0.045 * shake
@@ -217,7 +249,7 @@ apply :: proc(r: ^render.Renderer, f: ^render.Post_Frame, src: rl.Texture2D) {
 }
 
 // The streak's name in the game's own font, centred low in the field, red
-// (gold from Super, violet from Super Duper) with a black shadow, shaking as
+// (gold from Super, violet from Super Duper, then round the colour wheel) with a black shadow, shaking as
 // it lands; as large as `scale` asks unless that is wider than the field.
 @(private = "file")
 draw_takedown :: proc(r: ^render.Renderer, field: [4]f32, scale: f32, p: f32) {
@@ -234,7 +266,7 @@ draw_takedown :: proc(r: ^render.Renderer, field: [4]f32, scale: f32, p: f32) {
 	x := field[0] + (field[2] - width) / 2 + math.sin(p * 400) * shake
 	y := field[1] + field[3] * 0.74 + math.cos(p * 530) * shake
 	alpha := u8(255 * (1 - clamp((p - 0.92) / 0.08, 0, 1)))
-	colour := [3]rl.Color{{255, 52, 40, alpha}, {255, 200, 40, alpha}, {200, 90, 255, alpha}}[streak_tier(cam.streak)]
+	colour := tier_colour(streak_tier(cam.streak), alpha)
 	for pass in 0 ..< 2 {
 		pen := x
 		offset := pass == 0 ? 0.12 * fit : f32(0)
@@ -249,4 +281,20 @@ draw_takedown :: proc(r: ^render.Renderer, field: [4]f32, scale: f32, p: f32) {
 			pen += src.width * fit
 		}
 	}
+}
+
+// The colour of a streak's name: red, gold, violet, then a hue for each tier
+// further round the wheel.
+tier_colour :: proc(tier: int, alpha: u8) -> rl.Color {
+	switch tier {
+	case 0:
+		return {255, 52, 40, alpha}
+	case 1:
+		return {255, 200, 40, alpha}
+	case 2:
+		return {200, 90, 255, alpha}
+	}
+	c := rl.ColorFromHSV(f32(tier * 47 % 360), 0.75, 1)
+	c.a = alpha
+	return c
 }

@@ -177,6 +177,17 @@ terrain_texture :: proc(t: ^Textures, level: ^sim.Level_Def) -> (rl.Texture2D, b
 	return im16_texture(t, &t.terrain, media.background)
 }
 
+// How many times the original's size the level's map is drawn in: 1, or a
+// texture pack's scale when one in use redraws it.
+terrain_scale :: proc(t: ^Textures, level: ^sim.Level_Def) -> i32 {
+	media := data.assets_level_media(&t.assets, level.campaign, level.id)
+	if media == nil || media.background == "" || media.background == "none" {
+		return 1
+	}
+	_, scale, ok := image_pack(t, &t.terrain, media.background)
+	return ok ? scale : 1
+}
+
 // The original decodes every TGA (the im16 images: terrain, menu and
 // loading backdrops, the score bar) through QuickTime's GraphicsImporter
 // (U_Image_LoadInBuffer, 0x44cba0), which gamma-corrects it on the way into
@@ -204,8 +215,7 @@ quicktime_gamma_table :: proc() -> (tab: [32]u8) {
 // An im16 image, cached in `cache` by id -- with QuickTime's gamma applied
 // in classic mode, cached beside the plain one as "<id>@qt".
 im16_texture :: proc(t: ^Textures, cache: ^map[string]rl.Texture2D, id: string) -> (rl.Texture2D, bool) {
-	// A pack's redrawn menu image stands in for the original (not a level's
-	// terrain: see data.TEXTURE_PACK_DIRS), kept beside it under "<id>@hd".
+	// A pack's redrawn image stands in for the original, kept beside it under "<id>@hd".
 	hd_path, scale, hd := image_pack(t, cache, id)
 	key := t.quicktime_gamma ? fmt.tprintf("%s@qt", id) : hd ? fmt.tprintf("%s@hd", id) : id
 	if tex, ok := cache[key]; ok {
@@ -232,11 +242,9 @@ im16_texture :: proc(t: ^Textures, cache: ^map[string]rl.Texture2D, id: string) 
 	return tex, true
 }
 
-// The pack's redrawn file for the menu image `id`, when `cache` is the menu
-// images and a pack in use has one.
-@(private = "file")
+// The pack's redrawn file for the im16 image `id`, when a pack in use has one.
 image_pack :: proc(t: ^Textures, cache: ^map[string]rl.Texture2D, id: string) -> (path: string, scale: i32, ok: bool) {
-	if cache != &t.images || !pack_active(t) {
+	if !pack_active(t) {
 		return
 	}
 	return data.assets_texture_pack(&t.assets, t.mods, fmt.tprintf("images/im16/%s.png", id))
