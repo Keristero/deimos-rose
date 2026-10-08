@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 250" role="img" aria-label="A feature branch adds a site.config.json entry; its pull request runs CI and site:check; the merge to main publishes a release and rebuilds the site from the config, the plugin folders and the releases API, then deploys it to GitHub Pages.">
+  <defs>
+    <marker id="d-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="d-head" d="M0 0 L10 5 L0 10 z"/>
+    </marker>
+  </defs>
+
+  <text class="d-label" x="16" y="22">Feature branch</text>
+  <text class="d-label" x="16" y="164">Push to main</text>
+  <line class="d-lane" x1="16" y1="120" x2="864" y2="120"/>
+
+  <rect class="d-box" x="16" y="34" width="200" height="66" rx="8"/>
+  <text class="d-text" x="30" y="60">Commits</text>
+  <text class="d-sub" x="30" y="80">Changelog: blocks</text>
+  <text class="d-sub" x="30" y="94">+ a site.config.json entry</text>
+
+  <rect class="d-box warm" x="270" y="34" width="250" height="66" rx="8"/>
+  <text class="d-text" x="284" y="60">Pull request</text>
+  <text class="d-sub" x="284" y="80">mise run ci · both OSes</text>
+  <text class="d-sub" x="284" y="94">site:check — new entry? else fail</text>
+
+  <path class="d-arrow" d="M216 67 H264"/>
+  <path class="d-arrow hot" d="M395 100 V122 Q395 134 383 134 H132 Q120 134 120 146 V176"/>
+  <text class="d-sub" x="404" y="118">merge</text>
+
+  <rect class="d-box" x="16" y="180" width="200" height="56" rx="8"/>
+  <text class="d-text" x="30" y="204">main</text>
+  <text class="d-sub" x="30" y="222">one commit per change</text>
+
+  <rect class="d-box cool" x="270" y="148" width="250" height="44" rx="8"/>
+  <text class="d-text" x="284" y="168">build.yml → Release</text>
+  <text class="d-sub" x="284" y="184">zips + notes from Changelog</text>
+
+  <rect class="d-box hot" x="270" y="200" width="250" height="44" rx="8"/>
+  <text class="d-text" x="284" y="220">site.yml → node build.mjs</text>
+  <text class="d-sub" x="284" y="236">config + plugins/ + releases API</text>
+
+  <path class="d-arrow" d="M216 200 Q240 200 240 180 Q240 172 264 172"/>
+  <path class="d-arrow" d="M216 216 Q240 216 240 222 H264"/>
+  <path class="d-arrow" d="M520 172 Q560 172 560 200 Q560 222 600 222" stroke-dasharray="3 3"/>
+  <text class="d-sub" x="530" y="164">download links</text>
+
+  <rect class="d-box ok" x="606" y="196" width="240" height="48" rx="8"/>
+  <text class="d-text" x="620" y="216">GitHub Pages</text>
+  <text class="d-sub" x="620" y="234">Home · Plugins · Changes</text>
+  <path class="d-arrow" d="M520 222 H600"/>
+</svg>

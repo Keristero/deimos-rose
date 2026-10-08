@@ -798,6 +798,19 @@ description = "Verify extracted assets against the manifest and the original PAK
 depends = ["setup"]
 run = "odin run tools/verify $DR_COLL $DR_LINK -out:$DR_BUILD/verify$DR_EXT -- $DR_ORIG $DR_ASSETS \"$DR_PLUGINS\""
 
+[tasks."site:build"]
+description = "Build the website from site/site.config.json into build/site (OUT=dir to change it; OFFLINE=1 skips the releases API). CI runs it before every Pages deployment (.github/workflows/site.yml); needs Node 20+"
+run = 'node site/build.mjs --out "${OUT:-$DR_BUILD/site}" ${OFFLINE:+--offline}'
+
+[tasks."site:check"]
+description = "Fail unless this branch adds an entry to site/site.config.json's changes, compared with BASE (default origin/main): every feature branch merged to main does (AGENTS.md). The pull request workflow runs it against the pull request's base"
+run = 'node site/check.mjs ${BASE:-}'
+
+[tasks."site:serve"]
+description = "Build the website and serve it on http://localhost:8000 (PORT=n to change it)"
+depends = ["site:build"]
+run = 'cd "$DR_BUILD/site" && python3 -m http.server "${PORT:-8000}"'
+
 [tasks.ci]
 description = "Everything CI runs"
 depends = ["check", "purity", "test"]

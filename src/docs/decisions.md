@@ -2134,3 +2134,31 @@ using raylib's own capabilities and without costing image quality.
   so the whole world is at twice the resolution. Switching the plugin rebuilds
   the buffer, so marks burned earlier in the level are lost. Classic mode
   ignores packs.
+
+### D81 — Feature branches, pull requests, and a generated website
+
+The project outgrew committing to one branch and pushing when asked.
+From Phase 10 on (AGENTS.md, "Branches and pull requests"):
+
+- **Every change is a pull request.** A feature branch per change,
+  stacked on the branch it builds on; nobody pushes to `main`, and the
+  owner merges. Merge commits, not squashes, so each commit's
+  `Changelog:` block still reaches the release notes.
+- **The website is built, not written.** `src/site/build.mjs` (Node 20,
+  no dependencies) generates it from `src/site/site.config.json`, the
+  plugin folders and the releases API, and `.github/workflows/site.yml`
+  deploys it to GitHub Pages. It runs on `workflow_run` after Build
+  finishes on main rather than on the push, because Build publishes the
+  release the download buttons link: a site built at push time would
+  link the one before.
+- **The newest release of main is found by tag.** Every release is a
+  prerelease, which the API's `/releases/latest` skips (404, checked
+  2026-10-08), so the generator takes the newest `v<major>.<minor>.<n>`
+  tag with no branch suffix.
+- **Every branch adds a site entry.** `site:check` compares the
+  branch's `changes` with the merge base's and fails when nothing was
+  added; the pull request workflow runs it against the pull request's
+  base. Plugin labels and descriptions are read from the plugins
+  themselves (their `plugin.json` or `plugin_register` call), and a
+  plugin folder missing from the config fails the build, so the site
+  says what the Mods page says.

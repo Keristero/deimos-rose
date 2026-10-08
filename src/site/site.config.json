@@ -1,0 +1,99 @@
+{
+  "$comment": "The website's source of truth. Every feature branch merged to main adds an entry to `changes` (newest first) and keeps `plugins` in step with src/plugins/. `mise run site:build` validates this file; `mise run site:check` fails a branch that does not touch it. Format: src/site/README.md.",
+
+  "site": {
+    "title": "Deimos Rose",
+    "tagline": "Deimos Rising (2003), rebuilt from its own bytes",
+    "description": "A faithful Odin and raylib reimplementation of the 2003 vertical shooter Deimos Rising, with rollback netplay and new content as optional plugins.",
+    "repo": "Keristero/deimos-rose",
+    "baseUrl": "/deimos-rose/",
+    "screenshot": "../docs/images/main-menu.png"
+  },
+
+  "pitch": [
+    {
+      "title": "The original, exactly",
+      "body": "Classic mode replays the shipped 2003 demo films random call for random call: the same sprites, colours, frames and timing, checked against the original binary running under Wine."
+    },
+    {
+      "title": "A small core",
+      "body": "The core is the original game and nothing more. Everything Deimos Rose adds is a plugin, switched on or off from the Mods page."
+    },
+    {
+      "title": "Rollback netplay",
+      "body": "Two players online, with rollback, desync detection and reconnection, built on a simulation that is pure and deterministic by construction."
+    }
+  ],
+
+  "plugins": [
+    { "name": "classic_levels", "group": "Content" },
+    { "name": "recovered_levels", "group": "Content", "about": "Each original map was lifted back into a height field, relit, and repainted in the level editor." },
+    { "name": "extra_prefs", "group": "Presentation" },
+    { "name": "fps_unlock", "group": "Presentation", "about": "The simulation still steps at the original 30 Hz; frames in between are drawn from both sides of a step." },
+    { "name": "accent", "group": "Presentation" },
+    { "name": "lighting", "group": "Presentation" },
+    { "name": "water", "group": "Presentation" },
+    { "name": "wind", "group": "Presentation" },
+    { "name": "hitstop", "group": "Presentation" },
+    { "name": "hd_textures", "group": "Presentation", "about": "Upscaled by the Nomos SPAN 2x model; classic mode always draws the originals." },
+    { "name": "netplay", "group": "Multiplayer" },
+    { "name": "passives", "group": "Gameplay" },
+    { "name": "easy_mode", "group": "Gameplay" },
+    { "name": "loadout", "group": "Gameplay" },
+    { "name": "new_weapons", "group": "Gameplay", "about": "The Discharge Beam: an instant laser that carries leftover damage through its kills and chains between targets when charged." },
+    { "name": "chaingun", "group": "Gameplay" },
+    { "name": "new_weapon_passives", "group": "Gameplay" }
+  ],
+
+  "changes": [
+    {
+      "id": "site-and-workflow",
+      "title": "A website, and feature branches with reviewed pull requests",
+      "date": "2026-10-08",
+      "kind": "engineering",
+      "pr": null,
+      "summary": "This site. A dependency-free Node script builds it from this config before every deployment to GitHub Pages, so it is never edited by hand and cannot fall behind main.",
+      "highlights": [
+        "Work happens on feature branches, merged by pull request.",
+        "Every branch adds its entry here; CI fails a pull request that does not.",
+        "The plugin catalogue is checked against src/plugins/ on every build."
+      ],
+      "diagram": "diagrams/site-pipeline.svg"
+    },
+    {
+      "id": "level-editor",
+      "title": "Level editor and remastered levels",
+      "date": "2026-09-30",
+      "kind": "feature",
+      "summary": "deimos-editor: sculpt, light, paint and populate levels, then export a campaign as a plugin the game plays. All twelve originals recovered as editable projects."
+    },
+    {
+      "id": "phase-9-ecs",
+      "title": "ECS refactor and mods",
+      "date": "2026-09-26",
+      "kind": "engineering",
+      "summary": "The simulation moved onto an entity component system, its behaviour into registered systems, and Deimos Rose's additions into plugins toggled from a Mods page. The oracle diff stayed exact throughout."
+    },
+    {
+      "id": "new-weapons",
+      "title": "New weapons, easy mode and passive upgrades",
+      "date": "2026-09-25",
+      "kind": "feature",
+      "summary": "A loadout screen, the Chaingun and the Discharge Beam; nine passives offered after each level in easy mode; a DPS report that tunes them by measurement."
+    },
+    {
+      "id": "phase-6-8-netplay",
+      "title": "Rollback netplay",
+      "date": "2026-09-23",
+      "kind": "feature",
+      "summary": "A snapshot ring, a UDP transport, rollback, desync detection, a lobby, reconnection and synchronised pausing."
+    },
+    {
+      "id": "phase-0-5-port",
+      "title": "The faithful port",
+      "date": "2026-09-22",
+      "kind": "engineering",
+      "summary": "Asset extraction, a decompilation corpus of 1,942 named functions, a deterministic simulation that replays every shipped demo film exactly, and the full game playable from title screen to the last level."
+    }
+  ]
+}

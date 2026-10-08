@@ -10,10 +10,35 @@ Two things, kept separate:
 
 - **Analysis of the original 2003 Windows build** — `orig/`, `game/`,
   `symbols/`, `notes/`, `tools/`. Read-only archaeology.
-- **A new game in Odin** — `src/`. The actual deliverable.
+- **A new game in Odin** — `src/`. The actual deliverable: a small core
+  that is the original game, and everything Deimos Rose adds as plugins
+  under `src/plugins/` (see "A small core" below).
 
 `src/docs/` records progress per phase. `notes/odin-rewrite-plan.md` is the
 overall plan. `src/docs/decisions.md` logs cross-cutting choices.
+`src/site/` generates the public website from `site.config.json`
+(`src/site/README.md`).
+
+## A small core
+
+The scope crept: by October 2026 one zip carried the game, netplay, two
+new weapons, nine passives, a level editor, a terrain toolchain and a
+second set of levels, and it had grown from 167 MB to 252 MB in four days.
+Phase 10 (`src/docs/phase-10-plugin-split.md`) splits it, and the rule it
+leaves behind is:
+
+- **The core is the original game.** `sim/`, `data/`, `render/`, `ui/`,
+  `prefs/` and `game/` hold what the 2003 build does, and the extension
+  points plugins use. Nothing else.
+- **Everything new is a plugin, installed separately.** A gameplay
+  addition, a screen, a tool, a set of levels: a folder under
+  `src/plugins/` that registers itself through the extension points, and
+  ships as its own download. The game runs, and its tests pass, with no
+  plugin installed.
+- **Before building a feature, say where it installs.** If the answer is
+  "in the core", the feature needs a reason in its pull request, and the
+  reason is usually a missing extension point (see "Count the places a
+  feature touches").
 
 ## The core habit: verify, then build
 
@@ -132,8 +157,57 @@ extracted, converted data the game loads — which the project owner chose to
 commit so CI can ship playable release zips (decisions.md D29). Keep it
 regenerable from a local installer copy with `mise run assets:all`.
 
-**Do not push to any remote.** Standing instruction from the project owner.
-Commit locally; that is all.
+## Branches and pull requests
+
+Every change lands through a pull request from a feature branch. Nobody
+commits or pushes to `main` directly; merging is the project owner's call.
+
+```mermaid
+flowchart LR
+  B[feature branch] -->|push| P[prerelease build<br/>v0.1.N-branch]
+  B -->|pull request| R{review + CI<br/>+ site:check}
+  R -->|owner merges| M[main]
+  M --> Rel[release v0.1.N]
+  M --> S[website rebuilt]
+```
+
+- **One branch, one purpose.** Name it for what it does, in kebab-case
+  (`runtime-plugins`, `fix-level-skip`); the name is also its site entry's
+  `id` and its prerelease's tag suffix. Branch from the branch it builds on:
+  `main`, or the integration branch while one is open (`ecs-refactor`
+  until it merges). A branch that needs another unmerged branch stacks on
+  it, and its pull request targets that branch, so each shows only its own
+  diff.
+- **Push feature branches; never `main`.** Every push to any branch builds
+  both platforms and publishes a prerelease, so push when a branch is
+  worth trying, not after every commit.
+- **Every branch adds a site entry.** One entry at the top of `changes` in
+  `src/site/site.config.json`, and the plugin list kept in step with
+  `src/plugins/`. The pull request workflow runs `mise run site:check`
+  and fails without it; `src/site/README.md` has the format.
+- **Open the pull request with `gh pr create`**, against the branch it
+  stacks on, with the body written as below.
+
+### Writing the pull request
+
+The pull request is read once, by someone deciding whether to merge. Make
+it short, exact and good to look at. `.github/pull_request_template.md`
+has the sections: **What**, **Why**, **How**, **Verified**, **Still open**.
+
+- **Lead with the outcome.** The first paragraph says what is different,
+  for a player or for the next developer. No preamble.
+- **Draw the engineering.** An optimisation, a new extension point, a
+  change to how data or control flows: show it as a `mermaid` diagram
+  (GitHub renders them), before and after when something moved. A
+  diagram replaces paragraphs; it does not decorate them.
+- **Numbers, not adjectives.** Before and after, in a table: step time,
+  zip size, snapshot bytes, DPS. Say how each was measured.
+- **Verified is evidence.** List what ran and what it showed
+  (`oracle:diff` exact, fingerprints unchanged, the screenshot you looked
+  at), and say plainly what was not checked.
+- **Keep it tidy.** Headings, short paragraphs, tables for comparisons,
+  collapsed `<details>` for long logs. When later commits change the
+  story, update the body rather than appending an "Update:" section.
 
 ## Commits and patch notes
 
@@ -145,7 +219,9 @@ release notes are copied out of commit messages by
 patch notes are written.** A push to any other branch builds too, and
 becomes a prerelease tagged `v<major.minor>.<commits>-<branch>`, whose
 notes list the branch's own `Changelog:` blocks and link the latest
-release of `main`.
+release of `main`. Merge pull requests with a merge commit, not a
+squash: the branch's commits, and their `Changelog:` blocks, then reach
+the release.
 
 Any commit a player would notice carries a `Changelog:` block after the
 body and before the trailers:
@@ -294,10 +370,12 @@ The extension points today:
 | a campaign: levels played in their own order | `levels` in its `plugin.json`, records in `data/levels/`, maps and previews in `images/im16/` | `data/assets.odin`, `sim/defs.odin` (D53) |
 | a screenshot scenario (`mise run menu-shot MENU=...`) | `ui.shot_register` | `ui/shots.odin` |
 
-## Finishing a phase
+## Finishing a branch or a phase
 
-1. `mise run ci` green, and the phase's own verification task green.
-2. Write `src/docs/phase-N-*.md` while it is fresh: what was built, what the
+A branch is finished when its pull request could be merged as it stands:
+
+1. `mise run ci` green, and the change's own verification task green.
+2. For a phase, write `src/docs/phase-N-*.md` while it is fresh: what was built, what the
    original turned out to do, what was decided and why, what is still open.
    Record the concrete numbers — they are the regression baseline.
 3. Update the status table in `src/docs/README.md`.
@@ -305,6 +383,10 @@ The extension points today:
 5. Correct the plan if the phase proved it wrong. Phase 1 in the original plan
    claimed definition records would round-trip through JSON; that was
    misscoped and moved to Phase 3. Say so rather than quietly dropping it.
+6. Add the branch's entry to `src/site/site.config.json` (`mise run
+   site:check`), and look at it: `mise run site:serve`.
+7. Push the branch and open its pull request (see "Branches and pull
+   requests"). Stop there: the owner merges.
 
 ## Reporting
 
