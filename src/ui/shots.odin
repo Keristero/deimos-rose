@@ -11,9 +11,11 @@ package ui
 // presentation (particles and effect systems) follows, so a shot fired in
 // a phase is drawn. One frame is taken at the end.
 
+import "dr:prefs"
 import "dr:sim"
 
 MAX_SHOTS :: 32
+MAX_MENU_SHOTS :: 8
 
 Shot_Phase :: struct {
 	steps: int,
@@ -52,4 +54,32 @@ shot_find :: proc(name: string) -> (^Shot, bool) {
 
 registered_shots :: proc() -> []Shot {
 	return sim.registry_items(&shots)
+}
+
+// A plugin's screenshot of a menu screen rather than of play: one of the
+// game's own menu shots (`screen`, a MENU name run_menu_shot knows), with
+// the plugin on, outside classic mode, and `setup` changing the saved
+// preferences first. Not saved.
+Menu_Shot :: struct {
+	name:   string,
+	plugin: sim.Plugin_ID,
+	screen: string,
+	setup:  proc(p: ^prefs.Prefs),
+}
+
+@(private = "file")
+menu_shots: sim.Registry(Menu_Shot, MAX_MENU_SHOTS)
+
+// Called from registration steps only (sim.register_step).
+menu_shot_register :: proc(sh: Menu_Shot) {
+	sim.registry_add(&menu_shots, sh)
+}
+
+menu_shot_find :: proc(name: string) -> (^Menu_Shot, bool) {
+	for &sh in sim.registry_items(&menu_shots) {
+		if sh.name == name {
+			return &sh, true
+		}
+	}
+	return nil, false
 }

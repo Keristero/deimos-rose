@@ -15,12 +15,6 @@ import "core:time"
 import rl "vendor:raylib"
 
 import "dr:data"
-import "dr:net"
-import "dr:plugins/accent"
-import accent_view "dr:plugins/accent/view"
-import "dr:plugins/easy_mode"
-import netplay_plugin "dr:plugins/netplay"
-import "dr:plugins/new_weapons"
 import "dr:prefs"
 import "dr:render"
 import "dr:sim"
@@ -192,7 +186,7 @@ pause_begin :: proc(fl: ^Flow, r: ^render.Renderer) {
 @(private = "file")
 pause_notice_step :: proc(fl: ^Flow) {
 	m := &fl.pause_menu
-	if m.notice && !netplay_plugin.paused(fl.state) {
+	if m.notice && !sim.paused(fl.state) {
 		m.blend += max(sim.trunc_i32(fl.defs.perm_floats[PF_NOTICE_FADE_OUT]), 1)
 		if m.blend >= 32 {
 			m.notice = false
@@ -362,13 +356,13 @@ flow_handle_input :: proc(fl: ^Flow, r: ^render.Renderer) {
 			// gather_input sets the Pause input bit, so both peers pause
 			// on the same frame. The notice and button appear once the
 			// (shared) state says paused, whoever pressed it.
-			if netplay_plugin.paused(fl.state) != fl.netplay_was_paused {
-				fl.netplay_was_paused = netplay_plugin.paused(fl.state)
-				if netplay_plugin.paused(fl.state) {
+			if sim.paused(fl.state) != fl.netplay_was_paused {
+				fl.netplay_was_paused = sim.paused(fl.state)
+				if sim.paused(fl.state) {
 					pause_begin(fl, r)
 				}
 			}
-			if netplay_plugin.paused(fl.state) {
+			if sim.paused(fl.state) {
 				if pause_menu_update(r, &fl.pause_menu) {
 					// The peer sees a Goodbye and freezes, able to continue
 					// alone (F5) -- the same as any mid-game disconnect.
@@ -583,7 +577,7 @@ flow_music_update :: proc(fl: ^Flow, r: ^render.Renderer) {
 	}
 	if fl.music.frameCount != 0 {
 		// Either pause: local (.Paused) or a netplay pause in the state.
-		paused := fl.mode == .Paused || (fl.mode == .Playing && netplay_plugin.paused(fl.state))
+		paused := fl.mode == .Paused || (fl.mode == .Playing && sim.paused(fl.state))
 		if paused != fl.music_paused {
 			if paused {
 				rl.PauseMusicStream(fl.music)
@@ -594,7 +588,7 @@ flow_music_update :: proc(fl: ^Flow, r: ^render.Renderer) {
 		rl.SetMusicPitch(fl.music, 1 - r.textures.audio_slow)
 		rl.UpdateMusicStream(fl.music)
 	}
-	fl.music_paused = fl.music.frameCount != 0 && (fl.mode == .Paused || (fl.mode == .Playing && netplay_plugin.paused(fl.state)))
+	fl.music_paused = fl.music.frameCount != 0 && (fl.mode == .Paused || (fl.mode == .Playing && sim.paused(fl.state)))
 }
 
 @(private = "file")
@@ -689,46 +683,22 @@ flow_random_seed :: proc() -> u32 {
 
 // The session plugins this player has on, as Start carries them: none in
 // classic mode, nor any whose own content is not there (plugins/<name>/).
-// Netplay's own is left to session_from_mods, which knows whether the
-// session is online.
+// The online plugins (netplay's) are left to session_from_mods, which knows
+// whether the session is online.
 flow_session_mods :: proc(fl: ^Flow) -> sim.Mods {
 	mods := sim.mods_with_content(prefs_mods(fl.prefs), fl.defs.content)
 	// Resolved before the session's are picked out: a session plugin's
 	// dependencies need not be session plugins themselves.
-	return sim.mods_session(mods) - {int(netplay_plugin.ID)}
+	return sim.mods_session(mods) - sim.mods_online()
 }
 
-// The session, with netplay's plugin exactly when it is online.
+// The session, with the online plugins exactly when it is online.
 session_from_mods :: proc(seed: u32, level: sim.Level_ID, game_type: sim.Game_Type, mods: sim.Mods, online := false, campaign := sim.CORE) -> sim.Session {
-	session := sim.Session{seed = seed, level_id = level, game_type = game_type, mods = mods - {int(netplay_plugin.ID)}, campaign = campaign}
+	session := sim.Session{seed = seed, level_id = level, game_type = game_type, mods = mods - sim.mods_online(), campaign = campaign}
 	if online {
-		session.mods += {int(netplay_plugin.ID)}
+		session.mods += sim.mods_online()
 	}
 	return session
-}
-
-// Start's flags for the session's mods, for a build that reads only them.
-flags_from_mods :: proc(mods: sim.Mods) -> (flags: u8) {
-	if int(easy_mode.ID) in mods {
-		flags |= net.START_EASY
-	}
-	if int(new_weapons.ID) in mods {
-		flags |= net.START_LOADOUT
-	}
-	return
-}
-
-// The session's mods from a Start without them, from a build before they
-// were sent: what its flags turned on then.
-mods_from_flags :: proc(flags: u8) -> sim.Mods {
-	want: sim.Mods
-	if flags & net.START_EASY != 0 {
-		want += {int(easy_mode.ID)}
-	}
-	if flags & net.START_LOADOUT != 0 {
-		want += {int(new_weapons.ID)} + sim.mods_default_dependants(new_weapons.ID)
-	}
-	return sim.mods_session(sim.mods_switch_on({}, want))
 }
 
 // Called once Level Select's accept pulse finishes (game/menu_level_select.odin).
@@ -838,7 +808,7 @@ flow_draw :: proc(fl: ^Flow, r: ^render.Renderer, fx: ^render.Effects, scale: f3
 			if title, sub := netplay_disconnect_banner(&fl.netplay); title != "" {
 				draw_banner(title, sub)
 			} else {
-				pause_draw(fl, r, scale, netplay_plugin.paused(fl.state), "PAUSED FOR BOTH PLAYERS -- EITHER CAN RESUME")
+				pause_draw(fl, r, scale, sim.paused(fl.state), "PAUSED FOR BOTH PLAYERS -- EITHER CAN RESUME")
 			}
 		} else {
 			pause_draw(fl, r, scale, false, "") // the notice fading after a resume
@@ -863,36 +833,43 @@ draw_banner :: proc(line, sub: cstring) {
 // Who is drawn with an accent this frame (Extras; nothing in classic mode or
 // a demo). In netplay both players have one, each the colour its owner
 // picked, and the other player's crosshair is left out: it only helps
-// whoever is aiming with it. In a local game each player has the hue set
-// for them in Extras. Accent Colours turns the colours off; Self Outline
-// is separate, and only ever rings the ship of the player at this machine.
-// The plugins drawn with (Renderer.mods) are set here with them.
+// whoever is aiming with it. In a local game each player has the colour
+// set for them in Extras (prefs.Setting.player). The colours are drawn
+// while the plugin of those settings is on. The plugins drawn with
+// (Renderer.mods), the settings as they apply (Renderer.setting) and the
+// player at this machine are set here with them: a plugin's view reads
+// what else it draws from those (Self Outline's ring).
 flow_set_accents :: proc(fl: ^Flow, r: ^render.Renderer) {
 	r.accents = {}
+	r.setting = {}
+	r.local_player = -1
 	r.mods = fl.state.session.mods
 	defer r.textures.mods = r.mods
 	if fl.mode == .Attract || prefs_classic(fl.prefs) {
 		return
 	}
-	// The player's own presentation plugins, with the session's; a session
-	// plugin they have on that this session lacks stays off.
-	own := prefs_mods(fl.prefs)
-	r.mods += own - sim.mods_session(own)
-	r.setting = fl.prefs.saved.settings
-	colours := prefs_mod_on(fl.prefs, accent.ID)
-	outline := setting_on(fl.prefs, accent_view.SELF_OUTLINE)
+	// The player's own plugins (how the game looks) draw as well.
+	mods := prefs_mods(fl.prefs)
+	r.mods += mods - sim.mods_session(mods)
+	for s, id in prefs.registered_settings() {
+		if int(s.plugin) in mods {
+			r.setting[id] = fl.prefs.saved.settings[id]
+		}
+	}
+	colours := player_colours_on(fl.prefs)
 	if fl.session_named {
-		local := fl.netplay_active ? fl.netplay.rs.local_player : -1
+		r.local_player = fl.netplay_active ? fl.netplay.rs.local_player : -1
 		for i in 0 ..< sim.MAX_PLAYERS {
 			r.accents[i] = {
 				on             = colours,
 				hue            = f32(fl.session_hues[i]),
-				outline        = outline && i == local,
-				hide_crosshair = fl.netplay_active && i != local,
+				hide_crosshair = fl.netplay_active && i != r.local_player,
 			}
 		}
 		return
 	}
-	r.accents[0] = {on = colours, hue = f32(setting_value(fl.prefs, accent_view.HUE_P1)), outline = outline}
-	r.accents[1] = {on = colours, hue = f32(setting_value(fl.prefs, accent_view.HUE_P2))}
+	r.local_player = 0
+	for i in 0 ..< sim.MAX_PLAYERS {
+		r.accents[i] = {on = colours, hue = f32(player_hue(fl.prefs, i))}
+	}
 }

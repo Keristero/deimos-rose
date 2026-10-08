@@ -25,6 +25,11 @@ Setting :: struct {
 	label:   string,
 	kind:    Setting_Kind,
 	default: int,
+	// A Hue that is a player's colour: 1 for player 1's (and yours in
+	// netplay, where the lobby shows and sends it), 2 for player 2's in a
+	// local game; 0 for any other setting. The game colours each player
+	// by these, whichever plugin registers them.
+	player:  int,
 }
 
 // A setting's index in the registry, and in Prefs.settings.
@@ -49,6 +54,32 @@ setting_register :: proc(s: Setting) -> Setting_ID {
 
 registered_settings :: proc "contextless" () -> []Setting {
 	return settings[:setting_count]
+}
+
+// The setting that holds player `n`'s colour (Setting.player), if one is
+// registered.
+player_hue_setting :: proc "contextless" (n: int) -> (Setting_ID, bool) {
+	for s, i in settings[:setting_count] {
+		if s.kind == .Hue && s.player == n {
+			return Setting_ID(i), true
+		}
+	}
+	return {}, false
+}
+
+@(private = "file")
+settings_page: sim.Plugin_ID
+
+// The plugin that offers the Extras page, where every plugin's settings
+// are: the page opens only while it is on. With none registered, it never
+// does. Called from a registration step.
+settings_page_register :: proc(plugin: sim.Plugin_ID) {
+	settings_page = plugin
+}
+
+// The plugin that offers the Extras page, or CORE when none does.
+settings_page_plugin :: proc "contextless" () -> sim.Plugin_ID {
+	return settings_page
 }
 
 // Clamps or wraps a value to what its kind allows.

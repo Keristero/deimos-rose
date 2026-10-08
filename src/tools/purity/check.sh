@@ -32,6 +32,19 @@ for d in "${DIRS[@]}"; do
     fi
 done
 
+# The core names no plugin (AGENTS.md, Phase 10): only game/plugins.odin,
+# the list of what is in this build, imports one. A plugin's content and
+# behaviour reach the core through its registrations, so the core builds
+# and runs without any of them.
+CORE=(game sim data render ui prefs net oracle)
+for d in "${CORE[@]}"; do
+    [ -d "$SRC/$d" ] || continue
+    if grep -rnE --include='*.odin' '"dr:plugins/' "$SRC/$d" | grep -v "^$SRC/game/plugins.odin:"; then
+        echo "purity: the core imports a plugin; add an extension point instead (AGENTS.md, Continuous improvement)" >&2
+        exit 1
+    fi
+done
+
 # odecs through its public API only (D47). Its internals change between
 # versions, and its encoded query terms (not/or/pair...) share a global
 # counter that parallel tests race on, so no code outside the library may
@@ -41,4 +54,4 @@ if grep -rnE --include='*.odin' "$INTERNALS" "$SRC" --exclude-dir=third_party --
     echo "purity: use odecs's public API, not its internals or encoded terms" >&2
     exit 1
 fi
-echo "purity: sim/ and its dependencies are clean"
+echo "purity: sim/ and its dependencies are clean, and the core imports no plugin"

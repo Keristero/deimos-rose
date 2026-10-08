@@ -23,7 +23,6 @@ package game
 
 import rl "vendor:raylib"
 
-import netplay_plugin "dr:plugins/netplay"
 import "dr:render"
 import "dr:sim"
 import "dr:ui"
@@ -124,7 +123,7 @@ main_menu_update :: proc(fl: ^Flow, r: ^render.Renderer, m: ^Main_Menu) {
 			main_menu_activate(fl, r, slot)
 		}
 	}
-	m.netplay_on = prefs_mod_on(fl.prefs, netplay_plugin.ID)
+	m.netplay_on = prefs_online_on(fl.prefs)
 	if m.netplay_on && ui.text_button_update(r, &m.netplay, mouse, dt) {
 		fl.mode = .Netplay_Lobby
 		netplay_lobby_init(&fl.netplay, r)

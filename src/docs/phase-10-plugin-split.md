@@ -1,7 +1,7 @@
 # Phase 10 — The plugin split
 
-**Status: in progress.** Stage 0 (workflow and website) is on its branch;
-the rest is planned below.
+**Status: in progress.** Stage 0 (workflow and website) and stage 1 (the
+core names no plugin) are on their branches; the rest is planned below.
 
 ## Why
 
@@ -143,6 +143,109 @@ before, each with its site entry.
 | 3 | `runtime-plugins` | Plugins built as shared libraries, raylib shared, the loader, an ABI stamp the loader checks, Windows verified in CI; `game/plugins.odin` gone | the core zip plays classic with `plugins/` empty, and with every plugin loaded plays as before |
 | 4 | `netplay-plugin` | The lobby, session and `net/` out of `game/` into the netplay plugin, behind a session-driver extension point | the netplay loopback checks pass with the plugin, and the core has no netplay |
 | 5 | `separate-downloads` | Release split: core zip, one zip per plugin, the editor zip, Recovered Levels zip; the site's download page lists them | each zip installs by unzipping into the game folder |
+
+## Stage 1 — the core names no plugin
+
+`game/` named six plugins at 29 call sites, and seven after the rebase
+onto the newer `ecs-refactor` (lighting's sliders shot). Now it names none:
+`game/plugins.odin`, the list of what is in the build, is the one file in
+`game sim data render ui prefs net oracle` that imports a plugin, and
+`mise run purity` fails any other.
+
+```mermaid
+flowchart LR
+  subgraph before
+    GB[game/] -->|imports| P1[accent] & P2[easy_mode] & P3[fps_unlock] & P4[netplay] & P5[new_weapons] & P6[extra_prefs] & P7[lighting]
+  end
+  subgraph after
+    V[plugin view/] -->|registers| H[(hooks in sim, prefs, render, ui)]
+    GA[game/] -->|walks| H
+  end
+```
+
+Each question the game asked a plugin by name became a hook the plugin
+answers (decisions.md D82):
+
+| The game asked | Now | Registered by |
+|---|---|---|
+| `netplay_plugin.paused` | `sim.paused`: a `Hold` with `pause = true` | netplay |
+| is netplay's plugin on? | `Plugin.online`, `sim.mods_online` | netplay |
+| `-highrefreshrate`, then the monitor's rate | `prefs.launch_switch_register`, `render.frame_rate_register` | fps_unlock's view |
+| the Easy Mode and New Weapons buttons | `ui.setup_switch_register`, per screen | easy_mode's and new_weapons' views |
+| `accent.HUE_P1`, `HUE_P2`, `SELF_OUTLINE` | `Setting.player`, `prefs.player_hue_setting`; the renderer gets the effective settings | accent's view |
+| the Extras preview ships | `ui.settings_preview_register` | accent's view |
+| is Extra Preferences on? | `prefs.settings_page_register` | extra_prefs' view |
+| `level_select_easy`, `preferences_extras`, `preferences_extras_sliders` shots | `ui.menu_shot_register`: a plugin, a core screen, a setup | easy_mode's, accent's and lighting's views |
+
+Two behaviours the code carried for a plugin moved out with it:
+
+- The netplay level-end check turned Easy Mode on in code when
+  `DR_NETPLAY_END` was set. It now passes `-mod easy_mode`, which turns any
+  plugin on for a run by name.
+- The Start packet's flags (Easy Mode and New Weapons as bits, from before
+  mods were sent in Start on 2026-09-26) are sent as 0 and ignored. Every
+  build since 2026-09-27 compares a build hash in Hello, so no peer still
+  reads them; the field stays so the packet's layout does not change.
+
+### Verified (2026-10-08, Odin dev-2026-09, CI's)
+
+- `mise run ci` green: 283 tests in `tests/` (six new, in
+  `extension_points_test.odin`, pin each plugin's registrations; two
+  removed, for the flags' old decoding), and every plugin's own.
+- `mise run oracle:diff:saved`: all 25 films match to the end.
+- Menu shots, 36 scenarios, before and after: 30 byte-identical,
+  `level_select_easy`, `preferences_extras` and every lobby screen among
+  them. The other six (`chaingun`, `chaingun_charge`, `chaingun_release`,
+  `discharge`, `discharge_charge`, `discharge_windup`) differ between two
+  runs of the old build too, by the same pixel counts in the same places:
+  their particles take random directions.
+- `netplay:level-end` passes. With `-mod easy_mode` the host holds at
+  level 1 on Easy Mode's upgrade screen (host.png looked at; mods {2, 3,
+  6, 8, 9, 10}). Without the flag the check *also* passes, held at level 2
+  on New Weapons' loadout (mods {2, 6, 9}), since any hold counts: the
+  check does not prove which hold it saw.
+
+### Rebased onto `ecs-refactor` @ 6634c3d (2026-10-18)
+
+Upstream's 38 new commits added Realtime Lighting, Water, Wind, Hitstop
+and HD Textures. Two of their changes met this stage's:
+
+- **One settings field on the renderer.** Upstream's post passes added
+  `Renderer.setting`, every saved setting copied in each frame; this
+  stage had added `Renderer.settings`, the settings of the plugins on.
+  They are now one field under upstream's name, with this stage's
+  meaning, cleared each frame. Upstream's plugins only read it while
+  they draw, which is only while they are on, so they see the same
+  values.
+- **Lighting's menu shot** (`game/main.odin` turned lighting on by
+  import) is registered by lighting's view, and
+  `menu_shots_name_their_plugin` checks it.
+
+Verified against the rebased `site-and-workflow`, with the new
+`mise run ref` and `menu-shots:all`:
+
+- `mise run ci` green: 290 tests in `tests/` (285 on the base).
+- `oracle:diff:saved`: all 25 films match to the end.
+- `menu-shots:all`: 49 scenarios on the base, 50 here (`extras`, the
+  plain Extras page, is new). 35 byte-identical, the sliders shot among
+  them. 11 differ between two runs of the base itself; `chaingun` gave
+  three different images in five runs of the base; `main` and
+  `main_netplay` differ only in the version string (looked at).
+- `netplay:level-end` passes with `-mod easy_mode`.
+
+### Still open
+
+- `prefs/prefs.odin`'s `LEGACY_MODS` maps the keys of old preference files
+  (`easy_mode=1`) to plugin names. It names plugins by string, not by
+  import, and only for files written before mods were saved by name.
+  A plugin could register its own legacy key; not worth it until stage 5
+  removes a plugin from the build.
+- `render.Accent.on` and `Draw_Accent` draw the trims, crosshair and shots
+  in the player's hue inside the core renderer. They name no plugin, but
+  exist for one. A per-object draw hook would move them; stage 3 is the
+  time, when the accent plugin is built apart.
+- The level-end check cannot tell Easy Mode's hold from the loadout's
+  (above). It should name the hold it expects.
 
 ## Decisions to record as they are made
 

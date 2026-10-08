@@ -175,12 +175,13 @@ decode_ack :: proc(buf: []byte) -> (seq: u8, ok: bool) {
 //
 // The eighth byte is the session's flags (START_EASY: easy mode,
 // START_LOADOUT: new weapons), and the eight after it the session's mods
-// (sim.Session.mods), which supersede them: four before data plugins
-// widened Mods (D52). A build from before the mods sends eight bytes, and
-// one from before the flags seven, which decode as no flags: the game makes what mods it can of the flags (game/flow.odin
-// mods_from_flags). The flags are still sent for the builds that read
-// only them. The seventeenth byte is the campaign (sim.Session.campaign,
-// D53), which the level index counts in; without it, CORE's.
+// (sim.Session.mods), which superseded them: four before data plugins
+// widened Mods (D52). The game now sends the flags as 0 and reads only the
+// mods: every build that sends no mods (before 2026-09-26) also sends no
+// build hash in its Hello (added 2026-09-27), and is refused there before
+// any Start. The byte stays so the layout does not move. The seventeenth
+// byte is the campaign (sim.Session.campaign, D53), which the level index
+// counts in; without it, CORE's.
 START_EASY :: 0x01
 START_LOADOUT :: 0x02
 

@@ -28,16 +28,18 @@ import "dr:sim"
 #assert(i32(rl.KeyboardKey.ESCAPE) == prefs.KEY_ESCAPE)
 
 // What was saved, plus this run's launch flags. A flag (-classic,
-// -diagnostics, -fullscreen, -highrefreshrate) switches its setting on for the run without
-// saving it; changing that setting in Preferences then drops the flag and
-// saves the new value, so the menu always shows and controls what is live.
+// -diagnostics, -fullscreen, or a plugin's launch switch) switches its
+// setting on for the run without saving it; changing that setting in
+// Preferences then drops the flag and saves the new value, so the menu
+// always shows and controls what is live.
 Prefs_State :: struct {
-	saved:  prefs.Prefs,
-	launch: Settings,
+	saved:       prefs.Prefs,
+	launch:      Settings,
+	launch_mods: sim.Mods, // what the plugins' launch switches turned on
 }
 
 prefs_state_load :: proc(launch: Settings) -> Prefs_State {
-	ps := Prefs_State{saved = prefs.defaults(), launch = launch}
+	ps := Prefs_State{saved = prefs.defaults(), launch = launch, launch_mods = prefs.launch_mods(launch.args)}
 	path := prefs.user_data_path("preferences", context.temp_allocator)
 	if path == "" {
 		return ps

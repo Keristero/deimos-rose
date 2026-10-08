@@ -48,6 +48,10 @@ Plugin :: struct {
 	// Needs its own content, in plugins/<name>/ (D51): off when that did
 	// not load (Defs.content, mods_with_content).
 	content:     bool,
+	// On exactly when the session is played over the network: the game
+	// adds it to an online session and keeps it out of any other, whatever
+	// the player's Mods page says. Netplay's own rules (its pause) are one.
+	online:      bool,
 	// From its plugin.json, if it has one: peers compare it (registration_hash).
 	version:     string,
 	// Registered from a plugin.json alone, with no code in the build (D52).
@@ -254,6 +258,16 @@ mods_default_dependants :: proc "contextless" (id: Plugin_ID) -> Mods {
 mods_session :: proc "contextless" (mods: Mods) -> (out: Mods) {
 	for id in 1 ..< plugins.count {
 		if id in mods && plugins.items[id].session {
+			out += {id}
+		}
+	}
+	return
+}
+
+// The plugins that are on exactly when a session is online (Plugin.online).
+mods_online :: proc "contextless" () -> (out: Mods) {
+	for id in 1 ..< plugins.count {
+		if plugins.items[id].online {
 			out += {id}
 		}
 	}

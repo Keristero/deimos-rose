@@ -12,8 +12,6 @@ import "core:testing"
 import vmem "core:mem/virtual"
 
 // Every plugin in the build, registered as the game registers them.
-import "dr:game"
-import "dr:net"
 import "dr:plugins/accent"
 import "dr:plugins/chaingun"
 import "dr:plugins/easy_mode"
@@ -95,15 +93,6 @@ saved_as_off :: proc(t: ^testing.T) {
 	older := prefs.parse("mods=extra_prefs,loadout,new_weapons,passives,easy_mode")
 	testing.expect(t, companion() in older.mods)
 	testing.expect(t, companion() not_in prefs.parse("mods=extra_prefs,loadout,new_weapons").mods)
-}
-
-// An older build's Start flags: with both, as that build had these
-// passives in Passive Upgrades.
-@(test)
-older_start_flags :: proc(t: ^testing.T) {
-	testing.expect(t, companion() in game.mods_from_flags(net.START_EASY | net.START_LOADOUT))
-	testing.expect(t, companion() not_in game.mods_from_flags(net.START_LOADOUT))
-	testing.expect(t, companion() not_in game.mods_from_flags(net.START_EASY))
 }
 
 // Stage 1 with the plugins' content, in session_mods, once the ship is in

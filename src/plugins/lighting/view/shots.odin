@@ -6,6 +6,7 @@ package lighting_view
 // stage with the plugin off, and in classic mode, which must not differ.
 
 import "dr:plugins/lighting"
+import "dr:prefs"
 import "dr:sim"
 import "dr:ui"
 
@@ -37,6 +38,14 @@ register_shots :: proc() {
 	ui.shot_register({name = "lighting_bomb_mid", plugin = id, level = 6, alone = true, setup = lighting_shot, phases = BOMB_MID})
 	ui.shot_register({name = "lighting_bomb_landing", plugin = id, level = 6, alone = true, setup = lighting_shot, phases = BOMB_LANDING})
 	ui.shot_register({name = "lighting_bomb_shadow", plugin = id, level = 6, alone = true, setup = lighting_shot, phases = BOMB_SHADOW})
+	// The Extras page with Realtime Lighting on, so its sliders and the
+	// button that puts them back show; the glow is moved off its default.
+	ui.menu_shot_register({name = "preferences_extras_sliders", plugin = id, screen = "extras", setup = sliders_shot_setup})
+}
+
+@(private = "file")
+sliders_shot_setup :: proc(p: ^prefs.Prefs) {
+	p.settings[GLOW_STRENGTH] = 80
 }
 
 @(init)

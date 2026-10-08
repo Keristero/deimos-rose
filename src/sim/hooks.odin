@@ -26,6 +26,9 @@ Stat_Provider :: struct {
 Hold :: struct {
 	plugin: Plugin_ID,
 	held:   proc "contextless" (s: ^State) -> bool,
+	// A pause the players asked for, rather than a screen: the game shows
+	// its pause card over play and stops the music while it holds.
+	pause:  bool,
 }
 
 // A plugin's own choice of air weapons, in place of the original's: which
@@ -166,6 +169,18 @@ stat_shapes :: proc "contextless" (s: ^State, player: i32, weapon: Res_ID, charg
 session_frozen :: proc "contextless" (s: ^State) -> bool {
 	for &h in registry_items(&holds) {
 		if mod_on(s, h.plugin) && h.held(s) {
+			return true
+		}
+	}
+	return false
+}
+
+// Whether play stands still for a pause the players asked for, inside the
+// simulation (a netplay pause, which either peer can lift). A local pause
+// lives outside the simulation, in the game's own mode.
+paused :: proc "contextless" (s: ^State) -> bool {
+	for &h in registry_items(&holds) {
+		if h.pause && mod_on(s, h.plugin) && h.held(s) {
 			return true
 		}
 	}

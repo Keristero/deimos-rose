@@ -147,12 +147,10 @@ TRIM_SHINE :: 0.3 // share of the saturation the brightest highlights lose
 CROSSHAIR_LIGHTEN :: 0.45
 
 // One player's accent for this frame, set by flow_draw: their hue on their
-// ship's trim, crosshair and air-to-ground shots, and optionally an outline
-// (which Accent Colours does not turn off).
+// ship's trim, crosshair and air-to-ground shots.
 Accent :: struct {
-	on:             bool, // Accent Colours: trim, crosshair and ground shots in the hue
-	hue:            f32, // degrees; also the outline's colour
-	outline:        bool, // Self Outline, the local player only
+	on:             bool, // the player colours' plugin is on: trim, crosshair and ground shots in the hue
+	hue:            f32, // degrees; the player's colour wherever it is shown
 	hide_crosshair: bool, // the other player's, in netplay
 }
 
@@ -250,6 +248,8 @@ Renderer :: struct {
 	// paths, which draw straight to the window as before.
 	canvas:   rl.RenderTexture2D,
 
+	// The player at this machine, -1 for none (a demo, a session watched).
+	local_player:     int,
 	// Netplay accents, per player slot (flow_draw sets them each frame;
 	// all off otherwise), and what draws them.
 	accents:          [sim.MAX_PLAYERS]Accent,
@@ -283,10 +283,12 @@ Renderer :: struct {
 	// and the render systems this renderer runs, rebuilt when they change.
 	mods:            sim.Mods,
 	render_schedule: Render_Schedule,
-	// The post passes' scene and chain (post.odin), and the mods' settings as
-	// saved, by Setting_ID, which flow sets each frame; a pass reads its own
-	// only while its plugin is on, so classic mode never sees them.
+	// The post passes' scene and chain (post.odin).
 	post:            Post_State,
+	// The plugins' settings as they apply this frame, by prefs.Setting_ID:
+	// each one's value while its plugin is on, and 0 while it is off, in
+	// classic mode and in a demo. flow_draw sets them; a plugin's view
+	// reads its own.
 	setting:         [prefs.MAX_SETTINGS]int,
 	// Steps the game is held for (a plugin's view sets it, hitstop's): a
 	// session in play does not step while it is above zero, and each held

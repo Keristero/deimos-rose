@@ -43,9 +43,6 @@ import rl "vendor:raylib"
 
 import "dr:data"
 import "dr:net"
-import accent_view "dr:plugins/accent/view"
-import "dr:plugins/easy_mode"
-import "dr:plugins/new_weapons"
 import "dr:prefs"
 import "dr:render"
 import "dr:sim"
@@ -179,8 +176,7 @@ Netplay :: struct {
 	campaign_prev: ui.Text_Button,
 	campaign_next: ui.Text_Button,
 	ready_btn:  ui.Text_Button,
-	easy_btn:   ui.Text_Button,
-	weapons_btn: ui.Text_Button,
+	switches:   Setup_Switches,
 	buttons_at: f32, // cy the above were last built for; rebuilt if it ever needs to change
 
 	// Live session, once both sides are Playing (see Flow.netplay_active).
@@ -256,13 +252,12 @@ netplay_build_buttons :: proc(nl: ^Netplay, r: ^render.Renderer) {
 	nl.level_prev = ui.text_button_at_x(r, "<", render.SCREEN_W / 2 - 110, 262)
 	nl.level_next = ui.text_button_at_x(r, ">", render.SCREEN_W / 2 + 110, 262)
 	nl.ready_btn = ui.text_button_at(r, "READY", 300)
-	nl.easy_btn = ui.text_button_at_x(r, mod_label({}, easy_mode.ID), EASY_X, EASY_Y)
-	nl.weapons_btn = ui.text_button_at_x(r, mod_label({}, new_weapons.ID), WEAPONS_X, EASY_Y)
+	setup_switches_layout(r, &nl.switches, .Lobby, {}, SWITCH_Y)
 }
 
 // Below the accent slider, clear of everything else on the connected
-// screen: easy mode on the left, new weapons on the right.
-@(private = "file") EASY_Y :: 440
+// screen: the plugins' switches (ui.setup_switch_register).
+@(private = "file") SWITCH_Y :: 440
 // The campaign's row, between the title and CONNECTED: shown while the
 // host is offered more than one, or plays another than the originals.
 @(private = "file") CAMPAIGN_Y :: 175
@@ -280,13 +275,6 @@ netplay_campaign_layout :: proc(r: ^render.Renderer, nl: ^Netplay) {
 	dx := max(f32(CAMPAIGN_ARROW_DX), f32(render.text_width(r, netplay_campaign_text(nl))) / 2 + 40)
 	ui.text_button_relabel(r, &nl.campaign_prev, "<", render.SCREEN_W / 2 - dx, CAMPAIGN_Y)
 	ui.text_button_relabel(r, &nl.campaign_next, ">", render.SCREEN_W / 2 + dx, CAMPAIGN_Y)
-}
-@(private = "file") EASY_X :: render.SCREEN_W / 2 - 110
-@(private = "file") WEAPONS_X :: render.SCREEN_W / 2 + 110
-
-@(private = "file")
-mod_label :: proc(mods: sim.Mods, id: sim.Plugin_ID) -> string {
-	return fmt.tprintf("%s: %s", sim.registered_plugins()[id].label, int(id) in mods ? "ON" : "OFF")
 }
 
 // Called once per render frame from flow_handle_input's .Netplay_Lobby case.
@@ -353,7 +341,7 @@ netplay_begin_name_entry :: proc(fl: ^Flow, nl: ^Netplay, role: Netplay_Role) {
 	nl.phase = .Enter_Name
 	nl.name_role = role
 	nl.local_name = fl.prefs.saved.netplay_name
-	nl.local_hue = setting_value(fl.prefs, accent_view.HUE_P1)
+	nl.local_hue = player_hue(fl.prefs, 0)
 	nl.error = ""
 }
 
@@ -454,20 +442,19 @@ netplay_shot_due :: proc() -> bool {
 //
 // DR_NETPLAY_END=<steps> as well (main.odin sets netplay_test_end) makes
 // the run a test of a level's end without anyone at the keyboard: each
-// side readies as soon as it is connected, the host turns Easy Mode on
-// for the run, and both start the level that many steps before its end
-// (level_system.level_start_at_row), so the reward screen opens a few
-// seconds in. Both sides must be given the same number, or they are not
-// playing the same game (the desync check says so). The log then says
+// side readies as soon as it is connected, and both start the level that
+// many steps before its end (level_system.level_start_at_row). With Easy
+// Mode on, which tools/netplay/level_end_check.sh gives the host with
+// -mod easy_mode, the reward screen opens a few seconds in. Both sides
+// must be given the same number, or they are not playing the same game
+// (the desync check says so). The log then says
 // when play is held and resumed (netplay_playing_step), which
 // tools/netplay/level_end_check.sh greps for.
 netplay_lobby_start_from_flag :: proc(nl: ^Netplay, saved: ^prefs.Prefs, mode: string) {
-	if netplay_test_end > 0 && mode == "host" {
-		// For this run only: nothing here saves the preferences.
-		saved.mods = sim.mods_switch_on(saved.mods, {int(easy_mode.ID)})
-	}
 	nl.local_name = saved.netplay_name
-	nl.local_hue = saved.settings[accent_view.HUE_P1]
+	if id, ok := prefs.player_hue_setting(1); ok {
+		nl.local_hue = saved.settings[id]
+	}
 	if nl.local_name.len == 0 {
 		prefs.name_set(&nl.local_name, high_scores_default_last_name(mode == "host" ? 0 : 1))
 	}
@@ -656,18 +643,12 @@ netplay_update_connected :: proc(fl: ^Flow, nl: ^Netplay, r: ^render.Renderer) {
 		if ui.text_button_update(r, &nl.level_next, mouse, dt) {
 			nl.level_index = (nl.level_index + 1) % n
 		}
-		ui.text_button_relabel(r, &nl.easy_btn, mod_label(nl.mods, easy_mode.ID), EASY_X, EASY_Y)
-		if ui.text_button_update(r, &nl.easy_btn, mouse, dt) {
-			prefs_mod_toggle(fl.prefs, easy_mode.ID)
-		}
-		ui.text_button_relabel(r, &nl.weapons_btn, mod_label(nl.mods, new_weapons.ID), WEAPONS_X, EASY_Y)
-		if ui.text_button_update(r, &nl.weapons_btn, mouse, dt) {
-			prefs_mod_toggle_group(fl.prefs, new_weapons.ID)
-		}
+		setup_switches_layout(r, &nl.switches, .Lobby, nl.mods, SWITCH_Y)
+		setup_switches_update(fl, r, &nl.switches, mouse, dt)
 	}
 	if nl.role == .Host {
 		buf: [net.LEVEL_CHOICE_SIZE]byte
-		lcn := net.encode_level_choice(buf[:], u8(nl.level_index), flags_from_mods(nl.mods), nl.mods, nl.campaign)
+		lcn := net.encode_level_choice(buf[:], u8(nl.level_index), 0, nl.mods, nl.campaign)
 		net.send(&nl.sock, nl.peer, buf[:lcn])
 	}
 
@@ -689,8 +670,8 @@ netplay_update_connected :: proc(fl: ^Flow, nl: ^Netplay, r: ^render.Renderer) {
 		if nl.hue_dirty {
 			nl.hue_dirty = false
 			net.send_hello(&nl.rc, &nl.sock, nl.role == .Host ? 0 : 1, u16(nl.local_hue), prefs.name_string(&nl.local_name), sim.registration_hash())
-			if setting_value(fl.prefs, accent_view.HUE_P1) != nl.local_hue {
-				fl.prefs.saved.settings[accent_view.HUE_P1] = nl.local_hue
+			if player_hue(fl.prefs, 0) != nl.local_hue {
+				player_hue_set(fl.prefs, nl.local_hue)
 				prefs_state_save(fl.prefs)
 			}
 		} else if nl.ready_unsent {
@@ -708,7 +689,7 @@ netplay_update_connected :: proc(fl: ^Flow, nl: ^Netplay, r: ^render.Renderer) {
 	if nl.role == .Host && nl.local_ready && !nl.ready_unsent && nl.remote_ready && !nl.rc.pending {
 		seed := flow_random_seed()
 		nl.start_seed, nl.start_level, nl.start_mods, nl.start_campaign = seed, u8(nl.level_index), nl.mods, nl.campaign
-		net.send_start(&nl.rc, &nl.sock, seed, nl.start_level, flags_from_mods(nl.mods), nl.mods, nl.campaign)
+		net.send_start(&nl.rc, &nl.sock, seed, nl.start_level, 0, nl.mods, nl.campaign)
 		nl.phase = .Starting
 	}
 }
@@ -846,14 +827,14 @@ netplay_poll :: proc(fl: ^Flow, r: ^render.Renderer, nl: ^Netplay) {
 				nl.remote_ready = true
 			}
 		case .Start:
-			seq, seed, level, flags, mods, campaign, sok := net.decode_start(buf[:n])
+			seq, seed, level, _, mods, campaign, sok := net.decode_start(buf[:n])
 			if !sok || !nl.have_peer {
 				continue
 			}
 			if net.reliable_accept(&nl.rc, &nl.sock, nl.peer, seq) {
 				nl.pending_start = true
 				nl.start_seed, nl.start_level, nl.start_campaign = seed, level, campaign
-				nl.start_mods = mods.? or_else mods_from_flags(flags)
+				nl.start_mods = mods.? or_else {} // a peer past Hello's build check always sends them
 			}
 		case .Goodbye:
 			seq, gok := net.decode_goodbye(buf[:n])
@@ -877,9 +858,9 @@ netplay_poll :: proc(fl: ^Flow, r: ^render.Renderer, nl: ^Netplay) {
 			netplay_build_buttons(nl, r)
 			return
 		case .Level_Choice:
-			if idx, flags, mods, campaign, lok := net.decode_level_choice(buf[:n]); lok {
+			if idx, _, mods, campaign, lok := net.decode_level_choice(buf[:n]); lok {
 				nl.level_index, nl.campaign = int(idx), campaign
-				nl.mods = mods.? or_else mods_from_flags(flags)
+				nl.mods = mods.? or_else {}
 			}
 		case .Resync_Start:
 			seq, assigned, total, rok := net.decode_resync_start(buf[:n])
@@ -1385,14 +1366,14 @@ netplay_lobby_draw :: proc(fl: ^Flow, r: ^render.Renderer, nl: ^Netplay) {
 		if nl.role == .Host && !nl.local_ready {
 			ui.text_button_draw(r, &nl.level_prev)
 			ui.text_button_draw(r, &nl.level_next)
-			ui.text_button_draw(r, &nl.easy_btn)
-			ui.text_button_draw(r, &nl.weapons_btn)
+			setup_switches_draw(r, &nl.switches)
 		} else {
-			chosen := fmt.tprintf("%s  --  %s", mod_label(nl.mods, easy_mode.ID), mod_label(nl.mods, new_weapons.ID))
+			setup_switches_layout(r, &nl.switches, .Lobby, nl.mods, SWITCH_Y)
+			chosen := setup_switches_text(&nl.switches, nl.mods)
 			if nl.role == .Guest {
 				chosen = fmt.tprintf("HOST HAS CHOSEN %s", chosen)
 			}
-			ui.menu_draw_text(r, chosen, render.SCREEN_W / 2, EASY_Y + 5, dim, .Centre)
+			ui.menu_draw_text(r, chosen, render.SCREEN_W / 2, SWITCH_Y + 5, dim, .Centre)
 		}
 
 		you := fmt.tprintf("%s (YOU): %s", prefs.name_string(&nl.local_name), nl.local_ready ? "READY" : "NOT READY")

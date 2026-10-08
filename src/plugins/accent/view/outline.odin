@@ -27,7 +27,7 @@ OUTLINE_BEFORE := []string{"players"}
 outline_render :: proc(r: ^render.Renderer, s: ^sim.State, f: ^render.Frame) {
 	for p, k in sim.players_of(s) {
 		ac := r.accents[k]
-		if !ac.outline || !p.active || p.state != .Playing {
+		if r.setting[SELF_OUTLINE] == 0 || k != r.local_player || !p.active || p.state != .Playing {
 			continue
 		}
 		place, ok := render.object_place(r, p.obj, render.ship_before(f, k))

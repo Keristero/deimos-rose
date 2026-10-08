@@ -74,10 +74,11 @@ register :: proc() {
 		description = "Two players over the network, with rollback",
 		session     = true,
 		default_on  = true,
+		online      = true,
 	})
 	sim.kind_component(.Session, Pause{}, ID)
 	sim.system_register({name = "netplay_pause", before = BEFORE, plugin = ID, kind = .Session, run = pause_system})
-	sim.hold_register({plugin = ID, held = held})
+	sim.hold_register({plugin = ID, held = held, pause = true})
 }
 
 @(init)

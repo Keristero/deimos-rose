@@ -297,7 +297,7 @@ run = [
 ]
 
 [tasks.purity]
-description = "Enforce: sim/ imports no raylib and performs no I/O"
+description = "Enforce: sim/ imports no raylib and performs no I/O, and the core imports no plugin"
 run = "bash tools/purity/check.sh"
 
 [tasks."decomp:setup"]

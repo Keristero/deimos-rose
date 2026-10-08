@@ -16,11 +16,6 @@ Settings :: struct {
 	// for one run; Preferences shows and changes the same settings, and
 	// saves them (game/prefs.odin's Prefs_State).
 	classic: bool,
-	// -highrefreshrate: present at the monitor's native refresh rate instead
-	// of the original's fixed 30 FPS, drawing each frame interpolated
-	// between the last two sim steps (D33). The simulation still steps at a
-	// fixed 30 Hz regardless (D17). Also in Preferences.
-	high_refresh_rate: bool,
 	// -diagnostics: a small rolling-stats overlay in the bottom-right corner
 	// (game/diagnostics.odin) -- FPS always, plus (in a netplay session)
 	// ping, rollbacks/sec and updates/sec. New content, no original
@@ -41,17 +36,19 @@ Settings :: struct {
 	// -plugins <dir>: one more plugins root, searched before $DR_PLUGINS
 	// (D52). The level editor plays what it exports from one.
 	plugins:  string,
+	// Every argument, for the switches plugins register
+	// (prefs.launch_switch_register), read once they have.
+	args:     []string,
 }
 
 settings_parse :: proc(args: []string) -> (s: Settings) {
+	s.args = args
 	for i := 1; i < len(args); i += 1 {
 		// A flag's value, if it has one.
 		value := i + 1 < len(args) ? args[i + 1] : ""
 		switch args[i] {
 		case "-classic":
 			s.classic = true
-		case "-highrefreshrate":
-			s.high_refresh_rate = true
 		case "-diagnostics":
 			s.diagnostics = true
 		case "-fullscreen":

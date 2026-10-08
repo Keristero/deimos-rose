@@ -5,7 +5,6 @@ import "core:strings"
 import "core:testing"
 
 import "dr:game"
-import "dr:net"
 import "dr:plugins/chaingun"
 import "dr:plugins/easy_mode"
 import netplay_plugin "dr:plugins/netplay"
@@ -14,8 +13,7 @@ import "dr:plugins/passives"
 import "dr:sim"
 
 // The session plugins the game turns on for Easy Mode, New Weapons and
-// netplay, with what they depend on: what a Start from a build before
-// the mods were sent turns on (game/flow.odin's mods_from_flags).
+// netplay, with what they depend on.
 session_mods :: proc(easy, weapons: bool, online := false) -> sim.Mods {
 	want: sim.Mods
 	if online {
@@ -130,26 +128,6 @@ plugins_take_their_places_in_the_step :: proc(t: ^testing.T) {
 	expect_names(t, core[len(core) - 2:], {"clock", "level_transition"})
 }
 
-// A Start without mods, from an older build, turns on what its flags did;
-// the flags sent beside the mods say the same to one.
-@(test)
-plugins_from_start_flags :: proc(t: ^testing.T) {
-	for easy in ([]bool{false, true}) {
-		for weapons in ([]bool{false, true}) {
-			flags: u8
-			if easy {
-				flags |= net.START_EASY
-			}
-			if weapons {
-				flags |= net.START_LOADOUT
-			}
-			mods := session_mods(easy, weapons)
-			testing.expect_value(t, game.mods_from_flags(flags), mods)
-			testing.expect_value(t, game.flags_from_mods(mods), flags)
-		}
-	}
-}
-
 // Every plugin folder with code is in the build: game/plugins.odin imports
 // it, or nothing registers it and its content is never offered.
 @(test)
@@ -222,10 +200,8 @@ plugins_without_their_content_are_off :: proc(t: ^testing.T) {
 	testing.expect_value(t, sim.mods_with_content(want, {int(chaingun.ID)}), want - both)
 }
 
-// New Weapons as one switch (the lobby's, and an older build's Start
-// flag) brings the Chaingun with it.
+// New Weapons as one switch (the lobby's) brings the Chaingun with it.
 @(test)
 new_weapons_switch_brings_the_chaingun :: proc(t: ^testing.T) {
 	testing.expect_value(t, sim.mods_default_dependants(new_weapons.ID), sim.Mods{int(chaingun.ID)})
-	testing.expect(t, int(chaingun.ID) in game.mods_from_flags(net.START_LOADOUT))
 }

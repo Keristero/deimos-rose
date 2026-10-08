@@ -47,6 +47,21 @@
 
   "changes": [
     {
+      "id": "core-names-no-plugin",
+      "title": "The core names no plugin",
+      "date": "2026-10-08",
+      "kind": "engineering",
+      "pr": null,
+      "summary": "The game used to call seven of its plugins by name, so it could not be built without them. Now each plugin registers what it adds, and the game only asks: the first step to installing plugins separately.",
+      "highlights": [
+        "Level Select and lobby switches, launch flags, frame pacing, the Extras previews and the netplay pause are all registered by their plugins.",
+        "`-mod <name>` switches any plugin on for one run.",
+        "`mise run purity` fails any core file that imports a plugin.",
+        "Classic play, all 25 recorded films and every menu screen are unchanged."
+      ],
+      "diagram": "diagrams/core-asks.svg"
+    },
+    {
       "id": "site-and-workflow",
       "title": "A website, and feature branches with reviewed pull requests",
       "date": "2026-10-08",

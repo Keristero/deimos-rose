@@ -2162,3 +2162,36 @@ From Phase 10 on (AGENTS.md, "Branches and pull requests"):
   themselves (their `plugin.json` or `plugin_register` call), and a
   plugin folder missing from the config fails the build, so the site
   says what the Mods page says.
+
+
+### D82 — The core asks; plugins answer
+
+Phase 10 stage 1 (`docs/phase-10-plugin-split.md`). `game/` named six
+plugins at 29 call sites, so the core could not build without them. Each
+question it asked a plugin by name is now a hook the plugin registers
+from its view, and `mise run purity` fails any core import of a plugin
+outside `game/plugins.odin`.
+
+- **Hooks are named for what they do.** A setup switch, a launch flag, a
+  frame rate, a settings preview, a menu shot: none is called after
+  Easy Mode or 30FPS Unlock, so the next plugin uses the same one.
+- **Plugins are found by role, not by name.** Netplay is the plugin with
+  `online`, a pause is a `Hold` with `pause`, a player's colour is a
+  `Hue` setting with `player`. The core never `plugin_find`s a plugin it
+  expects, except `LEGACY_MODS`, which reads preference files from before
+  mods were saved by name (still open).
+- **The renderer gets the effective settings.** `Renderer.setting`
+  holds each on plugin's settings, and nothing in classic mode or a
+  demo, so a plugin's render system reads its own setting ids
+  (`SELF_OUTLINE`) rather than the core carrying a field for it
+  (`Accent.outline` is gone). The field is the one D78 added for the
+  post passes, which held every saved setting; it now holds only those
+  of the plugins on, and is cleared each frame.
+- **A test turns a plugin on from the command line.** `-mod <name>` does
+  for any plugin what its own launch flag does, without saving it. The
+  netplay level-end check used to turn Easy Mode on in code; it passes
+  `-mod easy_mode` now.
+- **The Start packet's flags are retired, not removed.** Sent as 0 and
+  ignored: every build since 2026-09-27 sends mods in Start and checks a
+  build hash in Hello, so nothing reads them, and keeping the field keeps
+  the packet's layout.

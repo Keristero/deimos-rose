@@ -9,10 +9,6 @@ import "core:strings"
 import rl "vendor:raylib"
 
 import "dr:data"
-import accent_view "dr:plugins/accent/view"
-import "dr:plugins/easy_mode"
-import "dr:plugins/fps_unlock"
-import "dr:plugins/lighting"
 import "dr:prefs"
 import "dr:render"
 import "dr:sim"
@@ -216,7 +212,7 @@ main :: proc() {
 	diagnostics: Diagnostics
 
 	// Fixed-step: the simulation advances in slices of step_dt regardless of
-	// how often the frame is actually presented, so -highrefreshrate (or a
+	// how often the frame is actually presented, so a plugin's frame rate (or a
 	// slow/fast monitor, or a stall) changes how smoothly the game is shown,
 	// never how fast it plays.
 	step_dt := 1.0 / f64(step_hz)
@@ -231,7 +227,7 @@ main :: proc() {
 	// drawing up to one step (~33 ms) behind the newest state.
 	interp_prev := new(render.Interp_Prev)
 	defer free(interp_prev)
-	fps_high: Maybe(bool)
+	fps_pacer: Maybe(int)
 	for !rl.WindowShouldClose() && !flow.quit {
 		// Preferences edits ps in place; apply whatever it holds now.
 		renderer.classic = prefs_classic(&ps)
@@ -244,16 +240,24 @@ main :: proc() {
 		if prefs_fullscreen(&ps) != rl.IsWindowState({.BORDERLESS_WINDOWED_MODE}) {
 			rl.ToggleBorderlessWindowed()
 		}
-		high := prefs_mod_on(&ps, fps_unlock.ID)
-		if applied, ok := fps_high.?; !ok || applied != high {
+		// A plugin that is on may ask for another frame rate
+		// (render.frame_rate_register); otherwise one frame a step.
+		pacer := -1
+		for fr, i in render.registered_frame_rates() {
+			if prefs_mod_on(&ps, fr.plugin) {
+				pacer = i
+				break
+			}
+		}
+		if applied, ok := fps_pacer.?; !ok || applied != pacer {
 			fps := i32(step_hz)
-			if high {
-				rate := rl.GetMonitorRefreshRate(rl.GetCurrentMonitor())
-				fps = rate > 0 ? rate : 60
+			if pacer >= 0 {
+				fps = render.registered_frame_rates()[pacer].fps()
 			}
 			rl.SetTargetFPS(fps)
-			fps_high = high
+			fps_pacer = pacer
 		}
+		between := pacer >= 0 // frames drawn between steps, interpolated
 		dst := canvas_fit(renderer.canvas)
 		// Mouse positions come back in canvas pixels, so every menu's
 		// hit-testing (menu_mouse_pos) is unaffected by the scaling.
@@ -270,7 +274,7 @@ main :: proc() {
 		accumulator += f64(rl.GetFrameTime()) * flow_speed(&flow, &renderer)
 		for steps := 0; accumulator >= step_dt && steps < MAX_STEPS_PER_FRAME; steps += 1 {
 			was_playing := flow.mode == .Playing
-			if high {
+			if between {
 				render.interp_capture(interp_prev, state) // before this step; a step that changes nothing leaves them equal
 			}
 			if flow_held(&flow, &renderer) {
@@ -285,8 +289,8 @@ main :: proc() {
 		}
 		flow_music_update(&flow, &renderer)
 		// How far the render is between the last step and the next.
-		renderer.interp_prev = high ? interp_prev : nil
-		renderer.interp_alpha = high ? f32(clamp(accumulator / step_dt, 0, 1)) : 1
+		renderer.interp_prev = between ? interp_prev : nil
+		renderer.interp_alpha = between ? f32(clamp(accumulator / step_dt, 0, 1)) : 1
 		diagnostics_tick(&diagnostics, rl.GetFrameTime(), flow.netplay_active ? flow.netplay.rs.rollback_count : 0)
 
 		rl.BeginTextureMode(renderer.canvas)
@@ -354,17 +358,21 @@ run_menu_shot :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, r
 	fx: render.Effects
 	render.effects_init(&fx)
 	defer render.effects_destroy(&fx)
+	name := name
+	if ms, ok := ui.menu_shot_find(name); ok {
+		// A plugin's view of one of the screens below (ui.Menu_Shot). Not
+		// saved: a screenshot leaves the player's preferences alone.
+		ps.saved.classic, ps.launch.classic, r.classic = false, false, false
+		ps.saved.mods = sim.mods_switch_on(ps.saved.mods, {int(ms.plugin)})
+		if ms.setup != nil {
+			ms.setup(&ps.saved)
+		}
+		name = ms.screen
+	}
 	switch name {
 	case "main":
 		flow.mode = .Title
 	case "level_select":
-		flow.pending_game_type = .Single
-		flow.mode = .Level_Select
-		level_select_init(&flow, &flow.level_select)
-	case "level_select_easy":
-		// Outside classic mode, with the Easy Mode toggle on.
-		ps.saved.classic, ps.launch.classic, r.classic = false, false, false
-		ps.saved.mods = sim.mods_switch_on(ps.saved.mods, {int(easy_mode.ID)})
 		flow.pending_game_type = .Single
 		flow.mode = .Level_Select
 		level_select_init(&flow, &flow.level_select)
@@ -472,26 +480,11 @@ run_menu_shot :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, r
 		// instead, since this only ever draws once and never polls.
 		flow.mode = .Netplay_Lobby
 		netplay_lobby_init(&flow.netplay, r)
-	case "preferences_extras":
-		// The Extras page with a colour and Self Outline on, so both
-		// previews show what they do.
+	case "extras":
+		// The Extras page as saved; plugins' menu shots (ui.Menu_Shot) set
+		// what it shows.
 		flow.mode = .Preferences
 		flow.preferences.page = .Extras
-		// DR_SHOT_HUE picks the hue: 63 should match player 2's gold.
-		ps.saved.settings[accent_view.HUE_P1] = 30
-		if hue, ok := strconv.parse_int(os.get_env("DR_SHOT_HUE", context.temp_allocator)); ok {
-			ps.saved.settings[accent_view.HUE_P1] = prefs.hue_wrap(hue)
-		}
-		ps.saved.settings[accent_view.SELF_OUTLINE] = 1
-	case "preferences_extras_sliders":
-		// The Extras page with Realtime Lighting on, so its sliders and the
-		// button that puts them back show; the glow is moved off its default.
-		flow.mode = .Preferences
-		flow.preferences.page = .Extras
-		prefs_mod_set(ps, lighting.ID, true)
-		if id, ok := prefs.setting_by_key("glow_strength"); ok {
-			ps.saved.settings[id] = 80
-		}
 	case "preferences_mods":
 		// The Mods page as a new player finds it.
 		flow.mode = .Preferences

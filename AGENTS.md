@@ -39,6 +39,10 @@ leaves behind is:
   "in the core", the feature needs a reason in its pull request, and the
   reason is usually a missing extension point (see "Count the places a
   feature touches").
+- **The core imports no plugin.** `src/game/plugins.odin`, the list of
+  what is in the build, is the one core file that names one; `mise run
+  purity` fails any other. A plugin reaches the core through the
+  extension points below, never the core through a plugin.
 
 ## The core habit: verify, then build
 
@@ -98,6 +102,11 @@ Never let 3 override 1 silently. If you take a structural claim from the
 remaster, say so and note whether you confirmed it.
 
 ## Rules that hold
+
+**Build with CI's Odin.** CI pins Odin dev-2026-09; an older local Odin
+can fail on vendor bindings (`terrain/model.odin` with dev-2026-07). Run
+`MISE_ODIN_VERSION=dev-2026-09 mise run <task>` when the local default
+is older, and do not take a toolchain failure for a regression.
 
 **Every task lives in `src/mise.toml`.** If you ran a command to build,
 extract, check or verify something, it belongs there as a task. Ad-hoc shell
@@ -360,7 +369,8 @@ The extension points today:
 | behaviour for units or states by their definitions | a component, `prefab_builder_register`, and a stage's `with`/`without` | `sim/prefabs.odin` |
 | data on the session, players or entities | `kind_component` | `sim/ecs.odin` |
 | a change to the core's numbers | `stat_provider_register` | `sim/hooks.odin` |
-| a pause or a screen between levels | `hold_register` | `sim/hooks.odin` |
+| a pause or a screen between levels | `hold_register`; `pause = true` for a pause the players asked for (`sim.paused`) | `sim/hooks.odin` |
+| a plugin that is on exactly when the session is online | `online = true` in `plugin_register` (`sim.mods_online`) | `sim/plugins.odin` |
 | which weapons are flown, and in what order | `weapon_chooser_register`, `weapon_filter_register` | `sim/hooks.odin` |
 | a new way for a weapon to fire | `weapon_fire_register` | `sim/hooks.odin` |
 | something that follows a shot's hit | `shot_hit_register` | `sim/hooks.odin` |
@@ -370,11 +380,16 @@ The extension points today:
 | effects that live between steps and draw between layers | `effect_system_register` | `render/render_systems.odin` |
 | a pass over the finished play field (lighting, glow, water) | `render.post_pass_register` | `render/post.odin` (D78) |
 | a screen over the play field | `ui.overlay_register` | `ui/overlays.odin` |
-| a setting on the Extras page | `prefs.setting_register` | `prefs/settings.odin` |
+| a setting on the Extras page | `prefs.setting_register`; `player = n` for player n's colour (`prefs.player_hue_setting`) | `prefs/settings.odin` |
+| the Extras page itself | `prefs.settings_page_register` | `prefs/settings.odin` |
+| a preview drawn on the Extras page | `ui.settings_preview_register` | `ui/settings_previews.odin` |
+| a launch flag that turns a plugin on for one run (`-mod <name>` works for any) | `prefs.launch_switch_register` | `prefs/launch.odin` |
+| a switch on Level Select or the netplay lobby | `ui.setup_switch_register` | `ui/setup_switches.odin` |
+| presenting faster than the original's 30 frames a second | `render.frame_rate_register` | `render/frame_rate.odin` |
 | records, weapons, sprites, im16 images and sounds of a plugin's own | `plugins/<name>/{data,sprites,images/im16,audio}` beside its code, a recipe in `tools/recolour/`, `content = true` | `data/assets.odin` (D49, D51) |
 | a plugin with no code: content and a manifest | `plugins/<name>/plugin.json` beside its content, found at startup | `data/plugins.odin` (D52) |
 | a campaign: levels played in their own order | `levels` in its `plugin.json`, records in `data/levels/`, maps and previews in `images/im16/` | `data/assets.odin`, `sim/defs.odin` (D53) |
-| a screenshot scenario (`mise run menu-shot MENU=...`) | `ui.shot_register` | `ui/shots.odin` |
+| a screenshot scenario (`mise run menu-shot MENU=...`) | `ui.shot_register`; `ui.menu_shot_register` for a core menu with a plugin on | `ui/shots.odin` |
 
 ## Finishing a branch or a phase
 
