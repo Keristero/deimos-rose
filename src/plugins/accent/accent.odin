@@ -8,13 +8,11 @@ import "dr:sim"
 // outline around it. Presentation only: it changes nothing in the
 // simulation.
 
-ID: sim.Plugin_ID
-
 @(private = "file", rodata)
 DEPS := []string{"extra_prefs"}
 
 register :: proc() {
-	ID = sim.plugin_register({
+	shared.id = sim.plugin_register({
 		name        = "accent",
 		label       = "ACCENT COLOR",
 		description = "Each player's own colour on their ship and shots",

@@ -13,9 +13,6 @@ HORN_RATE :: 44100
 HORN_BLAST :: 0.26 // seconds a blast sounds
 HORN_GAP :: 0.07
 
-@(private = "file") horn: rl.Sound
-@(private = "file") horned: bool
-
 // How many blasts streak `n` gets.
 horn_blasts :: proc "contextless" (n: int) -> int {
 	return n >= 6 ? 3 : n >= 3 ? 2 : 1
@@ -73,20 +70,20 @@ horn_play :: proc(n: int, volume: f32) {
 	for v, i in samples {
 		pcm[i] = i16(v * 30000)
 	}
-	if horned {
-		rl.StopSound(horn)
-		rl.UnloadSound(horn)
+	if shared.horned {
+		rl.StopSound(shared.horn)
+		rl.UnloadSound(shared.horn)
 	}
 	wave := rl.Wave{frameCount = u32(len(pcm)), sampleRate = HORN_RATE, sampleSize = 16, channels = 1, data = raw_data(pcm)}
-	horn = rl.LoadSoundFromWave(wave) // copies
-	horned = true
-	rl.SetSoundVolume(horn, clamp(volume * 0.45, 0, 1))
-	rl.PlaySound(horn)
+	shared.horn = rl.LoadSoundFromWave(wave) // copies
+	shared.horned = true
+	rl.SetSoundVolume(shared.horn, clamp(volume * 0.45, 0, 1))
+	rl.PlaySound(shared.horn)
 }
 
 horn_destroy :: proc() {
-	if horned && rl.IsAudioDeviceReady() {
-		rl.UnloadSound(horn)
+	if shared.horned && rl.IsAudioDeviceReady() {
+		rl.UnloadSound(shared.horn)
 	}
-	horned = false
+	shared.horned = false
 }

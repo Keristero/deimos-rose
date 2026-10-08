@@ -2195,3 +2195,38 @@ outside `game/plugins.odin`.
   ignored: every build since 2026-09-27 sends mods in Start and checks a
   build hash in Hello, so nothing reads them, and keeping the field keeps
   the packet's layout.
+
+### D83 — One block of state per package
+
+Phase 10 stage 2 (`docs/phase-10-plugin-split.md`). A plugin built as a
+shared library compiles its own copy of every package it imports,
+globals included, so its registrations would land in a copy the game
+never reads.
+
+- **A package's mutable state is one struct, reached through one
+  pointer.** `Shared`, a zeroed `shared_block`, and `shared :=
+  &shared_block`, declared to `dr:blocks` from an `@(init)`. Binding
+  points a plugin's `shared` at the game's block; every read already
+  goes through it, so the package's code does not know which module it
+  runs in.
+- **Bind is all or nothing, and checked by type.** A block whose
+  `Shared` differs from the game's means the plugin was built from other
+  sources; nothing is bound, and the package is named. Stage 3's ABI
+  stamp refuses such a plugin earlier; this is the backstop.
+- **What a plugin made before binding is merged, by name.** Its
+  `@(init)`s run at load, before it can bind, so sim queues their steps
+  locally and its `merge` adds them to the game's, skipping steps the
+  game has.
+- **Tables are `@(rodata)`.** A literal table is the same in every
+  module, so a copy is harmless; marking it read-only says so, and lets
+  the check tell it from state.
+- **Ids set at registration are state.** They live in the plugin's
+  block, behind a `#force_inline` accessor (`new_weapons.beam()`).
+- **A block starts zeroed.** An initialiser moved sim's 135 KB block
+  into the executable's `.data`.
+- **The rule is enforced.** `mise run purity` runs `tools/globals
+  -check`, which fails any other mutable package variable, any
+  `@(static)` local but `component_slot`'s, and any block initialiser,
+  in every package a plugin can import.
+- **odecs is exempt.** Its package state is its encoded query terms,
+  which no code outside it may use (D47).

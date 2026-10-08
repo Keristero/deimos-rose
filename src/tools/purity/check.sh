@@ -56,4 +56,20 @@ if grep -rnE --include='*.odin' "$INTERNALS" "$SRC" --exclude-dir=third_party --
     echo "purity: use odecs's public API, not its internals or encoded terms" >&2
     exit 1
 fi
-echo "purity: sim/ and its dependencies are clean, and the core imports no plugin"
+# One copy of every package's state (D83). A plugin built as a shared
+# library carries its own copy of each package it imports, globals
+# included, and only a package's block is bound to the game's. So in any
+# package a plugin can import, a mutable global must live in the block or
+# be @(rodata). Plugin tests, game/, tools/ and odecs are not imported by
+# a plugin's library; odecs keeps nothing but its encoded query terms,
+# which the check above already keeps out of reach.
+SHARED=()
+while IFS= read -r d; do SHARED+=("$d"); done < <(
+    find "$SRC/sim" "$SRC/data" "$SRC/prefs" "$SRC/render" "$SRC/ui" "$SRC/plugins" \
+        -name '*.odin' -not -path '*/tests/*' -printf '%h\n' 2>/dev/null | sort -u)
+BUILD="${DR_BUILD:-$SRC/build}"
+mkdir -p "$BUILD"
+odin build "$SRC/tools/globals" -out:"$BUILD/globals" -o:none
+"$BUILD/globals" -check "${SHARED[@]}"
+
+echo "purity: sim/ and its dependencies are clean, the core imports no plugin, and every package's state is in its block"

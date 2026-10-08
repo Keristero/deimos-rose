@@ -430,8 +430,6 @@ held :: proc "contextless" (s: ^sim.State) -> bool {
 	return loadout_of(s).active
 }
 
-ID: sim.Plugin_ID
-
 @(private = "file", rodata)
 DEPS := []string{"extra_prefs"}
 // The screen runs ahead of the game step, after a pause and the reward
@@ -446,24 +444,24 @@ OPEN_AFTER := []string{"reward_open"}
 OPEN_BEFORE := []string{"level_transition"}
 
 register :: proc() {
-	ID = sim.plugin_register({
+	shared.id = sim.plugin_register({
 		name        = "loadout",
 		label       = "LOADOUT",
 		description = "Three air weapons at hand, chosen at the start of each stage",
 		deps        = DEPS,
 		session     = true,
 	})
-	sim.kind_component(.Session, Loadout{}, ID)
+	sim.kind_component(.Session, Loadout{}, shared.id)
 	// No weapon in any slot until the first stage's screen fills them.
 	slots: Loadout_Slots
 	slots.loadout = NO_WEAPON
 	slots.spare = NO_WEAPON
-	sim.kind_component(.Player, slots, ID)
+	sim.kind_component(.Player, slots, shared.id)
 	sim.system_register({
 		name   = "loadout_screen",
 		after  = SCREEN_AFTER,
 		before = SCREEN_BEFORE,
-		plugin = ID,
+		plugin = shared.id,
 		kind   = .Session,
 		run    = screen_system,
 	})
@@ -471,12 +469,12 @@ register :: proc() {
 		name   = "loadout_open",
 		after  = OPEN_AFTER,
 		before = OPEN_BEFORE,
-		plugin = ID,
+		plugin = shared.id,
 		kind   = .Session,
 		run    = open_system,
 	})
-	sim.hold_register({plugin = ID, held = held})
-	sim.weapon_chooser_register({plugin = ID, new_game = loadout_new_game, next = loadout_next})
+	sim.hold_register({plugin = shared.id, held = held})
+	sim.weapon_chooser_register({plugin = shared.id, new_game = loadout_new_game, next = loadout_next})
 }
 
 @(init)

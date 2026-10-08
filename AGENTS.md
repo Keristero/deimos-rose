@@ -125,11 +125,21 @@ and fast tests all die without it, and it cannot be retrofitted cheaply.
 silently. `G_Film::GetRandomSeed` shows the original made the same choice.
 
 **Register through a named step.** An `@(init)` procedure only calls
-`sim.register_step`. `sim.register_all` runs the steps in a fixed order,
+`sim.register_step`, and `blocks.declare` for its package's block. `sim.register_all` runs the steps in a fixed order,
 and every `main` that touches the simulation calls it first. Odin orders
 `@(init)` procedures differently for different targets, and a registry's
 order gives the ids peers exchange. That once made a Linux host's Easy
 Mode a Windows guest's Loadout (decisions.md D50).
+
+**A package's state lives in its block.** A plugin is loaded from a
+library of its own, which carries its own copy of every package it
+imports; only a package's block is shared with the game's. So a mutable
+variable goes in the package's `Shared` struct, read through `shared.`,
+and a literal table is `@(rodata)`. A value set at registration, a
+plugin's id included, is state: other packages read it through an
+accessor (`new_weapons.beam()`). A `@(static)` local is state too. A
+block starts zeroed. `mise run purity` enforces all of it (decisions.md
+D83, `src/blocks/blocks.odin`).
 
 **Classic mode is the original, exactly.** With classic mode on, the game
 must look and behave as the 2003 build does: same sprites, colours, frames,
@@ -390,6 +400,7 @@ The extension points today:
 | a plugin with no code: content and a manifest | `plugins/<name>/plugin.json` beside its content, found at startup | `data/plugins.odin` (D52) |
 | a campaign: levels played in their own order | `levels` in its `plugin.json`, records in `data/levels/`, maps and previews in `images/im16/` | `data/assets.odin`, `sim/defs.odin` (D53) |
 | a screenshot scenario (`mise run menu-shot MENU=...`) | `ui.shot_register`; `ui.menu_shot_register` for a core menu with a plugin on | `ui/shots.odin` |
+| state a package keeps between calls | its `Shared` block, declared to `blocks.declare` | `blocks/blocks.odin` (D83) |
 
 ## Finishing a branch or a phase
 

@@ -32,7 +32,7 @@ BOMB_LANDING := []ui.Shot_Phase{{1, {{.Fire_Ground}, {}}}, {21, {}}}
 BOMB_SHADOW := []ui.Shot_Phase{{15, {{.Left}, {}}}, {1, {{.Fire_Ground}, {}}}, {21, {}}}
 
 register_shots :: proc() {
-	id := lighting.ID
+	id := lighting.id()
 	ui.shot_register({name = "lighting", plugin = id, level = 6, alone = true, setup = lighting_shot, phases = FIRING})
 	ui.shot_register({name = "lighting_bomb_launch", plugin = id, level = 6, alone = true, setup = lighting_shot, phases = BOMB_LAUNCH})
 	ui.shot_register({name = "lighting_bomb_mid", plugin = id, level = 6, alone = true, setup = lighting_shot, phases = BOMB_MID})
@@ -45,7 +45,7 @@ register_shots :: proc() {
 
 @(private = "file")
 sliders_shot_setup :: proc(p: ^prefs.Prefs) {
-	p.settings[GLOW_STRENGTH] = 80
+	p.settings[shared.glow_strength] = 80
 }
 
 @(init)

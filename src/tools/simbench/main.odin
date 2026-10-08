@@ -145,7 +145,7 @@ profile_report :: proc(label: string) {
 					r.name, fmt.tprint(r.count.calls), fmt.tprintf("%.1f", f64(r.count.cycles) / f64(r.count.calls)))
 			}
 		}
-		p := &sim.profile
+		p := sim.profile()
 		total, in_stages, entities: i64
 		systems := make([dynamic]Row, context.temp_allocator)
 		for sys, i in sim.registered_systems() {

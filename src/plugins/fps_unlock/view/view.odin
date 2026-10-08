@@ -12,8 +12,8 @@ import "dr:sim"
 // on for one run.
 
 register :: proc() {
-	render.frame_rate_register({plugin = fps_unlock.ID, fps = display_rate})
-	prefs.launch_switch_register({flag = "-highrefreshrate", plugin = fps_unlock.ID})
+	render.frame_rate_register({plugin = fps_unlock.id(), fps = display_rate})
+	prefs.launch_switch_register({flag = "-highrefreshrate", plugin = fps_unlock.id()})
 }
 
 @(init)

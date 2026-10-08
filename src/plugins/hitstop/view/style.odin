@@ -13,11 +13,11 @@ import "core:math"
 import rl "vendor:raylib"
 
 import "dr:render"
-import "dr:sim"
 
 STYLE_HISTORY :: 6 // the last tools used that a new hit is compared with
 
 // The grades, lowest first: the letters and the name they go by.
+@(rodata)
 GRADES := [8]struct {
 	letter, name: string,
 	from:         f32, // the gauge at which it begins
@@ -41,8 +41,6 @@ Style :: struct {
 	rank:    int, // the grade it was last drawn at
 	changed: f64, // the clock when it last changed grade
 }
-
-style: [sim.MAX_PLAYERS]Style
 
 // The grade, 0 (D) to 7, of gauge `g`.
 style_rank :: proc "contextless" (g: f32) -> int {
@@ -102,7 +100,7 @@ style_struck :: proc "contextless" (st: ^Style) {
 
 // Whether any player has style to show.
 style_any :: proc() -> bool {
-	for st in style {
+	for st in shared.style {
 		if st.gauge > 0.005 {
 			return true
 		}
@@ -114,7 +112,7 @@ style_any :: proc() -> bool {
 // name under it and the gauge for the grade in progress, at the field's
 // side `left` or right, `y` down.
 style_draw :: proc(r: ^render.Renderer, field: [4]f32, scale: f32, player: int, y: f32) {
-	st := &style[player]
+	st := &shared.style[player]
 	if st.gauge <= 0.005 {
 		return
 	}

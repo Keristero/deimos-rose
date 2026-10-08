@@ -42,7 +42,7 @@ Level :: struct {
 	placements: []Placement,
 }
 
-@(private = "file")
+@(private = "file", rodata)
 HEADER := [11]string {
 	"name_STR",
 	"indentifier_STR",
@@ -57,7 +57,7 @@ HEADER := [11]string {
 	"numObjects_INT",
 }
 
-@(private = "file")
+@(private = "file", rodata)
 PLACEMENT := [7]string {
 	"unit_ID",
 	"layer_ID",

@@ -8,8 +8,8 @@ import "dr:ui"
 // screenshot of Level Select with it on.
 
 register_switch :: proc() {
-	ui.setup_switch_register({plugin = easy_mode.ID, screens = {.Level_Select, .Lobby}})
-	ui.menu_shot_register({name = "level_select_easy", plugin = easy_mode.ID, screen = "level_select", })
+	ui.setup_switch_register({plugin = easy_mode.id(), screens = {.Level_Select, .Lobby}})
+	ui.menu_shot_register({name = "level_select_easy", plugin = easy_mode.id(), screen = "level_select", })
 }
 
 @(init)

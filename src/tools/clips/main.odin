@@ -99,7 +99,7 @@ clip :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, root, id, 
 	// mode with New Weapons on.
 	ps := game.Prefs_State{saved = prefs.defaults()}
 	ps.saved.classic, r.classic = false, false
-	game.prefs_mod_set(&ps, new_weapons.ID, true)
+	game.prefs_mod_set(&ps, new_weapons.id(), true)
 	fl: game.Flow
 	game.flow_init(&fl, root, defs, state, r, &ps)
 	defer game.flow_destroy(&fl)

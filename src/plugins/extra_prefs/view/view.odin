@@ -8,7 +8,7 @@ import "dr:sim"
 // settings there, and opens it while this plugin is on.
 
 register :: proc() {
-	prefs.settings_page_register(extra_prefs.ID)
+	prefs.settings_page_register(extra_prefs.id())
 }
 
 @(init)

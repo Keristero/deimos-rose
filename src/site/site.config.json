@@ -47,6 +47,20 @@
 
   "changes": [
     {
+      "id": "shared-state",
+      "title": "One copy of the game's state",
+      "date": "2026-10-08",
+      "kind": "engineering",
+      "pr": null,
+      "summary": "A plugin loaded from its own library would carry a private copy of everything the game keeps, and its registrations would never reach the game. Every package now keeps its state in one block, which a loaded plugin is pointed at: the groundwork for installing plugins separately.",
+      "highlights": [
+        "142 package variables across 29 packages moved into 28 blocks, or became read-only tables.",
+        "`mise run purity` fails any new variable outside a block.",
+        "All 25 recorded films, the damage report and every menu screen are unchanged; a simulation step takes as long as before."
+      ],
+      "diagram": "diagrams/shared-state.svg"
+    },
+    {
       "id": "core-names-no-plugin",
       "title": "The core names no plugin",
       "date": "2026-10-08",

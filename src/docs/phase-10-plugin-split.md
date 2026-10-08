@@ -76,7 +76,7 @@ game's state:
 sequenceDiagram
   participant G as game (host)
   participant P as plugin.so
-  G->>G: own blocks: sim, data, render, ui, prefs, odecs
+  G->>G: own blocks: sim, data, render, ui, prefs, and each plugin's
   G->>P: dlopen: plugin's @(init) queue registrations locally
   G->>P: deimos_plugin_bind(host table)
   P->>P: for each block it declares: in the table? point at it : add it
@@ -118,7 +118,9 @@ both.
 Package-level variables, counted 2026-10-08 (excluding tests): about 100
 declarations across `sim` (29), `odecs` (12), `data` (10), `render` (4),
 `prefs` (4), `ui` (2), `sim/systems/collision_system` (3), and the plugins
-(about 50). Two kinds:
+(about 50). (Stage 2 counted them with a parser instead of grep: 126,
+of which 35 were already `@(rodata)`, and odecs needed no block. See
+"Stage 2" below.) Two kinds:
 
 - **Literal tables** (`SIN_BITS`, `GLYPH`, `LEVEL_ORDER`, `DEPS`): the
   same in every module, so a copy is harmless. They become `@(rodata)`.
@@ -139,7 +141,7 @@ before, each with its site entry.
 |---|---|---|---|
 | 0 | `site-and-workflow` | The website, its generator and Pages deployment; the pull request workflow and `site:check`; AGENTS.md for branches and pull requests; this plan | PR open, site builds, check passes |
 | 1 | `core-names-no-plugin` | Extension points for what `game/` asks of plugins: frame pacing, ship accents, level-select toggles, lobby toggles, netplay pause. `game/` imports no plugin; `mise run purity` enforces it | `game/plugins.odin` is the only file that names a plugin; oracle and fingerprints unchanged |
-| 2 | `shared-state` | `dr:shared`: blocks, bind and flush; every package's state moved into its block, tables to `@(rodata)`; the check | neutral: oracle, fingerprints, DPS report unchanged |
+| 2 | `shared-state` | `dr:blocks`: blocks, bind and merge; every package's state moved into its block, tables to `@(rodata)`; the check | neutral: oracle, fingerprints, DPS report unchanged |
 | 3 | `runtime-plugins` | Plugins built as shared libraries, raylib shared, the loader, an ABI stamp the loader checks, Windows verified in CI; `game/plugins.odin` gone | the core zip plays classic with `plugins/` empty, and with every plugin loaded plays as before |
 | 4 | `netplay-plugin` | The lobby, session and `net/` out of `game/` into the netplay plugin, behind a session-driver extension point | the netplay loopback checks pass with the plugin, and the core has no netplay |
 | 5 | `separate-downloads` | Release split: core zip, one zip per plugin, the editor zip, Recovered Levels zip; the site's download page lists them | each zip installs by unzipping into the game folder |
@@ -246,6 +248,148 @@ Verified against the rebased `site-and-workflow`, with the new
   time, when the accent plugin is built apart.
 - The level-end check cannot tell Easy Mode's hold from the loadout's
   (above). It should name the hold it expects.
+
+## Stage 2 — one copy of the state
+
+Every package a plugin can import keeps its mutable state in one block,
+which binding points at the game's. Nothing loads a plugin yet (stage
+3), so this stage is proved neutral, and the binding by tests.
+
+```mermaid
+flowchart LR
+  subgraph before["before: a copy per module"]
+    GG["game: sim's globals"]
+    PG["plugin.so: its own copy"] -.->|registers into| PG
+  end
+  subgraph after["after: one block per package"]
+    GS["game: sim.shared"] --> B[("sim's block")]
+    PS["plugin.so: sim.shared"] -->|bind repoints| B
+  end
+```
+
+A package's state is a `Shared` struct, a zeroed `shared_block`, and a
+`shared` pointer to it, which every read goes through. An `@(init)`
+declares the pointer to `dr:blocks` with the package's import path and
+`Shared`'s typeid (decisions.md D83):
+
+```odin
+Shared :: struct { systems: Registry(System, MAX_SYSTEMS), ... }
+@(private) shared_block: Shared
+@(private) shared := &shared_block
+@(init, private) declare_shared :: proc "contextless" () {
+	blocks.declare({name = "sim", ptr = (^rawptr)(&shared), type = Shared, merge = merge_shared})
+}
+```
+
+`blocks.bind(host)`, called in a plugin with the game's table, checks
+every type first and binds nothing on a mismatch. It then repoints each
+of the plugin's blocks at the game's, and adds the blocks of packages the
+game lacks (another plugin's) to the game's table, so the next plugin
+that imports them shares the first one's copy. sim's `merge` carries the
+registration steps a plugin's `@(init)`s queued before binding into the
+game's, and drops those the game has by name: sim's own, which every
+copy queues.
+
+| | Before | After |
+|---|---|---|
+| package variables in importable packages (parser count) | 196 | 126 |
+| of them `@(rodata)` | 53 | 69 |
+| mutable, outside a block | 142, in 29 packages | 0 |
+| blocks (`shared_block` and `shared`) | 0 | 28 |
+| `@(static)` locals | 1 | 1, allowed (below) |
+
+Counted by `tools/globals` after the rebase onto `ecs-refactor` @ 6634c3d,
+whose lighting, water, wind and hitstop plugins brought 51 more globals
+and 9 more blocks; the first cut, before it, had 91 in 20 packages and
+19 blocks.
+
+### What the binary turned out to need
+
+- **A static is a global too.** `sim.component_slot` cached each
+  component type's id in a `@(static)`; a plugin's copy would start every
+  type at -1 and never register. It now finds an unset id in the shared
+  catalog (`catalog_find`), so each module's cache fills from the one
+  block. The globals check walks procedure bodies for this reason, and
+  allows only this one.
+- **A block must start zeroed.** sim's first cut started
+  `plugins.count` at 1 (CORE's slot), and the initialiser moved the whole
+  135 KB block from `.bss` into the executable's `.data`. The slot is now
+  filled by the first `plugin_register`, `registered_plugins` always
+  includes it, and the check fails a block with an initialiser.
+- **Plugin ids are state.** `easy_mode.ID`, `new_weapons.BEAM` and the
+  like are set at registration, so they moved into each plugin's block
+  with an accessor (`easy_mode.id()`, `new_weapons.beam()`), and other
+  packages call the accessor.
+- **odecs needs no block.** Its only package state is its encoded query
+  terms (and `_empty_cached_query`, a sentinel), which `mise run purity`
+  already keeps every caller out of (D47). A world's components live in
+  the world, which is in the session's state, keyed by typeid, which the
+  spike showed agrees between modules.
+- **Plugins import each other** (accent, fps_unlock, loadout, passives
+  and new_weapons import extra_prefs; chaingun imports new_weapons; and
+  more), so plugin packages have blocks too, and the check covers them,
+  view packages included.
+
+### The check
+
+`tools/globals` parses packages with `core:odin/parser`. With `-check`,
+run by `mise run purity` over `sim` and its subpackages, `data`, `prefs`,
+`render`, `ui` and every plugin package but its tests, it fails:
+
+- a mutable package-level variable that is neither `@(rodata)` nor the
+  package's `shared_block` or `shared`;
+- a `@(static)` local, except `component_slot`'s;
+- a `shared_block` with an initialiser.
+
+A stray global and a stray static planted in `plugins/chaingun` each
+failed it, with their file and line.
+
+### Verified (2026-10-18, Odin dev-2026-09, CI's, after the rebase)
+
+- `mise run ci` green: 296 tests in `tests/` (six new in
+  `blocks_test.odin`: rebinding and merging, a type mismatch, joining,
+  a full table, the declared blocks, sim's merge), and every plugin's own.
+- `mise run oracle:diff:saved`: all 25 films match call for call.
+- `tests/golden/fingerprints.txt` unchanged.
+- `mise run dps:report` against stage 1's build (`mise run ref
+  REF=core-names-no-plugin TASK=dps:report`): the HTML is byte-identical.
+- Menu shots, all 50 scenarios (`menu-shots:all`, `menu-shots:diff`):
+  stage 1's build rendered twice differs from itself in 12 (particles);
+  stage 2 differs from it in those 12 and in `main` and `main_netplay`,
+  where the crop of the difference is the version string, v0.1.281 against
+  v0.1.282, one commit more.
+- `mise run bench`, both builds run alternately, two runs each (µs):
+
+  | | stage 1 | stage 2 |
+  |---|---|---|
+  | demos, per step | 11.34, 11.82 | 11.69, 11.60 |
+  | sessions, per step | 15.89, 15.93 | 15.78, 15.74 |
+  | snapshot, level 6 | 3.39, 3.37 | 3.47, 3.40 |
+  | snapshot, fullest | 7.34, 7.36 | 7.35, 7.38 |
+  | restore, fullest | 6.64, 6.88 | 6.92, 6.89 |
+  | checksum, fullest | 50.49, 48.69 | 50.65, 50.42 |
+
+  Unchanged within noise. The first cut measured the fullest world's
+  snapshot 5% slower; after the rebase it is not.
+- Size, the `build` task's game binary, Linux: 17,640,728 → 18,011,640
+  bytes (+371 KB). By section: Odin's type info `.odinti` +158 KB and
+  `.rela.dyn` +134 KB, which the `Shared` typeids pull in for the
+  mismatch check; `.text` +71 KB; `.data` −8 KB, `.bss` +12.5 KB.
+
+Not verified: binding across a real shared library. The tests bind
+tables in one module; the spike above bound across modules, but before
+this code existed. Stage 3 loads the first real plugin.
+
+### Still open
+
+- The `Shared` typeids add about 290 KB of type info to the game. A
+  size and a hash of each block's fields, from the ABI stamp stage 3
+  needs anyway, would check the same without it.
+- `component_slot`'s lookup is a linear search, once per type per
+  module, over at most `MAX_COMPONENTS` (128); harmless, not measured apart.
+- `net/` and `oracle/` are not checked: no plugin imports them yet.
+  Stage 4 moves `net/` under the netplay plugin, and the check's list
+  should grow with it.
 
 ## Decisions to record as they are made
 

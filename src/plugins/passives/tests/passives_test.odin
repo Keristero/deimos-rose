@@ -38,7 +38,7 @@ play_start :: support.play_start
 // has it.
 @(private = "file")
 session_mods :: proc() -> sim.Mods {
-	return sim.mods_session(sim.mods_switch_on({}, {int(easy_mode.ID)}))
+	return sim.mods_session(sim.mods_switch_on({}, {int(easy_mode.id())}))
 }
 
 @(test)

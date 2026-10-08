@@ -17,13 +17,13 @@ import "dr:sim"
 session_mods :: proc(easy, weapons: bool, online := false) -> sim.Mods {
 	want: sim.Mods
 	if online {
-		want += {int(netplay_plugin.ID)}
+		want += {int(netplay_plugin.id())}
 	}
 	if easy {
-		want += {int(easy_mode.ID)}
+		want += {int(easy_mode.id())}
 	}
 	if weapons {
-		want += {int(new_weapons.ID), int(chaingun.ID)}
+		want += {int(new_weapons.id()), int(chaingun.id())}
 	}
 	return sim.mods_session(sim.mods_switch_on({}, want))
 }
@@ -31,19 +31,19 @@ session_mods :: proc(easy, weapons: bool, online := false) -> sim.Mods {
 @(test)
 plugins_bring_their_dependencies :: proc(t: ^testing.T) {
 	mods := session_mods(true, false)
-	testing.expect(t, int(easy_mode.ID) in mods)
-	testing.expect(t, int(passives.ID) in mods)
+	testing.expect(t, int(easy_mode.id()) in mods)
+	testing.expect(t, int(passives.id()) in mods)
 	// Extra Preferences, which both need, changes nothing in a session.
 	extra, ok := sim.plugin_find("extra_prefs")
 	testing.expect(t, ok)
 	testing.expect(t, int(extra) not_in mods)
-	testing.expect(t, int(extra) in sim.mods_with_deps({int(easy_mode.ID)}))
+	testing.expect(t, int(extra) in sim.mods_with_deps({int(easy_mode.id())}))
 }
 
 @(test)
 plugins_without_their_dependencies_are_off :: proc(t: ^testing.T) {
-	testing.expect_value(t, sim.mods_resolve({int(easy_mode.ID)}), sim.Mods{})
-	all := sim.mods_with_deps({int(easy_mode.ID), int(new_weapons.ID)})
+	testing.expect_value(t, sim.mods_resolve({int(easy_mode.id())}), sim.Mods{})
+	all := sim.mods_with_deps({int(easy_mode.id()), int(new_weapons.id())})
 	testing.expect_value(t, sim.mods_resolve(all), all)
 }
 
@@ -155,9 +155,9 @@ plugins_folders_are_all_in_the_build :: proc(t: ^testing.T) {
 // mods passed in say.
 @(test)
 plugins_netplay_only_online :: proc(t: ^testing.T) {
-	all := sim.Mods{int(netplay_plugin.ID), int(easy_mode.ID)}
-	testing.expect_value(t, game.session_from_mods(1, {}, .Single, all).mods, sim.Mods{int(easy_mode.ID)})
-	testing.expect_value(t, game.session_from_mods(1, {}, .Co_Op, {int(easy_mode.ID)}, online = true).mods, all)
+	all := sim.Mods{int(netplay_plugin.id()), int(easy_mode.id())}
+	testing.expect_value(t, game.session_from_mods(1, {}, .Single, all).mods, sim.Mods{int(easy_mode.id())})
+	testing.expect_value(t, game.session_from_mods(1, {}, .Co_Op, {int(easy_mode.id())}, online = true).mods, all)
 }
 
 // The Mods page lists each mod under the one it needs most deeply, by
@@ -179,11 +179,11 @@ mods_page_lists_a_tree_of_needs :: proc(t: ^testing.T) {
 @(test)
 plugins_own_weapons_follow_their_plugin :: proc(t: ^testing.T) {
 	s: sim.State
-	mine := sim.Weapon{extra = true, plugin = chaingun.ID}
+	mine := sim.Weapon{extra = true, plugin = chaingun.id()}
 	original := sim.Weapon{}
 	s.session.mods = session_mods(false, true)
 	testing.expect(t, sim.weapon_allowed(&s, &mine))
-	s.session.mods -= {int(chaingun.ID)}
+	s.session.mods -= {int(chaingun.id())}
 	testing.expect(t, !sim.weapon_allowed(&s, &mine), "not with its plugin off, New Weapons or not")
 	testing.expect(t, sim.weapon_allowed(&s, &original))
 	s.session.mods = {}
@@ -193,15 +193,15 @@ plugins_own_weapons_follow_their_plugin :: proc(t: ^testing.T) {
 // A plugin whose content did not load is dropped, with what needs it.
 @(test)
 plugins_without_their_content_are_off :: proc(t: ^testing.T) {
-	want := sim.mods_with_deps({int(chaingun.ID), int(easy_mode.ID)})
-	both := sim.Mods{int(new_weapons.ID), int(chaingun.ID)}
+	want := sim.mods_with_deps({int(chaingun.id()), int(easy_mode.id())})
+	both := sim.Mods{int(new_weapons.id()), int(chaingun.id())}
 	testing.expect_value(t, sim.mods_with_content(want, both), want)
-	testing.expect_value(t, sim.mods_with_content(want, {int(new_weapons.ID)}), want - {int(chaingun.ID)})
-	testing.expect_value(t, sim.mods_with_content(want, {int(chaingun.ID)}), want - both)
+	testing.expect_value(t, sim.mods_with_content(want, {int(new_weapons.id())}), want - {int(chaingun.id())})
+	testing.expect_value(t, sim.mods_with_content(want, {int(chaingun.id())}), want - both)
 }
 
 // New Weapons as one switch (the lobby's) brings the Chaingun with it.
 @(test)
 new_weapons_switch_brings_the_chaingun :: proc(t: ^testing.T) {
-	testing.expect_value(t, sim.mods_default_dependants(new_weapons.ID), sim.Mods{int(chaingun.ID)})
+	testing.expect_value(t, sim.mods_default_dependants(new_weapons.id()), sim.Mods{int(chaingun.id())})
 }

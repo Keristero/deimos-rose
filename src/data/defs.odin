@@ -30,6 +30,7 @@ Defs_Report :: struct {
 // n-th name. defs_load reads the originals with it; the game reads the same
 // list from plugins/classic_levels/plugin.json (D53), which
 // tests/assets_test.odin holds to this one.
+@(rodata)
 LEVEL_ORDER := [12]string {
 	"Lucena", "Yippe", "Vista", "Swoop", "Conrad", "Delos",
 	"Sparta", "Saratoga", "Hannibal", "Leonidas", "Thebes", "Yamato",

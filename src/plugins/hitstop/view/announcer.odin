@@ -13,9 +13,6 @@ import "core:fmt"
 
 import rl "vendor:raylib"
 
-@(private = "file") CLIPS := #load_directory("clips")
-@(private = "file") CLIPS_P2 := #load_directory("clips_p2")
-
 // Who calls the streak: player 1 (and the odd ones') husky announcer, or
 // player 2's Australian who gets angrier as the streak climbs.
 Announcer :: enum {
@@ -27,15 +24,19 @@ announcer_of :: proc "contextless" (player: int) -> Announcer {
 	return player % 2 == 1 ? .Aussie : .Husky
 }
 
-@(private = "file") voice: rl.Sound
-@(private = "file") voiced: bool
 @(private = "file") VOICE_GAIN :: 3.3 // over the mix: the clips peak just under full scale, the blow and the music are louder
 
 // The embedded clip called `name` ("07", "super"), by its file.
 @(private = "file")
 clip_named :: proc(name: string, who := Announcer.Husky) -> (bytes: []byte, ok: bool) {
+	// Locals, not globals: the files are embedded either way, and a global
+	// would be state a plugin's copy of this package keeps (D83).
+	clips := #load_directory("clips")
+	if who == .Aussie {
+		clips = #load_directory("clips_p2")
+	}
 	want := fmt.tprintf("%s.wav", name)
-	for c in who == .Aussie ? CLIPS_P2 : CLIPS {
+	for c in clips {
 		if c.name == want {
 			return c.data, true
 		}
@@ -102,25 +103,25 @@ announce :: proc(n: int, volume: f32, who := Announcer.Husky) {
 		return
 	}
 	rl.TraceLog(.INFO, "announcer: streak %d, %d frames, volume %.2f", i32(n), i32(len(pcm)), volume)
-	if voiced {
-		rl.StopSound(voice)
-		rl.UnloadSound(voice)
+	if shared.voiced {
+		rl.StopSound(shared.voice)
+		rl.UnloadSound(shared.voice)
 	}
 	wave := rl.Wave{frameCount = u32(len(pcm)), sampleRate = 22050, sampleSize = 16, channels = 1, data = raw_data(pcm)}
-	voice = rl.LoadSoundFromWave(wave) // copies
-	voiced = true
+	shared.voice = rl.LoadSoundFromWave(wave) // copies
+	shared.voiced = true
 	gain, pitch := f32(1), f32(1)
 	if who == .Aussie {
 		gain, pitch = rage_gain(n), rage_pitch(n)
 	}
-	rl.SetSoundVolume(voice, clamp(volume, 0, 2) * VOICE_GAIN * gain)
-	rl.SetSoundPitch(voice, pitch)
-	rl.PlaySound(voice)
+	rl.SetSoundVolume(shared.voice, clamp(volume, 0, 2) * VOICE_GAIN * gain)
+	rl.SetSoundPitch(shared.voice, pitch)
+	rl.PlaySound(shared.voice)
 }
 
 announcer_destroy :: proc() {
-	if voiced && rl.IsAudioDeviceReady() {
-		rl.UnloadSound(voice)
+	if shared.voiced && rl.IsAudioDeviceReady() {
+		rl.UnloadSound(shared.voice)
 	}
-	voiced = false
+	shared.voiced = false
 }

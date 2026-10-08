@@ -8,13 +8,11 @@ import "dr:sim"
 // Presentation only: it changes nothing in the simulation, and classic
 // mode never sees it. Moved by plugins/wind/view.
 
-ID: sim.Plugin_ID
-
 @(private = "file", rodata)
 DEPS := []string{"extra_prefs"}
 
 register :: proc() {
-	ID = sim.plugin_register({
+	shared.id = sim.plugin_register({
 		name        = "wind",
 		label       = "WIND",
 		description = "The level's wind blows sparks and smoke",

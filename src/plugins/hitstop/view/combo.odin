@@ -16,6 +16,7 @@ import "dr:sim"
 
 COMBO_MIN :: 2 // the combo is shown from this streak on
 
+@(rodata)
 combo_after := [?]string{"lighting", "hitstop kill cam"}
 
 // How much of its window a player's combo has left, 0 to 1, `t` of the way
@@ -30,7 +31,7 @@ combo_left :: proc(count, last, now: int, t: f32) -> f32 {
 
 combo_enabled :: proc(r: ^render.Renderer) -> bool {
 	for p in 0 ..< sim.MAX_PLAYERS {
-		if combo_left(streak[p], last_kill[p], steps, 0) > 0 {
+		if combo_left(shared.streak[p], shared.last_kill[p], shared.steps, 0) > 0 {
 			return true
 		}
 	}
@@ -38,15 +39,15 @@ combo_enabled :: proc(r: ^render.Renderer) -> bool {
 }
 
 combo_apply :: proc(r: ^render.Renderer, f: ^render.Post_Frame, src: rl.Texture2D) {
-	flame_amount = intensity(r.setting, FLAMES)
+	shared.flame_amount = intensity(r.setting, shared.flames)
 	field := [4]f32{render.VIEW_X * f.scale, 0, render.PLAY_W * f.scale, render.PLAY_H * f.scale}
 	rl.DrawTexturePro(src, {field[0], f32(src.height) - field[1] - field[3], field[2], -field[3]}, {field[0], field[1], field[2], field[3]}, {}, 0, rl.WHITE)
 	for p in 0 ..< sim.MAX_PLAYERS {
-		left := combo_left(streak[p], last_kill[p], steps, f.t)
+		left := combo_left(shared.streak[p], shared.last_kill[p], shared.steps, f.t)
 		if left <= 0 {
 			continue
 		}
-		combo_draw(r, field, f.scale, p, streak[p], left)
+		combo_draw(r, field, f.scale, p, shared.streak[p], left)
 	}
 	for p in 0 ..< sim.MAX_PLAYERS {
 		style_draw(r, field, f.scale, p, field[3] * (0.32 + f32(p / 2) * 0.2))
@@ -70,7 +71,7 @@ combo_draw :: proc(r: ^render.Renderer, field: [4]f32, scale: f32, player, count
 	rise := flame_rise(heat)
 	t := f32(rl.GetTime())
 	// A sudden jolt the moment it grows, the text popping.
-	pop := 1 + 0.25 * max(0, 1 - f32(steps - last_kill[player]) / 6)
+	pop := 1 + 0.25 * max(0, 1 - f32(shared.steps - shared.last_kill[player]) / 6)
 	text_h := text_height(r) * k
 
 	rl.BeginBlendMode(.ALPHA)
@@ -92,21 +93,17 @@ combo_draw :: proc(r: ^render.Renderer, field: [4]f32, scale: f32, player, count
 	rl.EndBlendMode()
 }
 
-// How much fire there is, 1 as designed (the COMBO FLAMES setting, kept by
-// combo_apply for the frame).
-@(private = "file") flame_amount: f32 = 1
-
 // Tongues of fire rising from the line `y` over `w` pixels from `x`, as tall
 // as `rise` at most; `n` of them, each at its own phase of its rise.
 flames :: proc(x, y, w, rise: f32, n: int, t, scale: f32, seed: int) {
-	for i in 0 ..< int(f32(n) * flame_amount) {
+	for i in 0 ..< int(f32(n) * shared.flame_amount) {
 		h := f32(i * 7919 + seed * 104729) * 0.6180339
 		h -= math.floor(h)
 		g := f32(i * 6151 + seed * 15485863) * 0.7548776
 		g -= math.floor(g)
 		life := math.mod(t * (0.9 + 0.8 * g) + h * 3, 1)
 		fx := x + w * h + math.sin(t * 9 + h * 40) * 3 * scale * life
-		fy := y - rise * flame_amount * life * (0.55 + 0.45 * g)
+		fy := y - rise * shared.flame_amount * life * (0.55 + 0.45 * g)
 		radius := (10 + 14 * g) * scale * (1 - life * 0.8)
 		alpha := u8(255 * min(1, (1 - life) * 1.6))
 		inner := rl.Color{255, u8(220 - 150 * life), u8(70 * (1 - life)), alpha}

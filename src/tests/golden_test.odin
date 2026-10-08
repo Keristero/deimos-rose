@@ -525,7 +525,7 @@ golden_wide_sessions :: proc(defs: ^sim.Defs, allocator := context.allocator) ->
 	}
 	append(&out, Golden_Session {
 		name = "wide_l4_passives", level = 3, game_type = .Single, seed = 304, steps = GOLDEN_WIDE_STEPS,
-		extra = {int(passives.ID)},
+		extra = {int(passives.id())},
 	})
 	return out[:]
 }

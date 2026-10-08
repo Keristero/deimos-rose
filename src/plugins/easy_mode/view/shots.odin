@@ -32,8 +32,8 @@ reward_shot :: proc(s: ^sim.State, name: string) -> string {
 }
 
 register_reward_shots :: proc() {
-	ui.shot_register({name = "reward", plugin = easy_mode.ID, setup = reward_shot})
-	ui.shot_register({name = "reward_2p", plugin = easy_mode.ID, co_op = true, setup = reward_shot})
+	ui.shot_register({name = "reward", plugin = easy_mode.id(), setup = reward_shot})
+	ui.shot_register({name = "reward_2p", plugin = easy_mode.id(), co_op = true, setup = reward_shot})
 }
 
 @(init)

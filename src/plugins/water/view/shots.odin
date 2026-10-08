@@ -28,9 +28,9 @@ SPLASH := []ui.Shot_Phase{{45, {{.Left}, {}}}, {1, {{.Fire_Ground}, {}}}, {20, {
 SPLASH_LATE := []ui.Shot_Phase{{45, {{.Left}, {}}}, {1, {{.Fire_Ground}, {}}}, {20, {}}, {70, {}}}
 
 register_shots :: proc() {
-	ui.shot_register({name = "water_splash", plugin = water.ID, level = 4, alone = true, setup = water_shot, phases = SPLASH})
-	ui.shot_register({name = "water_splash_late", plugin = water.ID, level = 4, alone = true, setup = water_shot, phases = SPLASH_LATE})
-	ui.shot_register({name = "water", plugin = water.ID, level = 4, alone = true, setup = water_shot, phases = SETTLE})
+	ui.shot_register({name = "water_splash", plugin = water.id(), level = 4, alone = true, setup = water_shot, phases = SPLASH})
+	ui.shot_register({name = "water_splash_late", plugin = water.id(), level = 4, alone = true, setup = water_shot, phases = SPLASH_LATE})
+	ui.shot_register({name = "water", plugin = water.id(), level = 4, alone = true, setup = water_shot, phases = SETTLE})
 }
 
 @(init)

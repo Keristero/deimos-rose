@@ -22,11 +22,11 @@ import "dr:ui"
 @(private = "file") PREVIEW_GAP :: 70
 
 register_preview :: proc() {
-	ui.settings_preview_register({plugin = accent.ID, draw = preview_draw})
+	ui.settings_preview_register({plugin = accent.id(), draw = preview_draw})
 	// The Extras page with a colour and Self Outline on, so both previews
 	// show what they do. DR_SHOT_HUE picks the hue: 63 should match
 	// player 2's gold.
-	ui.menu_shot_register({name = "preferences_extras", plugin = accent.ID, screen = "extras", setup = preview_shot_setup})
+	ui.menu_shot_register({name = "preferences_extras", plugin = accent.id(), screen = "extras", setup = preview_shot_setup})
 }
 
 @(init)
@@ -36,20 +36,20 @@ register_preview_step :: proc "contextless" () {
 
 @(private = "file")
 preview_shot_setup :: proc(p: ^prefs.Prefs) {
-	p.settings[HUE_P1] = 30
+	p.settings[shared.hue_p1] = 30
 	if hue, ok := strconv.parse_int(os.get_env("DR_SHOT_HUE", context.temp_allocator)); ok {
-		p.settings[HUE_P1] = prefs.hue_wrap(hue)
+		p.settings[shared.hue_p1] = prefs.hue_wrap(hue)
 	}
-	p.settings[SELF_OUTLINE] = 1
+	p.settings[shared.self_outline] = 1
 }
 
 @(private = "file")
 preview_draw :: proc(r: ^render.Renderer, values: ^[prefs.MAX_SETTINGS]int, live: bool) {
 	dim := rl.Color{190, 190, 190, 255}
-	hues := [2]prefs.Setting_ID{HUE_P1, HUE_P2}
+	hues := [2]prefs.Setting_ID{shared.hue_p1, shared.hue_p2}
 	for id, i in PREVIEW_SHIPS {
 		px := PREVIEW_X + (f32(i) - 0.5) * PREVIEW_GAP
-		outline := i == 0 && live && values[SELF_OUTLINE] != 0
+		outline := i == 0 && live && values[shared.self_outline] != 0
 		preview_ship(r, id, f32(values[hues[i]]), outline, live, px, PREVIEW_Y)
 		ui.menu_draw_text(r, i == 0 ? "P1" : "P2", i32(px), PREVIEW_Y + 26, dim, .Centre)
 	}

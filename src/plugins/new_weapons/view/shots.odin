@@ -21,7 +21,6 @@ package new_weapons_view
 // - discharge: a pulse as it fades;
 // - discharge_charge: the charged beam the step after it is let go.
 
-
 import "dr:plugins/loadout"
 import "dr:plugins/new_weapons"
 import "dr:sim"
@@ -75,7 +74,7 @@ DISCHARGE_PHASES := []ui.Shot_Phase{{1, {{.Fire_Air}, {}}}, {7, {}}}
 DISCHARGE_CHARGE_PHASES := []ui.Shot_Phase{{90, {{.Fire_Air}, {}}}, {1, {}}}
 
 register_shots :: proc() {
-	id := new_weapons.ID
+	id := new_weapons.id()
 	ui.shot_register({name = "loadout", plugin = id, level = 6, setup = loadout_shot})
 	ui.shot_register({name = "loadout_2p", plugin = id, level = 6, co_op = true, setup = loadout_shot})
 	ui.shot_register({name = "loadout_placed", plugin = id, level = 1, setup = loadout_shot})

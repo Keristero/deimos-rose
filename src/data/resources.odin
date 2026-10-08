@@ -13,6 +13,7 @@ import "core:strings"
 // The fifteen types below are the loop's `case 0 .. 14`, and match the fifteen
 // directories the shipped game creates under Data/Local exactly.
 
+@(rodata)
 RESOURCE_TYPES := []string {
 	"coli", "film", "flli", "idli", "im08", "im16", "leve",
 	"plde", "pref", "reli", "soun", "stli", "tefo", "unde", "wede",

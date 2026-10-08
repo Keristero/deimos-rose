@@ -11,13 +11,11 @@ import "dr:sim"
 // simulation (the game is held between steps, not in them), it never holds
 // a netplay match, and classic mode never sees it. See plugins/hitstop/view.
 
-ID: sim.Plugin_ID
-
 @(private = "file", rodata)
 DEPS := []string{"extra_prefs"}
 
 register :: proc() {
-	ID = sim.plugin_register({
+	shared.id = sim.plugin_register({
 		name        = "hitstop",
 		label       = "HITSTOP",
 		description = "Hits stop the game for a moment; a huge one gets a kill cam",

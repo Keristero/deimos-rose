@@ -48,16 +48,10 @@ CLASSIC_LEVELS :: "classic_levels"
 @(private = "file")
 CONTENT_DIRS :: [?]string{"data", "sprites", "images", "audio", "textures"}
 
-@(private = "file")
-extra_roots: [dynamic]string
-// Each discovered plugin's folder, by name.
-@(private = "file")
-discovered: map[string]string
-
 // Adds a plugins root, searched before $DR_PLUGINS; `dir` must outlive
 // the program. For the game's -plugins flag, before plugins_discover.
 plugins_root_add :: proc(dir: string) {
-	append(&extra_roots, dir)
+	append(&shared.extra_roots, dir)
 }
 
 // $DR_PLUGINS, or `plugins` in the working directory. That is src/plugins
@@ -73,8 +67,8 @@ plugins_root :: proc() -> string {
 
 // Every plugins root, first first.
 plugins_roots :: proc(allocator := context.temp_allocator) -> []string {
-	roots := make([dynamic]string, 0, len(extra_roots) + 1, allocator)
-	append(&roots, ..extra_roots[:])
+	roots := make([dynamic]string, 0, len(shared.extra_roots) + 1, allocator)
+	append(&roots, ..shared.extra_roots[:])
 	for dir in strings.split(plugins_root(), LIST_SEPARATOR, allocator) {
 		if dir != "" {
 			append(&roots, dir)
@@ -93,7 +87,7 @@ LIST_SEPARATOR :: ";" when ODIN_OS == .Windows else ":"
 // holds only code has none.
 plugin_content_dir :: proc(id: sim.Plugin_ID) -> (dir: string, found: bool) {
 	name := sim.registered_plugins()[id].name
-	if d, ok := discovered[name]; ok {
+	if d, ok := shared.discovered[name]; ok {
 		return d, has_content(d)
 	}
 	for root in plugins_roots() {
@@ -118,7 +112,7 @@ has_content :: proc(dir: string) -> bool {
 // Where the Classic Levels plugin is: the folder plugins_discover found, else
 // the first root that has one.
 classic_levels_dir :: proc() -> (dir: string, found: bool) {
-	if d, ok := discovered[CLASSIC_LEVELS]; ok {
+	if d, ok := shared.discovered[CLASSIC_LEVELS]; ok {
 		return d, true
 	}
 	for root in plugins_roots() {
@@ -154,8 +148,8 @@ Plugin_Problem :: struct {
 plugins_discover :: proc(roots: []string, allocator := context.allocator) -> (list: []sim.Plugin, problems: []Plugin_Problem) {
 	found := make([dynamic]sim.Plugin, 0, 8, allocator)
 	bad := make([dynamic]Plugin_Problem, 0, 0, allocator)
-	if discovered == nil {
-		discovered = make(map[string]string, allocator)
+	if shared.discovered == nil {
+		shared.discovered = make(map[string]string, allocator)
 	}
 	for root in roots {
 		entries, err := os.read_all_directory_by_path(root, context.temp_allocator)
@@ -164,7 +158,7 @@ plugins_discover :: proc(roots: []string, allocator := context.allocator) -> (li
 		}
 		slice.sort_by(entries, proc(a, b: os.File_Info) -> bool {return a.name < b.name})
 		for e in entries {
-			if e.type != .Directory || e.name in discovered {
+			if e.type != .Directory || e.name in shared.discovered {
 				continue
 			}
 			dir := strings.concatenate({root, "/", e.name}, allocator)
@@ -182,7 +176,7 @@ plugins_discover :: proc(roots: []string, allocator := context.allocator) -> (li
 				continue
 			}
 			name := strings.clone(e.name, allocator)
-			discovered[name] = dir
+			shared.discovered[name] = dir
 			append(&found, sim.Plugin {
 				name        = name,
 				label       = m.label != "" ? m.label : name,

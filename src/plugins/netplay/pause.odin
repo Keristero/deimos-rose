@@ -61,14 +61,12 @@ held :: proc "contextless" (s: ^sim.State) -> bool {
 	return pause_of(s).paused
 }
 
-ID: sim.Plugin_ID
-
 // First of all, ahead of the game step and anything else around it.
 @(private = "file", rodata)
 BEFORE := []string{"step_events"}
 
 register :: proc() {
-	ID = sim.plugin_register({
+	shared.id = sim.plugin_register({
 		name        = "netplay",
 		label       = "NETPLAY",
 		description = "Two players over the network, with rollback",
@@ -76,9 +74,9 @@ register :: proc() {
 		default_on  = true,
 		online      = true,
 	})
-	sim.kind_component(.Session, Pause{}, ID)
-	sim.system_register({name = "netplay_pause", before = BEFORE, plugin = ID, kind = .Session, run = pause_system})
-	sim.hold_register({plugin = ID, held = held, pause = true})
+	sim.kind_component(.Session, Pause{}, shared.id)
+	sim.system_register({name = "netplay_pause", before = BEFORE, plugin = shared.id, kind = .Session, run = pause_system})
+	sim.hold_register({plugin = shared.id, held = held, pause = true})
 }
 
 @(init)
