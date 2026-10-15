@@ -5,9 +5,12 @@ package lighting_view
 // the lights, and fragment shaders for the blur and the composite.
 //
 //   lights  A half-resolution light map. Every item that shines
-//           (render.Item.emit) and every bright spark adds a soft round
-//           light in the colour of its sprite, drawn with raylib's additive
-//           blend mode, so overlapping lights sum.
+//           (render.Item.emit), unless it is up in the air, and every
+//           bright spark adds a soft round light in the colour of its
+//           sprite, drawn with raylib's additive blend mode, so
+//           overlapping lights sum. Then each shining sprite cuts its own
+//           shape out, so it keeps the colours it was drawn with: a light
+//           shows on what it falls on, not on what shines.
 //   glow    A quarter-resolution map of the shining sprites themselves,
 //           blurred by a separable Gaussian, twice, so a shot has a halo.
 //   apply   One shader over the finished scene: the scene's colour times
@@ -394,6 +397,13 @@ gather :: proc(r: ^render.Renderer, f: ^render.Post_Frame, out: ^[MAX_LIGHTS]Lig
 			if it.emit <= 0 || it.tint.a == 0 || n >= MAX_LIGHTS {
 				continue
 			}
+			// What shines up with the air units and is not coming down (an
+			// air weapon's shots) lights nothing: it is far above the
+			// ground, and its light there only drew a ring round each shot.
+			// It still glows.
+			if it.aloft && !it.falling {
+				continue
+			}
 			size := max(it.dst.width, it.dst.height)
 			gain := it.emit * f32(it.tint.a) / 255
 			l := Light {
@@ -450,6 +460,24 @@ premultiplied :: proc(c: rl.Color, gain, reach: f32) -> rl.Color {
 	return {u8(f32(c.r) * k), u8(f32(c.g) * k), u8(f32(c.b) * k), u8(clamp(reach, 0, 1) * 255)}
 }
 
+// Each shining sprite, into the target being drawn at 1/`div` of the
+// canvas, with how much it shines as its alpha.
+@(private = "file")
+draw_shining :: proc(r: ^render.Renderer, f: ^render.Post_Frame, div: f32) {
+	inv := 1 / div
+	for &layer in r.layers {
+		for it in layer {
+			if it.emit <= 0 || it.tint.a == 0 {
+				continue
+			}
+			d := it.dst
+			d.x, d.y = (d.x + render.VIEW_X) * f.scale * inv, d.y * f.scale * inv
+			d.width, d.height = d.width * f.scale * inv, d.height * f.scale * inv
+			rl.DrawTexturePro(it.texture, it.src, d, {}, 0, tinted(rl.WHITE, it.emit * f32(it.tint.a) / 255))
+		}
+	}
+}
+
 @(private = "file")
 prepare :: proc(r: ^render.Renderer, f: ^render.Post_Frame) {
 	ensure(f)
@@ -472,6 +500,13 @@ prepare :: proc(r: ^render.Renderer, f: ^render.Post_Frame) {
 			rl.DrawTexturePro(st.falloff, src, {l.at.x * inv - rad, l.at.y * inv - rad, rad * 2, rad * 2}, {}, 0, premultiplied(l.colour, l.gain, l.reach))
 		}
 		rl.EndBlendMode()
+		// Then what shines takes its own shape back out, as much as it
+		// shines: lit by its own light, a shot's pale edges clipped to the
+		// colour of its core, and three dashes read as one blob.
+		rlgl.SetBlendFactorsSeparate(rlgl.ZERO, rlgl.ONE_MINUS_SRC_ALPHA, rlgl.ZERO, rlgl.ONE_MINUS_SRC_ALPHA, rlgl.FUNC_ADD, rlgl.FUNC_ADD)
+		rl.BeginBlendMode(.CUSTOM_SEPARATE)
+		draw_shining(r, f, LIGHT_DIV)
+		rl.EndBlendMode()
 		rl.EndTextureMode()
 	}
 
@@ -480,17 +515,7 @@ prepare :: proc(r: ^render.Renderer, f: ^render.Post_Frame) {
 		rl.BeginTextureMode(st.emit)
 		rl.ClearBackground(rl.BLACK)
 		rl.BeginBlendMode(.ADDITIVE)
-		for &layer in r.layers {
-			for it in layer {
-				if it.emit <= 0 || it.tint.a == 0 {
-					continue
-				}
-				d := it.dst
-				d.x, d.y = (d.x + render.VIEW_X) * f.scale * inv, d.y * f.scale * inv
-				d.width, d.height = d.width * f.scale * inv, d.height * f.scale * inv
-				rl.DrawTexturePro(it.texture, it.src, d, {}, 0, tinted(rl.WHITE, it.emit * f32(it.tint.a) / 255))
-			}
-		}
+		draw_shining(r, f, GLOW_DIV)
 		// A spark is a point of light: a small bright square of its colour.
 		for pt in f.particles.live {
 			if pt.fade >= 32 {

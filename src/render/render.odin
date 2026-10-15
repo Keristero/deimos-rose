@@ -115,6 +115,9 @@ Item :: struct {
 	// ground more the nearer it is. Drawing ignores both.
 	falling:  bool,
 	descent:  f32,
+	// Up with the air units (the object's is_air), high above the ground.
+	// Drawing ignores it.
+	aloft:    bool,
 }
 
 // Accents (Extras, never in classic mode): drawn through
@@ -504,7 +507,7 @@ draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shad
 			texture = tex, src = src, dst = dst, tint = {255, 255, 255, alpha},
 			effect = accent.recolour ? .Recolour : .None, hue = accent.hue, sat = ACCENT_SATURATION,
 			lighten = accent.lighten, rotation = turn, emit = emission_of(o, player_shot),
-			falling = fall >= 0, descent = max(fall, 0),
+			falling = fall >= 0, descent = max(fall, 0), aloft = o.is_air,
 		})
 	}
 	if accent.trim {

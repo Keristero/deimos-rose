@@ -7,9 +7,16 @@ still open. The extension point and its reasons are in decisions.md D78.
 
 - `render/post.odin`: the post-pass chain, free when unused.
 - `plugins/lighting` (+ `view/`): LIGHT STRENGTH and GLOW STRENGTH sliders on
-  the Extras page (default 60 and 35, plugin off by default). Lights come
+  the Extras page (default 60 and 12, plugin off by default). Lights come
   from `Item.emit` and bright particles, each in its sprite's colour, up to
-  96 a frame; the glow is the same things blurred.
+  96 a frame; the glow is the same things blurred. What shines up with the
+  air units (`Item.aloft`) and is not falling, an air weapon's shots, glows
+  but casts no light: its light on the ground showed only as an obvious ring
+  round each shot. Each shining sprite cuts its own shape out of the light
+  map, so a light never washes out what gives it: lit by itself, a shot's
+  pale edges clipped to its core's colour and three dashes read as one blob.
+  The glow's default was 35, which hid a shot's shape in its halo; at 12 it
+  keeps it.
 - Ground layers for the lighting, exported with every level (`layers.specular`,
   `layers.normal` and `layers.shadow_mask`, full-resolution PNGs beside the map, from
   `terrain/specular.odin`): a **specular mask** (a material's `gloss`, else a
