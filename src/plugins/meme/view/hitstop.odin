@@ -1,4 +1,4 @@
-package hitstop_view
+package meme_view
 
 // Hitstop. Each step, the collisions the simulation recorded (sim.Hit_Queue)
 // hold the game still for as many steps as their damage earns (rules.odin);
@@ -16,7 +16,7 @@ import "core:math"
 
 import rl "vendor:raylib"
 
-import "dr:plugins/hitstop"
+import "dr:plugins/meme"
 import "dr:render"
 import "dr:sim"
 
@@ -34,10 +34,10 @@ Cam :: struct {
 }
 
 register :: proc() {
-	render.effect_system_register({name = "hitstop", plugin = hitstop.id(), step = step, clear = clear})
+	render.effect_system_register({name = "hitstop", plugin = meme.id(), step = step, clear = clear})
 	render.post_pass_register({
 		name    = "hitstop kill cam",
-		plugin  = hitstop.id(),
+		plugin  = meme.id(),
 		after   = {"lighting"},
 		enabled = enabled,
 		apply   = apply,
@@ -45,7 +45,7 @@ register :: proc() {
 	})
 	render.post_pass_register({
 		name    = "hitstop combo",
-		plugin  = hitstop.id(),
+		plugin  = meme.id(),
 		after   = combo_after[:],
 		enabled = combo_enabled,
 		apply   = combo_apply,
@@ -54,7 +54,7 @@ register :: proc() {
 
 @(init)
 register_step :: proc "contextless" () {
-	sim.register_step(.View, "plugins/hitstop/view register", register)
+	sim.register_step(.View, "plugins/meme/view register", register)
 }
 
 @(private = "file")

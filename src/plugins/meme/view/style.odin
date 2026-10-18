@@ -1,4 +1,4 @@
-package hitstop_view
+package meme_view
 
 // The style grade, after Devil May Cry's: each player has a style gauge that
 // the hits they land fill, by how much by how different the tool is from

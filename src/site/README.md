@@ -48,7 +48,10 @@ headline; the patch notes are the detail.
 `plugins` lists every folder in `src/plugins/`, with the `group` it is
 shown under, the `shot` it is pictured in and, optionally, `about`: a
 sentence more than the game's own description. The build fails when a folder is missing from the list or
-the list names a folder that is gone. The label, description,
+the list names a folder that is gone. `"hidden": true` keeps a plugin off
+the site, with no card, screenshot or download link, and then needs no
+`group` or `shot` (the Meme Mod is hidden). It still ships in the
+release, and no shown plugin may need it. The label, description,
 dependencies and flags come from the plugin itself: its `plugin.json`, or
 its `plugin_register({...})` call. The game shows the same words on its
 Mods page.

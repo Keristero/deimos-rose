@@ -1,4 +1,4 @@
-package hitstop_view
+package meme_view
 
 import rl "vendor:raylib"
 
@@ -57,5 +57,5 @@ shared := &shared_block
 
 @(init, private)
 declare_shared :: proc "contextless" () {
-	blocks.declare({name = "plugins/hitstop/view", ptr = (^rawptr)(&shared), type = Shared})
+	blocks.declare({name = "plugins/meme/view", ptr = (^rawptr)(&shared), type = Shared})
 }

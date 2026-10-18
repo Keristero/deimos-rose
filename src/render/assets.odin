@@ -60,7 +60,7 @@ Textures :: struct {
 	sfx_volume:   f32,
 	music_volume: f32,
 	// How much slower every sound and the music play, 0 (normal) to 1,
-	// which a plugin's view sets (hitstop's kill cam): the pitch drops with
+	// which a plugin's view sets (the Meme Mod's kill cam): the pitch drops with
 	// it, as a slowed record does. Applied at each play and each frame.
 	audio_slow:   f32,
 }
