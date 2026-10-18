@@ -51,6 +51,7 @@
       "title": "Netplay is a plugin",
       "date": "2026-10-18",
       "kind": "engineering",
+      "pr": 6,
       "summary": "Netplay's lobby and network code have moved out of the game and into the netplay plugin. The game starts and plays without them, and the NETPLAY item appears only while the plugin is there.",
       "highlights": [
         "A plugin can now add a screen to the main menu that runs the session it starts: netplay's lobby is the first.",
