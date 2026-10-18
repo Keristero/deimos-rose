@@ -39,7 +39,9 @@ done
 CORE=(game sim data render ui prefs net oracle)
 for d in "${CORE[@]}"; do
     [ -d "$SRC/$d" ] || continue
-    if grep -rnE --include='*.odin' '"dr:plugins/' "$SRC/$d" | grep -v "^$SRC/game/plugins.odin:"; then
+    # Relative paths: on Windows $SRC is D:\a\..., which a grep pattern
+    # would read as escapes, so the exemption never matched there.
+    if (cd "$SRC" && grep -rnE --include='*.odin' '"dr:plugins/' "$d") | grep -v '^game/plugins.odin:'; then
         echo "purity: the core imports a plugin; add an extension point instead (AGENTS.md, Continuous improvement)" >&2
         exit 1
     fi
