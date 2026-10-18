@@ -3,7 +3,7 @@ package tests
 import "core:testing"
 import vmem "core:mem/virtual"
 
-import net "dr:net"
+import net "dr:plugins/netplay/net"
 import "dr:plugins/new_weapons"
 import "dr:sim"
 

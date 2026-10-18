@@ -3,7 +3,7 @@
 # one at the keyboard: written for a guest that crashed when Easy Mode's
 # reward screen opened after the first level (and again on reconnecting).
 #
-# Both run with DR_NETPLAY_END (game/netplay.odin,
+# Both run with DR_NETPLAY_END (plugins/netplay/view/netplay.odin,
 # netplay_lobby_start_from_flag): each readies itself, the host has Easy
 # Mode on (-mod easy_mode), and the level starts END steps (default 150, five seconds)
 # before its end. The check passes when both sides log that play was held

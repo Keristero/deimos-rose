@@ -38,9 +38,10 @@ Settings :: struct {
 	plugins:  string,
 	// -list-plugins: print the plugins this run registered, each with its
 	// id, and the registration hash netplay peers compare, then exit before
-	// any window opens; 1 when a library would not load. What
-	// plugins:check compares between a build that loads the plugins'
-	// libraries and one with them compiled in (D85).
+	// any window opens; 1 when a library would not load or a plugin's
+	// content is missing (plugins_list). What plugins:check compares
+	// between a build that loads the plugins' libraries and one with them
+	// compiled in (D85), and dist:check runs on each download.
 	list_plugins: bool,
 	// Every argument, for the switches plugins register
 	// (prefs.launch_switch_register), read once they have.

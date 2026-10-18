@@ -47,12 +47,18 @@ build_one() {
 }
 
 # Each library is a full compile of the core it carries; run them side by
-# side, a few at a time.
+# side, a few at a time. The list is read whole first: read from a process
+# substitution, that process was a child too, and `wait -n` could return
+# for it instead of a build, so the script once exited with the last
+# library still being written (plugins:check failed a run in three, the
+# stale library appearing two seconds after the game looked for it).
 jobs=$(( $(nproc 2>/dev/null || echo 4) / 4 ))
 [ "$jobs" -ge 1 ] || jobs=1
+list=$(bash tools/plugins/packages.sh "$@")
 failed=0
 running=0
 while read -r name pkgs; do
+	[ -n "$name" ] || continue
 	# shellcheck disable=SC2086 # pkgs is a word list
 	build_one "$name" $pkgs &
 	running=$((running + 1))
@@ -60,7 +66,7 @@ while read -r name pkgs; do
 		wait -n || failed=1
 		running=$((running - 1))
 	fi
-done < <(bash tools/plugins/packages.sh "$@")
+done <<<"$list"
 while [ "$running" -gt 0 ]; do
 	wait -n || failed=1
 	running=$((running - 1))

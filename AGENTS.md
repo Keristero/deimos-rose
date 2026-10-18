@@ -33,8 +33,10 @@ leaves behind is:
 - **Everything new is a plugin, installed separately.** A gameplay
   addition, a screen, a tool, a set of levels: a folder under
   `src/plugins/` that registers itself through the extension points, and
-  ships as its own download. The game runs, and its tests pass, with no
-  plugin installed.
+  ships as its own download, a zip with every plugin it needs, unzipped
+  over the game's folder (`mise run dist:zips`, D87). The game runs, and
+  its tests pass, with no plugin installed; `mise run dist:check`
+  installs each download as a player would.
 - **Before building a feature, say where it installs.** If the answer is
   "in the core", the feature needs a reason in its pull request, and the
   reason is usually a missing extension point (see "Count the places a
@@ -398,6 +400,7 @@ The extension points today:
 | effects that live between steps and draw between layers | `effect_system_register` | `render/render_systems.odin` |
 | a pass over the finished play field (lighting, glow, water) | `render.post_pass_register` | `render/post.odin` (D78) |
 | a screen over the play field | `ui.overlay_register` | `ui/overlays.odin` |
+| a screen of its own on the main menu, which may drive the session it starts (netplay's lobby) | `game.screen_register`, `game.flow_drive` | `game/screens.odin` (D86) |
 | a setting on the Extras page | `prefs.setting_register`; `player = n` for player n's colour (`prefs.player_hue_setting`) | `prefs/settings.odin` |
 | the Extras page itself | `prefs.settings_page_register` | `prefs/settings.odin` |
 | a preview drawn on the Extras page | `ui.settings_preview_register` | `ui/settings_previews.odin` |

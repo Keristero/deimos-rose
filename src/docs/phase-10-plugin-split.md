@@ -1,9 +1,9 @@
 # Phase 10 — The plugin split
 
-**Status: in progress.** Stages 0–3 are on their branches: the workflow
-and website, the core naming no plugin, one copy of the state, and
-plugins loaded from libraries. Netplay out of the core and the separate
-downloads are planned below.
+**Status: complete, pending review.** Stages 0–5 are on their stacked
+branches: the workflow and website, the core naming no plugin, one copy
+of the state, plugins loaded from libraries, netplay out of the core,
+and a release that is the game alone plus one download per plugin.
 
 ## Why
 
@@ -499,6 +499,205 @@ starts, plays and opens Preferences.
   ~1 MB each; a library per plugin with shared dependencies would need
   libraries that link each other.
 - macOS (`.dylib`) is written but not built or run.
+
+## Stage 4 — netplay is a plugin
+
+The lobby, its sessions and the network code are the netplay plugin's.
+`net/` is `plugins/netplay/net/`, and `game/netplay.odin` (1,395 lines)
+is `plugins/netplay/view/netplay.odin`. The game reaches them through
+one new extension point, a **screen** (`game/screens.odin`, D86): an
+item on the main menu that opens a plugin's own screen, and that screen
+may then *drive* the session it starts, stepping it in place of this
+machine's input.
+
+```mermaid
+flowchart LR
+  subgraph before[Before]
+    F1[game Flow] -->|.Netplay_Lobby| L1[game/netplay.odin]
+    F1 -->|netplay_active| L1
+    L1 --> N1[net/ in the core]
+  end
+  subgraph after[After]
+    F2[game Flow] -->|.Screen| S[registered Screen]
+    F2 -->|driven: poll, step,<br/>banner, release| S
+    S -.registered by.-> V[plugins/netplay/view]
+    V --> N2[plugins/netplay/net]
+  end
+```
+
+What the game keeps, and asks the screen through `Screen`:
+
+| The game | The screen (netplay's) |
+|---|---|
+| the main menu item, shown while its plugin is on | `label`, `open`, `update`, `draw` |
+| startup | `launch`: `DR_NETPLAY=host` or `join:<address>` |
+| the pause menu over a shared pause, and its line | `pause_note` |
+| holding still while it is held: Escape leaves, F5 plays on alone | `banner`: the peer is lost |
+| each render frame, each step | `poll`, `step`, then `flow_after_step` for the effects and sounds |
+| the end of the session, its high scores under the lobby's names | `release`: close the socket, say goodbye if the player left |
+| the diagnostics overlay | `stats`: ping and rollbacks |
+| menu shots, and the shot a test saves | `shot` (a `menu_shot` procedure), `framed` |
+
+- **`game` has a block.** The view imports `dr:game` to use its Flow,
+  setup switches and campaign helpers, so `game` is now among the
+  packages whose state must live in a block (D83). Its tables are
+  `@(rodata)`, and its four pieces of state (the screens, the campaign
+  list, the Mods page's order, the last frame's axes) are in its
+  `Shared`. `mise run purity` checks `game/` too.
+- **The core has no netplay code.** `purity`'s core list no longer has
+  `net`, which is now a plugin package. `net/` is exempt from the sim's
+  purity rule, as a view is: sockets and wall-clock time are its job.
+- **menu-shots finds a screen's shots.** `tools/refs/menu_shots.sh` reads
+  the cases of a view's `menu_shot` procedure, as it reads
+  `run_menu_shot`'s.
+
+### Numbers (2026-10-18, Linux, Odin dev-2026-09)
+
+| | stage 3 | stage 4 |
+|---|---|---|
+| `game/` source | 6,258 lines | 4,939 lines (+136 for screens and its block) |
+| game binary | 1,939,336 B | 1,883,496 B |
+| `netplay.so` | 826,088 B | 1,634,512 B (it now carries a copy of `game`) |
+| registration hash | 6e230e9bb732befc | 6e230e9bb732befc |
+
+### Verified
+
+- `mise run ci` green, and `mise run purity` with `game/` in the
+  globals check.
+- `mise run plugins:check`: the same 17 plugins, ids and hash from the
+  libraries as compiled in; the game alone starts.
+- `mise run menu-shots:all` on stage 3 twice and on this branch: 52
+  scenarios each. The same 38 are byte-identical across all three,
+  among them all nine lobby shots, `diagnostics` and `main_netplay`
+  (the main menu with its NETPLAY item). The same 14 differ between two
+  runs of stage 3 (presentation particles).
+- `mise run netplay:level-end` passes: two games, one hosting and one
+  joining through `DR_NETPLAY`, play to the level's end through the
+  plugin's screen, hold play there, and run five seconds more.
+- Not run here: `netplay:loopback` and `netplay:reconnect`, which need
+  Xvfb, as in stage 3.
+
+### Still open
+
+- Two netplay names remain in the core.
+  - `prefs.Prefs.netplay_name` is saved in `prefs`, because settings
+    hold only numbers. A string setting would let the plugin own it.
+  - Preferences' controls page says player 1's controls are "also yours
+    in netplay", whether or not the plugin is there.
+- The netplay tests (`net_test`, `desync_test`, `rollback_session_test`,
+  the `Link` fixture and the tests that use it) are still in `tests/`.
+  AGENTS.md says a plugin owns its tests; they move with the `Link`
+  fixture to `plugins/netplay/tests/`.
+- `netplay.so` doubled in size by carrying `game`. Moving what the lobby
+  needs from `game` (the setup switches, the campaign list) into `ui`
+  would shrink it again.
+
+## Stage 5 — one download per plugin
+
+A release is now the game alone, the level editor, and one zip per
+plugin, instead of one zip of everything (`tools/dist/zips.sh`,
+`mise run dist:zips`; D87). Every zip holds a `deimos/` folder, so each
+unzips over the same game folder, in any order.
+
+```mermaid
+flowchart LR
+  D[dist/deimos<br/>mise run dist] --> Z{dist:zips}
+  Z --> G["deimos-…-amd64.zip<br/>the game, Classic Levels"]
+  Z --> E["…-editor.zip<br/>deimos-editor, models, materials"]
+  Z --> P["…-plugin-chaingun.zip<br/>chaingun + new_weapons,<br/>loadout, extra_prefs"]
+  Z --> R["…-plugin-recovered_levels.zip"]
+  Z --> M[… 12 more]
+  G & E & P & R & M --> C{dist:check}
+```
+
+- **A plugin's zip brings what it needs.** A library carries its
+  dependencies' code (D85), so `chaingun.so` alone registers New
+  Weapons, and plays the ordinary gun without the weapons in
+  `plugins/new_weapons/`. The zip follows the dependencies the game
+  itself reports (`-list-plugins`, run in the release folder) and takes
+  each one's folder. Zips overlap where plugins share one; the files
+  are the same build's, so unzipping both changes nothing.
+- **Missing content is reported.** `-list-plugins` marks a plugin whose
+  library registered it but whose folder is missing `content missing`,
+  and exits 1, so a half-installed plugin is found by a check rather
+  than by playing (it was found that way, before the zips bundled their
+  dependencies). A data-only plugin is registered by its folder, so it
+  is never missing. The first version flagged any plugin without its
+  content, and CI failed on both systems: its checkout has HD Textures
+  as a manifest alone. Every local run had passed, on a machine with the
+  textures made. Checked since in a clean worktree (`mise run ref`).
+- **The editor's assets are the editor's.** `assets/models`,
+  `materials` and `bases` are read only through `dr:terrain` and the
+  editor; the game imports neither. They go in the editor's zip, which
+  takes 13 MB off the game's.
+- **A manifest alone has no zip.** HD Textures' folder in a release is
+  its `plugin.json`; the textures are made locally (`hd:textures`).
+- **`dist:check` installs each one** as a player would, with no window,
+  on both systems in CI: the game's zip alone registers Classic Levels
+  and nothing else; each plugin's zip over it loads, finds its content,
+  and registers exactly the plugins it brings; and all the zips together
+  are the release folder, file for file.
+- **The build could return early.** `plugin_libs.sh` could exit with
+  its last library still being linked (`wait -n` returned for the
+  process substitution its list came from), so `plugins:check` failed
+  one run in three, and a release could have been zipped a library
+  short. It now reads the list whole first; four runs of four pass.
+- **The site links them.** The home page's buttons are the game's zip,
+  and each plugin's card links its own (`site/build.mjs` reads them
+  from the release; `SITE_RELEASES=<file>` reads a saved answer instead).
+
+### Numbers (2026-10-18, Linux, Odin dev-2026-09)
+
+Zipped with `zip -9`, without HD Textures' local textures, as CI has
+none.
+
+| Download | Size |
+|---|---|
+| everything, as one zip (stage 4's release) | 257.7 MB |
+| **the game** | **119.3 MB** |
+| Recovered Levels | 94.1 MB |
+| Hitstop | 26.2 MB |
+| the level editor | 13.6 MB |
+| New Weapon Passives (with New Weapons, Passives, Loadout, Extra Prefs) | 1.8 MB |
+| Chaingun (with New Weapons, Loadout, Extra Prefs) | 1.5 MB |
+| each of the other ten | 0.1–1.0 MB |
+
+The game a player needs to start is 46% of what it was.
+
+### Verified
+
+- In a clean worktree of the branch, as CI checks it out (`mise run
+  ref`): `build:linux`, `build:static`, `plugins:check`, `dist`,
+  `dist:zips` and `dist:check` pass, with 15 plugin zips; HD Textures,
+  a manifest there, has none. On this machine, which has the textures
+  made, it is 16, HD Textures' own 400 MB zip among them.
+- `dist:check` once stopped without a word in a clean checkout: `diff`
+  exits 1 when the folders differ, as they do by a skipped manifest, and
+  `pipefail` made that the script's exit. Locally the folders were
+  identical, so it had passed.
+- From the game's zip alone, unzipped, `DR_MENU_SHOT=main` renders the
+  main menu without a NETPLAY item, and `DR_SHOT ... -level le03` plays
+  Lucena to step 120; both images looked at.
+- A chaingun-only install, before the zips bundled their dependencies:
+  `-list-plugins` printed `plugin 4 new_weapons ... content missing` and
+  exited 1.
+- The site, built against a release made from these zips
+  (`SITE_RELEASES`): the game's buttons, the editor's links, and a
+  download line on every plugin card but Classic Levels' ("comes with
+  the game").
+- Not run here: the Windows side, which uses 7-Zip; CI runs both
+  tasks there.
+- Not checked: the editor started from its zip over the game's. It
+  opens a window, and `dist:check` has none.
+
+### Still open
+
+- No zip holds everything. A player who wants every plugin unzips
+  fifteen; an "everything" zip would put back the 258 MB download
+  beside the others.
+- Hitstop's 26 MB is its sounds; a compressed format would shrink it.
+- The editor is checked only by `dist:check`'s file-for-file step, not
+  started.
 
 ## Decisions to record as they are made
 

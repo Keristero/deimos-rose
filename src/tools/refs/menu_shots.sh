@@ -3,7 +3,8 @@
 # that tree's own build, assets and plugins: ROOT is its src/ (this one by
 # default; `mise run ref` prints another's). The names are read from the
 # source, so an older tree without this script can be rendered too: the
-# cases of game/main.odin's run_menu_shot, and every ui.shot_register and
+# cases of game/main.odin's run_menu_shot and of a plugin screen's
+# menu_shot (game/screens.odin), and every ui.shot_register and
 # ui.menu_shot_register call. A name that writes no image is listed, not
 # fatal.
 set -euo pipefail
@@ -18,6 +19,9 @@ OUT="$(cd "$OUT" && pwd)" # the game runs in ROOT, so a relative OUT would land 
 names=$( {
   awk '/^run_menu_shot ::/ {on = 1} on && /^}/ {on = 0} on' "$ROOT/game/main.odin" |
     grep -E '^\s*case "' | grep -oE '"[^"]+"' | tr -d '"'
+  for f in "$ROOT"/plugins/*/view/*.odin; do
+    awk '/^menu_shot ::/ {on = 1} on && /^}/ {on = 0} on' "$f"
+  done | grep -E '^\s*case "' | grep -oE '"[^"]+"' | tr -d '"' || true
   grep -rhoE '(menu_)?shot_register\(\{name = "[^"]+"' "$ROOT/plugins" "$ROOT/ui" "$ROOT/game" 2>/dev/null |
     grep -oE '"[^"]+"' | tr -d '"'
 } | sort -u)
