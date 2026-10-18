@@ -47,6 +47,14 @@
 
   "changes": [
     {
+      "id": "readme-website",
+      "title": "A README that says what this is",
+      "date": "2026-10-18",
+      "kind": "engineering",
+      "pr": 9,
+      "summary": "The repository's README is rewritten: how to download and install the game and its plugins, what the faithful core and each plugin are, what is still open, and how the project is built. It links this website for downloads and screenshots."
+    },
+    {
       "id": "separate-downloads",
       "title": "The game, and a download per plugin",
       "date": "2026-10-18",

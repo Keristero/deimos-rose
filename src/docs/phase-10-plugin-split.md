@@ -1,8 +1,8 @@
 # Phase 10 — The plugin split
 
-**Status: complete, pending review.** Stages 0–5 are on their stacked
-branches: the workflow and website, the core naming no plugin, one copy
-of the state, plugins loaded from libraries, netplay out of the core,
+**Status: complete.** Stages 0–5 were built on stacked branches and
+merged into `main` through `ecs-refactor` (#8): the workflow and
+website, the core naming no plugin, one copy of the state, plugins loaded from libraries, netplay out of the core,
 and a release that is the game alone plus one download per plugin.
 
 ## Why
