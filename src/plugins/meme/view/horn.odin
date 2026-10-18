@@ -1,4 +1,4 @@
-package hitstop_view
+package meme_view
 
 // The announcer's horns: a brass air-horn sting made here, a chord of two
 // notes a major third apart, one blast for the first streaks, two from 3 and

@@ -1,4 +1,4 @@
-package hitstop_view
+package meme_view
 
 // The announcer: a voice that calls each kill streak. The clips, spoken by
 // Moonshine TTS (announcer/generate.sh), are embedded: one per streak title
