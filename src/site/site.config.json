@@ -51,6 +51,7 @@
       "title": "Pick your plugins, get one zip",
       "date": "2026-10-18",
       "kind": "feature",
+      "pr": 11,
       "summary": "The Download page lists the game, the level editor and every plugin with a tick box. Tick what you want and your browser joins them into a single zip, ready to unzip and play.",
       "highlights": [
         "Ticking a plugin ticks every plugin it needs, and what those need; unticking one unticks what needs it.",
