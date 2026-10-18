@@ -13,6 +13,7 @@ import "core:strings"
 // The fifteen types below are the loop's `case 0 .. 14`, and match the fifteen
 // directories the shipped game creates under Data/Local exactly.
 
+@(rodata)
 RESOURCE_TYPES := []string {
 	"coli", "film", "flli", "idli", "im08", "im16", "leve",
 	"plde", "pref", "reli", "soun", "stli", "tefo", "unde", "wede",
@@ -68,12 +69,7 @@ provider_open :: proc(
 	// 1. Data/Local, in the order the original scans it.
 	for type in RESOURCE_TYPES {
 		dir := strings.concatenate({root, "/ Data/Local/", type}, context.temp_allocator)
-		handle, oerr := os.open(dir)
-		if oerr != nil {
-			continue
-		}
-		defer os.close(handle)
-		infos, rerr := os.read_directory(handle, -1, context.temp_allocator)
+		infos, rerr := os.read_all_directory_by_path(dir, context.temp_allocator)
 		if rerr != nil {
 			continue
 		}

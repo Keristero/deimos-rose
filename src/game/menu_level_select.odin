@@ -20,11 +20,14 @@ package game
 // only the "Sector Not Reached" locked case is real for a registered install.
 
 import "core:fmt"
+import "core:slice"
 
 import rl "vendor:raylib"
 
 import "dr:data"
+import "dr:render"
 import "dr:sim"
+import "dr:ui"
 
 LESE :: "lese"
 
@@ -33,6 +36,7 @@ LESE :: "lese"
 // widget layered over them; clicking the left/right preview rotates the
 // carousel, clicking the centre one accepts/rejects it.
 @(private = "file")
+@(rodata)
 LS_RECTS := [3]rl.Rectangle {
 	{55, 76, 145, 306}, // previous
 	{246, 76, 146, 306}, // current
@@ -46,6 +50,7 @@ LS_RECTS := [3]rl.Rectangle {
 // "NO ACCESS" (shown centred when locked), 12/13 are small left/right-facing
 // arrow glyphs (shown at the side slots unconditionally).
 @(private = "file")
+@(rodata)
 LS_ICON_POS := [3]rl.Vector2{{128, 228}, {320, 228}, {511, 228}}
 @(private = "file") LS_FRAME_PREV :: 12
 @(private = "file") LS_FRAME_START :: 10
@@ -76,34 +81,54 @@ Level_Select_Pulse :: enum {
 }
 
 Level_Select :: struct {
-	center:  int, // 0-based index into Flow.defs.levels -- the "current" slot
+	center:  int, // 0-based index into the campaign's levels (flow_levels) -- the "current" slot
 	hover:   [3]f32,
 	pulse:   Level_Select_Pulse,
 	scale:   f32, // 1.0..MaxScale; only the centre preview is ever drawn scaled
 	growing: bool,
-	// Not the original's: the Easy_Mode extra's toggle, under the level
-	// name, and only outside classic mode.
-	easy:    Text_Button,
+	// Not the original's: the plugins' switches (Easy Mode's), under the
+	// level name, and only outside classic mode.
+	switches: Setup_Switches,
+	// Not the original's either: which campaign's levels, above the level
+	// number, while more than one is offered (D53). The name steps to the
+	// next, and the arrows either side of it step either way.
+	campaign:      ui.Text_Button,
+	campaign_prev: ui.Text_Button,
+	campaign_next: ui.Text_Button,
 }
 
-@(private = "file") LS_EASY_Y :: 440
+@(private = "file") LS_SWITCH_Y :: 440
+@(private = "file") LS_CAMPAIGN_Y :: 10
+@(private = "file") LS_CAMPAIGN_GAP :: 6 // between the name and each arrow
 
 @(private = "file")
-level_select_easy_layout :: proc(fl: ^Flow, r: ^Renderer, ls: ^Level_Select) {
-	label := extra_on(fl.prefs, .Easy_Mode) ? "EASY MODE: ON" : "EASY MODE: OFF"
-	text_button_relabel(r, &ls.easy, label, SCREEN_W / 2, LS_EASY_Y)
+level_select_switches_layout :: proc(fl: ^Flow, r: ^render.Renderer, ls: ^Level_Select) {
+	setup_switches_layout(r, &ls.switches, .Level_Select, prefs_mods(fl.prefs), LS_SWITCH_Y)
+}
+
+@(private = "file")
+level_select_campaign_layout :: proc(fl: ^Flow, r: ^render.Renderer, ls: ^Level_Select) {
+	ui.text_button_relabel(r, &ls.campaign, flow_campaign_label(fl.campaign), render.SCREEN_W / 2, LS_CAMPAIGN_Y)
+	ui.text_button_relabel(r, &ls.campaign_prev, "<", 0, LS_CAMPAIGN_Y)
+	ui.text_button_relabel(r, &ls.campaign_next, ">", 0, LS_CAMPAIGN_Y)
+	ls.campaign_prev.rect.x = ls.campaign.rect.x - LS_CAMPAIGN_GAP - ls.campaign_prev.rect.width
+	ls.campaign_next.rect.x = ls.campaign.rect.x + ls.campaign.rect.width + LS_CAMPAIGN_GAP
 }
 
 // Always opens on the first level: G_LevelSelect_GetStartingLevelIDFromUser's
 // own carousel index starts at 0 every time the screen is entered, it does
-// not remember where a previous visit left off.
-level_select_init :: proc(ls: ^Level_Select) {
+// not remember where a previous visit left off. The campaign stays as it
+// was, while it is still offered.
+level_select_init :: proc(fl: ^Flow, ls: ^Level_Select) {
 	ls^ = Level_Select{}
+	if offered := flow_campaigns(fl); !slice.contains(offered, fl.campaign) {
+		flow_campaign_set(fl, offered[0])
+	}
 }
 
-level_select_update :: proc(fl: ^Flow, r: ^Renderer, ls: ^Level_Select) {
+level_select_update :: proc(fl: ^Flow, r: ^render.Renderer, ls: ^Level_Select) {
 	dt := rl.GetFrameTime()
-	n := len(fl.defs.levels)
+	n := len(flow_levels(fl))
 
 	if ls.pulse != .None {
 		finished, accepted := level_select_step_pulse(ls, dt)
@@ -125,18 +150,34 @@ level_select_update :: proc(fl: ^Flow, r: ^Renderer, ls: ^Level_Select) {
 		return
 	}
 
-	mouse := menu_mouse_pos()
+	mouse := ui.menu_mouse_pos()
 	if !r.classic {
-		level_select_easy_layout(fl, r, ls)
-		if text_button_update(r, &ls.easy, mouse, dt) {
-			extra_set(fl.prefs, .Easy_Mode, extra_on(fl.prefs, .Easy_Mode) ? 0 : 1)
+		level_select_switches_layout(fl, r, ls)
+		setup_switches_update(fl, r, &ls.switches, mouse, dt)
+	}
+	if offered := flow_campaigns(fl); len(offered) > 1 {
+		level_select_campaign_layout(fl, r, ls)
+		step := 0
+		if ui.text_button_update(r, &ls.campaign_prev, mouse, dt) {
+			step = -1
+		}
+		if ui.text_button_update(r, &ls.campaign, mouse, dt) {
+			step = 1
+		}
+		if ui.text_button_update(r, &ls.campaign_next, mouse, dt) {
+			step = 1
+		}
+		if step != 0 {
+			flow_campaign_set(fl, flow_campaign_step(fl, fl.campaign, step))
+			ls.center = 0
+			return
 		}
 	}
 	for i in 0 ..< 3 {
 		was_hovering := ls.hover[i] > 0
-		clicked := update_hover_click(LS_RECTS[i], &ls.hover[i], mouse, dt)
+		clicked := ui.update_hover_click(LS_RECTS[i], &ls.hover[i], mouse, dt)
 		if ls.hover[i] > 0 && !was_hovering {
-			menu_play_sound(r, ROLLOVER)
+			ui.menu_play_sound(r, ROLLOVER)
 		}
 		if !clicked {
 			continue
@@ -144,17 +185,17 @@ level_select_update :: proc(fl: ^Flow, r: ^Renderer, ls: ^Level_Select) {
 		switch i {
 		case 0:
 			ls.center = (ls.center - 1 + n) % n
-			menu_play_sound(r, SELECTOR)
+			ui.menu_play_sound(r, SELECTOR)
 		case 2:
 			ls.center = (ls.center + 1) % n
-			menu_play_sound(r, SELECTOR)
+			ui.menu_play_sound(r, SELECTOR)
 		case 1:
 			if ls.center < fl.highest_reached {
 				ls.pulse, ls.growing = .Accept, true
-				menu_play_sound(r, CHOOSE)
+				ui.menu_play_sound(r, CHOOSE)
 			} else {
 				ls.pulse, ls.growing = .Fail, true
-				menu_play_sound(r, FAILURE)
+				ui.menu_play_sound(r, FAILURE)
 			}
 		}
 	}
@@ -189,30 +230,31 @@ level_select_step_pulse :: proc(ls: ^Level_Select, dt: f32) -> (finished, accept
 	return false, false
 }
 
-level_select_draw :: proc(r: ^Renderer, fl: ^Flow, ls: ^Level_Select) {
-	menu_draw_background(r, LESE)
+level_select_draw :: proc(r: ^render.Renderer, fl: ^Flow, ls: ^Level_Select) {
+	ui.menu_draw_background(r, LESE)
 
-	n := len(fl.defs.levels)
+	levels := flow_levels(fl)
+	n := len(levels)
 	unlocked := ls.center < fl.highest_reached
 	for i in 0 ..< 3 {
 		idx := ((ls.center + i - 1) % n + n) % n
-		level := &fl.defs.levels[idx]
-		media := data.assets_level_media(&r.textures.assets, level.id)
-		if media == nil {
-			continue
-		}
-		tex, ok := menu_image(&r.textures, media.preview)
-		if !ok {
-			continue
+		level := &levels[idx]
+		// Every original level has its preview and name; a campaign
+		// plugin's may have neither, and shows its slot empty under its
+		// identifier (D53).
+		media := data.assets_level_media(&r.textures.assets, level.campaign, level.id)
+		tex, ok := rl.Texture2D{}, false
+		if media != nil {
+			tex, ok = render.menu_image(&r.textures, media.preview)
 		}
 		rect := LS_RECTS[i]
-		if i == 1 && ls.pulse != .None {
+		if ok && i == 1 && ls.pulse != .None {
 			tint := ls.pulse == .Accept ? rl.Color{140, 255, 140, 255} : rl.Color{255, 140, 140, 255}
 			level_select_draw_scaled(tex, rect, ls.scale, tint)
-		} else {
+		} else if ok {
 			dst := rl.Rectangle {
-				rect.x * WINDOW_SCALE, rect.y * WINDOW_SCALE,
-				rect.width * WINDOW_SCALE, rect.height * WINDOW_SCALE,
+				rect.x * render.WINDOW_SCALE, rect.y * render.WINDOW_SCALE,
+				rect.width * render.WINDOW_SCALE, rect.height * render.WINDOW_SCALE,
 			}
 			rl.DrawTexturePro(tex, {0, 0, f32(tex.width), f32(tex.height)}, dst, {0, 0}, 0, rl.WHITE)
 		}
@@ -230,9 +272,10 @@ level_select_draw :: proc(r: ^Renderer, fl: ^Flow, ls: ^Level_Select) {
 			// baked tefo text styling, matching the convention menu.odin's
 			// Text_Link already uses for non-plate text.
 			color := unlocked ? rl.Color{99, 197, 214, 255} : rl.Color{255, 0, 0, 255}
-			menu_draw_text(r, fmt.tprintf("%02d", level.number), SCREEN_W / 2, 38, color, .Centre)
-			label := unlocked ? media.name : "NO ACCESS"
-			menu_draw_text(r, label, SCREEN_W / 2, 407, color, .Centre)
+			ui.menu_draw_text(r, fmt.tprintf("%02d", level.number), render.SCREEN_W / 2, 38, color, .Centre)
+			name := media != nil && media.name != "" ? media.name : level.identifier
+			label := unlocked ? name : "NO ACCESS"
+			ui.menu_draw_text(r, label, render.SCREEN_W / 2, 407, color, .Centre)
 		}
 		// The hover border stops once an accept pulse has latched (matching
 		// DAT_004e8673 gating it off in the original); a fail pulse doesn't
@@ -246,8 +289,14 @@ level_select_draw :: proc(r: ^Renderer, fl: ^Flow, ls: ^Level_Select) {
 	level_select_draw_icon(r, LS_ICON_POS[1], unlocked ? LS_FRAME_START : LS_FRAME_NOACCESS, ls.hover[1] > 0)
 	level_select_draw_icon(r, LS_ICON_POS[2], LS_FRAME_NEXT, ls.hover[2] > 0)
 	if !r.classic {
-		level_select_easy_layout(fl, r, ls)
-		text_button_draw(r, &ls.easy)
+		level_select_switches_layout(fl, r, ls)
+		setup_switches_draw(r, &ls.switches)
+	}
+	if len(flow_campaigns(fl)) > 1 {
+		level_select_campaign_layout(fl, r, ls)
+		ui.text_button_draw(r, &ls.campaign)
+		ui.text_button_draw(r, &ls.campaign_prev)
+		ui.text_button_draw(r, &ls.campaign_next)
 	}
 }
 
@@ -258,8 +307,8 @@ level_select_draw_scaled :: proc(tex: rl.Texture2D, rect: rl.Rectangle, scale: f
 	w := rect.width * scale
 	h := rect.height * scale
 	dst := rl.Rectangle {
-		(cx - w / 2) * WINDOW_SCALE, (cy - h / 2) * WINDOW_SCALE,
-		w * WINDOW_SCALE, h * WINDOW_SCALE,
+		(cx - w / 2) * render.WINDOW_SCALE, (cy - h / 2) * render.WINDOW_SCALE,
+		w * render.WINDOW_SCALE, h * render.WINDOW_SCALE,
 	}
 	rl.DrawTexturePro(tex, {0, 0, f32(tex.width), f32(tex.height)}, dst, {0, 0}, 0, tint)
 }
@@ -271,10 +320,10 @@ level_select_draw_scaled :: proc(tex: rl.Texture2D, rect: rl.Rectangle, scale: f
 @(private = "file")
 level_select_draw_hover_border :: proc(rect: rl.Rectangle) {
 	dst := rl.Rectangle {
-		rect.x * WINDOW_SCALE, rect.y * WINDOW_SCALE,
-		rect.width * WINDOW_SCALE, rect.height * WINDOW_SCALE,
+		rect.x * render.WINDOW_SCALE, rect.y * render.WINDOW_SCALE,
+		rect.width * render.WINDOW_SCALE, rect.height * render.WINDOW_SCALE,
 	}
-	rl.DrawRectangleLinesEx(dst, 3 * WINDOW_SCALE, rl.Color{0, 255, 255, 160})
+	rl.DrawRectangleLinesEx(dst, 3 * render.WINDOW_SCALE, rl.Color{0, 255, 255, 160})
 }
 
 // Tiles VIGR frame 0 across `rect`, native size (no stretch to fit, matching
@@ -285,17 +334,17 @@ level_select_draw_hover_border :: proc(rect: rl.Rectangle) {
 // difference is not visually distinguishable, so this starts flush instead
 // of reproducing the centring arithmetic exactly.
 @(private = "file")
-level_select_draw_grid :: proc(r: ^Renderer, rect: rl.Rectangle) {
-	tex, src, ok := frame_rect(&r.textures, VIGR, 0)
+level_select_draw_grid :: proc(r: ^render.Renderer, rect: rl.Rectangle) {
+	tex, src, ok := render.frame_rect(&r.textures, VIGR, 0)
 	if !ok {
 		return
 	}
 	dst := rl.Rectangle {
-		rect.x * WINDOW_SCALE, rect.y * WINDOW_SCALE,
-		rect.width * WINDOW_SCALE, rect.height * WINDOW_SCALE,
+		rect.x * render.WINDOW_SCALE, rect.y * render.WINDOW_SCALE,
+		rect.width * render.WINDOW_SCALE, rect.height * render.WINDOW_SCALE,
 	}
-	tw := src.width * WINDOW_SCALE
-	th := src.height * WINDOW_SCALE
+	tw := src.width * render.WINDOW_SCALE
+	th := src.height * render.WINDOW_SCALE
 	rl.BeginScissorMode(i32(dst.x), i32(dst.y), i32(dst.width), i32(dst.height))
 	for y := dst.y; y < dst.y + dst.height; y += th {
 		for x := dst.x; x < dst.x + dst.width; x += tw {
@@ -306,15 +355,15 @@ level_select_draw_grid :: proc(r: ^Renderer, rect: rl.Rectangle) {
 }
 
 @(private = "file")
-level_select_draw_icon :: proc(r: ^Renderer, pos: rl.Vector2, frame: i32, hovered: bool) {
-	plate := hovered ? MEBH : MEBU
-	tex, src, ok := frame_rect(&r.textures, plate, frame)
+level_select_draw_icon :: proc(r: ^render.Renderer, pos: rl.Vector2, frame: i32, hovered: bool) {
+	plate := hovered ? ui.MEBH : ui.MEBU
+	tex, src, ok := render.frame_rect(&r.textures, plate, frame)
 	if !ok {
 		return
 	}
 	dst := rl.Rectangle {
-		(pos.x - src.width / 2) * WINDOW_SCALE, (pos.y - src.height / 2) * WINDOW_SCALE,
-		src.width * WINDOW_SCALE, src.height * WINDOW_SCALE,
+		(pos.x - src.width / 2) * render.WINDOW_SCALE, (pos.y - src.height / 2) * render.WINDOW_SCALE,
+		src.width * render.WINDOW_SCALE, src.height * render.WINDOW_SCALE,
 	}
 	rl.DrawTexturePro(tex, src, dst, {0, 0}, 0, rl.WHITE)
 }

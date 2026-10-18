@@ -2,9 +2,9 @@
 # Two-instance loopback smoke test for the netplay lobby and live session
 # (Phase 7 stage 6 / Phase 6 stage 5). Launches two real, interactive copies
 # of our own port under separate Xvfb displays, has one host and the other
-# join over 127.0.0.1 (DR_NETPLAY -- see main.odin and
+# join over 127.0.0.1 (DR_NETPLAY -- see plugins/netplay/view/screen.odin and
 # netplay_lobby_start_from_flag's comment), clicks each side's own Ready
-# button, and checks both sides' stderr for game/netplay.odin's "connected"
+# button, and checks both sides' stderr for the lobby's "connected"
 # and "session started" diagnostics.
 #
 # This is not an oracle comparison -- there is nothing in the original to
@@ -12,7 +12,7 @@
 # phase's real exit criterion either (Phase 6 stage 6, a genuine two-machine
 # playtest, is still unstarted). It is the closest thing to an automated
 # regression check the handshake + rollback wiring has: run it after any
-# change to net/ or game/netplay.odin.
+# change to plugins/netplay/net/ or plugins/netplay/view/netplay.odin.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
@@ -55,7 +55,7 @@ grep -q "netplay: connected as Host" "$WORK/a.log" || fail "host never connected
 grep -q "netplay: connected as Guest" "$WORK/b.log" || fail "guest never connected"
 echo "handshake OK"
 
-# Both sides' Ready button (game/netplay.odin: text_button_at(r, "READY",
+# Both sides' Ready button (plugins/netplay/view/netplay.odin: text_button_at(r, "READY",
 # 300), WINDOW_SCALE=2 -- centre of the rect is logical (320, 310), device
 # (640, 620) on both displays since each instance's window is independently
 # 640x480 logical / 1280x960 device). The host defaults to level_index 0,

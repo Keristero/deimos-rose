@@ -4,37 +4,43 @@ import core_net "core:net"
 import "core:testing"
 import "core:time"
 
-import net "dr:net"
+import net "dr:plugins/netplay/net"
 import "dr:sim"
 
 @(test)
 packet_hello_round_trips :: proc(t: ^testing.T) {
 	buf: [64]byte
-	n := net.encode_hello(buf[:], 5, 1, 300, "Keristero")
+	n := net.encode_hello(buf[:], 5, 1, 300, "Keristero", 0x0123456789abcdef)
 	kind, kok := net.peek_kind(buf[:n])
 	testing.expect(t, kok)
 	testing.expect_value(t, kind, net.Packet_Kind.Hello)
-	seq, player, hue, name, ok := net.decode_hello(buf[:n])
+	seq, player, hue, name, build, ok := net.decode_hello(buf[:n])
 	testing.expect(t, ok)
 	testing.expect_value(t, seq, u8(5))
 	testing.expect_value(t, player, u8(1))
 	testing.expect_value(t, hue, u16(300))
 	testing.expect_value(t, name, "Keristero")
+	testing.expect_value(t, build, u64(0x0123456789abcdef))
+	// A build older than the digest sends none: it reads as 0.
+	_, _, _, name, build, ok = net.decode_hello(buf[:n - 8])
+	testing.expect(t, ok)
+	testing.expect_value(t, name, "Keristero")
+	testing.expect_value(t, build, u64(0))
 }
 
 @(test)
 packet_hello_names_are_capped_and_checked :: proc(t: ^testing.T) {
 	buf: [64]byte
-	n := net.encode_hello(buf[:], 0, 0, 0, "abcdefghijklmnopqrstuvwxyz")
+	n := net.encode_hello(buf[:], 0, 0, 0, "abcdefghijklmnopqrstuvwxyz", 1)
 	testing.expect_value(t, n, net.HELLO_SIZE_MAX)
-	_, _, _, name, ok := net.decode_hello(buf[:n])
+	_, _, _, name, _, ok := net.decode_hello(buf[:n])
 	testing.expect(t, ok)
 	testing.expect_value(t, name, "abcdefghijklmnopqrst") // HELLO_NAME_MAX
 	// A name length pointing past the end of the packet is refused.
-	_, _, _, _, short := net.decode_hello(buf[:n - 1])
+	_, _, _, _, _, short := net.decode_hello(buf[:6 + net.HELLO_NAME_MAX - 1])
 	testing.expect(t, !short)
-	n = net.encode_hello(buf[:], 0, 0, 0, "")
-	_, _, _, name, ok = net.decode_hello(buf[:n])
+	n = net.encode_hello(buf[:], 0, 0, 0, "", 1)
+	_, _, _, name, _, ok = net.decode_hello(buf[:n])
 	testing.expect(t, ok)
 	testing.expect_value(t, name, "")
 }
@@ -59,34 +65,68 @@ packet_ping_and_pong_do_not_cross_decode :: proc(t: ^testing.T) {
 
 @(test)
 packet_level_choice_round_trips :: proc(t: ^testing.T) {
-	buf: [64]byte
-	n := net.encode_level_choice(buf[:], 7, net.START_EASY)
+	// Exactly the size the lobby sends it in: a smaller buffer was once
+	// declared there, and every host crashed on its first lobby frame.
+	buf: [net.LEVEL_CHOICE_SIZE]byte
+	mods := sim.Mods{1, 3, 31, 40, sim.MAX_PLUGINS}
+	n := net.encode_level_choice(buf[:], 7, net.START_EASY, mods, sim.Plugin_ID(44))
 	kind, kok := net.peek_kind(buf[:n])
 	testing.expect(t, kok)
 	testing.expect_value(t, kind, net.Packet_Kind.Level_Choice)
-	level_index, flags, ok := net.decode_level_choice(buf[:n])
+	level_index, flags, got, campaign, ok := net.decode_level_choice(buf[:n])
 	testing.expect(t, ok)
 	testing.expect_value(t, level_index, u8(7))
 	testing.expect_value(t, flags, u8(net.START_EASY))
-	// A build from before the flags byte sends two bytes: no flags.
-	_, old_flags, old_ok := net.decode_level_choice(buf[:2])
+	testing.expect_value(t, got.? or_else {}, mods)
+	testing.expect_value(t, campaign, sim.Plugin_ID(44))
+	// A build from before campaigns sends eleven bytes: the original's (D53).
+	_, _, wide_mods, no_campaign, wide_ok := net.decode_level_choice(buf[:11])
+	testing.expect(t, wide_ok)
+	testing.expect_value(t, wide_mods.? or_else {}, mods)
+	testing.expect_value(t, no_campaign, sim.CORE)
+	// A build from before the mods sends three bytes: flags, no mods.
+	_, old_flags, old_mods, _, old_ok := net.decode_level_choice(buf[:3])
 	testing.expect(t, old_ok)
-	testing.expect_value(t, old_flags, u8(0))
+	testing.expect_value(t, old_flags, u8(net.START_EASY))
+	_, has := old_mods.?
+	testing.expect(t, !has)
+	// And one from before the flags, two: neither.
+	_, older_flags, _, _, older_ok := net.decode_level_choice(buf[:2])
+	testing.expect(t, older_ok)
+	testing.expect_value(t, older_flags, u8(0))
 }
 
 @(test)
-packet_start_round_trips_with_flags :: proc(t: ^testing.T) {
+packet_start_round_trips_with_flags_and_mods :: proc(t: ^testing.T) {
 	buf: [64]byte
-	n := net.encode_start(buf[:], 5, 0xCAFE_F00D, 3, net.START_EASY)
-	seq, seed, level, flags, ok := net.decode_start(buf[:n])
+	mods := sim.Mods{2, 5, 47}
+	n := net.encode_start(buf[:], 5, 0xCAFE_F00D, 3, net.START_EASY, mods, sim.Plugin_ID(47))
+	seq, seed, level, flags, got, campaign, ok := net.decode_start(buf[:n])
 	testing.expect(t, ok)
 	testing.expect_value(t, seq, u8(5))
 	testing.expect_value(t, seed, u32(0xCAFE_F00D))
 	testing.expect_value(t, level, u8(3))
 	testing.expect_value(t, flags, u8(net.START_EASY))
-	_, _, _, old_flags, old_ok := net.decode_start(buf[:7])
+	testing.expect_value(t, got.? or_else {}, mods)
+	testing.expect_value(t, campaign, sim.Plugin_ID(47))
+	// A build from before campaigns sends sixteen bytes: the original's (D53).
+	_, _, _, _, wide, no_campaign, wide_ok := net.decode_start(buf[:16])
+	testing.expect(t, wide_ok)
+	testing.expect_value(t, wide.? or_else {}, mods)
+	testing.expect_value(t, no_campaign, sim.CORE)
+	// A build from before data plugins sends four bytes of mods (D52).
+	_, _, _, _, narrow, _, narrow_ok := net.decode_start(buf[:12])
+	testing.expect(t, narrow_ok)
+	testing.expect_value(t, narrow.? or_else {}, sim.Mods{2, 5})
+	// One from before the mods sends eight bytes.
+	_, _, _, old_flags, old_mods, _, old_ok := net.decode_start(buf[:8])
 	testing.expect(t, old_ok)
-	testing.expect_value(t, old_flags, u8(0))
+	testing.expect_value(t, old_flags, u8(net.START_EASY))
+	_, has := old_mods.?
+	testing.expect(t, !has)
+	_, _, _, older_flags, _, _, older_ok := net.decode_start(buf[:7])
+	testing.expect(t, older_ok)
+	testing.expect_value(t, older_flags, u8(0))
 }
 
 @(test)
@@ -268,7 +308,7 @@ reliable_handshake_completes_over_loopback :: proc(t: ^testing.T) {
 
 	rc_a: net.Reliable_Channel
 	net.reliable_init(&rc_a, a_to_b)
-	net.send_hello(&rc_a, &a, 0, 0, "a")
+	net.send_hello(&rc_a, &a, 0, 0, "a", 1)
 	testing.expect(t, rc_a.pending, "hello should be pending until acked")
 
 	buf: [64]byte
@@ -279,7 +319,7 @@ reliable_handshake_completes_over_loopback :: proc(t: ^testing.T) {
 	}
 	kind, kok := net.peek_kind(buf[:n])
 	testing.expect(t, kok && kind == .Hello)
-	seq, player, _, _, dok := net.decode_hello(buf[:n])
+	seq, player, _, _, _, dok := net.decode_hello(buf[:n])
 	testing.expect(t, dok)
 	testing.expect_value(t, player, u8(0))
 

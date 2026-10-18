@@ -1,0 +1,645 @@
+package sim
+
+// The entity component system the simulation's state lives in (D39, D47).
+//
+// odecs holds the world, and this file uses only its public API. What the
+// simulation adds on top:
+// - a catalog of component types, each with a fixed id and a byte layout
+//   that leaves out padding, so a world can be written out and hashed the
+//   same on every machine;
+// - entity kinds: the session's entity, the players, their crosshairs, the
+//   groups and the entity pool, each built with the components the core
+//   and the session's plugins give that kind;
+// - writing a world out, reading it back and hashing it, for rollback,
+//   reconnection and desync detection.
+//
+// A world is built once per session, every entity with all its components,
+// as the original preallocates its pool (FUN_0041d1d0), and nothing is
+// added or removed after. odecs moves a component only when an entity's
+// components change or an entity is added, so every view taken once the
+// world is built (entity_at, player_at, single) stays good for the
+// session, and both peers' worlds are laid out alike.
+
+import "base:intrinsics"
+import "base:runtime"
+import "core:slice"
+import ecs "dr:third_party/odecs"
+
+// ---------------------------------------------------------------------------
+// The component catalog
+// ---------------------------------------------------------------------------
+
+MAX_COMPONENTS :: 128
+
+// A stretch of a component's bytes that holds data. Padding is left out, so
+// two worlds holding equal values write equal bytes.
+Byte_Run :: struct {
+	offset, size: i32,
+}
+
+Component_Type :: struct {
+	type:     typeid,
+	name:     string,
+	size:     int,
+	runs:     []Byte_Run,
+	// odecs's calls take the type at compile time; these are them, made
+	// for this type, so a world can be walked by the catalog.
+	register: proc(w: ^ecs.World),
+	get:      proc(w: ^ecs.World, id: ecs.EntityID) -> rawptr,
+	table:    proc(w: ^ecs.World, arch: ^ecs.Archetype) -> []byte,
+}
+
+// Each component type's catalog id, one static per type. Reading it is a
+// load, where odecs's own lookup hashes the typeid: the sim reads
+// components tens of times per entity per step.
+@(private)
+component_slot :: #force_inline proc "contextless" ($T: typeid) -> ^i32 {
+	@(static) id: i32 = -1
+	if id < 0 {
+		// A plugin's copy of sim has statics of its own, all -1, for the
+		// components the game registered (D83): it finds them once in the
+		// catalog the copies share. In the game, registering sets it, and
+		// this is one compare after.
+		id = catalog_find(T)
+	}
+	return &id
+}
+
+@(private)
+catalog_find :: proc "contextless" (t: typeid) -> i32 {
+	for c, i in registry_items(&shared.catalog) {
+		if c.type == t {
+			return i32(i)
+		}
+	}
+	return -1
+}
+
+// Adds T to the catalog. Called from registration steps only
+// (register_step), the sim's own and each plugin's, so the catalog is
+// complete and fixed before any world exists, and ids are the same in every
+// world of the process and on every platform.
+//
+// T must be plain data: a snapshot copies its bytes, so a pointer, slice,
+// string or map would copy an address, not a value.
+component_register :: proc($T: typeid) {
+	slot := component_slot(T)
+	if slot^ >= 0 {
+		return
+	}
+	ti := type_info_of(T)
+	first := shared.run_used
+	if !layout_runs(ti, 0) {
+		panic("ecs: a component must be plain data (no pointers, slices, strings, maps or unions)")
+	}
+	name := ""
+	if n, ok := ti.variant.(runtime.Type_Info_Named); ok {
+		name = n.name
+	}
+	slot^ = i32(registry_add(&shared.catalog, Component_Type {
+		type = T,
+		name = name,
+		size = size_of(T),
+		runs = shared.run_pool[first:shared.run_used],
+		register = proc(w: ^ecs.World) {
+			ecs.register_component(w, T)
+		},
+		get = proc(w: ^ecs.World, id: ecs.EntityID) -> rawptr {
+			return ecs.get_component(w, id, T)
+		},
+		table = proc(w: ^ecs.World, arch: ^ecs.Archetype) -> []byte {
+			return slice.to_bytes(ecs.get_table(w, arch, T))
+		},
+	}))
+}
+
+component_types :: proc "contextless" () -> []Component_Type {
+	return registry_items(&shared.catalog)
+}
+
+component_id :: #force_inline proc "contextless" ($T: typeid) -> int {
+	return int(component_slot(T)^)
+}
+
+// A digest of the catalog: the names, sizes and layouts in id order. Two
+// builds can only exchange snapshots if theirs match.
+catalog_hash :: proc "contextless" () -> u64 {
+	h := hasher()
+	for c in registry_items(&shared.catalog) {
+		hash_bytes(&h, raw_data(c.name), len(c.name))
+		hash_u64(&h, u64(c.size))
+		for r in c.runs {
+			hash_u64(&h, u64(r.offset) | u64(r.size) << 32)
+		}
+	}
+	return h.sum
+}
+
+@(private = "file")
+emit_run :: proc(offset, size: int) {
+	if size == 0 {
+		return
+	}
+	shared.run_bytes += size
+	if shared.run_used > 0 {
+		last := &shared.run_pool[shared.run_used - 1]
+		if int(last.offset + last.size) == offset {
+			last.size += i32(size)
+			return
+		}
+	}
+	assert(shared.run_used < len(shared.run_pool), "ecs: component layouts too fragmented")
+	shared.run_pool[shared.run_used] = {i32(offset), i32(size)}
+	shared.run_used += 1
+}
+
+// Appends the data-holding byte runs of a value of type ti at `base`.
+@(private = "file")
+layout_runs :: proc(ti: ^runtime.Type_Info, base: int) -> bool {
+	#partial switch v in ti.variant {
+	case runtime.Type_Info_Named:
+		return layout_runs(v.base, base)
+	case runtime.Type_Info_Integer, runtime.Type_Info_Rune, runtime.Type_Info_Float,
+	     runtime.Type_Info_Complex, runtime.Type_Info_Quaternion, runtime.Type_Info_Boolean,
+	     runtime.Type_Info_Enum, runtime.Type_Info_Bit_Set, runtime.Type_Info_Bit_Field,
+	     runtime.Type_Info_Simd_Vector:
+		emit_run(base, ti.size)
+		return true
+	case runtime.Type_Info_Array:
+		return layout_elems(v.elem, v.elem_size, v.count, base)
+	case runtime.Type_Info_Enumerated_Array:
+		return layout_elems(v.elem, v.elem_size, v.count, base)
+	case runtime.Type_Info_Matrix:
+		// Column-major, each column elem_stride long, of which the first
+		// row_count are elements: element by element, so padding is left out.
+		for i in 0 ..< v.elem_stride * v.column_count {
+			if i % v.elem_stride < v.row_count {
+				emit_run(base + i * v.elem_size, v.elem_size)
+			}
+		}
+		return true
+	case runtime.Type_Info_Struct:
+		if .raw_union in v.flags || v.soa_kind != .None {
+			return false
+		}
+		for i in 0 ..< int(v.field_count) {
+			if !layout_runs(v.types[i], base + int(v.offsets[i])) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+@(private = "file")
+layout_elems :: proc(elem: ^runtime.Type_Info, elem_size, count, base: int) -> bool {
+	if count == 0 {
+		return true
+	}
+	before := shared.run_bytes
+	if !layout_runs(elem, base) {
+		return false
+	}
+	// An element with no padding is all data, and so is the array: the
+	// other elements extend the run.
+	if shared.run_bytes - before == elem_size {
+		emit_run(base + elem_size, elem_size * (count - 1))
+		return true
+	}
+	for i in 1 ..< count {
+		layout_runs(elem, base + i * elem_size)
+	}
+	return true
+}
+
+// ---------------------------------------------------------------------------
+// Entity kinds
+// ---------------------------------------------------------------------------
+
+// What each of the world's entities is. A world holds kind_count(kind) of
+// each, made in this order.
+Kind :: enum u8 {
+	Session,   // the singletons (components_session.odin)
+	Player,    // components_player.odin
+	Crosshair, // each player's ground crosshair
+	Group,     // components_entity.odin
+	Pool,      // the entity pool
+}
+
+kind_count :: #force_inline proc "contextless" (k: Kind) -> int {
+	switch k {
+	case .Session:
+		return 1
+	case .Player, .Crosshair:
+		return MAX_PLAYERS
+	case .Group:
+		return MAX_GROUPS
+	case .Pool:
+		return MAX_ENTITIES
+	}
+	return 0
+}
+
+@(private)
+Kind_Component :: struct {
+	kind:      Kind,
+	component: int,
+	plugin:    Plugin_ID,
+	value:     rawptr, // what each entity of the kind starts with
+}
+
+// Gives every entity of `kind` a T, starting as `value`, in a session with
+// `plugin` on. Called from registration steps only (sim.register_step), like
+// component_register, which it does for T.
+kind_component :: proc(kind: Kind, value: $T, plugin := CORE) {
+	component_register(T)
+	id := component_id(T)
+	for kc in registry_items(&shared.kind_components) {
+		assert(kc.kind != kind || kc.component != id, "ecs: a kind is given the same component twice")
+	}
+	shared.start_used = (shared.start_used + align_of(T) - 1) &~ (align_of(T) - 1)
+	assert(shared.start_used + size_of(T) <= size_of(shared.start_values), "ecs: too many start values")
+	p := &([^]byte)(&shared.start_values)[shared.start_used]
+	shared.start_used += size_of(T)
+	(^T)(p)^ = value
+	registry_add(&shared.kind_components, Kind_Component{kind, id, plugin, p})
+}
+
+@(private = "file")
+kind_component_on :: #force_inline proc "contextless" (kc: Kind_Component, mods: Mods) -> bool {
+	return kc.plugin == CORE || int(kc.plugin) in mods
+}
+
+// ---------------------------------------------------------------------------
+// Worlds
+// ---------------------------------------------------------------------------
+
+Ecs :: struct {
+	world:       ^ecs.World,
+	allocator:   runtime.Allocator,
+	mods:        Mods, // the plugins whose components it holds
+	ids:         [Kind][]ecs.EntityID,
+	// Views into the world, found once it is built (see the top of the
+	// file).
+	entities:    []Entity,
+	groups:      []^Group,
+	players:     [MAX_PLAYERS]Player,
+	pool_links:  []Link,
+	group_links: []Link,
+	singletons:  [MAX_COMPONENTS]rawptr, // the session entity's, by catalog id
+	player_part: [MAX_PLAYERS][MAX_COMPONENTS]rawptr,
+	// Every data component's table, by catalog id, then in the order
+	// odecs keeps its archetypes: what a snapshot holds.
+	tables:      [dynamic]Table,
+	// The tables' components and sizes, which only a world built alike
+	// shares; the bytes a written world takes besides the counted kinds'
+	// rows, and those each of their rows adds.
+	shape:       u64,
+	size:        int,
+	row_bytes:   [Counted]int,
+}
+
+// The kinds whose entities are handed out lowest first, and whose tables
+// a snapshot holds only as far as they have been used (ecs_pack).
+Counted :: enum u8 {
+	Pool,
+	Group,
+}
+
+Table :: struct {
+	component: int,
+	arch:      ^ecs.Archetype,
+	// For a counted kind's table: written only up to the rows used, and put
+	// back to `start` above them when a snapshot is read.
+	counted:   Maybe(Counted),
+	start:     rawptr,
+}
+
+// A world for a session with `mods`: every entity of every kind, holding
+// its start values.
+ecs_create :: proc(mods: Mods, allocator := context.allocator) -> ^Ecs {
+	runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
+	e := new(Ecs, allocator)
+	e.allocator = allocator
+	e.mods = mods
+	e.world = ecs.create_world(allocator, allocator)
+	w := e.world
+	for c in registry_items(&shared.catalog) {
+		c.register(w)
+	}
+	parts := make([dynamic]any, context.temp_allocator)
+	for kind in Kind {
+		clear(&parts)
+		for kc in registry_items(&shared.kind_components) {
+			if kc.kind == kind && kind_component_on(kc, mods) {
+				append(&parts, any{kc.value, shared.catalog.items[kc.component].type})
+			}
+		}
+		e.ids[kind] = make([]ecs.EntityID, kind_count(kind), allocator)
+		for &id in e.ids[kind] {
+			id = ecs.add_entity(w, ..parts[:])
+		}
+	}
+	find_views(e)
+	return e
+}
+
+// Every view into the world, now that nothing more will be added to it.
+@(private = "file")
+find_views :: proc(e: ^Ecs) {
+	w := e.world
+	get :: proc(w: ^ecs.World, id: ecs.EntityID, $T: typeid) -> ^T {
+		return ecs.get_component(w, id, T)
+	}
+	e.entities = make([]Entity, MAX_ENTITIES, e.allocator)
+	for id, i in e.ids[.Pool] {
+		e.entities[i] = {
+			obj     = get(w, id, Game_Object),
+			actor   = get(w, id, Actor),
+			anim    = get(w, id, Anim),
+			motion  = get(w, id, Motion),
+			owned   = get(w, id, Owned),
+			spawner = get(w, id, Spawner),
+			effects = get(w, id, Effects),
+			shaped  = get(w, id, Shaped),
+		}
+	}
+	e.groups = make([]^Group, MAX_GROUPS, e.allocator)
+	for id, i in e.ids[.Group] {
+		e.groups[i] = get(w, id, Group)
+	}
+	for id, i in e.ids[.Player] {
+		aim := e.ids[.Crosshair][i]
+		e.players[i] = {
+			obj     = get(w, id, Game_Object),
+			ship    = get(w, id, Ship),
+			purse   = get(w, id, Purse),
+			hull    = get(w, id, Hull),
+			surge   = get(w, id, Overload),
+			weapons = {handler = get(w, id, Weapon_Handler), crosshair = get(w, aim, Game_Object), aim = get(w, aim, Crosshair)},
+		}
+	}
+	e.pool_links = kind_table(e, .Pool, Link)
+	e.group_links = kind_table(e, .Group, Link)
+	for c, i in registry_items(&shared.catalog) {
+		e.singletons[i] = c.get(w, e.ids[.Session][0])
+		for id, p in e.ids[.Player] {
+			e.player_part[p][i] = c.get(w, id)
+		}
+	}
+	kind_of := [Counted]Kind{.Pool = .Pool, .Group = .Group}
+	counted_arch: [Counted]^ecs.Archetype
+	for kind, k in kind_of {
+		counted_arch[k] = ecs.get_entity_archetype(w, e.ids[kind][0])
+	}
+	h := hasher()
+	for c, i in registry_items(&shared.catalog) {
+		if c.size == 0 {
+			continue // a tag has no table
+		}
+		for arch in ecs.query_raw(w, {c.type}) {
+			t := Table{component = i, arch = arch}
+			rows := len(ecs.get_entities(arch))
+			hash_u64(&h, u64(i) | u64(rows) << 32)
+			row := 0
+			for r in c.runs {
+				row += int(r.size)
+			}
+			for a, k in counted_arch {
+				if a != arch {
+					continue
+				}
+				t.counted = k
+				for kc in registry_items(&shared.kind_components) {
+					if kc.kind == kind_of[k] && kc.component == i {
+						t.start = kc.value
+					}
+				}
+			}
+			if k, ok := t.counted.?; ok {
+				e.row_bytes[k] += row
+			} else {
+				e.size += rows * row
+			}
+			append(&e.tables, t)
+		}
+	}
+	e.shape = h.sum
+}
+
+// The rows of each counted kind a written world holds: those used this
+// session.
+@(private = "file")
+rows_used :: #force_inline proc "contextless" (e: ^Ecs) -> [Counted]u32 {
+	p := (^Pool)(e.singletons[component_id(Pool)])
+	return {.Pool = u32(p.slots_touched), .Group = u32(p.groups_touched)}
+}
+
+// T of every entity of a kind, by index: the kind's table, whose rows are
+// its entities in the order they were made.
+@(private = "file")
+kind_table :: proc(e: ^Ecs, kind: Kind, $T: typeid) -> []T {
+	arch := ecs.get_entity_archetype(e.world, e.ids[kind][0])
+	assert(slice.equal(ecs.get_entities(arch), e.ids[kind]), "ecs: a kind shares its table")
+	return ecs.get_table(e.world, arch, T)
+}
+
+ecs_destroy :: proc(e: ^Ecs) {
+	if e == nil {
+		return
+	}
+	allocator := e.allocator
+	ecs.delete_world(e.world)
+	for ids in e.ids {
+		delete(ids, allocator)
+	}
+	delete(e.entities, allocator)
+	delete(e.groups, allocator)
+	delete(e.tables)
+	free(e, allocator)
+}
+
+// Puts every entity back to its start values.
+ecs_reset :: proc(e: ^Ecs) {
+	for kind in Kind {
+		arch := ecs.get_entity_archetype(e.world, e.ids[kind][0])
+		for kc in registry_items(&shared.kind_components) {
+			if kc.kind != kind || !kind_component_on(kc, e.mods) {
+				continue
+			}
+			c := &shared.catalog.items[kc.component]
+			rows := shared.catalog.items[kc.component].table(e.world, arch)
+			for at := 0; at < len(rows); at += c.size {
+				runtime.mem_copy_non_overlapping(&rows[at], kc.value, c.size)
+			}
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Snapshots
+// ---------------------------------------------------------------------------
+
+// FNV-1a over 8-byte words, then the bytes left over: the same on every
+// machine, which reads the words little-endian.
+Hasher :: struct {
+	sum: u64,
+}
+
+hasher :: proc "contextless" () -> Hasher {
+	return {0xcbf29ce484222325}
+}
+
+hash_bytes :: proc "contextless" (h: ^Hasher, p: rawptr, n: int) {
+	b := ([^]u8)(p)
+	words := n / 8
+	for i in 0 ..< words {
+		h.sum ~= u64(intrinsics.unaligned_load((^u64le)(&b[i * 8])))
+		h.sum *= 0x100000001b3
+	}
+	for i in words * 8 ..< n {
+		h.sum ~= u64(b[i])
+		h.sum *= 0x100000001b3
+	}
+}
+
+hash_u64 :: proc "contextless" (h: ^Hasher, v: u64) {
+	x := v
+	hash_bytes(h, &x, 8)
+}
+
+@(private = "file")
+HEADER :: size_of(Header)
+
+// The header: the catalog and the world's shape, so a world only reads
+// what a world built alike wrote, and how many rows of each counted kind
+// it holds.
+@(private = "file")
+Header :: struct {
+	catalog: u64,
+	shape:   u64,
+	rows:    [Counted]u32,
+}
+
+// How many bytes a world of e's shape takes, holding `rows`.
+@(private = "file")
+size_holding :: proc "contextless" (e: ^Ecs, rows: [Counted]u32) -> int {
+	size := HEADER + e.size
+	for n, k in rows {
+		size += int(n) * e.row_bytes[k]
+	}
+	return size
+}
+
+// The world's state: its tables, row by row, each row's data bytes, into
+// out (ecs_written_size bytes). The rows are the entities in the order they
+// were made, which no step changes, so equal worlds write equal bytes.
+//
+// The entity pool's and the groups' tables stop at the rows used this
+// session. Both are handed out lowest first, so in a level that is well
+// short of all 1,000 slots and 1,024 groups, and the rest, never used,
+// hold only their start values (Pool.slots_touched, groups_touched).
+// Those tables are almost all of a world, so this is most of what a
+// snapshot costs.
+@(private = "file")
+ecs_pack :: proc(e: ^Ecs, out: []byte) {
+	used := rows_used(e)
+	header := Header{catalog_hash(), e.shape, used}
+	runtime.mem_copy_non_overlapping(raw_data(out), &header, HEADER)
+	at := HEADER
+	for t in e.tables {
+		c := &shared.catalog.items[t.component]
+		rows := c.table(e.world, t.arch)
+		if k, ok := t.counted.?; ok {
+			rows = rows[:int(used[k]) * c.size]
+		}
+		if len(c.runs) == 1 && int(c.runs[0].size) == c.size {
+			copy(out[at:], rows) // no padding: the table as it is
+			at += len(rows)
+			continue
+		}
+		for row := 0; row < len(rows); row += c.size {
+			for r in c.runs {
+				runtime.mem_copy_non_overlapping(&out[at], &rows[row + int(r.offset)], int(r.size))
+				at += int(r.size)
+			}
+		}
+	}
+}
+
+// Appends the world's state to buf.
+ecs_write :: proc(e: ^Ecs, buf: ^[dynamic]byte) {
+	start := len(buf)
+	resize(buf, start + ecs_written_size(e))
+	ecs_pack(e, buf[start:])
+}
+
+// Mixes the world's state into h: the same bytes ecs_write would write.
+ecs_hash :: proc(e: ^Ecs, h: ^Hasher) {
+	runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
+	out := make([]byte, ecs_written_size(e), context.temp_allocator)
+	ecs_pack(e, out)
+	hash_bytes(h, raw_data(out), len(out))
+}
+
+// How many bytes ecs_write writes for e as it is now.
+ecs_written_size :: proc "contextless" (e: ^Ecs) -> int {
+	return size_holding(e, rows_used(e))
+}
+
+// Whether data starts with a world e can read, and if so how many bytes of
+// it that world takes.
+ecs_readable :: proc(e: ^Ecs, data: []byte) -> (size: int, ok: bool) {
+	if len(data) < HEADER {
+		return
+	}
+	header: Header
+	runtime.mem_copy_non_overlapping(&header, raw_data(data), HEADER)
+	if header.catalog != catalog_hash() || header.shape != e.shape ||
+	   header.rows[.Pool] > MAX_ENTITIES || header.rows[.Group] > MAX_GROUPS {
+		return
+	}
+	size = size_holding(e, header.rows)
+	return size, len(data) >= size
+}
+
+// Makes the world hold what `data` (from ecs_write) holds, and returns the
+// bytes after it. Fails, leaving the world unchanged, if the data came from
+// a build with a different catalog or a world built otherwise, or is cut
+// short.
+//
+// Rows of a counted kind the data does not hold were unused when it was
+// written, so they go back to their start values: those this world has
+// used since, since those above its own mark hold them already.
+ecs_read :: proc(e: ^Ecs, data: []byte) -> (rest: []byte, ok: bool) {
+	if _, readable := ecs_readable(e, data); !readable {
+		return data, false
+	}
+	header: Header
+	runtime.mem_copy_non_overlapping(&header, raw_data(data), HEADER)
+	used, touched := header.rows, rows_used(e) // before the Pool is read over
+	at := HEADER
+	for t in e.tables {
+		c := &shared.catalog.items[t.component]
+		rows := c.table(e.world, t.arch)
+		if k, counted := t.counted.?; counted {
+			for row := int(used[k]) * c.size; row < int(touched[k]) * c.size; row += c.size {
+				runtime.mem_copy_non_overlapping(&rows[row], t.start, c.size)
+			}
+			rows = rows[:int(used[k]) * c.size]
+		}
+		if len(c.runs) == 1 && int(c.runs[0].size) == c.size {
+			copy(rows, data[at:at + len(rows)])
+			at += len(rows)
+			continue
+		}
+		for row := 0; row < len(rows); row += c.size {
+			for r in c.runs {
+				runtime.mem_copy_non_overlapping(&rows[row + int(r.offset)], &data[at], int(r.size))
+				at += int(r.size)
+			}
+		}
+	}
+	return data[at:], true
+}

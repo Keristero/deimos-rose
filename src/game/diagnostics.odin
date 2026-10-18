@@ -13,10 +13,13 @@ package game
 //
 // "Highest ping client" is written for a future >2-player session; today
 // there is only ever one peer, so it's just that peer's own ping
-// (Netplay.ping_ms, net/reliable.odin's Ping/Pong round trip).
+// (Netplay.ping_ms, plugins/netplay/net/reliable.odin's Ping/Pong round trip).
 
 import "core:fmt"
+
 import rl "vendor:raylib"
+
+import "dr:render"
 
 DIAGNOSTICS_WINDOW :: 1.0 // seconds
 
@@ -34,8 +37,8 @@ Diagnostics :: struct {
 // Called once per real (non-rollback) simulation tick -- see main.odin's
 // fixed-step loop, which only calls this while Flow is actually stepping a
 // session (.Playing). A misprediction's *extra* resimulation steps inside
-// net/session.odin's rollback_to never reach here, only the one call per
-// tick that advances to a new frame -- exactly the "excluding rollbacks"
+// netplay's rollback_to (plugins/netplay/net/session.odin) never reach
+// here, only the one call per tick that advances to a new frame -- exactly the "excluding rollbacks"
 // the notes ask for.
 diagnostics_note_update :: proc(d: ^Diagnostics) {
 	if !d.enabled {
@@ -46,9 +49,9 @@ diagnostics_note_update :: proc(d: ^Diagnostics) {
 
 // Called once per render frame regardless of mode, so the window still rolls
 // over (and the overlay's numbers decay toward 0) even at the title screen
-// or mid-lobby, not just while playing. `rollback_count` is
-// Flow.netplay.rs.rollback_count when a netplay session is active, 0
-// otherwise (rollbacks/sec has no meaning outside netplay).
+// or mid-lobby, not just while playing. `rollback_count` is what the
+// screen driving the session counted (flow_stats), 0 when none does
+// (rollbacks/sec has no meaning outside netplay).
 diagnostics_tick :: proc(d: ^Diagnostics, dt: f32, rollback_count: int) {
 	if !d.enabled {
 		return
@@ -64,22 +67,22 @@ diagnostics_tick :: proc(d: ^Diagnostics, dt: f32, rollback_count: int) {
 	d.window_timer = 0
 }
 
-diagnostics_draw :: proc(d: ^Diagnostics, netplay_active: bool, ping_ms: f32) {
+diagnostics_draw :: proc(d: ^Diagnostics, driven: bool, ping_ms: f32) {
 	if !d.enabled {
 		return
 	}
 	lines := 1
-	if netplay_active {
+	if driven {
 		lines = 3
 	}
 	w: i32 = 190
 	h: i32 = i32(lines) * 16 + 8
-	x := SCREEN_W * WINDOW_SCALE - w - 8
-	y := SCREEN_H * WINDOW_SCALE - h - 8
+	x := render.SCREEN_W * render.WINDOW_SCALE - w - 8
+	y := render.SCREEN_H * render.WINDOW_SCALE - h - 8
 	rl.DrawRectangle(x, y, w, h, rl.Color{0, 0, 0, 150})
 	ty := y + 4
 	rl.DrawText(fmt.ctprintf("FPS %d", rl.GetFPS()), x + 6, ty, 14, rl.Color{180, 255, 180, 255})
-	if netplay_active {
+	if driven {
 		ty += 16
 		rl.DrawText(fmt.ctprintf("PING %.0f MS", ping_ms), x + 6, ty, 14, rl.Color{180, 220, 255, 255})
 		ty += 16

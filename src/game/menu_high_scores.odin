@@ -20,7 +20,9 @@ import "core:fmt"
 
 import rl "vendor:raylib"
 
+import "dr:render"
 import "dr:sim"
+import "dr:ui"
 
 @(private = "file") HIGH_SCORES_N_SOUND :: sim.Res_ID{'i', 'n', 'c', 'l'}
 
@@ -48,7 +50,7 @@ HIGH_SCORES_HEADER_Y :: 85
 HIGH_SCORES_NAME_X :: 111
 HIGH_SCORES_SCORE_X :: 346
 HIGH_SCORES_SECTOR_X :: 464
-HIGH_SCORES_HEADER_RGB :: [3]u8{0, 255, 189}
+
 HIGH_SCORES_ROW_RGB :: [3]u8{255, 255, 255}
 
 High_Scores_State :: enum {
@@ -64,13 +66,13 @@ High_Scores :: struct {
 	table:    [HIGH_SCORE_SLOTS]High_Score_Entry,
 }
 
-high_scores_view_init :: proc(hs: ^High_Scores) {
-	save := high_scores_load()
+high_scores_view_init :: proc(hs: ^High_Scores, levels: []sim.Level_Def) {
+	save := high_scores_load(levels)
 	hs^ = High_Scores{table = save.table}
 }
 
 // Called once per render frame from flow_handle_input's .High_Scores case.
-high_scores_view_update :: proc(fl: ^Flow, r: ^Renderer, hs: ^High_Scores) {
+high_scores_view_update :: proc(fl: ^Flow, r: ^render.Renderer, hs: ^High_Scores) {
 	dt := rl.GetFrameTime()
 	hs.t += dt
 
@@ -87,7 +89,7 @@ high_scores_view_update :: proc(fl: ^Flow, r: ^Renderer, hs: ^High_Scores) {
 		clicked := rl.IsMouseButtonPressed(.LEFT)
 		if key != .KEY_NULL || clicked {
 			if key == .N {
-				menu_play_sound(r, HIGH_SCORES_N_SOUND)
+				ui.menu_play_sound(r, HIGH_SCORES_N_SOUND)
 				hs.new_game = true
 			}
 			hs.state, hs.t = .Fading_Out, 0
@@ -106,8 +108,8 @@ high_scores_view_update :: proc(fl: ^Flow, r: ^Renderer, hs: ^High_Scores) {
 	}
 }
 
-high_scores_view_draw :: proc(r: ^Renderer, hs: ^High_Scores) {
-	menu_draw_background(r, "back")
+high_scores_view_draw :: proc(r: ^render.Renderer, hs: ^High_Scores) {
+	ui.menu_draw_background(r, "back")
 
 	alpha: f32
 	switch hs.state {
@@ -118,19 +120,27 @@ high_scores_view_draw :: proc(r: ^Renderer, hs: ^High_Scores) {
 	case .Fading_Out:
 		alpha = 1 - clamp(hs.t / HIGH_SCORES_FADE_SECONDS, 0, 1)
 	}
-	a := u8(alpha * 255)
-	header := rl.Color{HIGH_SCORES_HEADER_RGB[0], HIGH_SCORES_HEADER_RGB[1], HIGH_SCORES_HEADER_RGB[2], a}
-	row_color := rl.Color{HIGH_SCORES_ROW_RGB[0], HIGH_SCORES_ROW_RGB[1], HIGH_SCORES_ROW_RGB[2], a}
-
-	menu_draw_text(r, "Name", HIGH_SCORES_NAME_X, HIGH_SCORES_HEADER_Y, header)
-	menu_draw_text(r, "Score", HIGH_SCORES_SCORE_X, HIGH_SCORES_HEADER_Y, header)
-	menu_draw_text(r, "Sector", HIGH_SCORES_SECTOR_X, HIGH_SCORES_HEADER_Y, header)
+	row_color := high_scores_header_draw(r, alpha)
 	y := f32(HIGH_SCORES_ROW0_Y)
-
 	for e in hs.table {
-		menu_draw_text(r, e.name, HIGH_SCORES_NAME_X, i32(y), row_color)
-		menu_draw_text(r, fmt.tprintf("%d", e.score), HIGH_SCORES_SCORE_X, i32(y), row_color)
-		menu_draw_text(r, e.sector, HIGH_SCORES_SECTOR_X, i32(y), row_color)
+		high_scores_row_draw(r, e.name, e.score, e.sector, i32(y), row_color)
 		y += HIGH_SCORES_ROW_GAP
 	}
+}
+
+// The table's column heads, at `alpha` as the screen fades, for the viewer
+// and the name entry; and the rows' colour at that alpha.
+high_scores_header_draw :: proc(r: ^render.Renderer, alpha: f32) -> (row: rl.Color) {
+	a := u8(alpha * 255)
+	header := rl.Color{ui.HIGH_SCORES_HEADER_RGB[0], ui.HIGH_SCORES_HEADER_RGB[1], ui.HIGH_SCORES_HEADER_RGB[2], a}
+	ui.menu_draw_text(r, "Name", HIGH_SCORES_NAME_X, HIGH_SCORES_HEADER_Y, header)
+	ui.menu_draw_text(r, "Score", HIGH_SCORES_SCORE_X, HIGH_SCORES_HEADER_Y, header)
+	ui.menu_draw_text(r, "Sector", HIGH_SCORES_SECTOR_X, HIGH_SCORES_HEADER_Y, header)
+	return {HIGH_SCORES_ROW_RGB[0], HIGH_SCORES_ROW_RGB[1], HIGH_SCORES_ROW_RGB[2], a}
+}
+
+high_scores_row_draw :: proc(r: ^render.Renderer, name: string, score: int, sector: string, y: i32, color: rl.Color) {
+	ui.menu_draw_text(r, name, HIGH_SCORES_NAME_X, y, color)
+	ui.menu_draw_text(r, fmt.tprintf("%d", score), HIGH_SCORES_SCORE_X, y, color)
+	ui.menu_draw_text(r, sector, HIGH_SCORES_SECTOR_X, y, color)
 }

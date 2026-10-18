@@ -16,13 +16,16 @@ package game
 // Register/Activate (frame 7, shown only when unregistered) and the exit-time
 // ad are excluded per D21. High Scores opens its own screen (stage 4,
 // game/menu_high_scores.odin), Preferences this port's own Preferences screen
-// (game/menu_preferences.odin). Netplay (game/netplay.odin), which once sat
-// behind Preferences, is a separate text item below the original six --
-// hidden under classic mode, since the original has no such entry (D30).
+// (game/menu_preferences.odin). A plugin's screen (screens.odin) --
+// Netplay's lobby, which once sat behind Preferences -- is a text item below
+// the original six, hidden while its plugin is off, and so under classic
+// mode, since the original has no such entry (D30).
 
 import rl "vendor:raylib"
 
+import "dr:render"
 import "dr:sim"
+import "dr:ui"
 
 GALO :: sim.Res_ID{'g', 'a', 'l', 'o'}
 
@@ -45,9 +48,11 @@ BTN_GAP :: 30 // Interface_Btn_VerticalGap -- the row-to-row spacing matches thi
 GAME_VERSION :: #config(DR_VERSION, "dev")
 
 BTN_FIRST_ROW_Y :: 186
-// Netplay takes the seventh row -- where the excluded Register button sat --
-// its 20px Text_Button centred on that row's measured label centre (378).
-NETPLAY_ROW_Y :: BTN_FIRST_ROW_Y + 6 * BTN_GAP + 2
+// A plugin's screen takes the seventh row -- where the excluded Register
+// button sat -- its 20px Text_Button centred on that row's measured label
+// centre (378); a second would take the row below, clear of the links.
+SCREEN_ROW_Y :: BTN_FIRST_ROW_Y + 6 * BTN_GAP + 2
+SCREEN_ROW_GAP :: 22
 // Measured the same way (column-brightness scan of a real screenshot vs.
 // ours): the globe's bright limb starts at y=47 in the original, y=40 at the
 // value this used to have -- moved down 7px accordingly.
@@ -61,6 +66,7 @@ LOGO_Y :: 47
 // guessed), with no confirmed menu entry point found. Not wired; revisit if a
 // use turns up.
 @(private = "file")
+@(rodata)
 MAIN_MENU_FRAMES := [6]i32{0, 1, 2, 4, 5, 6}
 
 @(private = "file")
@@ -74,35 +80,42 @@ Main_Menu_Slot :: enum {
 }
 
 Main_Menu :: struct {
-	buttons:      [6]Menu_Button,
-	website:      Text_Link,
-	copyright:    Text_Link,
-	netplay:      Text_Button, // new content: not drawn or clickable under classic mode
+	buttons:      [6]ui.Menu_Button,
+	website:      ui.Text_Link,
+	copyright:    ui.Text_Link,
+	// New content: each plugin screen's item (screens.odin), neither drawn
+	// nor clickable while its plugin is off (as in classic mode).
+	screens:      [MAX_SCREENS]ui.Text_Button,
+	screens_on:   [MAX_SCREENS]bool,
 	// "Visit the Deimos Rising Website Now?" (stli/inte.json #20) -- the
 	// original gates U_App_LaunchURL behind a confirm dialog; reproduced as
 	// a minimal text prompt rather than a native dialog.
 	confirm_website: bool,
 }
 
-main_menu_init :: proc(m: ^Main_Menu, t: ^Textures) {
+main_menu_init :: proc(m: ^Main_Menu, t: ^render.Textures) {
 	for slot in Main_Menu_Slot {
-		m.buttons[slot] = menu_button_at(t, MAIN_MENU_FRAMES[slot], BTN_FIRST_ROW_Y + f32(slot) * BTN_GAP)
+		m.buttons[slot] = ui.menu_button_at(t, MAIN_MENU_FRAMES[slot], BTN_FIRST_ROW_Y + f32(slot) * BTN_GAP)
 	}
 }
 
 // Called once per render frame from flow_handle_input's .Title case.
-main_menu_update :: proc(fl: ^Flow, r: ^Renderer, m: ^Main_Menu) {
+main_menu_update :: proc(fl: ^Flow, r: ^render.Renderer, m: ^Main_Menu) {
 	// Link rects are sized from text_width, which needs a loaded font plate
 	// -- built lazily on first update rather than in main_menu_init, which
 	// only receives a Textures, not a Renderer.
 	if m.website.rect.width == 0 {
-		m.website = text_link_at(r, "WWW.DEIMOSRISING.COM", 426)
-		m.copyright = text_link_at(r, "COPYRIGHT 2001-2002 SWOOP SOFTWARE & AMBROSIA SOFTWARE, INC.", 447)
-		m.netplay = text_button_at(r, "NETPLAY", NETPLAY_ROW_Y)
+		m.website = ui.text_link_at(r, "WWW.DEIMOSRISING.COM", 426)
+		m.copyright = ui.text_link_at(r, "COPYRIGHT 2001-2002 SWOOP SOFTWARE & AMBROSIA SOFTWARE, INC.", 447)
+	}
+	for s, i in registered_screens() {
+		if m.screens[i].rect.width == 0 {
+			m.screens[i] = ui.text_button_at(r, s.label, SCREEN_ROW_Y + f32(i) * SCREEN_ROW_GAP)
+		}
 	}
 
 	dt := rl.GetFrameTime()
-	mouse := menu_mouse_pos()
+	mouse := ui.menu_mouse_pos()
 
 	if m.confirm_website {
 		if rl.IsKeyPressed(.Y) || rl.IsKeyPressed(.ENTER) {
@@ -115,18 +128,20 @@ main_menu_update :: proc(fl: ^Flow, r: ^Renderer, m: ^Main_Menu) {
 	}
 
 	for slot in Main_Menu_Slot {
-		if menu_button_update(r, &m.buttons[slot], mouse, dt) {
+		if ui.menu_button_update(r, &m.buttons[slot], mouse, dt) {
 			main_menu_activate(fl, r, slot)
 		}
 	}
-	if !r.classic && text_button_update(r, &m.netplay, mouse, dt) {
-		fl.mode = .Netplay_Lobby
-		netplay_lobby_init(&fl.netplay, r)
+	for s, i in registered_screens() {
+		m.screens_on[i] = prefs_mod_on(fl.prefs, s.plugin)
+		if m.screens_on[i] && ui.text_button_update(r, &m.screens[i], mouse, dt) {
+			screen_show(fl, r, i)
+		}
 	}
-	if text_link_update(&m.website, mouse, dt) {
+	if ui.text_link_update(&m.website, mouse, dt) {
 		m.confirm_website = true
 	}
-	if text_link_update(&m.copyright, mouse, dt) {
+	if ui.text_link_update(&m.copyright, mouse, dt) {
 		// FUN_004287f0 -- opens Credits (game/menu_credits.odin).
 		fl.mode = .Credits
 		credits_init(&fl.credits)
@@ -134,21 +149,21 @@ main_menu_update :: proc(fl: ^Flow, r: ^Renderer, m: ^Main_Menu) {
 }
 
 @(private = "file")
-main_menu_activate :: proc(fl: ^Flow, r: ^Renderer, slot: Main_Menu_Slot) {
+main_menu_activate :: proc(fl: ^Flow, r: ^render.Renderer, slot: Main_Menu_Slot) {
 	switch slot {
 	case .One_Player:
 		fl.pending_game_type = .Single
 		fl.mode = .Level_Select
-		level_select_init(&fl.level_select)
+		level_select_init(fl, &fl.level_select)
 	case .Two_Player:
 		fl.pending_game_type = .Co_Op
 		fl.mode = .Level_Select
-		level_select_init(&fl.level_select)
+		level_select_init(fl, &fl.level_select)
 	case .Play_Demo:
 		flow_load_demo(fl, 0)
 	case .High_Scores:
 		fl.mode = .High_Scores
-		high_scores_view_init(&fl.high_scores)
+		high_scores_view_init(&fl.high_scores, fl.defs.levels)
 	case .Quit:
 		fl.quit = true
 	case .Preferences:
@@ -161,33 +176,35 @@ main_menu_activate :: proc(fl: ^Flow, r: ^Renderer, slot: Main_Menu_Slot) {
 	}
 }
 
-main_menu_draw :: proc(r: ^Renderer, m: ^Main_Menu) {
-	// Links and the Netplay item are built on the first update; a frame
+main_menu_draw :: proc(r: ^render.Renderer, m: ^Main_Menu) {
+	// Links and the screens' items are built on the first update; a frame
 	// drawn before then (a menu capture) just omits them.
-	menu_draw_background(r, "back")
-	if tex, src, ok := frame_rect(&r.textures, GALO, 0); ok {
+	ui.menu_draw_background(r, "back")
+	if tex, src, ok := render.frame_rect(&r.textures, GALO, 0); ok {
 		dst := rl.Rectangle {
-			(SCREEN_W - src.width) / 2 * WINDOW_SCALE, LOGO_Y * WINDOW_SCALE,
-			src.width * WINDOW_SCALE, src.height * WINDOW_SCALE,
+			(render.SCREEN_W - src.width) / 2 * render.WINDOW_SCALE, LOGO_Y * render.WINDOW_SCALE,
+			src.width * render.WINDOW_SCALE, src.height * render.WINDOW_SCALE,
 		}
 		rl.DrawTexturePro(tex, src, dst, {0, 0}, 0, rl.WHITE)
 	}
 	for slot in Main_Menu_Slot {
-		menu_button_draw(r, &m.buttons[slot])
+		ui.menu_button_draw(r, &m.buttons[slot])
 	}
-	text_link_draw(r, &m.website)
-	text_link_draw(r, &m.copyright)
-	if !r.classic && m.netplay.rect.width > 0 {
-		text_button_draw(r, &m.netplay)
+	ui.text_link_draw(r, &m.website)
+	ui.text_link_draw(r, &m.copyright)
+	for on, i in m.screens_on {
+		if on && m.screens[i].rect.width > 0 {
+			ui.text_button_draw(r, &m.screens[i])
+		}
 	}
 	// New content, but shown in classic mode too: it is what a bug report
 	// needs, and sits in the corner clear of every original element.
-	menu_draw_text(r, GAME_VERSION, SCREEN_W - 6, SCREEN_H - 14, rl.Color{120, 120, 120, 255}, .Right)
+	ui.menu_draw_text(r, GAME_VERSION, render.SCREEN_W - 6, render.SCREEN_H - 14, rl.Color{120, 120, 120, 255}, .Right)
 
 	if m.confirm_website {
-		menu_draw_text(r, "VISIT THE DEIMOS RISING WEBSITE NOW?", SCREEN_W / 2, SCREEN_H / 2 - 10,
+		ui.menu_draw_text(r, "VISIT THE DEIMOS RISING WEBSITE NOW?", render.SCREEN_W / 2, render.SCREEN_H / 2 - 10,
 			rl.Color{255, 255, 255, 255}, .Centre)
-		menu_draw_text(r, "Y TO LAUNCH, N TO CANCEL", SCREEN_W / 2, SCREEN_H / 2 + 10,
+		ui.menu_draw_text(r, "Y TO LAUNCH, N TO CANCEL", render.SCREEN_W / 2, render.SCREEN_H / 2 + 10,
 			rl.Color{190, 190, 190, 255}, .Centre)
 	}
 }

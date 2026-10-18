@@ -1,12 +1,10 @@
 package tests
 
-import "core:log"
-import "core:os"
 import "core:testing"
 import vmem "core:mem/virtual"
 
-import "dr:data"
 import "dr:sim"
+import "dr:sim/systems/level_system"
 
 // Whole-session regression tests for the level skip: finishing one level
 // used to chain through every remaining level in as many steps, straight to
@@ -29,26 +27,27 @@ play_session :: proc(defs: ^sim.Defs, start: sim.Level_ID, max_steps: int, alloc
 		levels_seen = make([dynamic]i32, allocator),
 	}
 	s := new(sim.State)
+	defer sim.destroy(s)
 	defer free(s)
 	sim.init(s, sim.Session{seed = 7, level_id = start, game_type = .Single}, defs)
-	append(&r.levels_seen, s.level_number)
+	append(&r.levels_seen, sim.single(s, sim.Level_Info).number)
 	steps: i32 = 0
 	for _ in 0 ..< max_steps {
-		for &p in s.players {
+		for p in sim.players_of(s) {
 			p.invulnerable_always = true
 			p.invulnerable = true
 		}
 		sim.step(s, {})
 		steps += 1
-		switch sim.level_transition(s) {
+		switch level_system.level_transition(s) {
 		case .None:
 		case .Advanced:
 			append(&r.level_steps, steps)
-			append(&r.levels_seen, s.level_number)
+			append(&r.levels_seen, sim.single(s, sim.Level_Info).number)
 			steps = 0
 		case .Game_Over, .All_Complete:
 			append(&r.level_steps, steps)
-			r.outcome = sim.level_transition(s)
+			r.outcome = level_system.level_transition(s)
 			return r
 		}
 	}
@@ -90,16 +89,13 @@ every_level_is_played_in_full_real_data :: proc(t: ^testing.T) {
 	// per D29), from level 1 to ALL LEVELS COMPLETE. Every level's map is
 	// 3600 rows, so none can finish in under ~3000 steps; before the fix,
 	// levels 2..12 each lasted a single step.
-	if !os.exists("assets/data/index.json") {
-		log.info("skipped: needs the extracted assets tree")
+	arena: vmem.Arena
+	defs, loaded := assets_defs(t, &arena)
+	if !loaded {
 		return
 	}
-	arena: vmem.Arena
-	testing.expect(t, vmem.arena_init_growing(&arena) == nil)
 	defer vmem.arena_destroy(&arena)
 	alloc := vmem.arena_allocator(&arena)
-
-	defs, _ := data.assets_defs_load("assets", alloc)
 	if !testing.expect(t, len(defs.levels) > 1, "the level list must load") {
 		return
 	}

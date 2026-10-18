@@ -1,0 +1,15 @@
+{
+  "format": "deimos-rising.campaign",
+  "version": 1,
+  "name": "fixture_play",
+  "label": "Fixture Play",
+  "description": "Two levels the editor exports and the game plays: mise run editor:play-check.",
+  "plugin_version": "1",
+  "default_on": false,
+  "classic_colour": false,
+  "original_free": true,
+  "levels": [
+    "ridge.drproj.json",
+    "ford.drproj.json"
+  ]
+}

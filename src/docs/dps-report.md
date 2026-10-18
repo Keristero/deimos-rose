@@ -82,21 +82,30 @@ carries on to another target. It is replaced 12 steps later.
   two 34 px further back.
 - **Target behind:** for air weapons, the single target mirrored behind
   the ship. For the Plasma Bomb it stands under the crosshair as it is when
-  Ground Variant 1 turns the bombs round: half the reach behind, kept on
-  screen (y 390.5 at stage 7, with the ship at 330).
+  a ground charge (Ground Variant 1 and 2) turns it round behind: half the
+  reach behind, kept on screen (y 390.5 at stage 7, with the ship at 330).
 - **Wave of 9:** three rows of three, 40 px apart across and 34 px deep,
   the first row where the single target stands. Each target has 0.8
   shields, about a stage 9–12 air enemy's, and is replaced 12 steps after
   it dies. This is the one scenario where overkill is wasted, and where
-  damage that carries through a kill (the Discharge Beam's leftover and
-  its shrapnel) counts.
+  damage that carries through a kill (the Discharge Beam's leftover)
+  counts.
+- **Ground target:** one Laser Tank copy where the single air target
+  stands, for an air weapon with a passive whose shots can hit the
+  ground (`Hits_Ground`, Weapon 1 Charge), bare and with those passives
+  only. The bare weapon deals nothing there, so the scenario adds only
+  what such a passive reaches. The weapon's own DPS, and every average,
+  stay over the other four, with what a passive adds on the ground added
+  in, as a target behind adds for most weapons. No other passive's row
+  changes. Only that weapon's passive table shows the column.
 
-Both ground positions come from the crosshair's own sums
-(`ground_aim` in `tools/dps`, copied from `player.odin`). A scenario
-keeps its side whichever way the bombs face. Every run checks that the
-crosshair in use stands where `ground_aim` puts it, and the run fails if
-it does not. So the targets cannot drift from where the bombs land
-without the report failing.
+Both ground positions come from the crosshair's own sums (`ground_aim` in
+`tools/dps`: the sum ahead is copied from
+`sim/systems/player_system/player.odin`, and the one behind is
+`stats.crosshair_turned`, which the player's code calls too). Every run
+checks that the crosshair stands ahead where `ground_aim` puts it before
+it fires, and the run fails if it does not. So the targets cannot drift
+from where the bombs land without the report failing.
 
 **Two sets.** Every scenario is measured twice. Each cell is the best
 policy in its set, so the numbers are a perfect player's.
@@ -110,6 +119,11 @@ policy in its set, so the numbers are a perfect player's.
   and hold again. Under Auto Charge this is inverted, since the charge
   builds while fire is released. The Plasma Bomb has no charge, so it is
   not in this set.
+- **The Plasma Bomb's charge** comes only with a passive (Ground Variant
+  1 and 2), so it counts as primary fire: the bare bomb has no charge to
+  measure it against. Its policy holds until the charge is ready and the
+  crosshair points at the targets (180° behind, else straight ahead),
+  lets go for a step, and holds again.
 
 **DPS is over the whole run.** Every figure is the damage dealt in the
 measured 60 s, divided by 60. A charge shot's DPS therefore includes the
@@ -133,8 +147,13 @@ been confirmed.
 
 - **"A fast DPS check for each weapon."** Every air weapon and the ground
   weapon in `Defs.weapons` are checked, the Chaingun and the Discharge
-  Beam included. They are loaded from `assets/extra` and flown without a
-  New Weapons session.
+  Beam included. They are loaded from `plugins/<plugin>` and flown in a
+  session with Passive Upgrades, New Weapons, the Chaingun and New Weapon
+  Upgrades on, as a player has them. The loadout screen is skipped, and
+  the weapon is handed over directly. On a Plasma Bomb run the air weapon
+  is kept from charging. Under Auto Charge it would overload: with the
+  loadout's first weapon in the air slot, that shot the ship down a few
+  seconds in.
 - **"Every passive, at each possible level."** One passive at a time, not
   combinations. There are 25 levels, and combinations would multiply them.
 - **The report.** There is one section per set. Weapons are sorted by
@@ -148,7 +167,7 @@ been confirmed.
   second click reverses it. Numbers start highest first, text A to Z, and
   a cell with nothing to show ("–") sorts last either way.
 - **Gains in DPS, not percent.** A weapon that deals nothing to a target
-  behind has nothing to take a percentage of, and a passive that turns it
+  behind has nothing to take a percentage of, and a passive that aims it
   round is worth most there. The per-scenario change is still shown as a
   percentage, or as "from 0".
 - **"Charge time averaged."** This is read as the whole-run rate above:
@@ -174,8 +193,11 @@ behind.
 Passive changes that are not 0, as single / cluster / behind / wave, with
 the weapon passives as tuned on 2026-09-25 (see
 [passive-upgrades.md](passive-upgrades.md), Tuning). Gain is the band
-measure: the mean over the scenarios the bare weapon reaches. For Ground
-Variant 1 it is behind against the bare bomb's single target ahead.
+measure: the change in the weapon's DPS averaged over the four
+scenarios. Until 2026-10-02 it was averaged over the scenarios the bare
+weapon reaches, with Ground Variant 1, which turned the bomb round for
+good, measured behind against the bare bomb's single target ahead. No
+other passive's Gain differs between the two.
 
 | Passive | Weapon | Change | DPS added | Gain |
 |---|---|---|---|---|
@@ -191,13 +213,45 @@ Variant 1 it is behind against the bare bomb's single target ahead.
 | Weapon 4 (Photon) 1 | Photon Beam | +28.5% / +28.5% / 0 / 0 | +0.76 | +18.7% |
 | Weapon 4 (Photon) 2 | Photon Beam | +50.0% / +50.0% / 0 / 0 | +1.33 | +32.9% |
 | Weapon 4 (Photon) 3 | Photon Beam | +68.8% / +68.8% / 0 / 0 | +1.83 | +45.2% |
-| Ground Variant 1 1 | Plasma Bomb | −100% / −100% / 5.63 from 0 / −100% | −1.39 | +14.9% |
-| Ground Variant 1 2 | Plasma Bomb | −100% / −100% / 6.36 from 0 / −100% | −1.21 | +29.8% |
-| Ground Variant 1 3 | Plasma Bomb | −100% / −100% / 7.34 from 0 / −100% | −0.97 | +49.8% |
+| Ground Variant 1 1 | Plasma Bomb | 0 / 0 / 1.67 from 0 / 0 | +0.42 | +14.9% |
+| Ground Variant 1 2 | Plasma Bomb | 0 / 0 / 3.34 from 0 / 0 | +0.84 | +29.8% |
+| Ground Variant 1 3 | Plasma Bomb | 0 / 0 / 5.59 from 0 / 0 | +1.40 | +49.8% |
+| Ground Variant 2 1 | Plasma Bomb | 0 / 0 / 1.67 from 0 / 0 | +0.42 | +14.9% |
+| Ground Variant 2 2 | Plasma Bomb | 0 / 0 / 3.29 from 0 / 0 | +0.82 | +29.4% |
+| Ground Variant 2 3 | Plasma Bomb | 0 / 0 / 5.45 from 0 / 0 | +1.36 | +48.6% |
+
+A charge passive on an air weapon is measured in the Charge-shots set,
+as below (2026-10-02):
+
+| Passive | Weapon | Change | DPS added | Gain |
+|---|---|---|---|---|
+| Weapon 1 Charge 1 | Ion Cannon | 0 / 0 / 0 / 0, ground 1.13 from 0 | +0.28 | +15.6% |
+| Weapon 1 Charge 2 | Ion Cannon | +11.7% / +11.7% / 0 / +11.7%, ground 1.74 from 0 | +0.65 | +35.7% |
+| Weapon 1 Charge 3 | Ion Cannon | +23.5% / +23.5% / 0 / +23.4%, ground 2.45 from 0 | +1.04 | +57.1% |
+| Weapon 2 Charge 1 | Bacta Gun | +7.9% / +7.9% / 0 / +66.9% | +0.41 | +19.2% |
+| Weapon 2 Charge 2 | Bacta Gun | +19.6% / +19.5% / 0 / +87.7% | +0.69 | +32.6% |
+| Weapon 2 Charge 3 | Bacta Gun | +36.8% / +36.7% / 0 / +105.7% | +1.06 | +50.0% |
+| Weapon 3 Charge 1 | Rear Gun | +16.3% / +24.7% / 0 / +7.8% | +0.37 | +15.9% |
+| Weapon 3 Charge 2 | Rear Gun | +29.8% / +41.6% / 0 / +20.4% | +0.70 | +30.1% |
+| Weapon 3 Charge 3 | Rear Gun | +47.7% / +64.2% / 0 / +40.5% | +1.18 | +50.3% |
+| Weapon 4 Charge 1 | Photon Beam | +11.1% / +18.9% / 0 / +16.5% | +0.22 | +15.8% |
+| Weapon 4 Charge 2 | Photon Beam | +21.7% / +52.8% / 0 / +29.3% | +0.45 | +32.8% |
+| Weapon 4 Charge 3 | Photon Beam | +30.6% / +77.2% / 0 / +43.0% | +0.65 | +47.7% |
+| Weapon 5 Charge 1 | Chaingun | +17.5% / +17.5% / +18.0% / −2.9% | +0.37 | +12.4% |
+| Weapon 5 Charge 2 | Chaingun | +29.8% / +29.8% / +30.6% / +12.5% | +0.77 | +25.6% |
+| Weapon 5 Charge 3 | Chaingun | +50.9% / +50.9% / +52.4% / +33.2% | +1.41 | +46.8% |
+| Weapon 6 Charge 1 | Discharge Beam | 0 / 0 / 0 / +143.7% | +0.34 | +17.3% |
+| Weapon 6 Charge 2 | Discharge Beam | +13.1% / +13.1% / 0 / +176.4% | +0.65 | +32.8% |
+| Weapon 6 Charge 3 | Discharge Beam | +26.3% / +26.3% / 0 / +191.7% | +0.92 | +46.2% |
+
+The Ground Variants are the bomb's charges since 2026-10-02 (see
+[passive-upgrades.md](passive-upgrades.md)), measured then; the rest of
+the table is the 2026-09-25 run, which they leave as it was. Ahead, taps
+beat holding for a charge at every level, so they add only behind.
 
 Before the tuning, Weapon 1 level 3 was +299.8% by this measure, Weapon 4
 level 3 +79.8% and Weapon 2 level 1 +6.1%. Weapon 3 level 3 was 0, and
-Ground Variant 1 was −9% to −19%.
+Ground Variant 1, then the bomb turned round, was −9% to −19%.
 
 Every other passive level is 0 on every weapon, apart from a +0.1% on the
 Discharge Beam's wave from Improved Manoeuvring 2 (see Method). That
@@ -281,12 +335,11 @@ plain shot the first press fires before a charge begins. The Rear Gun's
   fall to 1.40 and 3.09, since most of each burst lands on a target
   already dead. Charge releases lose the same way, except where they
   spread (the Photon Beam's and the Rear Gun's).
-- **The Discharge Beam leads the wave's straight lines.** Its pulse kills
-  the front target and carries the rest into the next, and its shrapnel
-  reaches the columns beside it: 8.90, against 4.33 to 5.55 for the other
-  single-lane weapons. Its charged beam carries 7.5 into a column only
-  2.4 deep, so in the wave most of it is overkill, and Improved Charge adds
-  nothing there.
+- **The Discharge Beam holds one column of the wave.** Its pulse kills
+  the front target and carries the rest into the next, but reaches no
+  other column: 4.80, against 4.33 to 5.55 for the other single-lane
+  weapons (it was 8.90 while its kills threw shrapnel). Its charged beam
+  holds the one column as well, 0.96.
 - **Straight-firing weapons get nothing from a cluster.** Only the Bacta
   Gun's spread (+50%) and Weapon 1 level 3's wide lanes reach past the
   front target, which soaks every other shot.

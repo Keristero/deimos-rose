@@ -1,3 +1,7 @@
 # Extracted game data ships byte-for-byte: Git for Windows' autocrlf otherwise
 # rewrote all 476 JSON files to CRLF in the Windows release zip.
 src/assets/** -text
+# So do the plugins: their content digest goes into the netplay Hello
+# (sim.registration_hash), and CRLF JSON in the Windows zip made every
+# Windows guest of a Linux host "a different version of the game".
+src/plugins/** -text

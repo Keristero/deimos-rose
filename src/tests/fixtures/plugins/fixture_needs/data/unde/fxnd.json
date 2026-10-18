@@ -1,0 +1,8 @@
+{
+    "id": "fxnd",
+    "type": "unde",
+    "header": [
+        {"key": "name_STR", "value": "Fixture Dependant"}
+    ],
+    "states": []
+}

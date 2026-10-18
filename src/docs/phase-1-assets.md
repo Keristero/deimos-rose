@@ -18,7 +18,8 @@ reports for the same corpus, from independent code.
 | Directory | Files | Contents |
 |---|---:|---|
 | `assets/sprites/im08/` | 125 | RGBA PNG, IA+IC plates combined |
-| `assets/images/im16/` | 45 | RGBA PNG from 16-bit TGA |
+| `assets/images/im16/` | 9 | RGBA PNG from 16-bit TGA |
+| `plugins/classic_levels/images/im16/` | 36 | the same, the levels' maps, masks and previews (D53) |
 | `assets/audio/` | 99 | 16-bit PCM WAV, 44.1 kHz |
 | `assets/films/` | 4 | replay data, byte-exact passthrough |
 | `assets/records/` | 473 | definition records, byte-exact passthrough |

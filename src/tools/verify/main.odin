@@ -20,6 +20,7 @@ Entry :: struct {
 	dir:      string `json:"dir"`,
 	source:   string `json:"source"`,
 	output:   string `json:"output"`,
+	plugin:   string `json:"plugin"`, // `output` is under this plugin's folder (D53)
 	bytes:    u32    `json:"bytes"`,
 	crc32:    string `json:"crc32"`,
 	width:    int    `json:"width"`,
@@ -27,25 +28,6 @@ Entry :: struct {
 	channels: int    `json:"channels"`,
 	rate:     int    `json:"sample_rate"`,
 	frames:   int    `json:"frames"`,
-}
-
-Frame_Rect :: struct {
-	x, y, w, h: int,
-}
-
-Sprite_Index_Entry :: struct {
-	fourcc: string       `json:"fourcc"`,
-	dir:    string       `json:"dir"`,
-	image:  string       `json:"image"`,
-	width:  int          `json:"width"`,
-	height: int          `json:"height"`,
-	frames: []Frame_Rect `json:"frames"`,
-}
-
-Sprite_Index :: struct {
-	generator: string               `json:"generator"`,
-	totals:    map[string]int       `json:"totals"`,
-	sprites:   []Sprite_Index_Entry `json:"sprites"`,
 }
 
 Manifest :: struct {
@@ -65,11 +47,11 @@ fail :: proc(format: string, args: ..any) {
 
 main :: proc() {
 	args := os.args
-	if len(args) < 3 {
-		fmt.eprintln("usage: verify <original-install-dir> <assets-dir>")
+	if len(args) < 4 {
+		fmt.eprintln("usage: verify <original-install-dir> <assets-dir> <plugins-dir>")
 		os.exit(2)
 	}
-	orig, assets := args[1], args[2]
+	orig, assets, plugins := args[1], args[2], args[3]
 	rl.SetTraceLogLevel(.ERROR)
 
 	// 1. Every shipped PAK entry still CRC-validates.
@@ -116,6 +98,9 @@ main :: proc() {
 	counted := 0
 	for e in m.entries {
 		full := strings.concatenate({assets, "/", e.output}, context.temp_allocator)
+		if e.plugin != "" {
+			full = strings.concatenate({plugins, "/", e.plugin, "/", e.output}, context.temp_allocator)
+		}
 		fi, serr := os.stat(full, context.temp_allocator)
 		if serr != nil {
 			fail("missing output %v", e.output)
@@ -186,7 +171,7 @@ verify_sprite_index :: proc(assets: string) {
 		fail("sprite index unreadable: %v", path)
 		return
 	}
-	idx: Sprite_Index
+	idx: data.Json_Sprite_Index
 	if jerr := json.unmarshal(blob, &idx, allocator = context.temp_allocator); jerr != nil {
 		fail("sprite index parse: %v", jerr)
 		return
@@ -216,7 +201,7 @@ verify_sprite_index :: proc(assets: string) {
 		fmt.printfln("no %v; skipping the comparison with the original", dump)
 		return
 	}
-	by_id := make(map[string][]Frame_Rect, len(idx.sprites), context.temp_allocator)
+	by_id := make(map[string][]data.Json_Frame, len(idx.sprites), context.temp_allocator)
 	for s in idx.sprites {
 		by_id[strings.to_lower(s.fourcc, context.temp_allocator)] = s.frames
 	}

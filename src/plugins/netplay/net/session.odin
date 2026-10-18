@@ -1,0 +1,301 @@
+package netplay
+
+// Phase 6 stage 3: input prediction and rollback, wired onto sim.State and
+// sim.Snapshot_Ring (stage 1). This file touches no socket at all -- it only
+// turns "my local input" and "a decoded Input_Packet from the peer" into
+// calls to sim.step, predicting the remote player's input when nothing new
+// has arrived and rolling back to resimulate when a prediction turns out to
+// have been wrong. Sending/receiving those packets over the wire is the
+// caller's job (net/socket.odin supplies the transport, a later stage wires
+// it into game/).
+
+import "dr:sim"
+
+// How many frames back a rollback can reach: the ring buffer's depth and the
+// input log's indexing modulus share it, since a rollback that needed to go
+// further back than the snapshot ring can hold would have nothing to
+// restore from anyway. 64 frames at 30 Hz is a little over 2 seconds --
+// comfortably more than any real round trip this is meant to tolerate.
+ROLLBACK_DEPTH :: 64
+
+Input_Slot :: struct {
+	frame:     u32,
+	buttons:   sim.Buttons,
+	confirmed: bool, // false: a prediction (repeat of the last known value)
+}
+
+Input_Log :: struct {
+	slots: [ROLLBACK_DEPTH]Input_Slot,
+}
+
+@(private = "file")
+input_log_set :: proc(log: ^Input_Log, frame: u32, buttons: sim.Buttons, confirmed: bool) {
+	i := frame % ROLLBACK_DEPTH
+	if log.slots[i].confirmed && log.slots[i].frame == frame && !confirmed {
+		return // never downgrade an already-confirmed frame back to a prediction
+	}
+	if log.slots[i].frame > frame {
+		return // a stale, out-of-order write; the newer value already there stands
+	}
+	log.slots[i] = {frame, buttons, confirmed}
+}
+
+@(private = "file")
+input_log_get :: proc(log: ^Input_Log, frame: u32) -> Input_Slot {
+	slot := log.slots[frame % ROLLBACK_DEPTH]
+	if slot.frame != frame {
+		return {frame, {}, false}
+	}
+	return slot
+}
+
+Rollback_Session :: struct {
+	state:         ^sim.State,
+	ring:          sim.Snapshot_Ring,
+	local_player:   int, // 0 or 1: which Frame_Input slot this machine drives
+	remote_player:  int,
+	local_log:      Input_Log,
+	remote_log:     Input_Log,
+	rollback_count: int, // how many times a misprediction has forced a resimulation
+
+	// Phase 8 stage 5: the highest remote frame ever confirmed (not merely
+	// predicted) by rollback_session_receive -- the local proxy for "how far
+	// has the peer actually gotten", since the peer can't have generated
+	// input for a frame it hasn't simulated yet. -1 until the first packet
+	// arrives, so rollback_session_frame_advantage can tell "no data yet"
+	// apart from "caught up".
+	remote_confirmed_frame: int,
+
+	// The sounds played for each recent frame, and those a rollback's
+	// resimulation emitted that its first run did not: late, which the
+	// caller plays alongside the current frame's (rollback_session_late).
+	// A sound the peer's input starts -- a charge beginning, a beam let
+	// go -- falls on a frame first run on a predicted input and only rerun
+	// once the real one arrives, and a resimulation is otherwise silent,
+	// so without these the other player's charge shots were never heard.
+	heard:          [ROLLBACK_DEPTH]Heard_Frame,
+	late:           sim.Sound_Queue,
+}
+
+// The ids of the sounds a frame's step emitted, once played.
+Heard_Frame :: struct {
+	frame: u32,
+	ids:   [sim.MAX_SOUND_EVENTS]sim.Res_ID,
+	count: int,
+}
+
+// Records what the step just taken emitted as played. Keyed by the frame
+// the step reached, which a resimulation reaches again.
+@(private = "file")
+heard_record :: proc(rs: ^Rollback_Session) {
+	h := &rs.heard[sim.frame_of(rs.state) % ROLLBACK_DEPTH]
+	h.frame = sim.frame_of(rs.state)
+	h.count = rs.state.sounds.count
+	for ev, i in rs.state.sounds.events[:h.count] {
+		h.ids[i] = ev.id
+	}
+}
+
+// After a resimulated step: queues as late each sound the first run of
+// this frame did not play, matched by id only (pitch and volume are drawn
+// from the RNG, so a rerun may draw them differently), then records the
+// frame as heard.
+@(private = "file")
+heard_resimulated :: proc(rs: ^Rollback_Session) {
+	h := &rs.heard[sim.frame_of(rs.state) % ROLLBACK_DEPTH]
+	before: Heard_Frame
+	if h.frame == sim.frame_of(rs.state) {
+		before = h^
+	}
+	for ev in rs.state.sounds.events[:rs.state.sounds.count] {
+		matched := false
+		for i in 0 ..< before.count {
+			if before.ids[i] == ev.id {
+				// Each first-run sound answers for one rerun sound.
+				before.ids[i] = before.ids[before.count - 1]
+				before.count -= 1
+				matched = true
+				break
+			}
+		}
+		if !matched && rs.late.count < sim.MAX_SOUND_EVENTS {
+			rs.late.events[rs.late.count] = ev
+			rs.late.count += 1
+		}
+	}
+	heard_record(rs)
+}
+
+// The sounds rollbacks since the last call found unplayed, for the caller
+// to play now; the queue is empty again after.
+rollback_session_late :: proc(rs: ^Rollback_Session) -> []sim.Sound_Event {
+	n := rs.late.count
+	rs.late.count = 0
+	return rs.late.events[:n]
+}
+
+rollback_session_init :: proc(rs: ^Rollback_Session, state: ^sim.State, local_player: int, allocator := context.allocator) {
+	rs.state = state
+	rs.local_player = local_player
+	rs.remote_player = 1 - local_player
+	sim.snapshot_ring_init(&rs.ring, ROLLBACK_DEPTH, allocator)
+	rs.local_log = {}
+	rs.remote_log = {}
+	rs.remote_confirmed_frame = -1
+	rs.heard = {}
+	rs.late = {}
+}
+
+rollback_session_destroy :: proc(rs: ^Rollback_Session, allocator := context.allocator) {
+	sim.snapshot_ring_destroy(&rs.ring, allocator)
+}
+
+// Repeats the last known value (confirmed or, itself, an earlier prediction)
+// for a remote frame nothing new has arrived for. The standard rollback-
+// netcode first guess: most buttons are held for many frames in a row, so
+// repeating rarely mispredicts, and the cost of a wrong guess is only ever a
+// resimulation, never an incorrect final result.
+@(private = "file")
+resolve_remote_input :: proc(rs: ^Rollback_Session, frame: u32) -> sim.Buttons {
+	slot := input_log_get(&rs.remote_log, frame)
+	if slot.confirmed {
+		return slot.buttons
+	}
+	predicted := frame > 0 ? input_log_get(&rs.remote_log, frame - 1).buttons : sim.Buttons{}
+	input_log_set(&rs.remote_log, frame, predicted, false)
+	return predicted
+}
+
+// Advances the simulation by exactly one frame using this machine's own
+// input (always exact) and the remote player's input (confirmed if it has
+// arrived, predicted otherwise). Call once per fixed-step tick.
+rollback_session_advance :: proc(rs: ^Rollback_Session, local_input: sim.Buttons) {
+	frame := sim.frame_of(rs.state)
+	input_log_set(&rs.local_log, frame, local_input, true)
+	remote_input := resolve_remote_input(rs, frame)
+
+	input: sim.Frame_Input
+	input[rs.local_player] = local_input
+	input[rs.remote_player] = remote_input
+	// session_step, not step: the level change and the pause are part of
+	// what a rollback must replay (see its comment).
+	_ = sim.session_step(rs.state, input)
+	sim.snapshot_save(&rs.ring, rs.state)
+	heard_record(rs)
+}
+
+// Feed every Input_Packet decoded from the remote peer here, before this
+// tick's rollback_session_advance call. Confirms whichever of its frames
+// this session did not already know, and if any of those frames had already
+// been simulated on a mispredicted guess, rolls back to just before the
+// earliest one and resimulates forward with the now-confirmed input in
+// place of the guess.
+rollback_session_receive :: proc(rs: ^Rollback_Session, pkt: Input_Packet) {
+	earliest: u32
+	mispredicted := false
+	for i in 0 ..< pkt.count {
+		frame := pkt.start_frame + u32(i)
+		slot := input_log_get(&rs.remote_log, frame)
+		if slot.confirmed {
+			continue // a real peer never sends a different value for a frame twice
+		}
+		wrong_guess := frame <= sim.frame_of(rs.state) && slot.buttons != pkt.frames[i]
+		input_log_set(&rs.remote_log, frame, pkt.frames[i], true)
+		if int(frame) > rs.remote_confirmed_frame {
+			rs.remote_confirmed_frame = int(frame)
+		}
+		if wrong_guess && (!mispredicted || frame < earliest) {
+			earliest, mispredicted = frame, true
+		}
+	}
+	if mispredicted {
+		rollback_to(rs, earliest)
+	}
+}
+
+// Phase 8 stage 5: how many frames this machine has simulated beyond the
+// last one it actually knows the peer's real input for -- GGPO's "frame
+// advantage", used to decide whether this side is running far enough ahead
+// that it should slow down and let the peer close the gap
+// (plugins/netplay/view/netplay.odin's netplay_should_stall). 0 (not negative) until
+// anything at all has been heard from the peer, since "no data yet" should
+// not itself look like a huge lead worth stalling over.
+rollback_session_frame_advantage :: proc(rs: ^Rollback_Session) -> int {
+	if rs.remote_confirmed_frame < 0 {
+		return 0
+	}
+	return int(sim.frame_of(rs.state)) - rs.remote_confirmed_frame - 1
+}
+
+// Phase 8 stage 5: whether the tick about to run at rs.state's frame should be
+// skipped entirely -- no sim advance -- so a peer confirmed to be running
+// behind (frame_advantage above) gets a chance to close the gap, rather than
+// the rollback prediction window growing without bound. Below threshold,
+// never stalls. Above it, stalls on a period that shrinks (stalls more
+// often) as the lead grows, floored at min_every so even a very large lead
+// throttles rather than fully freezes local input. A simple linear scheme,
+// not GGPO's own more elaborate one -- the notes call an exact algorithm
+// "hard to measure who is behind" and leave it open; see docs/decisions.md
+// D26. Kept here rather than in plugins/netplay/view/netplay.odin so the actual throttle
+// math is unit-testable without a live socket or render loop.
+rollback_session_should_stall :: proc(rs: ^Rollback_Session, threshold, min_every: int) -> bool {
+	advantage := rollback_session_frame_advantage(rs)
+	if advantage <= threshold {
+		return false
+	}
+	over := advantage - threshold
+	every := max(threshold - over, min_every)
+	return sim.frame_of(rs.state) % u32(every) == 0
+}
+
+@(private = "file")
+rollback_to :: proc(rs: ^Rollback_Session, frame: u32) {
+	if frame == 0 {
+		return // nothing precedes the first frame; nothing to roll back to
+	}
+	target := sim.frame_of(rs.state) // how far the mispredicted run had already reached
+	if !sim.snapshot_restore(&rs.ring, rs.state, frame - 1) {
+		return // frame-1 has aged out of the ring -- beyond ROLLBACK_DEPTH back, unrecoverable here
+	}
+	rs.rollback_count += 1
+	for sim.frame_of(rs.state) < target {
+		f := sim.frame_of(rs.state)
+		local := input_log_get(&rs.local_log, f).buttons // local input is never mispredicted
+		remote := resolve_remote_input(rs, f)
+		input: sim.Frame_Input
+		input[rs.local_player] = local
+		input[rs.remote_player] = remote
+		_ = sim.session_step(rs.state, input)
+		sim.snapshot_save(&rs.ring, rs.state)
+		heard_resimulated(rs)
+	}
+}
+
+// The checksum this session computed for `frame`, straight from the
+// snapshot ring -- for a Desync_Monitor (net/desync.odin) to record and
+// compare against the peer's report of the same frame. Only meaningful once
+// that frame's remote input is confirmed, since a still-predicted frame can
+// still be rolled back and its checksum change; a caller reporting checksums
+// with enough lag behind the current frame (comfortably less than
+// ROLLBACK_DEPTH) avoids ever reporting one that later turns out to have
+// been provisional.
+rollback_session_checksum_at :: proc(rs: ^Rollback_Session, frame: u32) -> (sum: u64, ok: bool) {
+	return sim.snapshot_checksum(&rs.ring, frame)
+}
+
+// Copies up to `window` of the most recently simulated local frames, oldest
+// first, into out (sized MAX_INPUT_FRAMES by callers building an outgoing
+// Input packet) -- the redundancy that lets that packet tolerate loss.
+// Returns the frame number of out[0] and how many entries were written.
+rollback_session_local_window :: proc(rs: ^Rollback_Session, window: int, out: []sim.Buttons) -> (start_frame: u32, count: int) {
+	if sim.frame_of(rs.state) == 0 {
+		return 0, 0 // nothing simulated yet
+	}
+	last := sim.frame_of(rs.state) - 1 // the most recent frame recorded by advance
+	count = min(window, len(out), int(last) + 1)
+	start_frame = last + 1 - u32(count)
+	for i in 0 ..< count {
+		out[i] = input_log_get(&rs.local_log, start_frame + u32(i)).buttons
+	}
+	return
+}

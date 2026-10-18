@@ -1,7 +1,12 @@
 package tests
 
 import "core:testing"
+// The original game's systems, which a session runs.
+import _ "dr:sim/core"
 import "dr:sim"
+import "dr:sim/systems/notice_system"
+import "dr:sim/systems/level_system"
+import "dr:sim/systems/collision_system"
 
 // A minimal, synthetic definition set: one empty level and the two player
 // definitions. Enough to drive sessions without the original game data.
@@ -63,6 +68,7 @@ sim_is_deterministic :: proc(t: ^testing.T) {
 	}
 	run :: proc(session: sim.Session, defs: ^sim.Defs, inputs: []sim.Frame_Input) -> u64 {
 		s := new(sim.State)
+		defer sim.destroy(s)
 		defer free(s)
 		sim.init(s, session, defs)
 		for in_ in inputs {
@@ -77,6 +83,8 @@ sim_is_deterministic :: proc(t: ^testing.T) {
 different_seeds_diverge :: proc(t: ^testing.T) {
 	defs := synthetic_defs()
 	s1, s2 := new(sim.State), new(sim.State)
+	defer sim.destroy(s1)
+	defer sim.destroy(s2)
 	defer free(s1)
 	defer free(s2)
 	sim.init(s1, sim.Session{seed = 1, level_id = sim.level_id("le01"), game_type = .Single}, defs)
@@ -88,11 +96,12 @@ different_seeds_diverge :: proc(t: ^testing.T) {
 coop_activates_two_players :: proc(t: ^testing.T) {
 	defs := synthetic_defs()
 	s := new(sim.State)
+	defer sim.destroy(s)
 	defer free(s)
 	sim.init(s, sim.Session{seed = 7, level_id = sim.level_id("le01"), game_type = .Co_Op}, defs)
-	testing.expect(t, s.players[0].active && s.players[1].active, "co-op needs both players")
+	testing.expect(t, sim.player_at(s, 0).active && sim.player_at(s, 1).active, "co-op needs both players")
 	sim.init(s, sim.Session{seed = 7, level_id = sim.level_id("le01"), game_type = .Single}, defs)
-	testing.expect(t, s.players[0].active && !s.players[1].active, "single is one player")
+	testing.expect(t, sim.player_at(s, 0).active && !sim.player_at(s, 1).active, "single is one player")
 }
 
 @(test)
@@ -103,21 +112,22 @@ players_enter_then_read_the_film :: proc(t: ^testing.T) {
 	frames := make([]sim.Frame_Input, 10, context.temp_allocator)
 	film := sim.Film{session = {seed = 5, level_id = sim.level_id("le01"), game_type = .Single}, frames = frames}
 	s := new(sim.State)
+	defer sim.destroy(s)
 	defer free(s)
 	sim.init(s, film.session, defs)
-	testing.expect_value(t, s.players[0].state, sim.Player_State.Entering)
+	testing.expect_value(t, sim.player_at(s, 0).state, sim.Player_State.Entering)
 	for _ in 0 ..< 4 {
 		sim.step(s, {}, &film)
 	}
 	// entry_initial_delay 3: appears once time > 0 + 3, i.e. at time 4.
-	testing.expect_value(t, s.film_cursor[0], i32(0))
+	testing.expect_value(t, sim.single(s, sim.Film_Cursor).reads[0], i32(0))
 	sim.step(s, {}, &film)
-	testing.expect_value(t, s.players[0].state, sim.Player_State.Playing)
-	testing.expect_value(t, s.film_cursor[0], i32(1))
+	testing.expect_value(t, sim.player_at(s, 0).state, sim.Player_State.Playing)
+	testing.expect_value(t, sim.single(s, sim.Film_Cursor).reads[0], i32(1))
 
 	sim.replay(s, &film, defs)
 	// frames + 1 reads: the last one finds the film exhausted.
-	testing.expect_value(t, s.film_cursor[0], i32(11))
+	testing.expect_value(t, sim.single(s, sim.Film_Cursor).reads[0], i32(11))
 	testing.expect_value(t, s.unported, sim.Site(0))
 }
 
@@ -128,6 +138,7 @@ level_start_draws_the_nag_timer :: proc(t: ^testing.T) {
 	buf: [8]sim.Draw
 	log := sim.Draw_Log{draws = buf[:]}
 	s := new(sim.State)
+	defer sim.destroy(s)
 	defer free(s)
 	sim.init(s, sim.Session{seed = 0x469c2, level_id = sim.level_id("le01"), game_type = .Single}, defs, &log)
 	got := sim.draw_log_entries(&log)
@@ -177,17 +188,18 @@ level_end_tally_scores_the_ground_accuracy :: proc(t: ^testing.T) {
 	defs.perm_floats[0xc7] = 100  // smallest step
 	defs.perm_floats[0xc8] = 0.02 // 2% of the bonus per tick
 	s := new(sim.State)
+	defer sim.destroy(s)
 	defer free(s)
 	sim.init(s, sim.Session{seed = 3, level_id = sim.level_id("le01"), game_type = .Single}, defs)
-	s.accuracy_targets, s.accuracy_destroyed = 50, 47 // 94%
-	sim.level_end_step(s, s.time)
-	testing.expect(t, s.level_ending, "the level must be marked as ending")
-	testing.expect_value(t, s.level_end.percent, i32(94))
+	sim.single(s, sim.Accuracy).targets, sim.single(s, sim.Accuracy).destroyed = 50, 47 // 94%
+	level_system.level_end_step(s, sim.single(s, sim.Clock).time)
+	testing.expect(t, sim.single(s, sim.Level_Info).ending, "the level must be marked as ending")
+	testing.expect_value(t, sim.single(s, sim.Level_End).percent, i32(94))
 	// 94% is under 95 but not under 90, so the third tier.
-	testing.expect_value(t, s.level_end.bonus, i32(1000))
-	testing.expect_value(t, s.level_end.bonus_step, i32(100))
-	testing.expect_value(t, s.level_end.state, i32(1))
-	testing.expect(t, s.players[0].invulnerable, "players are safe once the level is over")
+	testing.expect_value(t, sim.single(s, sim.Level_End).bonus, i32(1000))
+	testing.expect_value(t, sim.single(s, sim.Level_End).bonus_step, i32(100))
+	testing.expect_value(t, sim.single(s, sim.Level_End).state, i32(1))
+	testing.expect(t, sim.player_at(s, 0).invulnerable, "players are safe once the level is over")
 }
 
 @(test)
@@ -202,19 +214,20 @@ level_advance_starts_the_next_level_unfinished :: proc(t: ^testing.T) {
 	}
 	defs.levels = levels
 	s := new(sim.State)
+	defer sim.destroy(s)
 	defer free(s)
 	sim.init(s, sim.Session{seed = 3, level_id = sim.level_id("le01"), game_type = .Single}, defs)
-	s.level_ending = true
-	s.level_end.complete = true
-	testing.expect(t, sim.level_advance(s), "level 1 of 3 has a next level")
-	testing.expect_value(t, s.level_number, i32(2))
-	testing.expect(t, !s.level_end.complete, "the new level must not start already complete")
-	testing.expect(t, !s.level_ending, "the new level must not start already ending")
+	sim.single(s, sim.Level_Info).ending = true
+	sim.single(s, sim.Level_End).complete = true
+	testing.expect(t, level_system.level_advance(s), "level 1 of 3 has a next level")
+	testing.expect_value(t, sim.single(s, sim.Level_Info).number, i32(2))
+	testing.expect(t, !sim.single(s, sim.Level_End).complete, "the new level must not start already complete")
+	testing.expect(t, !sim.single(s, sim.Level_Info).ending, "the new level must not start already ending")
 	for _ in 0 ..< 10 {
 		sim.step(s, {})
 	}
-	testing.expect(t, !s.level_end.complete, "a level cannot complete before it scrolls to its end")
-	testing.expect_value(t, s.level_number, i32(2))
+	testing.expect(t, !sim.single(s, sim.Level_End).complete, "a level cannot complete before it scrolls to its end")
+	testing.expect_value(t, sim.single(s, sim.Level_Info).number, i32(2))
 }
 
 @(test)
@@ -225,24 +238,26 @@ money_counter_converts_money_at_the_level_multiplier :: proc(t: ^testing.T) {
 	defs.perm_floats[0xc7] = 1
 	defs.perm_floats[0xc8] = 0.02
 	s := new(sim.State)
+	defer sim.destroy(s)
 	defer free(s)
 	sim.init(s, sim.Session{seed = 3, level_id = sim.level_id("le01"), game_type = .Single}, defs)
-	p := &s.players[0]
+	p := sim.player_at(s, 0)
 	p.money = 10
-	testing.expect(t, sim.money_counter_start(s, p, s.time, false))
-	testing.expect(t, sim.money_counter_active(p))
+	testing.expect(t, level_system.money_counter_start(s, p, sim.single(s, sim.Clock).time, false))
+	testing.expect(t, level_system.money_counter_active(p))
 	testing.expect_value(t, p.counter.value, i32(50))
 	testing.expect_value(t, p.counter.step, i32(1)) // 2% of 50, floored at 1
 	testing.expect_value(t, p.counter.money, i32(10))
 }
 
 // No shipped unit sets entryNotice_STR or destructNotice_STR (see
-// sim/notice.odin), so this path never runs against the original's data;
+// sim/systems/notice_system), so this path never runs against the original's data;
 // exercised directly here instead.
 @(test)
 notice_plays_its_sound_once_the_delay_elapses :: proc(t: ^testing.T) {
 	defs := synthetic_defs()
 	s := new(sim.State)
+	defer sim.destroy(s)
 	defer free(s)
 	sim.init(s, sim.Session{seed = 1, level_id = sim.level_id("le01"), game_type = .Single}, defs)
 
@@ -253,23 +268,23 @@ notice_plays_its_sound_once_the_delay_elapses :: proc(t: ^testing.T) {
 		entry_notice_sound_max_volume = 50,
 		entry_notice_delay            = 3,
 	}
-	sim.notice_request(s, &u, s.time)
+	notice_system.notice_request(s, &u, sim.single(s, sim.Clock).time)
 	testing.expect_value(t, s.notices.count, 1)
 	testing.expect_value(t, s.notices.events[0].text, "Test Notice")
 
 	for _ in 0 ..< 3 {
 		s.sounds.count = 0
-		sim.notice_process(s)
+		notice_system.notice_process(s)
 		testing.expect_value(t, s.sounds.count, 0)
 	}
 	s.sounds.count = 0
-	sim.notice_process(s)
+	notice_system.notice_process(s)
 	testing.expect_value(t, s.sounds.count, 1)
 	testing.expect_value(t, s.sounds.events[0].id, u.entry_notice_sound)
 
 	// The slot stays busy, so a second request while this one shows is dropped.
 	u2 := sim.Unit{entry_notice = "Other", entry_notice_sound = sim.NONE}
-	sim.notice_request(s, &u2, s.time)
+	notice_system.notice_request(s, &u2, sim.single(s, sim.Clock).time)
 	testing.expect_value(t, s.notices.count, 1)
 }
 
@@ -277,16 +292,17 @@ notice_plays_its_sound_once_the_delay_elapses :: proc(t: ^testing.T) {
 destruct_notice_never_draws_a_sound :: proc(t: ^testing.T) {
 	defs := synthetic_defs()
 	s := new(sim.State)
+	defer sim.destroy(s)
 	defer free(s)
 	sim.init(s, sim.Session{seed = 3, level_id = sim.level_id("le01"), game_type = .Single}, defs)
 
-	sim.notice_request_destruct(s, "Destroyed")
+	notice_system.notice_request_destruct(s, "Destroyed")
 	testing.expect_value(t, s.notices.count, 1)
 	for _ in 0 ..< sim.NOTICE_HOLD_FRAMES + 2 {
-		sim.notice_process(s)
+		notice_system.notice_process(s)
 	}
 	testing.expect_value(t, s.sounds.count, 0)
-	testing.expect(t, !s.notice.pending, "the slot releases once the hold ends")
+	testing.expect(t, !sim.single(s, sim.Notice_State).pending, "the slot releases once the hold ends")
 }
 
 // The multiplier survives the move to the next level (only a death or a new
@@ -305,15 +321,16 @@ multiplier_carries_into_the_next_level :: proc(t: ^testing.T) {
 	defs.perm_objects[0x24] = x3
 	events := sim.Event_Log{events = make([]sim.Event, 256, context.temp_allocator)}
 	s := new(sim.State)
+	defer sim.destroy(s)
 	defer free(s)
 	sim.init(s, sim.Session{seed = 3, level_id = sim.level_id("le01"), game_type = .Single}, defs, events = &events)
-	p := &s.players[0]
+	p := sim.player_at(s, 0)
 	p.multiplier = 3
 
-	s.level_ending = true
-	s.level_end.complete = true
-	testing.expect(t, sim.level_advance(s))
-	testing.expect_value(t, s.level_number, i32(2))
+	sim.single(s, sim.Level_Info).ending = true
+	sim.single(s, sim.Level_End).complete = true
+	testing.expect(t, level_system.level_advance(s))
+	testing.expect_value(t, sim.single(s, sim.Level_Info).number, i32(2))
 	testing.expect_value(t, p.multiplier, i32(3))
 
 	events.count = 0
@@ -335,7 +352,8 @@ multiplier_carries_into_the_next_level :: proc(t: ^testing.T) {
 shields_round_to_eighths_as_the_originals_offset_store_does :: proc(t: ^testing.T) {
 	// The original keeps shields as pct + 1324366 in a single-precision
 	// float (0x431a30), whose spacing there is 1/8.
-	p: sim.Player
+	hull: sim.Hull
+	p := sim.Player{hull = &hull}
 	cases := [][2]f32{
 		{100, 100}, // whole numbers are exact
 		{96.7, 96.75}, // 773.6 eighths round up
@@ -345,7 +363,7 @@ shields_round_to_eighths_as_the_originals_offset_store_does :: proc(t: ^testing.
 		{-3.3, -3.25},
 	}
 	for c in cases {
-		sim.shields_set(&p, c[0])
+		collision_system.shields_set(p, c[0])
 		testing.expectf(t, p.shields == c[1], "shields_set(%v) = %v, want %v", c[0], p.shields, c[1])
 	}
 }

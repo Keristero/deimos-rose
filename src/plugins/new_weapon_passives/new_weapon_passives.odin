@@ -1,0 +1,96 @@
+package new_weapon_passives
+
+// Imported for their registration: a dependency is always in the build.
+import _ "dr:plugins/new_weapons"
+import "dr:plugins/passives"
+import "dr:sim"
+
+// Passive upgrades for New Weapons' weapons: what Passive Upgrades
+// (plugins/passives) and New Weapons add together. New content, not the
+// original's. As a companion of both (D66) it is on wherever they are, and
+// a player can keep the weapons and turn their upgrades off. Each passive
+// is offered only while its weapon can be flown (passives.passive_available),
+// so the Chaingun's needs the Chaingun's plugin on as well.
+// docs/passive-upgrades.md records how each was read.
+
+// The design's Weapon 5 and 6: the Chaingun (plugins/chaingun) and the
+// Discharge Beam (plugins/new_weapons).
+// The design's charge passives for Weapon 5 and 6 (Passive_Def.charge).
+
+WEAPON_CHAINGUN :: sim.Res_ID{'a', 'i', 'c', 'g'}
+WEAPON_DISCHARGE_BEAM :: sim.Res_ID{'a', 'i', 'd', 'b'}
+
+// Tuned by the DPS report, as Passive Upgrades' own weapon passives are
+// (plugins/passives).
+@(private = "file", rodata)
+CHAINGUN_MODS := []passives.Mod {
+	// A burst of 10 rounds takes 20 steps, and the gap after it is the
+	// firing delay's 30 less those; these close 40%, 60% and all of it
+	// (26, 24, 20), so level 3 fires without a break. The rounds' spread
+	// widens with it.
+	{.Firing_Delay, .Decrease, {13, 20, 33}},
+	{.Random_Spread_Range, .Increase, {25, 50, 100}},
+}
+
+@(private = "file", rodata)
+DISCHARGE_BEAM_MODS := []passives.Mod {
+	// The damage bases the charge too (+13/26/53% on it); the beam's width
+	// takes the damage's percentage as well as its own. The design's
+	// 10/20/30% damage gains only 7/14/21%: in the wave a pulse already
+	// kills what it hits, so only the single and cluster targets gain.
+	{.Projectile_Damage, .Increase, {15, 30, 60}},
+	{.Shot_Width, .Increase, {10, 20, 30}},
+}
+
+// The release fires faster with each volley (Release_Ramp), from the
+// data's every 3 steps to every 2, and each level charges higher. In the
+// Charge-shots set the ramp gains 12%. A higher max charge gains nothing
+// there: the charge and its release both grow with it. So, past the
+// design, levels 2 and 3 also charge faster, for 26% and 47%.
+@(private = "file", rodata)
+CHAINGUN_CHARGE_MODS := []passives.Mod {
+	{.Release_Ramp, .Increase, {20, X, X}},
+	{.Maximum_Charge, .Increase, {10, 20, 40}},
+	{.Charge_Rate, .Increase, {X, 20, 60}},
+}
+
+// The charged beam chains from target to target in place of piercing
+// straight on (D70), and from level 2 charges higher and faster. In the
+// Charge-shots set the chain alone gains 17%, near the top of level 1's
+// band (+10-20%), as the charged beam kills its way through the wave
+// (+144% there); the smallest charge step on top went over. With the charge, levels 2 and 3 gain 33%
+// and 46%.
+@(private = "file", rodata)
+DISCHARGE_BEAM_CHARGE_MODS := []passives.Mod {
+	{.Chains, .Enables, {1, X, X}},
+	{.Maximum_Charge, .Increase, {X, 20, 40}},
+	{.Charge_Rate, .Increase, {X, 20, 40}},
+}
+
+@(private = "file")
+X :: passives.X
+
+@(private = "file", rodata)
+DEPS := []string{"passives", "new_weapons"}
+
+register :: proc() {
+	shared.id = sim.plugin_register({
+		name        = "new_weapon_passives",
+		label       = "NEW WEAPON UPGRADES",
+		description = "Passive upgrades for the new weapons",
+		deps        = DEPS,
+		session     = true,
+		companion   = true,
+	})
+	// Their names are the ones the passives had when Passive Upgrades
+	// carried them: the icons and the golden runs find them by name.
+	shared.weapon_5 = passives.passive_register({name = "weapon_5", label = "CHAINGUN UPGRADE", plugin = shared.id, levels = 3, weapon = WEAPON_CHAINGUN, mods = CHAINGUN_MODS})
+	shared.weapon_6 = passives.passive_register({name = "weapon_6", label = "DISCHARGE BEAM UPGRADE", plugin = shared.id, levels = 3, weapon = WEAPON_DISCHARGE_BEAM, mods = DISCHARGE_BEAM_MODS})
+	shared.weapon_5_charge = passives.passive_register({name = "weapon_5_charge", label = "CHAINGUN CHARGE", plugin = shared.id, levels = 3, weapon = WEAPON_CHAINGUN, charge = true, mods = CHAINGUN_CHARGE_MODS})
+	shared.weapon_6_charge = passives.passive_register({name = "weapon_6_charge", label = "DISCHARGE BEAM CHARGE", plugin = shared.id, levels = 3, weapon = WEAPON_DISCHARGE_BEAM, charge = true, mods = DISCHARGE_BEAM_CHARGE_MODS})
+}
+
+@(init)
+register_step :: proc "contextless" () {
+	sim.register_step(.Plugin, "plugins/new_weapon_passives register", register)
+}

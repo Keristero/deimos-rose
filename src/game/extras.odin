@@ -1,204 +1,288 @@
 package game
 
-// Extras: settings for features the original never had (prefs.EXTRAS lists
-// them). The rule they all follow is that classic mode is the original
-// game -- same look, same behaviour -- so every extra reads as off there,
-// whatever is saved. Code that implements one asks extra_on/extra_value
-// and nothing else; this file owns the gate, the Preferences Extras page
-// (one row per EXTRAS entry, built from the table) and the previews some
-// rows show beside their control.
+// Mods and their settings: features the original never had. Each is a
+// plugin (sim/plugins.odin) the player turns on from the Mods page
+// (game/menu_mods.odin); the settings the mods register (prefs/settings.odin)
+// are on the Extras page below. The rule they all follow is that classic
+// mode is the original game -- same look, same behaviour -- so every mod
+// reads as off there, whatever is saved. Code that implements one asks
+// prefs_mod_on, setting_on and setting_value and nothing else.
 
 import rl "vendor:raylib"
 
 import "dr:prefs"
+import "dr:render"
 import "dr:sim"
+import "dr:ui"
 
-// Whether an extra is in effect. A hue is in effect with Accent Colours.
-extra_on :: proc(ps: ^Prefs_State, e: prefs.Extra) -> bool {
+// The mods in effect: the saved ones whose dependencies are all on, and
+// none in classic mode. A plugin's launch switch turns it on for the run,
+// and -campaign its campaign (launch.odin).
+prefs_mods :: proc(ps: ^Prefs_State) -> sim.Mods {
 	if prefs_classic(ps) {
-		return false
+		return {}
 	}
-	if e == .High_Refresh_Rate && ps.launch.high_refresh_rate {
-		return true // -highrefreshrate, for this run only
+	mods := ps.saved.mods
+	mods = sim.mods_switch_on(mods, ps.launch_mods)
+	if id, ok := launch_campaign(ps.launch); ok && id != sim.CORE {
+		mods = sim.mods_switch_on(mods, {int(id)})
 	}
-	if prefs.EXTRAS[e].kind == .Hue {
-		return ps.saved.extras[.Accent_Colours] != 0
+	return sim.mods_resolve(mods)
+}
+
+prefs_mod_on :: proc(ps: ^Prefs_State, id: sim.Plugin_ID) -> bool {
+	return int(id) in prefs_mods(ps)
+}
+
+// Turns a mod on with its dependencies, or off with its dependants, and
+// saves.
+prefs_mod_toggle :: proc(ps: ^Prefs_State, id: sim.Plugin_ID) {
+	if ps.launch_mods != {} {
+		// The menu now shows and controls what is live.
+		ps.saved.mods = sim.mods_switch_on(ps.saved.mods, ps.launch_mods)
+		ps.launch_mods = {}
 	}
-	return ps.saved.extras[e] != 0
+	prefs.mod_toggle(&ps.saved.mods, id)
+	prefs_state_save(ps)
+}
+
+// A switch for a mod and what comes with it: turned on, the mod brings back
+// its default-on dependants too (the lobby's New Weapons brings the
+// Chaingun); turned off, it takes them all, as any mod does.
+prefs_mod_toggle_group :: proc(ps: ^Prefs_State, id: sim.Plugin_ID) {
+	prefs_mod_toggle(ps, id)
+	if int(id) in ps.saved.mods {
+		for d in sim.mods_default_dependants(id) {
+			prefs_mod_set(ps, sim.Plugin_ID(d), true)
+		}
+	}
+}
+
+// Switches a mod on or off, leaving it as it is when it already is.
+prefs_mod_set :: proc(ps: ^Prefs_State, id: sim.Plugin_ID, on: bool) {
+	if (int(id) in ps.saved.mods) != on {
+		prefs_mod_toggle(ps, id)
+	}
+}
+
+// Whether a toggle setting is on and in effect: its mod is on.
+setting_on :: proc(ps: ^Prefs_State, id: prefs.Setting_ID) -> bool {
+	return prefs_mod_on(ps, prefs.registered_settings()[id].plugin) && ps.saved.settings[id] != 0
 }
 
 // The saved value, whether or not it is in effect (a hue for the lobby to
 // send, say).
-extra_value :: proc(ps: ^Prefs_State, e: prefs.Extra) -> int {
-	return ps.saved.extras[e]
+setting_value :: proc(ps: ^Prefs_State, id: prefs.Setting_ID) -> int {
+	return ps.saved.settings[id]
 }
 
-extra_set :: proc(ps: ^Prefs_State, e: prefs.Extra, v: int) {
-	ps.saved.extras[e] = prefs.extra_clean(e, v)
-	if e == .High_Refresh_Rate {
-		ps.launch.high_refresh_rate = false // the menu now shows and controls what is live
-	}
+setting_set :: proc(ps: ^Prefs_State, id: prefs.Setting_ID, v: int) {
+	ps.saved.settings[id] = prefs.setting_clean(id, v)
 	prefs_state_save(ps)
 }
-
-// A strip of every hue: dragged with the mouse, or nudged with Left/Right
-// when `keys` (which type nothing into a name being entered beside it).
-// Menu coordinates. Returns whether the hue changed.
-HUE_SLIDER_H :: 8
-@(private = "file") HUE_KEY_STEP :: 5
-
-hue_slider_update :: proc(hue: ^int, rect: rl.Rectangle, keys: bool) -> bool {
-	before := hue^
-	if keys && (rl.IsKeyPressed(.LEFT) || rl.IsKeyPressedRepeat(.LEFT)) {
-		hue^ = prefs.hue_wrap(hue^ - HUE_KEY_STEP)
-	}
-	if keys && (rl.IsKeyPressed(.RIGHT) || rl.IsKeyPressedRepeat(.RIGHT)) {
-		hue^ = prefs.hue_wrap(hue^ + HUE_KEY_STEP)
-	}
-	if rl.IsMouseButtonDown(.LEFT) {
-		m := menu_mouse_pos()
-		grab := rl.Rectangle{rect.x - 4, rect.y - 6, rect.width + 8, rect.height + 12}
-		if rl.CheckCollisionPointRec(m, grab) {
-			hue^ = min(int(clamp((m.x - rect.x) / rect.width, 0, 1) * 360), 359)
-		}
-	}
-	return hue^ != before
-}
-
-hue_slider_draw :: proc(hue: int, rect: rl.Rectangle, dim := false) {
-	s := f32(WINDOW_SCALE)
-	for i in 0 ..< i32(rect.width) {
-		c := rl.ColorFromHSV(f32(i) * 360 / rect.width, ACCENT_SATURATION, dim ? 0.45 : 1)
-		rl.DrawRectangle((i32(rect.x) + i) * WINDOW_SCALE, i32(rect.y) * WINDOW_SCALE, WINDOW_SCALE, i32(rect.height) * WINDOW_SCALE, c)
-	}
-	x := (rect.x + f32(hue) * rect.width / 360) * s
-	rl.DrawRectangleLinesEx({x - 3, (rect.y - 3) * s, 7, (rect.height + 6) * s}, 2, rl.WHITE)
-}
-
-// The Extras page of Preferences.
 
 @(private = "file") EXTRAS_TITLE_Y :: 34
 @(private = "file") EXTRAS_ROW0_Y :: 90
 @(private = "file") EXTRAS_ROW :: 44
+@(private = "file") EXTRAS_ROWS_SHOWN :: 7
 @(private = "file") EXTRAS_LABEL_X :: 110
 @(private = "file") EXTRAS_VALUE_X :: 350 // centre of a toggle; a slider spans either side
 @(private = "file") EXTRAS_SLIDER_W :: 150
+@(private = "file") EXTRAS_SCROLL_X :: 440
 @(private = "file") EXTRAS_BACK_Y :: 436
 @(private = "file") EXTRAS_NOTE_Y :: 404
-
-// The preview: both players' ships as a local game draws them -- each
-// in its own hue, with Self Outline on player 1's, the ship this
-// machine's player flies. Off to the right of the rows rather than
-// beside one, since several of them change it.
-@(private = "file") PREVIEW_SHIPS :: [2]sim.Res_ID{{'p', 'l', '1', 'b'}, {'p', 'l', '2', 'b'}}
-@(private = "file") PREVIEW_HUES := [2]prefs.Extra{.Accent_Hue, .Accent_Hue_P2}
-@(private = "file") PREVIEW_X :: 540 // centre of the pair
-@(private = "file") PREVIEW_Y :: 150
-@(private = "file") PREVIEW_GAP :: 70
+@(private = "file") EXTRAS_RESET_X :: 510
 
 Extras_Page :: struct {
-	toggles: [prefs.Extra]Text_Button,
-	back:    Text_Button,
+	scroll:  ui.Scroll_Rows,
+	toggles: [prefs.MAX_SETTINGS]ui.Text_Button,
+	back:    ui.Text_Button,
+	reset:   ui.Text_Button, // the sliders back to their defaults
+}
+
+// The settings listed: those of the saved mods, dimmed but still there in
+// classic mode, so the page shows what classic mode switched off.
+@(private = "file")
+extras_listed :: proc(ps: ^Prefs_State, out: ^[prefs.MAX_SETTINGS]prefs.Setting_ID) -> []prefs.Setting_ID {
+	mods := sim.mods_resolve(ps.saved.mods)
+	n := 0
+	for s, id in prefs.registered_settings() {
+		if int(s.plugin) in mods {
+			out[n] = prefs.Setting_ID(id)
+			n += 1
+		}
+	}
+	return out[:n]
+}
+
+// Whether the page has sliders for the reset button to act on.
+@(private = "file")
+extras_has_sliders :: proc(listed: []prefs.Setting_ID) -> bool {
+	for id in listed {
+		if prefs.registered_settings()[id].kind == .Percent {
+			return true
+		}
+	}
+	return false
+}
+
+// Puts every listed slider (not the toggles or the colours) back to its
+// default, and saves.
+@(private = "file")
+extras_reset_sliders :: proc(ps: ^Prefs_State, listed: []prefs.Setting_ID) {
+	settings := prefs.registered_settings()
+	for id in listed {
+		if settings[id].kind == .Percent {
+			ps.saved.settings[id] = prefs.setting_clean(id, settings[id].default)
+		}
+	}
+	prefs_state_save(ps)
+}
+
+// Where the listed setting at `row` sits on the page; false when it is
+// scrolled out of sight.
+@(private = "file")
+extras_row_y :: proc(x: ^Extras_Page, row: int) -> (f32, bool) {
+	shown := row - x.scroll.first
+	return EXTRAS_ROW0_Y + f32(shown) * EXTRAS_ROW, shown >= 0 && shown < EXTRAS_ROWS_SHOWN
 }
 
 @(private = "file")
-extras_row_y :: proc(e: prefs.Extra) -> f32 {
-	return EXTRAS_ROW0_Y + f32(e) * EXTRAS_ROW
-}
-
-@(private = "file")
-extras_slider_rect :: proc(e: prefs.Extra) -> rl.Rectangle {
-	return {EXTRAS_VALUE_X - EXTRAS_SLIDER_W / 2, extras_row_y(e) + 6, EXTRAS_SLIDER_W, HUE_SLIDER_H}
+extras_slider_rect :: proc(y: f32) -> rl.Rectangle {
+	return {EXTRAS_VALUE_X - EXTRAS_SLIDER_W / 2, y + 6, EXTRAS_SLIDER_W, ui.HUE_SLIDER_H}
 }
 
 // Toggles show their live value, so they are re-laid each frame.
 @(private = "file")
-extras_page_layout :: proc(r: ^Renderer, x: ^Extras_Page, ps: ^Prefs_State) {
-	for info, e in prefs.EXTRAS {
-		if info.kind == .Toggle {
-			text_button_relabel(r, &x.toggles[e], ps.saved.extras[e] != 0 ? "ON" : "OFF", EXTRAS_VALUE_X, extras_row_y(e))
+extras_page_layout :: proc(r: ^render.Renderer, x: ^Extras_Page, ps: ^Prefs_State, listed: []prefs.Setting_ID) {
+	settings := prefs.registered_settings()
+	for id, row in listed {
+		y, shown := extras_row_y(x, row)
+		if shown && settings[id].kind == .Toggle {
+			ui.text_button_relabel(r, &x.toggles[id], ps.saved.settings[id] != 0 ? "ON" : "OFF", EXTRAS_VALUE_X, y)
 		}
 	}
-	text_button_relabel(r, &x.back, "BACK", SCREEN_W / 2, EXTRAS_BACK_Y)
+	ui.text_button_relabel(r, &x.back, "BACK", render.SCREEN_W / 2, EXTRAS_BACK_Y)
+	ui.text_button_relabel(r, &x.reset, "RESET SLIDERS", EXTRAS_RESET_X, EXTRAS_BACK_Y)
 }
 
 // Returns true when the page is left (Back or Escape).
-extras_page_update :: proc(r: ^Renderer, x: ^Extras_Page, ps: ^Prefs_State) -> (leave: bool) {
-	extras_page_layout(r, x, ps)
-	mouse := menu_mouse_pos()
+extras_page_update :: proc(r: ^render.Renderer, x: ^Extras_Page, ps: ^Prefs_State) -> (leave: bool) {
+	buf: [prefs.MAX_SETTINGS]prefs.Setting_ID
+	listed := extras_listed(ps, &buf)
+	ui.scroll_rows_update(&x.scroll, len(listed), EXTRAS_ROWS_SHOWN)
+	extras_page_layout(r, x, ps, listed)
+	mouse := ui.menu_mouse_pos()
 	dt := rl.GetFrameTime()
-	for info, e in prefs.EXTRAS {
-		switch info.kind {
+	settings := prefs.registered_settings()
+	for id, row in listed {
+		y, shown := extras_row_y(x, row)
+		if !shown {
+			continue
+		}
+		switch settings[id].kind {
+		case .Percent:
+			v := ps.saved.settings[id]
+			if ui.percent_slider_update(&v, extras_slider_rect(y), true) {
+				ps.saved.settings[id] = v // saved once the drag ends, like a hue
+			}
+			if rl.IsMouseButtonReleased(.LEFT) || rl.IsKeyReleased(.LEFT) || rl.IsKeyReleased(.RIGHT) {
+				prefs_state_save(ps)
+			}
 		case .Toggle:
-			if text_button_update(r, &x.toggles[e], mouse, dt) {
-				extra_set(ps, e, 1 - ps.saved.extras[e])
+			if ui.text_button_update(r, &x.toggles[id], mouse, dt) {
+				setting_set(ps, id, 1 - ps.saved.settings[id])
 			}
 		case .Hue:
-			hue := ps.saved.extras[e]
-			if hue_slider_update(&hue, extras_slider_rect(e), true) {
-				ps.saved.extras[e] = hue // saved once the drag ends, not every frame of it
+			hue := ps.saved.settings[id]
+			if ui.hue_slider_update(&hue, extras_slider_rect(y), true) {
+				ps.saved.settings[id] = hue // saved once the drag ends, not every frame of it
 			}
 			if rl.IsMouseButtonReleased(.LEFT) || rl.IsKeyReleased(.LEFT) || rl.IsKeyReleased(.RIGHT) {
 				prefs_state_save(ps)
 			}
 		}
 	}
-	return text_button_update(r, &x.back, mouse, dt) || rl.IsKeyPressed(.ESCAPE)
+	if extras_has_sliders(listed) && ui.text_button_update(r, &x.reset, mouse, dt) {
+		extras_reset_sliders(ps, listed)
+	}
+	return ui.text_button_update(r, &x.back, mouse, dt) || rl.IsKeyPressed(.ESCAPE)
 }
 
-extras_page_draw :: proc(r: ^Renderer, x: ^Extras_Page, ps: ^Prefs_State) {
-	extras_page_layout(r, x, ps)
-	menu_draw_background(r, "back")
+extras_page_draw :: proc(r: ^render.Renderer, x: ^Extras_Page, ps: ^Prefs_State) {
+	buf: [prefs.MAX_SETTINGS]prefs.Setting_ID
+	listed := extras_listed(ps, &buf)
+	extras_page_layout(r, x, ps, listed)
+	ui.menu_draw_background(r, "back")
 	white := rl.Color{255, 255, 255, 255}
 	dim := rl.Color{190, 190, 190, 255}
-	header := rl.Color{HIGH_SCORES_HEADER_RGB[0], HIGH_SCORES_HEADER_RGB[1], HIGH_SCORES_HEADER_RGB[2], 255}
+	header := rl.Color{ui.HIGH_SCORES_HEADER_RGB[0], ui.HIGH_SCORES_HEADER_RGB[1], ui.HIGH_SCORES_HEADER_RGB[2], 255}
 	classic := prefs_classic(ps)
 
-	menu_draw_text(r, "EXTRAS", SCREEN_W / 2, EXTRAS_TITLE_Y, header, .Centre)
-	for info, e in prefs.EXTRAS {
-		y := extras_row_y(e)
-		menu_draw_text(r, info.label, EXTRAS_LABEL_X, i32(y) + 5, classic ? dim : white)
-		switch info.kind {
+	ui.menu_draw_text(r, "EXTRAS", render.SCREEN_W / 2, EXTRAS_TITLE_Y, header, .Centre)
+	settings := prefs.registered_settings()
+	for id, row in listed {
+		y, shown := extras_row_y(x, row)
+		if !shown {
+			continue
+		}
+		ui.menu_draw_text(r, settings[id].label, EXTRAS_LABEL_X, i32(y) + 5, classic ? dim : white)
+		switch settings[id].kind {
 		case .Toggle:
-			text_button_draw(r, &x.toggles[e])
+			ui.text_button_draw(r, &x.toggles[id])
+		case .Percent:
+			ui.percent_slider_draw(ps.saved.settings[id], extras_slider_rect(y), classic)
 		case .Hue:
-			hue_slider_draw(ps.saved.extras[e], extras_slider_rect(e), classic)
+			ui.hue_slider_draw(ps.saved.settings[id], extras_slider_rect(y), classic)
 		}
 	}
-	for id, i in PREVIEW_SHIPS {
-		x := PREVIEW_X + (f32(i) - 0.5) * PREVIEW_GAP
-		preview_ship(r, ps, id, PREVIEW_HUES[i], i == 0, x, PREVIEW_Y)
-		menu_draw_text(r, i == 0 ? "P1" : "P2", i32(x), PREVIEW_Y + 26, dim, .Centre)
+	ui.scroll_rows_draw(&x.scroll, len(listed), EXTRAS_ROWS_SHOWN, EXTRAS_SCROLL_X, EXTRAS_ROW0_Y, EXTRAS_ROWS_SHOWN * EXTRAS_ROW - 20)
+	saved := sim.mods_resolve(ps.saved.mods)
+	for &pv in ui.registered_settings_previews() {
+		if int(pv.plugin) in saved {
+			pv.draw(r, &ps.saved.settings, prefs_mod_on(ps, pv.plugin))
+		}
 	}
-	note := classic ? "CLASSIC MODE IS ON: EXTRAS ARE OFF UNTIL IT IS TURNED OFF" : "FEATURES THE ORIGINAL DID NOT HAVE -- NONE APPLY IN CLASSIC MODE"
-	menu_draw_text(r, note, SCREEN_W / 2, EXTRAS_NOTE_Y, dim, .Centre)
-	text_button_draw(r, &x.back)
+	note: string
+	switch {
+	case classic:
+		note = "CLASSIC MODE IS ON: MODS ARE OFF UNTIL IT IS TURNED OFF"
+	case len(listed) == 0:
+		note = "NONE OF THE MODS THAT ARE ON HAVE SETTINGS"
+	case:
+		note = "SETTINGS FOR THE MODS THAT ARE ON -- NONE APPLY IN CLASSIC MODE"
+	}
+	ui.menu_draw_text(r, note, render.SCREEN_W / 2, EXTRAS_NOTE_Y, dim, .Centre)
+	if extras_has_sliders(listed) {
+		ui.text_button_draw(r, &x.reset)
+	}
+	ui.text_button_draw(r, &x.back)
 }
 
-// The ship as it would be drawn in play, centred on (x, y) in menu
-// coordinates: through the same draw_item the game uses, so the preview
-// cannot drift from the real thing.
-@(private = "file")
-preview_ship :: proc(r: ^Renderer, ps: ^Prefs_State, id: sim.Res_ID, which: prefs.Extra, local: bool, x, y: f32) {
-	outline := local && extra_on(ps, .Self_Outline)
-	tex, src, ok := frame_rect(&r.textures, id, 0)
-	if !ok {
-		return
+// Whether the Extras page can be opened: the plugin that offers it
+// (prefs.settings_page_register) is on.
+extras_available :: proc(ps: ^Prefs_State) -> bool {
+	page := prefs.settings_page_plugin()
+	return page != sim.CORE && int(page) in sim.mods_resolve(ps.saved.mods)
+}
+
+// Player `n`'s colour (0 or 1), as saved (prefs.Setting.player); 0 when
+// no plugin registers one.
+player_hue :: proc(ps: ^Prefs_State, n: int) -> int {
+	id, ok := prefs.player_hue_setting(n + 1)
+	return ok ? ps.saved.settings[id] : 0
+}
+
+// Sets player 1's colour (yours in netplay), where a plugin registers one.
+player_hue_set :: proc(ps: ^Prefs_State, hue: int) {
+	if id, ok := prefs.player_hue_setting(1); ok {
+		ps.saved.settings[id] = hue
 	}
-	s := f32(WINDOW_SCALE)
-	dst := rl.Rectangle{(x - src.width / 2) * s, (y - src.height / 2) * s, src.width * s, src.height * s}
-	hue := f32(ps.saved.extras[which])
-	white := rl.Color{255, 255, 255, 255}
-	if outline {
-		for d in ([8][2]f32{{-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}}) {
-			o := dst
-			o.x += d.x * s
-			o.y += d.y * s
-			draw_item(r, {texture = tex, src = src, tint = white, effect = .Silhouette, hue = hue, sat = ACCENT_SATURATION}, o)
-		}
-	}
-	draw_item(r, {texture = tex, src = src, tint = white}, dst)
-	if trim, tok := ship_trim(&r.textures, id); extra_on(ps, which) && tok {
-		draw_item(r, {texture = trim, src = src, tint = white, effect = .Recolour, hue = hue, sat = TRIM_SATURATION, shine = TRIM_SHINE}, dst)
-	}
+}
+
+// Whether players are drawn in their colours: the plugin of the colour
+// settings is on.
+player_colours_on :: proc(ps: ^Prefs_State) -> bool {
+	id, ok := prefs.player_hue_setting(1)
+	return ok && prefs_mod_on(ps, prefs.registered_settings()[id].plugin)
 }

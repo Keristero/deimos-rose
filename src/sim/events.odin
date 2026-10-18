@@ -34,7 +34,6 @@ event_log_entries :: proc "contextless" (l: ^Event_Log) -> []Event {
 	return l.events[:l.count]
 }
 
-@(private)
 record_event :: proc "contextless" (s: ^State, e: Event) {
 	l := s.events
 	if l == nil {
@@ -45,7 +44,7 @@ record_event :: proc "contextless" (s: ^State, e: Event) {
 		return
 	}
 	ev := e
-	ev.frame = u32(s.film_cursor[0])
+	ev.frame = u32(single(s, Film_Cursor).reads[0])
 	l.events[l.count] = ev
 	l.count += 1
 }

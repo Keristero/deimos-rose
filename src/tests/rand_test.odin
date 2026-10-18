@@ -97,26 +97,5 @@ random_float_reproduces_the_reversed_bounds_quirk :: proc(t: ^testing.T) {
 // the digest below was taken from that tool's own output, not invented.
 @(test)
 rand_sequence_digest_is_codegen_stable :: proc(t: ^testing.T) {
-	r := sim.rand_init(0x5EED)
-	h: u64 = 0xcbf29ce484222325
-	mix :: proc(h: ^u64, v: u64) {
-		x := v
-		for _ in 0 ..< 8 {
-			h^ ~= x & 0xff
-			h^ *= 0x100000001b3
-			x >>= 8
-		}
-	}
-	for i in 0 ..< 20_000 {
-		lo := i32(i % 2000) - 1000
-		hi := lo + i32(i % 37) + 1
-		iv := sim.random_int(&r, lo, hi, 0)
-		mix(&h, u64(u32(iv)))
-
-		fa := f32(i % 401) - 200.0
-		fb := fa + f32(i % 53) + 1.0
-		fv := sim.random_float(&r, fa, fb, 0)
-		mix(&h, u64(transmute(u32)fv))
-	}
-	testing.expect_value(t, h, u64(0x0071e4eb5e5f0743))
+	testing.expect_value(t, sim.rand_digest(0x5EED, 20_000), u64(0x0071e4eb5e5f0743))
 }

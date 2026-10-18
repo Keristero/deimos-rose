@@ -13,6 +13,12 @@ java = "temurin-21"
 DR_SRC    = "{{config_root}}"
 DR_ORIG   = "{{config_root}}/../game"
 DR_ASSETS = "{{config_root}}/assets"
+# Plugins' content folders (D51): each plugin's data, sprites, images and
+# audio beside its code. The game falls back to plugins/ in its working
+# directory, which is how a release is laid out. A value already in the
+# environment wins (DR_PLUGINS=$PWD/tests/fixtures/plugins for the data
+# plugin fixtures, D52).
+DR_PLUGINS = "{{ get_env(name='DR_PLUGINS', default=config_root ~ '/plugins') }}"
 DR_BUILD  = "{{config_root}}/build"
 DR_DEPS   = "{{config_root}}/.deps"
 # Ghidra itself is ~900 MB of tooling, so it lives in the user cache.
@@ -25,10 +31,23 @@ DR_GHIDRA = "{{ get_env(name='HOME', default=get_env(name='USERPROFILE', default
 # gitignored work/ directory beside the repo's tracked files. Kept out of
 # src/build/ so that `mise run clean` does not discard minutes of analysis.
 DR_DECOMP = "{{config_root}}/../work/decomp"
-# Wine prefix and the oracle's captures (traces, the sprite dump).
-DR_WINE   = "{{config_root}}/../work/wine"
+# Wine prefix and the oracle's captures (traces, the sprite dump). A value
+# already in the environment wins, so two oracles can run side by side on
+# copies of the prefix (DR_WINE=../work/wine-b mise run oracle:trace);
+# otherwise both would write to, and clear, the same traces directory.
+DR_WINE   = "{{ get_env(name='DR_WINE', default=config_root ~ '/../work/wine') }}"
 DR_EXE    = "{{config_root}}/../game/DeimosRising.exe"
 DR_SYMS   = "{{config_root}}/../symbols/functions.csv"
+# Python venv for the HD map upscaler (torch + diffusers, ~6 GB), and the
+# Hugging Face cache it downloads FLUX.2 [klein] into (~16 GB) unless HF_HOME
+# is already set. Kept out of the repo like Ghidra.
+DR_HD_VENV = "{{ get_env(name='HOME', default=get_env(name='USERPROFILE', default='')) }}/.cache/deimos-rising/hd-venv"
+# Marigold V2 for terrain:recover's height seed: its checkout, its own
+# Python 3.10 venv and links to its weights (~45 GB, in the Hugging Face
+# cache). Made by terrain:marigold-setup.
+DR_MARIGOLD = "{{ get_env(name='HOME', default=get_env(name='USERPROFILE', default='')) }}/.cache/deimos-rising/marigold-v2"
+# Poly Haven's models as models:fetch downloads them, for models:library.
+DR_MODELS_CACHE = "{{ get_env(name='HOME', default=get_env(name='USERPROFILE', default='')) }}/.cache/deimos-rising/models"
 # Odin collection so packages import as "dr:sim", "dr:data", ...
 # Kept separate because `odin check` rejects linker flags.
 DR_COLL   = "-collection:dr={{config_root}}"
@@ -42,26 +61,156 @@ description = "Create local dev symlinks for X11/GL so raylib links on immutable
 run = "bash tools/setupdeps/setup.sh"
 
 [tasks.build]
-description = "Build the game binary"
+description = "Build the game and every code plugin's library beside it (build/plugins/<name>/), as a release lays them out (D85)"
+depends = ["build:game", "build:plugins"]
+
+[tasks."build:game"]
+description = "Build the game binary alone, with raylib's shared library beside it: the core, which runs with no plugin"
 depends = ["setup"]
-run = "odin build game -out:$DR_BUILD/deimos$DR_EXT $DR_COLL $DR_LINK -o:speed -define:DR_VERSION=$(bash tools/version/version.sh)"
+run = [
+  "odin build game -out:$DR_BUILD/deimos$DR_EXT $DR_COLL $DR_LINK -o:speed -define:RAYLIB_SHARED=true -define:DR_ABI=$(bash tools/plugins/abi.sh) -define:DR_VERSION=$(bash tools/version/version.sh)",
+  "bash tools/plugins/raylib_lib.sh",
+]
+
+[tasks."build:static"]
+description = "Build the game with every plugin compiled in, build/static/deimos: the reference plugins:check compares the libraries against, and one binary to debug (D85)"
+depends = ["setup"]
+run = "bash tools/plugins/static.sh"
+
+[tasks."plugins:check"]
+description = "Plugins load from their libraries as they did compiled in: the same plugins, ids and registration hash; the game alone registers none; a library from other sources is refused. No window, so CI runs it on both systems (build and build:static first)"
+run = "bash tools/plugins/check.sh"
+
+[tasks."build:plugins"]
+description = "Build each code plugin as a shared library, build/plugins/<name>/<name>.so or .dll, where the game beside it loads them (D85); NAMES='a b' for some"
+depends = ["setup"]
+run = "bash tools/plugins/plugin_libs.sh ${NAMES:-}"
+
+[tasks."build:editor"]
+description = "Build the level editor (editor/, notes/level-editor-plan.md Stage 7)"
+depends = ["setup"]
+run = "odin build editor -out:$DR_BUILD/deimos-editor$DR_EXT $DR_COLL $DR_LINK -o:speed -define:DR_VERSION=$(bash tools/version/version.sh)"
 
 [tasks."build:linux"]
-description = "Build the game binary for Linux (x86-64) -- alias for `build`, named explicitly for symmetry with build:windows"
-depends = ["build"]
+description = "Build the game binary and the level editor for Linux (x86-64) -- `build` and `build:editor`, named explicitly for symmetry with build:windows"
+depends = ["build", "build:editor"]
+
+[tasks.editor]
+description = "Build and run the level editor, on a project if given: mise run editor [path/level.drproj.json] (a new level otherwise). It opens a window: for a picture without one, editor:shot"
+depends = ["build:editor"]
+run = 'exec "$DR_BUILD/deimos-editor$DR_EXT" "$@"'
+
+[tasks."editor:shot"]
+description = "Draw one frame of the level editor headlessly ([PROJECT=path/level.drproj.json, a new level otherwise] [OUT=build/editor.png]); extra flags pass through, e.g. -- -tab=light -row=1500 -left=100 -zoom=2 -tilt=50"
+depends = ["build:editor"]
+run = """
+set -e
+headless() {
+  if command -v xvfb-run >/dev/null; then set -- xvfb-run -a -s "-screen 0 1920x1200x24" "$@"; fi
+  env DISPLAY= WAYLAND_DISPLAY= "$@"
+}
+headless "$DR_BUILD/deimos-editor$DR_EXT" ${PROJECT:+"$PROJECT"} -shot="${OUT:-$DR_BUILD/editor.png}" "$@"
+"""
+
+[tasks."editor:export"]
+description = "Export a level-editor campaign as a data plugin headlessly: CAMPAIGN=path/name.drcampaign.json [TO=dir, else plugins/<its name>]; prints what was wrong and fails when nothing could be written"
+depends = ["build:editor"]
+run = """
+set -e
+headless() {
+  if command -v xvfb-run >/dev/null; then set -- xvfb-run -a -s "-screen 0 640x480x24" "$@"; fi
+  env DISPLAY= WAYLAND_DISPLAY= "$@"
+}
+headless "$DR_BUILD/deimos-editor$DR_EXT" -export="$CAMPAIGN" ${TO:+-to="$TO"}
+"""
+
+[tasks."editor:play-check"]
+description = "Export the fixture campaign (tests/fixtures/campaign) as the level editor does and play each of its levels in the game headlessly, from -level and -row as Play runs it, each to a shot in build/play-check; fails when a level does not export, load or reach its shot. Needs the extracted assets, and skips without them"
+depends = ["build", "build:editor"]
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+if [ ! -d "$DR_ASSETS/data/unde" ]; then
+  echo "editor:play-check: no extracted assets in $DR_ASSETS, skipped"
+  exit 0
+fi
+OUT="$DR_BUILD/play-check"
+rm -rf "$OUT"
+mkdir -p "$OUT/home"
+headless() {
+  if command -v xvfb-run >/dev/null; then set -- xvfb-run -a -s "-screen 0 1280x1024x24" env DR_XVFB=1 "$@"; fi
+  # A home of its own, so the game's preferences and progress are its own
+  # (a classic-mode preference would refuse a campaign).
+  env DISPLAY= WAYLAND_DISPLAY= HOME="$OUT/home" XDG_DATA_HOME="$OUT/home/data" XDG_CONFIG_HOME="$OUT/home/config" "$@"
+}
+headless "$DR_BUILD/deimos-editor$DR_EXT" -export="$DR_SRC/tests/fixtures/campaign/fixture_play.drcampaign.json" -to="$OUT/plugins/fixture_play"
+for level in Ridge:400 Ford:200; do
+  name=${level%%:*} row=${level##*:}
+  headless env DR_ASSETS="$DR_ASSETS" DR_SHOT="$OUT/$name" DR_SHOT_AT=120 \
+    "$DR_BUILD/deimos$DR_EXT" -plugins "$OUT/plugins" -campaign fixture_play -level "$name" -row "$row" >"$OUT/$name.log" 2>&1 || true
+  grep -E "^wrote|^-level|^-campaign" "$OUT/$name.log" || true
+  [ -f "$OUT/$name-0120.png" ] || { echo "editor:play-check: $name reached no shot (see $OUT/$name.log)" >&2; exit 1; }
+  # The player is one entity: more are the level's units, spawned from its
+  # placements in view.
+  n=$(sed -nE 's/^wrote .*step 120, ([0-9]+) entities.*/\1/p' "$OUT/$name.log")
+  [ "${n:-0}" -gt 1 ] || { echo "editor:play-check: none of $name's units spawned" >&2; exit 1; }
+done
+echo "editor:play-check: both levels played, shots in $OUT"
+'''
+
+[tasks.dist]
+description = "Lay out the release folder, dist/deimos: the built binary and raylib's library (build or build:windows first), assets/ and each plugin's content and library in plugins/<name>/ (every file of src/plugins that is not Odin source, D51, and build/plugins' libraries, D85). CI zips it"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+rm -rf dist/deimos
+mkdir -p dist/deimos/plugins
+cp "$DR_BUILD/deimos$DR_EXT" dist/deimos/
+# raylib, shared by the game and the plugins' libraries (D85).
+bash tools/plugins/raylib_lib.sh dist/deimos
+# The level editor, when it was built (build:linux and build:windows do).
+if [ -f "$DR_BUILD/deimos-editor$DR_EXT" ]; then cp "$DR_BUILD/deimos-editor$DR_EXT" dist/deimos/; fi
+cp -r assets dist/deimos/
+# Plugin folders that hold only code (and view/ subpackages) copy nothing,
+# and a folder's .gitignore is not content.
+(cd plugins && find . -type f ! -name '*.odin' ! -name '.*' | sort) | while read -r f; do
+  mkdir -p "dist/deimos/plugins/$(dirname "$f")"
+  cp "plugins/$f" "dist/deimos/plugins/$f"
+done
+# Each code plugin's library beside its content (D85); not the import
+# library and exports file the Windows linker leaves with a .dll.
+for lib in "$DR_BUILD"/plugins/*/*.so "$DR_BUILD"/plugins/*/*.dll; do
+  [ -f "$lib" ] || continue
+  name=$(basename "$(dirname "$lib")")
+  mkdir -p "dist/deimos/plugins/$name"
+  cp "$lib" "dist/deimos/plugins/$name/"
+done
+'''
+
+[tasks."dist:zips"]
+description = "Split the release folder (mise run dist first) into the release's downloads, in zips/: the game, which plays the original alone; the level editor; and each plugin, with every plugin it needs (OUT=dir, VER=tag). Each holds a deimos/ folder and unzips over the game's (D87)"
+run = "bash tools/dist/zips.sh"
+
+[tasks."dist:check"]
+description = "Install each download as a player would, with no window: the game's zip alone registers Classic Levels and nothing else; each plugin's zip over it loads every library and finds every plugin's content; all of them together are the release folder, file for file (IN=dir, default zips/)"
+run = "bash tools/dist/check.sh"
 
 [tasks."build:windows"]
-description = "Build the game binary for Windows (x86-64). Native on a Windows host (mise/Odin there just do an ordinary same-target build). Cross-compiling from Linux additionally needs vendor:raylib's windows/*.lib (absent from this Odin install's vendor tree) and currently fails outright regardless: this Odin toolchain's own linker refuses windows_amd64 cross-links from a linux_amd64 host ('Linking for cross compilation for this platform is not yet supported'), confirmed directly against it -- see docs/decisions.md D27. Does not depend on `setup` (that task materialises Linux-only X11/GL symlinks) or use $DR_LINK (Linux-only linker search path), neither of which apply to a Windows link."
+description = "Build the game binary, raylib.dll and the plugins' DLLs for Windows (x86-64). Native on a Windows host (mise/Odin there just do an ordinary same-target build). Cross-compiling from Linux additionally needs vendor:raylib's windows/*.lib (absent from this Odin install's vendor tree) and currently fails outright regardless: this Odin toolchain's own linker refuses windows_amd64 cross-links from a linux_amd64 host ('Linking for cross compilation for this platform is not yet supported'), confirmed directly against it -- see docs/decisions.md D27. Does not depend on `setup` (that task materialises Linux-only X11/GL symlinks) or use $DR_LINK (Linux-only linker search path), neither of which apply to a Windows link."
 run = '''
 #!/usr/bin/env bash
 set -euo pipefail
 mkdir -p "$DR_BUILD"
-odin build game -out:"$DR_BUILD/deimos.exe" -target:windows_amd64 $DR_COLL -o:speed -define:DR_VERSION="$(bash tools/version/version.sh)"
+odin build game -out:"$DR_BUILD/deimos.exe" -target:windows_amd64 $DR_COLL -o:speed -define:RAYLIB_SHARED=true -define:DR_ABI="$(bash tools/plugins/abi.sh)" -define:DR_VERSION="$(bash tools/version/version.sh)"
+bash tools/plugins/raylib_lib.sh
+# The plugins' DLLs, as build:plugins builds them on Linux (D85).
+DR_LINK= TARGET=windows_amd64 bash tools/plugins/plugin_libs.sh
+odin build editor -out:"$DR_BUILD/deimos-editor.exe" -target:windows_amd64 $DR_COLL -o:speed -define:DR_VERSION="$(bash tools/version/version.sh)"
 # odin build exits 0 even when this particular cross-link failure occurs
 # (confirmed against this toolchain) and simply produces no binary, so a
 # missing output file has to be checked for explicitly rather than trusted
 # to show up as a nonzero exit code.
-if [ ! -f "$DR_BUILD/deimos.exe" ]; then
+if [ ! -f "$DR_BUILD/deimos.exe" ] || [ ! -f "$DR_BUILD/deimos-editor.exe" ]; then
   echo "build:windows: no binary produced -- see this task's description and docs/decisions.md D27" >&2
   exit 1
 fi
@@ -70,7 +219,10 @@ fi
 [tasks.dev]
 description = "Build unoptimised with debug info"
 depends = ["setup"]
-run = "odin build game -out:$DR_BUILD/deimos-dev$DR_EXT $DR_COLL $DR_LINK -debug -define:DR_VERSION=$(bash tools/version/version.sh)"
+run = [
+  "odin build game -out:$DR_BUILD/deimos-dev$DR_EXT $DR_COLL $DR_LINK -debug -define:RAYLIB_SHARED=true -define:DR_ABI=$(bash tools/plugins/abi.sh) -define:DR_VERSION=$(bash tools/version/version.sh)",
+  "bash tools/plugins/raylib_lib.sh",
+]
 
 [tasks.run]
 description = "Build and run the game"
@@ -85,6 +237,10 @@ flag "--classic" help="Reproduce -classic mode: hide the new (non-original) menu
 flag "--highrefreshrate" help="Reproduce -highrefreshrate mode: uncap the frame rate above the original's fixed step"
 flag "--diagnostics" help="Show a rolling FPS/ping/rollback-rate overlay in the bottom-right corner"
 flag "--fullscreen" help="Start fullscreen (a borderless window covering the monitor), the game scaled to fit"
+flag "--campaign <plugin>" help="Pick a campaign plugin, on for the run; with --level or --row, play it straight away"
+flag "--level <identifier>" help="Play this level (Lucena, or le07) straight away; the campaign's first by default"
+flag "--row <n>" help="Play from map row n, the view's top, instead of the map's bottom"
+flag "--plugins <dir>" help="One more plugins root, searched before DR_PLUGINS"
 '''
 run = '''
 #!/usr/bin/env bash
@@ -94,6 +250,10 @@ args=()
 [ "${usage_highrefreshrate:-false}" = "true" ] && args+=(-highrefreshrate)
 [ "${usage_diagnostics:-false}" = "true" ] && args+=(-diagnostics)
 [ "${usage_fullscreen:-false}" = "true" ] && args+=(-fullscreen)
+[ -n "${usage_campaign:-}" ] && args+=(-campaign "$usage_campaign")
+[ -n "${usage_level:-}" ] && args+=(-level "$usage_level")
+[ -n "${usage_row:-}" ] && args+=(-row "$usage_row")
+[ -n "${usage_plugins:-}" ] && args+=(-plugins "$usage_plugins")
 exec "$DR_BUILD/deimos$DR_EXT" "${args[@]}"
 '''
 
@@ -111,33 +271,84 @@ depends = ["build"]
 run = "DR_MENU_SHOT=main_netplay DR_SHOT=docs/images/main-menu $DR_BUILD/deimos$DR_EXT"
 
 [tasks.check]
-description = "Type-check and vet every package"
+description = "Type-check and vet every package, for this OS and for the other one CI builds on"
 depends = ["setup"]
 run = [
   "odin check game $DR_COLL -vet -strict-style",
   "odin check sim  $DR_COLL -vet -strict-style -no-entry-point",
+  "odin check blocks $DR_COLL -vet -strict-style -no-entry-point",
+  "odin check plugin_entry $DR_COLL -vet -strict-style -no-entry-point",
+  "odin check all_plugins $DR_COLL -vet -strict-style -no-entry-point",
+  "for p in sim/*/ sim/systems/*/; do [ -d $p ] && [ \"$(basename $p)\" != systems ] || continue; odin check $p $DR_COLL -vet -strict-style -no-entry-point || exit 1; done",
   "odin check data $DR_COLL -vet -strict-style -no-entry-point",
-  "odin check net  $DR_COLL -vet -strict-style -no-entry-point",
   "odin check prefs $DR_COLL -vet -strict-style -no-entry-point",
+  "odin check render $DR_COLL -vet -strict-style -no-entry-point",
+  "odin check ui $DR_COLL -vet -strict-style -no-entry-point",
   "odin check oracle $DR_COLL -vet -strict-style -no-entry-point",
+  # A data plugin's folder holds no code (D52). A plugin's packages are
+  # its folder, view/, tests/ and any other (netplay's net/).
+  "for p in plugins/*/ plugins/*/*/; do ls $p*.odin >/dev/null 2>&1 || continue; odin check $p $DR_COLL -vet -strict-style -no-entry-point || exit 1; done",
   "odin check tools/extract $DR_COLL -vet -strict-style",
   "odin check tools/verify  $DR_COLL -vet -strict-style",
   "odin check tools/records $DR_COLL -vet -strict-style",
+  "odin check tools/simbench $DR_COLL -vet -strict-style",
+  "odin check tools/simbench $DR_COLL -vet -strict-style -define:DR_SIM_PROFILE=true",
   "odin check tools/diff    $DR_COLL -vet -strict-style",
   "odin check tools/rngcheck $DR_COLL -vet -strict-style",
   "odin check tools/icons   $DR_COLL -vet -strict-style",
   "odin check tools/recolour $DR_COLL -vet -strict-style",
   "odin check tools/dps     $DR_COLL -vet -strict-style",
   "odin check tools/clips   $DR_COLL -vet -strict-style",
+  "odin check tools/globals $DR_COLL -vet -strict-style",
+  "odin check terrain $DR_COLL -vet -strict-style -no-entry-point",
+  "odin check tools/terrain $DR_COLL -vet -strict-style",
+  "odin check tools/materials $DR_COLL -vet -strict-style",
+  "odin check tools/bases $DR_COLL -vet -strict-style",
+  "odin check tools/models $DR_COLL -vet -strict-style",
+  "odin check tools/preview_fit $DR_COLL -vet -strict-style",
+  "odin check tests/terrain $DR_COLL -vet -strict-style -no-entry-point",
+  "odin check editor $DR_COLL -vet -strict-style",
+  "odin check tests/editor $DR_COLL -vet -strict-style -no-entry-point",
+  "odin check tests $DR_COLL -vet -strict-style -no-entry-point",
+  "odin check tests/support $DR_COLL -vet -strict-style -no-entry-point",
+  "odin check tests/data_plugins $DR_COLL -vet -strict-style -no-entry-point",
+  # Every package again as the other OS CI builds on would see it: a
+  # `when ODIN_OS` block or a Linux-only file can leave an import unused
+  # only there, which failed the Windows build (CI run 36967083184).
+  "other=windows_amd64; [ \"$OS\" = Windows_NT ] && other=linux_amd64; for p in game blocks plugin_entry all_plugins sim sim/*/ sim/systems/*/ data prefs render ui oracle terrain editor plugins/*/ plugins/*/*/ tools/*/ tests tests/support tests/data_plugins tests/terrain tests/editor; do ls $p/*.odin >/dev/null 2>&1 || continue; e=-no-entry-point; grep -qs '^main ::' $p/*.odin && e=; odin check $p $DR_COLL -vet -strict-style $e -target:$other || exit 1; done",
 ]
 
 [tasks.test]
-description = "Run the Odin test suite"
+description = "Run the Odin test suite: tests/, then each plugin's own (plugins/<name>/tests, the tests of what that plugin adds), then tests/data_plugins, a package of its own because it registers the fixture plugins in tests/fixtures/plugins (D52), then tests/terrain and tests/editor, which draw through GL under xvfb-run (skipped without a display), tests/editor on a D-Bus of its own (dbus-run-session)"
 depends = ["setup"]
-run = "odin test tests $DR_COLL $DR_LINK -out:$DR_BUILD/tests$DR_EXT"
+run = [
+  "odin test tests $DR_COLL $DR_LINK -out:$DR_BUILD/tests$DR_EXT",
+  "for p in plugins/*/tests/; do ls $p*.odin >/dev/null 2>&1 || continue; odin test $p $DR_COLL $DR_LINK -out:$DR_BUILD/tests-$(basename $(dirname $p))$DR_EXT || exit 1; done",
+  "odin test tests/data_plugins $DR_COLL $DR_LINK -out:$DR_BUILD/tests-data-plugins$DR_EXT",
+  # Never on the desktop: under xvfb-run, or with no display at all, when
+  # the GL cases skip.
+  "if command -v xvfb-run >/dev/null; then set -- xvfb-run -a -s '-screen 0 1280x1024x24'; fi; env DISPLAY= WAYLAND_DISPLAY= \"$@\" odin test tests/terrain $DR_COLL $DR_LINK -out:$DR_BUILD/tests-terrain$DR_EXT",
+  # And on a D-Bus of its own, where the file dialog's test plays the
+  # desktop portal: on the desktop's, the real one would show a dialog.
+  # DR_XVFB says the display is Xvfb's, where a test may move the pointer.
+  "if command -v xvfb-run >/dev/null; then set -- xvfb-run -a -s '-screen 0 1280x1024x24' env DR_XVFB=1; fi; if command -v dbus-run-session >/dev/null; then set -- env DR_PRIVATE_BUS=1 dbus-run-session -- \"$@\"; fi; env DISPLAY= WAYLAND_DISPLAY= \"$@\" odin test tests/editor $DR_COLL $DR_LINK -out:$DR_BUILD/tests-editor$DR_EXT",
+]
+
+[tasks.coverage]
+description = "Block coverage of the simulation by the test suite (build/coverage/missed.txt lists what never ran)"
+depends = ["setup"]
+run = [
+  "python3 tools/coverage/coverage.py instrument . $DR_BUILD/coverage",
+  "rm -f $DR_BUILD/coverage/hits.bin",
+  "DR_COV_OUT=$DR_BUILD/coverage/hits.bin odin test $DR_BUILD/coverage/tests -collection:dr=$DR_BUILD/coverage $DR_LINK -out:$DR_BUILD/coverage/run-tests$DR_EXT",
+  # The plugins' own tests mark the same counters.
+  "for p in $DR_BUILD/coverage/plugins/*/tests/; do ls $p*.odin >/dev/null 2>&1 || continue; DR_COV_OUT=$DR_BUILD/coverage/hits.bin odin test $p -collection:dr=$DR_BUILD/coverage $DR_LINK -out:$DR_BUILD/coverage/run-tests-$(basename $(dirname $p))$DR_EXT || exit 1; done",
+  "python3 tools/coverage/coverage.py report $DR_BUILD/coverage",
+]
 
 [tasks.purity]
-description = "Enforce: sim/ imports no raylib and performs no I/O"
+description = "Enforce: sim/ imports no raylib and performs no I/O, the core imports no plugin, and package state lives in blocks"
+depends = ["setup"]
 run = "bash tools/purity/check.sh"
 
 [tasks."decomp:setup"]
@@ -220,8 +431,12 @@ description = "Our menu render beside the original's (MENU=main); slow, needs or
 depends = ["build"]
 run = "bash tools/oracle/menu_compare.sh"
 
+[tasks."hitstop:announcer"]
+description = "Regenerate the kill-streak announcer's clips (plugins/hitstop/announcer/streaks.txt) with Moonshine TTS and ffmpeg into plugins/hitstop/view/clips; commit the result. Never plays on a device"
+run = "bash plugins/hitstop/announcer/generate.sh"
+
 [tasks."menu-shot"]
-description = "Render one of our own menu screens headlessly, no comparison (MENU=main [OUT=path]; MENU=restarted checks a new game starts with none of the last one's particles; DR_SHOT_HUE=63 sets the accent on preferences_extras; MENU=reward, reward_2p and level_select_easy show easy mode; MENU=loadout, loadout_2p, loadout_placed, chaingun, chaingun_charge, discharge and discharge_charge show New Weapons) -- for a quick look, or debug MENU cases from run_menu_shot"
+description = "Render one of our own menu screens headlessly, no comparison (MENU=main [OUT=path]; MENU=restarted checks a new game starts with none of the last one's particles; DR_SHOT_HUE=63 sets the accent on preferences_extras; MENU=preferences_extras_sliders shows the Extras page with Realtime Lighting on, MENU=preferences_mods shows the Mods page, and preferences_mods_end its last rows (DR_PLUGINS=$PWD/tests/fixtures/plugins:$PWD/plugins adds the data plugin fixtures; MENU=level_select_campaigns shows Level Select on the fixture campaign, and netplay_lobby_campaigns the host's lobby); MENU=reward, reward_2p and level_select_easy show easy mode; MENU=loadout, loadout_2p, loadout_placed, chaingun, chaingun_charge, chaingun_release, discharge_windup, discharge and discharge_charge show New Weapons; MENU=rear_gun_side shows the Rear Gun's side volleys) -- for a quick look, or debug MENU cases from run_menu_shot"
 depends = ["build"]
 # Wrapped in xvfb-run/DISPLAY= exactly like the shots and menu-shots:compare
 # tasks -- running $DR_BUILD/deimos directly (without this) opens a real
@@ -245,6 +460,19 @@ if command -v xvfb-run >/dev/null; then XVFB=(env DISPLAY= xvfb-run -s "-screen 
 [ -f "$OUT.png" ] || { echo "menu-shot: no image written for MENU=$MENU" >&2; exit 1; }
 echo "$OUT.png"
 '''
+
+[tasks."menu-shots:all"]
+description = "Render every menu-shot scenario into OUT, one PNG each (OUT=dir [ROOT=another tree's src/, from `mise run ref`]); names that write no image are listed. Compare two folders with menu-shots:diff"
+depends = ["build"]
+run = "bash tools/refs/menu_shots.sh"
+
+[tasks."menu-shots:diff"]
+description = "Compare two menu-shots:all folders byte for byte (A=base B=new): identical, differing, and names only one has. Particles take random directions, so render the base twice before calling a difference real"
+run = "bash tools/refs/menu_shots_diff.sh"
+
+[tasks.ref]
+description = "Run another commit's own task in a worktree of it under build/refs/, to measure a change against its base (REF=branch-or-commit [TASK=build]; e.g. TASK=bench, TASK=dps:report). Prints the worktree's src/ last, the ROOT for menu-shots:all"
+run = "bash tools/refs/run.sh"
 
 [tasks."weapon-clips"]
 description = "Record a short GIF of each weapon in play on the stage it unlocks: taps, then a charge and its release (WEAPONS='aiic aibg airg aipb aicg aidb plbo' by default, OUT=../work/clips; KEEP_FRAMES=1 keeps the PNG frames in OUT/frames). Headless. See tools/clips"
@@ -296,6 +524,31 @@ DR_ASSETS=$DR_ASSETS DR_FILM=${FILM:-de01} DR_SHOT=/dev/null DR_SHOT_AT=${UNTIL:
 description = "Compare the simulation's random calls with the original's trace, per demo film"
 run = "odin run tools/diff $DR_COLL -out:$DR_BUILD/oracle-diff$DR_EXT --"
 
+[tasks."oracle:diff:saved"]
+description = "Compare the simulation with the committed traces in tests/oracle (shipped demos and players' films); needs the Wine prefix's install (or DR_ORIG_FULL) and assets:films"
+run = """
+set -e
+orig="${DR_ORIG_FULL:-$DR_WINE/prefix/drive_c/DR}"
+odin build tools/diff $DR_COLL -o:speed -out:$DR_BUILD/oracle-diff$DR_EXT
+mkdir -p $DR_BUILD/traces
+status=0
+for t in tests/oracle/*.trace.xz; do
+  n=$(basename "$t" .trace.xz)
+  xz -dc "$t" > "$DR_BUILD/traces/$n.txt"
+  echo "== $n"
+  DR_ORIG="$orig" $DR_BUILD/oracle-diff$DR_EXT "$DR_BUILD/traces/$n.txt" || status=1
+done
+exit $status
+"""
+
+[tasks.bench]
+description = "Time the simulation alone: demo replays, every level in co-op, and rollback snapshots (needs extracted assets)"
+run = "odin run tools/simbench $DR_COLL -o:speed -out:$DR_BUILD/simbench$DR_EXT"
+
+[tasks."bench:profile"]
+description = "Where a step's time goes, by system and stage: the bench, built with the simulation's cycle counting"
+run = "odin run tools/simbench $DR_COLL -o:speed -define:DR_SIM_PROFILE=true -out:$DR_BUILD/simbench-profile$DR_EXT"
+
 [tasks."rng:determinism"]
 description = "Build tools/rngcheck under several codegen configs (-o:none/-speed, -microarch:native, explicit -target-features:fma) and confirm they all print the same RNG digest -- the practical stand-in, on a host with no working Windows cross-link and no second OS to test against, for 'does sim/'s RNG produce the same bits on every platform' (see docs/decisions.md D27 and tests/rand_test.odin's rand_sequence_digest_is_codegen_stable)"
 run = "bash tools/rngcheck/determinism_check.sh"
@@ -310,6 +563,11 @@ description = "Three-instance loopback smoke test for pause-on-disconnect + reco
 depends = ["build"]
 run = "bash tools/netplay/reconnect_check.sh"
 
+[tasks."netplay:level-end"]
+description = "Two instances play the end of the first level together with Easy Mode on, headless and silent, and must both reach the reward screen and stay up (the crash of D50). END=150 steps before the end; HOST_BIN or GUEST_BIN runs one side on another build; KEEP=1 keeps the logs"
+depends = ["build"]
+run = "bash tools/netplay/level_end_check.sh"
+
 [tasks."netplay:lobby-shots"]
 description = "Screenshot every visually distinct netplay lobby state plus the diagnostics overlay, no comparison (there is no original to compare against) -- just for a quick look"
 depends = ["build"]
@@ -321,21 +579,243 @@ depends = ["build"]
 run = '''
 #!/usr/bin/env bash
 set -euo pipefail
-for MENU in preferences_extras netplay_lobby netplay_lobby_name netplay_lobby_join netplay_lobby_connecting netplay_lobby_connected \
-            netplay_lobby_connected_host netplay_lobby_connected_host_locked diagnostics; do
+for MENU in preferences_extras preferences_mods netplay_lobby netplay_lobby_name netplay_lobby_join netplay_lobby_connecting netplay_lobby_connected \
+            netplay_lobby_connected_host netplay_lobby_connected_host_locked netplay_lobby_campaigns diagnostics; do
   MENU="$MENU" mise run menu-shot
 done
 '''
 
 [tasks."assets:extract"]
-description = "Extract original PAKs into modern formats (PNG/WAV/JSON)"
+description = "Extract original PAKs into modern formats (PNG/WAV/JSON) under assets/, and the levels' own images under plugins/classic_levels/"
 depends = ["setup"]
-run = "odin run tools/extract $DR_COLL $DR_LINK -out:$DR_BUILD/extract$DR_EXT -- $DR_ORIG $DR_ASSETS"
+run = "odin run tools/extract $DR_COLL $DR_LINK -out:$DR_BUILD/extract$DR_EXT -- $DR_ORIG $DR_ASSETS \"$DR_PLUGINS\""
+
+[tasks."addons:extract"]
+description = "Unpack orig/deimos_addons.sit (fan mods, demo films, the Mac 1.0.6 bundle update) into work/addons/ for study; needs unar and hfsutils"
+run = "bash ../tools/extract_addons.sh"
+
+[tasks."terrain:build"]
+description = "Build the level project tool (tools/terrain)"
+depends = ["setup"]
+run = "odin build tools/terrain $DR_COLL $DR_LINK -o:speed -out:$DR_BUILD/terrain$DR_EXT"
+
+[tasks."preview:fit"]
+description = "Fit the look of the originals' level previews (a blur, colour mix, tone and vignette over a 3x downscaled crop) from plugins/classic_levels, into terrain/preview_look.odin, which exported previews use; SHOTS=DIR also writes each original beside the fitted look's preview; CPU only"
+depends = ["setup"]
+run = "odin run tools/preview_fit $DR_COLL $DR_LINK -o:speed -out:$DR_BUILD/preview_fit$DR_EXT -- ${SHOTS:+-shots=$SHOTS}"
+
+[tasks."terrain:render"]
+description = "Draw a level project headlessly (PROJECT=path/le07.drproj.json [OUT=path/stem] [OUTPUT=lit|albedo|normal|height|shadow|occlusion|all, default all] [SCALE=1]; extra flags pass through, e.g. -- -quantise)"
+depends = ["terrain:build"]
+run = """
+set -e
+[ -n "$PROJECT" ] || { echo "terrain:render: set PROJECT=path/to/level.drproj.json" >&2; exit 2; }
+headless() {
+  if command -v xvfb-run >/dev/null; then set -- xvfb-run -a -s "-screen 0 1280x1024x24" "$@"; fi
+  env DISPLAY= WAYLAND_DISPLAY= "$@"
+}
+headless "$DR_BUILD/terrain$DR_EXT" render "$PROJECT" "${OUT:-${PROJECT%.drproj.json}.render}" -output=${OUTPUT:-all} -scale=${SCALE:-1} "$@"
+"""
+
+[tasks."terrain:compare"]
+description = "Score a level project's render against the original map: shadow IoU, shadow light, fitted sun azimuth, and a side-by-side PNG (PROJECT=... [ORIGINAL=map.png MASK=mask.png, default the level's own from the Classic Levels plugin] [OUT=side.png]; -- -from=ROW -to=ROW for a part)"
+depends = ["terrain:build"]
+run = """
+set -e
+[ -n "$PROJECT" ] || { echo "terrain:compare: set PROJECT=path/to/level.drproj.json" >&2; exit 2; }
+headless() {
+  if command -v xvfb-run >/dev/null; then set -- xvfb-run -a -s "-screen 0 1280x1024x24" "$@"; fi
+  env DISPLAY= WAYLAND_DISPLAY= "$@"
+}
+headless "$DR_BUILD/terrain$DR_EXT" compare "$PROJECT" $ORIGINAL $MASK -images="$DR_PLUGINS/classic_levels/images/im16" \
+  -out="${OUT:-${PROJECT%.drproj.json}.compare.png}" -fit "$@"
+"""
+
+[tasks."terrain:preview"]
+description = "Set a recovered level project's preview crop to where its original preview was cut from its original map, both by the level's image ids in the Classic Levels plugin, and save it (PROJECT=path/le07.drproj.json); no window"
+depends = ["terrain:build"]
+run = """
+set -e
+[ -n "$PROJECT" ] || { echo "terrain:preview: set PROJECT=path/to/level.drproj.json" >&2; exit 2; }
+"$DR_BUILD/terrain$DR_EXT" preview "$PROJECT" -images="$DR_PLUGINS/classic_levels/images/im16"
+"""
+
+[tasks."terrain:recover"]
+description = "Recover a level project from an original map (LEVEL=le07 into work/terrain/LEVEL/, or OUT=dir): Marigold V2 heights refined against the shadows (-- --seed depth-anything for the fallback), water from the mask and moved to the art's shoreline, the canopy split off, the renderer's light divided out of the colour; in the terrain:marigold-setup venv"
+depends = ["terrain:build"]
+run = """
+set -e
+PY="$DR_MARIGOLD/venv/bin/python"; [ -x "$PY" ] || PY="$DR_MARIGOLD/venv/Scripts/python.exe"
+[ -x "$PY" ] || { echo "no venv at $DR_MARIGOLD/venv: run 'mise run terrain:marigold-setup' first"; exit 1; }
+LEVEL="${LEVEL:-le07}"
+REC="$DR_PLUGINS/classic_levels/data/levels/$LEVEL.json"
+MAP=$("$PY" -c "import json,sys; print(json.load(open(sys.argv[1]))['background_image'])" "$REC")
+MASK=$("$PY" -c "import json,sys; print(json.load(open(sys.argv[1]))['media_mask'])" "$REC")
+"$PY" tools/terrain_recover/recover.py "$MAP" --mask "$MASK" --level "$REC" --renderer "$DR_BUILD/terrain$DR_EXT" \
+  --images "$DR_PLUGINS/classic_levels/images/im16" --out "${OUT:-$DR_SRC/../work/terrain/$LEVEL}" "$@"
+"""
+
+[tasks."terrain:aerial"]
+description = "Make a level project from LINZ aerial imagery (LAT=-42.43 LON=171.19 ID=greymouth [NAME=...], into work/aerial/ID/): a strip south from the GPS point, its water from OpenStreetMap (water_mask.py --osm, which a mask texture would otherwise give; ODbL), its LiDAR DEM/DSM (elevation.py), then terrain:recover's pipeline on it with the DEM as the ground, the DSM's tree heights and Marigold's roof shapes scaled to the DSM's, then populate.py's units on its open ground. DEVICE=cpu by default (Marigold itself only runs on the GPU); -- args go to recover.py"
+depends = ["terrain:build"]
+run = """
+set -e
+PY="$DR_MARIGOLD/venv/bin/python"; [ -x "$PY" ] || PY="$DR_MARIGOLD/venv/Scripts/python.exe"
+[ -x "$PY" ] || { echo "no venv at $DR_MARIGOLD/venv: run 'mise run terrain:marigold-setup' first"; exit 1; }
+[ -n "$LAT" ] && [ -n "$LON" ] && [ -n "$ID" ] || { echo "terrain:aerial: set LAT, LON (the strip's northernmost point) and ID" >&2; exit 2; }
+OUT="${OUT:-$DR_SRC/../work/aerial/$ID}"
+"$PY" -m pip install -q rasterio pyproj
+"$PY" tools/terrain_recover/aerial.py "$LAT" "$LON" --id "$ID" --name "${NAME:-$ID}" --out "$OUT"
+"$PY" tools/terrain_recover/water_mask.py "$OUT/images/${ID}_map.png" "$OUT/images/${ID}_mask.png" --osm "$LAT" "$LON" --preview "$OUT/water-preview.png"
+"$PY" tools/terrain_recover/elevation.py "$LAT" "$LON" --out "$OUT/elevation"
+"$PY" tools/terrain_recover/recover.py "${ID}_map" --mask "${ID}_mask" --level "$OUT/$ID.json" --renderer "$DR_BUILD/terrain$DR_EXT" \
+  --images "$OUT/images" --out "$OUT/project" --device "${DEVICE:-cpu}" --lidar "$OUT/elevation" "$@"
+"$PY" tools/terrain_recover/populate.py "$OUT/project/$ID.drproj.json" "$OUT/images/${ID}_map.png" "$OUT/images/${ID}_mask.png" --level "$OUT/$ID.json"
+"""
+
+[tasks."terrain:relight"]
+description = "Refit a recovered level's colour to its occlusion layer (LEVEL=le07 in work/terrain/LEVEL/, or OUT=dir): the layer fitted to the original's shadows and divided out with the rest of the light, the water refitted over its lit bed; no model runs, after terrain:occlusion"
+depends = ["terrain:build"]
+run = """
+set -e
+PY="$DR_MARIGOLD/venv/bin/python"; [ -x "$PY" ] || PY="$DR_MARIGOLD/venv/Scripts/python.exe"
+[ -x "$PY" ] || { echo "no venv at $DR_MARIGOLD/venv: run 'mise run terrain:marigold-setup' first"; exit 1; }
+LEVEL="${LEVEL:-le07}"
+REC="$DR_PLUGINS/classic_levels/data/levels/$LEVEL.json"
+MAP=$("$PY" -c "import json,sys; print(json.load(open(sys.argv[1]))['background_image'])" "$REC")
+MASK=$("$PY" -c "import json,sys; print(json.load(open(sys.argv[1]))['media_mask'])" "$REC")
+"$PY" tools/terrain_recover/recover.py "$MAP" --mask "$MASK" --level "$REC" --renderer "$DR_BUILD/terrain$DR_EXT" \
+  --images "$DR_PLUGINS/classic_levels/images/im16" --out "${OUT:-$DR_SRC/../work/terrain/$LEVEL}" --relight "$@"
+"""
+
+[tasks."terrain:recover-all"]
+description = "Recover every Classic Levels map into work/recovered/LEVEL/, bake its occlusion, refit its colour to it (terrain:relight), crop its preview where the original's was (terrain:preview), and score them all (terrain:report); LEVELS='le01 le07' for some"
+depends = ["terrain:build"]
+run = '''
+set -e
+DIR="$DR_SRC/../work/recovered"
+LEVELS="${LEVELS:-$(ls "$DR_PLUGINS/classic_levels/data/levels" | sed -n 's/\.json$//p')}"
+for L in $LEVELS; do
+  echo "== $L"
+  LEVEL="$L" OUT="$DIR/$L" mise run terrain:recover
+  PROJECT="$DIR/$L/$L.drproj.json" mise run terrain:occlusion
+  LEVEL="$L" OUT="$DIR/$L" mise run terrain:relight
+  PROJECT="$DIR/$L/$L.drproj.json" mise run terrain:preview
+done
+LEVELS="$LEVELS" mise run terrain:report
+'''
+
+[tasks."terrain:report"]
+description = "Score each recovered level in work/recovered/ against its original (terrain:compare, drawn with its occlusion layer as the game draws it, and without it for reference) into work/recovered/report.md; LEVELS='le01 le07' for some"
+depends = ["terrain:build"]
+run = '''
+set -e
+DIR="$DR_SRC/../work/recovered"
+LEVELS="${LEVELS:-$(ls "$DR_PLUGINS/classic_levels/data/levels" | sed -n 's/\.json$//p')}"
+REPORT="$DIR/report.md"
+{
+  echo "# Recovered Classic Levels"
+  echo
+  echo "terrain:compare on each project, whole map, $(date +%Y-%m-%d), drawn with its occlusion layer as the game draws it. terrain:relight fits the colour to that layer (D59), so the draw without it is darker in the art's shadows than the original and is kept only for reference. The plan's bar: shadow IoU 0.75."
+  echo
+  echo "| Level | Shadow IoU | Shadow light (render / original) | Fitted azimuth (cast IoU) | Water: levels from the original, share of its grain | Shadow IoU without occlusion |"
+  echo "|---|---|---|---|---|---|"
+} > "$REPORT"
+for L in $LEVELS; do
+  echo "== $L"
+  P="$DIR/$L/$L.drproj.json"
+  PROJECT="$P" mise run terrain:compare -- -no-occlusion | tee "$DIR/$L/compare.txt"
+  PROJECT="$P" OUT="$DIR/$L/$L.compare-occlusion.png" mise run terrain:compare | tee "$DIR/$L/compare-occlusion.txt"
+  C="$DIR/$L/compare-occlusion.txt"
+  IOU=$(sed -n 's/^shadow IoU \([0-9.]*\).*/\1/p' "$C")
+  LIGHT=$(sed -n 's/^shadow light: original \([0-9.]*\), render \([0-9.]*\).*/\2 \/ \1/p' "$C")
+  AZ=$(sed -n 's/^fitted azimuth \([0-9]*\) (cast-shadow IoU \([0-9.]*\)).*/\1° (\2)/p' "$C")
+  WATER=$(sed -n 's/^water: \([0-9.]*\) levels from the original, \([0-9.]*\) of its grain/\1, \2/p' "$C")
+  BARE=$(sed -n 's/^shadow IoU \([0-9.]*\).*/\1/p' "$DIR/$L/compare.txt")
+  echo "| $L | $IOU | $LIGHT | $AZ | $WATER | $BARE |" >> "$REPORT"
+done
+cat "$REPORT"
+'''
+
+[tasks."terrain:mod"]
+description = "Export the levels recovered in work/recovered/ as the Recovered Levels campaign plugin (plugins/recovered_levels) through the level editor's export: tools/terrain_mod/recovered_levels.drcampaign.json, each map drawn lit with its occlusion, its preview cut where the original's was (terrain:preview), its media mask from its water; OUT=dir for elsewhere"
+run = '''
+set -e
+CAMPAIGN="$DR_SRC/tools/terrain_mod/recovered_levels.drcampaign.json" TO="${OUT:-$DR_SRC/plugins/recovered_levels}" mise run editor:export
+'''
+
+[tasks."terrain:occlusion"]
+description = "Bake a level project's occlusion layer, how open to the sky each pixel is, from its colour with Flux 2 [klein] (PROJECT=...; in the hd:setup venv)"
+depends = ["terrain:build"]
+run = """
+set -e
+[ -n "$PROJECT" ] || { echo "terrain:occlusion: set PROJECT=path/to/level.drproj.json" >&2; exit 2; }
+PY="$DR_HD_VENV/bin/python"; [ -x "$PY" ] || PY="$DR_HD_VENV/Scripts/python.exe"
+[ -x "$PY" ] || { echo "no venv at $DR_HD_VENV: run 'mise run hd:setup' first"; exit 1; }
+"$PY" tools/terrain_occlusion/occlusion.py "$PROJECT" --renderer "$DR_BUILD/terrain$DR_EXT" "$@"
+"""
+
+[tasks."terrain:marigold-setup"]
+description = "Set up Marigold V2 for terrain:recover in DR_MARIGOLD: the pinned checkout and patch, a Python 3.10 venv (torch from TORCH_INDEX, default CUDA 12.8), the weights at pinned revisions (~45 GB)"
+run = "sh tools/terrain_recover/setup_marigold.sh"
+
+[tasks."hd:setup"]
+description = "Create the Python venv for hd:upscale (torch from TORCH_INDEX, default CUDA 12.8; see tools/hd_upscale/README.md for ROCm)"
+run = """
+set -e
+TORCH_INDEX="${TORCH_INDEX:-https://download.pytorch.org/whl/cu128}"
+[ -d "$DR_HD_VENV" ] || python3 -m venv "$DR_HD_VENV"
+PY="$DR_HD_VENV/bin/python"; [ -x "$PY" ] || PY="$DR_HD_VENV/Scripts/python.exe"
+"$PY" -m pip install --upgrade pip
+"$PY" -m pip install --index-url "$TORCH_INDEX" torch
+"$PY" -m pip install -r tools/hd_upscale/requirements.txt
+"$PY" -c "import torch; print('torch', torch.__version__, 'GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none')"
+"""
+
+[tasks."hd:upscale"]
+description = "Upscale a level map 4x with Flux detail transfer into work/hd/MAP/ (MAP=jum2 is level 1; resumable; extra flags pass through, e.g. -- --limit 2)"
+run = """
+set -e
+PY="$DR_HD_VENV/bin/python"; [ -x "$PY" ] || PY="$DR_HD_VENV/Scripts/python.exe"
+[ -x "$PY" ] || { echo "no venv at $DR_HD_VENV: run 'mise run hd:setup' first"; exit 1; }
+"$PY" tools/hd_upscale/upscale.py "${MAP:-jum2}" --images "$DR_PLUGINS/classic_levels/images/im16" --out "$DR_SRC/../work/hd/${MAP:-jum2}" "$@"
+"""
+
+[tasks."hd:textures:setup"]
+description = "Create the CPU-only Python venv for the HD textures tools (hd:textures:bench, hd:textures) at $DR_SR_VENV"
+run = """
+set -e
+DR_SR_VENV="${DR_SR_VENV:-$HOME/.cache/deimos-rising/sr-venv}"
+[ -d "$DR_SR_VENV" ] || python3 -m venv "$DR_SR_VENV"
+PY="$DR_SR_VENV/bin/python"
+"$PY" -m pip install --upgrade pip
+"$PY" -m pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision
+"$PY" -m pip install -r tools/hd_textures/requirements.txt
+"$PY" -c "import torch, spandrel; print('torch', torch.__version__, 'threads', torch.get_num_threads(), 'spandrel', spandrel.__version__)"
+"""
+
+[tasks."hd:textures"]
+description = "Redraw the game's sprite plates, interface images and level maps at twice their size on the CPU (Nomos SPAN, chosen by hd:textures:bench) into plugins/hd_textures/textures/; resumable, minutes to an hour. ONLY='BAGU back' limits it to those files"
+run = """
+set -e
+PY="${DR_SR_VENV:-$HOME/.cache/deimos-rising/sr-venv}/bin/python"
+[ -x "$PY" ] || { echo "run 'mise run hd:textures:setup' first"; exit 1; }
+"$PY" tools/hd_textures/upscale.py --assets "$DR_ASSETS" --out plugins/hd_textures --levels plugins/classic_levels plugins/recovered_levels ${ONLY:+--only $ONLY} "$@"
+"""
+
+[tasks."hd:textures:bench"]
+description = "Compare 2x upscalers on the game's own sprites, on the CPU: each shrinks a sample of the sprites 2x, scales them back and is scored against the originals (PSNR, SSIM), with side-by-side sheets in work/hd_textures/bench/ (N=sprites in the sample, default 24)"
+run = """
+set -e
+PY="${DR_SR_VENV:-$HOME/.cache/deimos-rising/sr-venv}/bin/python"
+[ -x "$PY" ] || { echo "run 'mise run hd:textures:setup' first"; exit 1; }
+"$PY" tools/hd_textures/bench.py --assets "$DR_ASSETS" --out "$DR_SRC/../work/hd_textures/bench" --count "${N:-24}" "$@"
+"""
 
 [tasks."assets:records"]
-description = "Decode the tagged-text resources into JSON under assets/data/"
+description = "Decode the tagged-text resources into JSON under assets/data/, and the levels under plugins/classic_levels/data/levels/"
 depends = ["setup"]
-run = "odin run tools/records $DR_COLL $DR_LINK -out:$DR_BUILD/records$DR_EXT -- $DR_ASSETS"
+run = "odin run tools/records $DR_COLL $DR_LINK -out:$DR_BUILD/records$DR_EXT -- $DR_ASSETS \"$DR_PLUGINS\""
 
 [tasks."assets:all"]
 description = "Extract media, decode records and composite the icons made from them"
@@ -353,16 +833,18 @@ odin run tools/icons $DR_COLL $DR_LINK -out:$DR_BUILD/icons$DR_EXT -- \
 """
 
 [tasks."assets:extra"]
-description = "Recolour extracted sprite plates into the new content's own (RECIPE=tools/recolour/extra.json by default: the Chaingun's dark grey ships, from the Bacta Gun's, and its brighter rounds). Writes assets/extra/sprites/, which the game loads beside its own sprites; the extra tree's records in assets/extra/data are written by hand"
+description = "Recolour extracted sprite plates into the plugins' own, one recipe per plugin (RECIPE=tools/recolour/new_weapons.json for one; every tools/recolour/*.json by default). Each writes plugins/<plugin>/sprites/, which the game loads beside its own sprites while that plugin is in the build; the records in plugins/<plugin>/data are written by hand"
 depends = ["setup"]
 # CPU-side raylib image calls only: no window and no audio device are opened.
 run = """
-odin run tools/recolour $DR_COLL $DR_LINK -out:$DR_BUILD/recolour$DR_EXT -- \
-  "${RECIPE:-tools/recolour/extra.json}" "$DR_ASSETS"
+odin build tools/recolour $DR_COLL $DR_LINK -out:$DR_BUILD/recolour$DR_EXT
+for recipe in ${RECIPE:-tools/recolour/*.json}; do
+  $DR_BUILD/recolour$DR_EXT "$recipe" "$DR_ASSETS" "$DR_PLUGINS" || exit 1
+done
 """
 
 [tasks."dps:report"]
-description = "Measure every weapon's damage per second in the simulation alone -- against one target ahead, a cluster of five, one target behind and a killable wave of nine, bare and with each passive at each level, as primary fire and as charge shots -- and write a dated HTML report (OUT=../work/reports by default; DPS_SECONDS=60 of play per run, DPS_STAGE=7). WEAPON='Rear Gun' measures that weapon alone and writes dps-<date>-rear-gun.html; the weapons are Ion Cannon, Bacta Gun, Rear Gun, Photon Beam, Chaingun, Discharge Beam and Plasma Bomb (case does not matter). See docs/dps-report.md"
+description = "Measure every weapon's damage per second in the simulation alone -- against one target ahead, a cluster of five, one target behind and a killable wave of nine (and one ground target for an air weapon whose passive lets its shots hit the ground), bare and with each passive at each level, as primary fire and as charge shots -- and write a dated HTML report (OUT=../work/reports by default; DPS_SECONDS=60 of play per run, DPS_STAGE=7). WEAPON='Rear Gun' measures that weapon alone and writes dps-<date>-rear-gun.html; the weapons are Ion Cannon, Bacta Gun, Rear Gun, Photon Beam, Chaingun, Discharge Beam and Plasma Bomb (case does not matter). See docs/dps-report.md"
 depends = ["setup"]
 # The sim only: no window, no audio device. Runs spread over every core.
 run = """
@@ -371,10 +853,32 @@ odin build tools/dps $DR_COLL $DR_LINK -o:speed -out:$DR_BUILD/dps$DR_EXT && \
   -seconds:${DPS_SECONDS:-60} -stage:${DPS_STAGE:-7} ${WEAPON:+"-weapon:$WEAPON"}
 """
 
+[tasks."assets:films"]
+description = "Fetch the players' demo films for levels 1-11 from Macintosh Garden's add-ons archive (checksum-pinned, kept in orig/) and extract them to assets/films as pd01..pd11 and dl01, dl04..dl10; needs unar"
+run = "bash tools/films/fetch.sh"
+
 [tasks."assets:verify"]
 description = "Verify extracted assets against the manifest and the original PAKs"
 depends = ["setup"]
-run = "odin run tools/verify $DR_COLL $DR_LINK -out:$DR_BUILD/verify$DR_EXT -- $DR_ORIG $DR_ASSETS"
+run = "odin run tools/verify $DR_COLL $DR_LINK -out:$DR_BUILD/verify$DR_EXT -- $DR_ORIG $DR_ASSETS \"$DR_PLUGINS\""
+
+[tasks."site:build"]
+description = "Build the website from site/site.config.json into build/site (OUT=dir to change it; OFFLINE=1 skips the releases API). CI runs it before every Pages deployment (.github/workflows/site.yml); needs Node 20+"
+run = 'node site/build.mjs --out "${OUT:-$DR_BUILD/site}" ${OFFLINE:+--offline}'
+
+[tasks."site:check"]
+description = "Fail unless this branch adds an entry to site/site.config.json's changes, compared with BASE (default origin/main): every feature branch merged to main does (AGENTS.md). The pull request workflow runs it against the pull request's base"
+run = 'node site/check.mjs ${BASE:-}'
+
+[tasks."site:shots"]
+description = "Render each plugin's screenshot for the website into site/shots/<plugin>.webp, from the scenario its entry in site.config.json names (ONLY='water wind' for some); commit the images. Needs the game's assets, a display and ImageMagick (site/shots.mjs)"
+depends = ["build"]
+run = 'node site/shots.mjs'
+
+[tasks."site:serve"]
+description = "Build the website and serve it on http://localhost:8000 (PORT=n to change it)"
+depends = ["site:build"]
+run = 'cd "$DR_BUILD/site" && python3 -m http.server "${PORT:-8000}"'
 
 [tasks.ci]
 description = "Everything CI runs"

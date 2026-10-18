@@ -16,6 +16,7 @@ import "core:encoding/json"
 import "core:image/png"
 import "core:os"
 import "core:path/filepath"
+import "core:slice"
 import "core:strconv"
 import "core:strings"
 
@@ -71,12 +72,90 @@ Json_Level :: struct {
 	id:               string           `json:"id"`,
 	name:             string           `json:"name"`,
 	identifier:       string           `json:"identifier"`,
+	// The originals' too, which the game does not show yet: kept so the
+	// level editor carries them through (tools/records writes them).
+	description:      string           `json:"description"`,
+	copyright:        string           `json:"copyright"`,
+	briefing:         string           `json:"briefing"`,
 	background:       [4]int           `json:"background"`,
 	background_image: string           `json:"background_image"`,
 	preview_image:    string           `json:"preview_image"`,
 	music:            string           `json:"music"`,
 	media_mask:       string           `json:"media_mask"`,
 	placements:       []Json_Placement `json:"placements"`,
+	// Not the original's, and all optional (D54): no original level has
+	// any of them.
+	start_weapons:    Json_Start_Weapons `json:"start_weapons"`,
+	wind:             Level_Wind         `json:"wind"`,
+	water:            Level_Water        `json:"water"`,
+	lighting:         Level_Lighting     `json:"lighting"`,
+	skybox:           string             `json:"skybox"`,
+	layers:           Level_Layers       `json:"layers"`,
+}
+
+// Weapon ids ("aipb"): what a player starts the level with, in place of
+// what its number brings.
+Json_Start_Weapons :: struct {
+	air:    string `json:"air"`,
+	ground: string `json:"ground"`,
+}
+
+// The wind over a level, for the presentation: particles and water. A
+// direction as placements' headings are.
+Level_Wind :: struct {
+	direction_degrees: f32 `json:"direction_degrees"`,
+	strength:          f32 `json:"strength"`, // 0 for still air
+}
+
+// The water plane the level was rendered with, in the editor's height
+// units. The simulation reads only the media mask exported from it.
+Level_Water :: struct {
+	height:  f32   `json:"height"`,
+	colour:  [3]u8 `json:"colour"`,
+	visible: bool  `json:"visible"`,
+}
+
+// The light the level was rendered with. A field left out keeps
+// LIGHTING_MEASURED's value.
+Level_Lighting :: struct {
+	sun_azimuth_degrees:   f32   `json:"sun_azimuth_degrees"`,
+	sun_elevation_degrees: f32   `json:"sun_elevation_degrees"`,
+	sun_colour:            [3]u8 `json:"sun_colour"`,
+	ambient_colour:        [3]u8 `json:"ambient_colour"`,
+	ambient:               f32   `json:"ambient"`,  // the share of full light left in shadow
+	softness:              f32   `json:"softness"`, // the penumbra's width, in map pixels
+}
+
+// The originals' light, measured on their maps
+// (notes/headless-3d-to-2d-findings.md): a white sun at azimuth 36°,
+// 40° up, and neutral shadow at 0.44 of full light, a few pixels soft.
+// The silos' shadows alone said about 28° up; le07's recovered terrain
+// matches the art's shadows as well at 40° and their darkness better (D55).
+LIGHTING_MEASURED :: Level_Lighting {
+	sun_azimuth_degrees   = 36,
+	sun_elevation_degrees = 40,
+	sun_colour            = {255, 255, 255},
+	ambient_colour        = {255, 255, 255},
+	ambient               = 0.44,
+	softness              = 3,
+}
+
+// Optional exports beside the map, for presentation mods (Stage 10 of
+// notes/level-editor-plan.md): im16 image ids, empty when not exported.
+Level_Layers :: struct {
+	albedo:      string `json:"albedo"`,
+	// The ground's surface normal per map pixel, RGB for -1..1, at the map's
+	// size (terrain/specular.odin).
+	normal:      string `json:"normal"`,
+	height:      string `json:"height"`,
+	// Where the sun reaches, one grey byte per map pixel at the map's size:
+	// 255 in the light, 0 in shadow (terrain.Output.Shadow). The lighting
+	// lets a shot that is down light shadow.
+	shadow_mask: string `json:"shadow_mask"`,
+	hd_map:      string `json:"hd_map"`,
+	// How glossy the ground is, one grey byte per map pixel at the map's
+	// size (terrain/specular.odin): the lighting's highlights.
+	specular:    string `json:"specular"`,
 }
 
 Json_Frame :: struct {
@@ -102,7 +181,7 @@ Json_Sprite_Index :: struct {
 // plate and draws sub-rectangles of it.
 Sprite_Plate :: struct {
 	id:     sim.Res_ID, // lower-case, as units name it
-	image:  string,     // path relative to the assets root
+	image:  string,     // the PNG's path: under the assets root, or a plugin's folder
 	width:  int,
 	height: int,
 	frames: []Json_Frame,
@@ -112,10 +191,17 @@ Sprite_Plate :: struct {
 // the music track. The simulation knows none of this.
 Level_Media :: struct {
 	id:         sim.Res_ID,
+	campaign:   sim.Plugin_ID, // as the level's sim.Level_Def
 	name:       string,
 	background: string, // im16 image id
 	preview:    string,
 	music:      string,
+	// Not the original's (D54).
+	wind:       Level_Wind,
+	water:      Level_Water,
+	lighting:   Level_Lighting,
+	skybox:     string, // an im16 image id, empty for none
+	layers:     Level_Layers,
 }
 
 // Where the score bar's widgets sit, per player (G_ScoreBar_Init's
@@ -187,7 +273,72 @@ Assets :: struct {
 	// (assets/audio/mu03.wav is a 196s stereo track, not a one-shot effect --
 	// see Level_Media.music). The game loads each of these once as a short
 	// sound effect; music streams from disk instead, via Level_Media.music.
+	// A plugin's own sounds are listed too (assets_audio_path).
 	sounds: []string,
+	// The im16 images and sounds that plugins' content folders bring, by id:
+	// where each file is. Ids the core tree already has are not taken, so a
+	// plugin adds media and never replaces the original's (D51).
+	plugin_images: map[string]string,
+	plugin_audio:  map[string]string,
+	// The plugins that redraw the game's images larger, in plugin order
+	// (assets_texture_pack).
+	texture_packs: []Texture_Pack,
+}
+
+// A plugin's textures/ folder: the game's images redrawn `scale` times
+// larger, found by the path the original has under the assets root.
+Texture_Pack :: struct {
+	plugin: sim.Plugin_ID,
+	scale:  i32,
+	files:  map[string]string, // "sprites/im08/BAGU.png" -> where the redrawn one is
+}
+
+// Which sub-folders of a texture pack are read: the sprite plates and the
+// interface images. Level maps are not: the terrain's burn marks are
+// written at the map's own resolution.
+TEXTURE_PACK_DIRS :: [?]string{"sprites/im08", "images/im16"}
+
+// The redrawn image for `rel` from the first of the plugins in `mods` that
+// has one, and how many times larger it is.
+assets_texture_pack :: proc(a: ^Assets, mods: sim.Mods, rel: string) -> (path: string, scale: i32, ok: bool) {
+	for &p in a.texture_packs {
+		if int(p.plugin) in mods {
+			if path, ok = p.files[rel]; ok {
+				return path, p.scale, true
+			}
+		}
+	}
+	return
+}
+
+@(private = "file")
+texture_packs_find :: proc(allocator := context.allocator) -> []Texture_Pack {
+	packs := make([dynamic]Texture_Pack, allocator)
+	for i in 1 ..< len(sim.registered_plugins()) {
+		dir, found := plugin_content_dir(sim.Plugin_ID(i))
+		if !found {
+			continue
+		}
+		m: Json_Plugin
+		if !read_json(strings.concatenate({dir, "/", PLUGIN_MANIFEST}, context.temp_allocator), &m, context.temp_allocator) || m.texture_scale < 2 {
+			continue
+		}
+		pack := Texture_Pack{plugin = sim.Plugin_ID(i), scale = i32(m.texture_scale), files = make(map[string]string, allocator)}
+		for sub in TEXTURE_PACK_DIRS {
+			paths, err := filepath.glob(strings.concatenate({dir, "/textures/", sub, "/*.png"}, context.temp_allocator), context.temp_allocator)
+			if err != nil {
+				continue
+			}
+			for path in paths {
+				rel := strings.concatenate({sub, "/", filepath.base(path)}, allocator)
+				pack.files[rel] = strings.concatenate({dir, "/textures/", rel}, allocator)
+			}
+		}
+		if len(pack.files) > 0 {
+			append(&packs, pack)
+		}
+	}
+	return packs[:]
 }
 
 // --- loading ---------------------------------------------------------------
@@ -230,12 +381,30 @@ id_of :: proc(path: string) -> string {
 assets_open :: proc(root: string, allocator := context.allocator) -> (a: Assets) {
 	a.root = strings.clone(root, allocator)
 
-	// The game's plates, then the new content's (assets/extra): both
-	// indexes give image paths relative to the assets root.
+	// The game's plates, then each plugin's (extra_defs_load). The game's
+	// index gives image paths relative to the assets root, a plugin's
+	// relative to its own folder; the plates keep the joined path.
+	Index :: struct {
+		path, dir: string,
+	}
 	plates := make([dynamic]Sprite_Plate, 0, 400, allocator)
-	for index in ([2]string{"/sprites/index.json", "/extra/sprites/index.json"}) {
+	indexes := make([dynamic]Index, 0, len(sim.registered_plugins()), context.temp_allocator)
+	append(&indexes, Index{strings.concatenate({root, "/sprites/index.json"}, context.temp_allocator), root})
+	a.plugin_images = make(map[string]string, allocator)
+	a.plugin_audio = make(map[string]string, allocator)
+	a.texture_packs = texture_packs_find(allocator)
+	for i in 1 ..< len(sim.registered_plugins()) {
+		if dir, found := plugin_content_dir(sim.Plugin_ID(i)); found {
+			append(&indexes, Index{strings.concatenate({dir, "/sprites/index.json"}, context.temp_allocator), dir})
+			plugin_media_add(&a.plugin_images, root, "/images/im16/", dir, ".png", allocator = allocator)
+			for ext in AUDIO_EXTENSIONS {
+				plugin_media_add(&a.plugin_audio, root, "/audio/", dir, ext, ".wav", allocator)
+			}
+		}
+	}
+	for index in indexes {
 		idx: Json_Sprite_Index
-		if !read_json(strings.concatenate({root, index}, context.temp_allocator), &idx, context.temp_allocator) {
+		if !read_json(index.path, &idx, context.temp_allocator) {
 			continue
 		}
 		for s in idx.sprites {
@@ -243,7 +412,7 @@ assets_open :: proc(root: string, allocator := context.allocator) -> (a: Assets)
 			copy(frames, s.frames)
 			append(&plates, Sprite_Plate {
 				id     = sim.res_id_lower(sim.res_id(s.fourcc)),
-				image  = strings.clone(s.image, allocator),
+				image  = strings.concatenate({index.dir, "/", s.image}, allocator),
 				width  = s.width,
 				height = s.height,
 				frames = frames,
@@ -254,19 +423,20 @@ assets_open :: proc(root: string, allocator := context.allocator) -> (a: Assets)
 		a.sprites = plates[:]
 	}
 
+	// Each level's media: the original's, from Classic Levels, then each
+	// campaign plugin's. Classic Levels' images are found as a plugin's are.
 	media := make([dynamic]Level_Media, 0, 12, allocator)
-	for path in record_paths(root, "levels", context.temp_allocator) {
-		lv: Json_Level
-		if !read_json(path, &lv, context.temp_allocator) {
+	if dir, found := classic_levels_dir(); found {
+		level_media_append(&media, dir, sim.CORE, allocator)
+		plugin_media_add(&a.plugin_images, root, "/images/im16/", dir, ".png", allocator = allocator)
+	}
+	for i in 1 ..< len(sim.registered_plugins()) {
+		if sim.registered_plugins()[i].name == CLASSIC_LEVELS {
 			continue
 		}
-		append(&media, Level_Media {
-			id         = sim.res_id(lv.id),
-			name       = strings.clone(lv.name, allocator),
-			background = strings.clone(lv.background_image, allocator),
-			preview    = strings.clone(lv.preview_image, allocator),
-			music      = strings.clone(lv.music, allocator),
-		})
+		if dir, found := plugin_content_dir(sim.Plugin_ID(i)); found {
+			level_media_append(&media, dir, sim.Plugin_ID(i), allocator)
+		}
 	}
 	a.levels = media[:]
 
@@ -277,7 +447,7 @@ assets_open :: proc(root: string, allocator := context.allocator) -> (a: Assets)
 		}
 	}
 	// The menus' "Interface Music Loop" streams as music too
-	// (game/assets.odin's MENU_MUSIC); decoding its ~60s into memory as a
+	// (render/assets.odin's MENU_MUSIC); decoding its ~60s into memory as a
 	// sound effect as well would only waste ~10 MB.
 	exclude["inmu"] = true
 	sounds := make([dynamic]string, 0, 99, allocator)
@@ -291,6 +461,13 @@ assets_open :: proc(root: string, allocator := context.allocator) -> (a: Assets)
 			}
 		}
 	}
+	core_sounds := len(sounds)
+	for id in a.plugin_audio {
+		if !exclude[id] {
+			append(&sounds, id)
+		}
+	}
+	slice.sort(sounds[core_sounds:]) // map order is not stable
 	a.sounds = sounds[:]
 
 	// G_Res_GetPermGameString: stli "pgsl", one line per index.
@@ -396,13 +573,41 @@ assets_plate :: proc(a: ^Assets, id: sim.Res_ID) -> ^Sprite_Plate {
 	return nil
 }
 
-assets_level_media :: proc(a: ^Assets, id: sim.Res_ID) -> ^Level_Media {
+// A level's media, by its campaign and id.
+assets_level_media :: proc(a: ^Assets, campaign: sim.Plugin_ID, id: sim.Res_ID) -> ^Level_Media {
 	for &l in a.levels {
-		if l.id == id {
+		if l.campaign == campaign && l.id == id {
 			return &l
 		}
 	}
 	return nil
+}
+
+@(private = "file")
+level_media_append :: proc(media: ^[dynamic]Level_Media, dir: string, campaign: sim.Plugin_ID, allocator := context.allocator) {
+	for path in record_paths(dir, "levels", context.temp_allocator) {
+		lv := Json_Level{lighting = LIGHTING_MEASURED}
+		if !read_json(path, &lv, context.temp_allocator) {
+			continue
+		}
+		layers := lv.layers
+		for &l in ([]^string{&layers.albedo, &layers.normal, &layers.height, &layers.shadow_mask, &layers.hd_map, &layers.specular}) {
+			l^ = strings.clone(l^, allocator)
+		}
+		append(media, Level_Media {
+			id         = sim.res_id(lv.id),
+			campaign   = campaign,
+			name       = strings.clone(lv.name, allocator),
+			background = strings.clone(lv.background_image, allocator),
+			preview    = strings.clone(lv.preview_image, allocator),
+			music      = strings.clone(lv.music, allocator),
+			wind       = lv.wind,
+			water      = lv.water,
+			lighting   = lv.lighting,
+			skybox     = strings.clone(lv.skybox, allocator),
+			layers     = layers,
+		})
+	}
 }
 
 // Builds the same `sim.Defs` as `defs_load`, from the extracted tree.
@@ -497,7 +702,8 @@ sprites_append :: proc(sprites: ^[dynamic]sim.Sprite, root: string, allocator :=
 }
 
 // Weapon definitions, whose spawn records repeat the spawn_* keys. `extra`
-// marks them as new content, whose own keys start `x_`.
+// marks them as new content, whose own keys start `x_` and are read for
+// the plugins that registered them.
 @(private = "file")
 weapons_append :: proc(weapons: ^[dynamic]sim.Weapon, root: string, extra: bool, report: ^Defs_Report, allocator := context.allocator) {
 	for path in record_paths(root, "wede", context.temp_allocator) {
@@ -509,79 +715,173 @@ weapons_append :: proc(weapons: ^[dynamic]sim.Weapon, root: string, extra: bool,
 		wp := sim.Weapon{id = sim.res_id(id_of(path)), extra = extra}
 		def_fill(&wp.def, header, report, allocator)
 		wp.spawns = weapon_spawns(header, report, allocator)
-		if extra {
-			if v, ok := def_find(header, "x_AimedRelease_BOOL"); ok {
-				wp.aimed_release, _ = tag_bool(v)
-			}
-			beam_fill(&wp.beam, header)
-		}
+		weapon_keys_fill(&wp, header)
 		append(weapons, wp)
 	}
 }
 
-// A beam weapon's x_Beam* keys (sim/beam.odin); none leaves it off.
+// The keys plugins registered (sim/def_keys.odin), each by its type; one
+// the definition leaves out takes its type's default.
 @(private = "file")
-beam_fill :: proc(b: ^sim.Beam_Def, header: []Tag) {
-	b^ = {}
-	if v, ok := def_find(header, "x_Beam_BOOL"); ok {
-		b.on, _ = tag_bool(v)
-	}
-	if !b.on {
-		return
-	}
-	float :: proc(header: []Tag, key: string) -> f32 {
-		v, _ := def_find(header, key)
-		f, _ := tag_float(v)
-		return f32(f)
-	}
-	b.damage = float(header, "x_BeamDamage_FLOAT")
-	b.width = float(header, "x_BeamWidth_FLOAT")
-	b.release_damage = float(header, "x_BeamReleaseDamage_FLOAT")
-	b.release_width = float(header, "x_BeamReleaseWidth_FLOAT")
-	b.shrapnel = sim.Res_ID(def_fourcc(header, "x_BeamShrapnel_ID"))
-	if v, ok := def_find(header, "x_BeamShrapnelCount_INT"); ok {
-		n, _ := tag_int(v)
-		b.shrapnel_count = i32(n)
+weapon_keys_fill :: proc(w: ^sim.Weapon, header: []Tag) {
+	for k, i in sim.registered_weapon_keys() {
+		w.keys[i] = sim.def_key_default(k.kind)
+		v, ok := def_find(header, k.name)
+		if !ok {
+			continue
+		}
+		switch k.kind {
+		case .Bool:
+			b, _ := tag_bool(v)
+			sim.weapon_key_set(w, sim.Weapon_Key(i), b)
+		case .Int:
+			n, _ := tag_int(v)
+			sim.weapon_key_set(w, sim.Weapon_Key(i), i32(n))
+		case .Float:
+			f, _ := tag_float(v)
+			sim.weapon_key_set(w, sim.Weapon_Key(i), f32(f))
+		case .Id:
+			sim.weapon_key_set(w, sim.Weapon_Key(i), sim.Res_ID(def_fourcc(header, k.name)))
+		}
 	}
 }
 
-// The new content (docs/new-weapons.md): units, weapons and sprites under
-// `<root>/extra`, laid out as the game's own tree is, added to `defs` after
-// the game's own so no original index moves. Kept out of assets_defs_load,
-// which has to match the original exactly. Returns false when there is no
-// extra tree; the game then plays without the new weapons.
-extra_defs_load :: proc(root: string, defs: ^sim.Defs, allocator := context.allocator) -> (report: Defs_Report, ok: bool) {
-	extra := strings.concatenate({root, "/extra"}, context.temp_allocator)
-	if !os.exists(extra) {
-		return
-	}
+// The plugins' own content (docs/new-weapons.md): units, weapons and
+// sprites in each plugin's content folder (plugin_content_dir), laid out as
+// the game's own tree is, for every plugin in the build. Added to `defs`
+// after the game's own so no original index moves, and ordered by id rather
+// than by plugin, so moving content from one plugin to another renumbers
+// nothing. Each weapon records the plugin it came from (Weapon.plugin), and
+// `defs.content` the plugins that brought any. Kept out of
+// assets_defs_load, which has to match the original exactly. Returns false
+// when no plugin has content; the game then plays without it.
+extra_defs_load :: proc(defs: ^sim.Defs, allocator := context.allocator) -> (report: Defs_Report, ok: bool) {
 	units := make([dynamic]sim.Unit, 0, len(defs.units) + 16, allocator)
 	append(&units, ..defs.units)
-	units_append(&units, extra, &report, allocator)
-	report.units = len(units) - len(defs.units)
-	defs.units = units[:]
-
 	weapons := make([dynamic]sim.Weapon, 0, len(defs.weapons) + 4, allocator)
 	append(&weapons, ..defs.weapons)
-	weapons_append(&weapons, extra, true, &report, allocator)
-	defs.weapons = weapons[:]
-
 	sprites := make([dynamic]sim.Sprite, 0, len(defs.sprites) + 4, allocator)
 	append(&sprites, ..defs.sprites)
-	sprites_append(&sprites, extra, allocator)
+	levels := make([dynamic]sim.Level_Def, 0, len(defs.levels), allocator)
+	append(&levels, ..defs.levels)
+	for i in 1 ..< len(sim.registered_plugins()) {
+		dir, found := plugin_content_dir(sim.Plugin_ID(i))
+		if !found {
+			continue
+		}
+		// A campaign's levels follow the original's, each campaign's
+		// together, as sim.campaign_levels needs (D53). Classic Levels'
+		// are the original's, which assets_defs_load read as CORE's.
+		if sim.registered_plugins()[i].name != CLASSIC_LEVELS {
+			levels_append(&levels, dir, manifest_levels(dir), sim.Plugin_ID(i), allocator)
+		}
+		units_append(&units, dir, &report, allocator)
+		first := len(weapons)
+		weapons_append(&weapons, dir, true, &report, allocator)
+		for &w in weapons[first:] {
+			w.plugin = sim.Plugin_ID(i)
+		}
+		sprites_append(&sprites, dir, allocator)
+		defs.content += {i}
+	}
+	slice.sort_by(units[len(defs.units):], proc(a, b: sim.Unit) -> bool {return res_id_less(a.id, b.id)})
+	slice.sort_by(weapons[len(defs.weapons):], proc(a, b: sim.Weapon) -> bool {return res_id_less(a.id, b.id)})
+	report.units = len(units) - len(defs.units)
 	report.sprites = len(sprites) - len(defs.sprites)
-	defs.sprites = sprites[:]
-	return report, true
+	report.levels = len(levels) - len(defs.levels)
+	defs.units, defs.weapons, defs.sprites, defs.levels = units[:], weapons[:], sprites[:], levels[:]
+	return report, defs.content != {}
 }
 
-// Levels, the permanent tables: the rest of assets_defs_load.
-@(private = "file")
-assets_defs_load_rest :: proc(root: string, defs: ^sim.Defs, report: ^Defs_Report, allocator := context.allocator) {
+// What a plugin's audio/ may hold, in the order one id's files are taken.
+// The core tree's are all .wav (extracted from the originals); a plugin's
+// music can stay compressed. raylib, as built, decodes these, not FLAC.
+AUDIO_EXTENSIONS :: [?]string{".wav", ".ogg", ".mp3"}
 
-	// Levels, in play order.
-	levels := make([dynamic]sim.Level_Def, 0, 12, allocator)
-	paths := record_paths(root, "levels", context.temp_allocator)
-	for name, i in LEVEL_ORDER {
+// Every `<dir><sub>*<ext>` whose id the core tree (`root`) has no
+// `<id><core_ext>` for (`ext` if not given), into `media` by id. The first
+// plugin with an id keeps it.
+plugin_media_add :: proc(media: ^map[string]string, root, sub, dir, ext: string, core_ext := "", allocator := context.allocator) {
+	paths, err := filepath.glob(strings.concatenate({dir, sub, "*", ext}, context.temp_allocator), context.temp_allocator)
+	if err != nil {
+		return
+	}
+	slice.sort(paths)
+	for path in paths {
+		base := filepath.base(path)
+		id := base[:len(base) - len(ext)]
+		if id in media || os.exists(strings.concatenate({root, sub, id, core_ext != "" ? core_ext : ext}, context.temp_allocator)) {
+			continue
+		}
+		// Joined as the core tree's paths are, not glob's: on Windows glob
+		// gives back `\`, and a plugin's path would differ from a core one
+		// in its separators alone (CI's Windows test caught it).
+		media[strings.clone(id, allocator)] = strings.concatenate({dir, sub, base}, allocator)
+	}
+}
+
+// Where an im16 image is: a plugin's, if one brought it, else the core
+// tree's.
+assets_image_path :: proc(a: ^Assets, id: string) -> string {
+	if path, ok := a.plugin_images[id]; ok {
+		return path
+	}
+	return strings.concatenate({a.root, "/images/im16/", id, ".png"}, context.temp_allocator)
+}
+
+// Where a sound or music track is, as assets_image_path.
+assets_audio_path :: proc(a: ^Assets, id: string) -> string {
+	if path, ok := a.plugin_audio[id]; ok {
+		return path
+	}
+	return strings.concatenate({a.root, "/audio/", id, ".wav"}, context.temp_allocator)
+}
+
+// One of the original game's music tracks: its audio id, and the name
+// assets/manifest.json records for it ("Music 3").
+Music_Track :: struct {
+	id, name: string,
+}
+
+// The original game's music, Music.pak's tracks, as tools/extract listed
+// them in `root`/manifest.json; none without it. The rest of the audio is
+// sound effects.
+assets_music :: proc(root: string, allocator := context.allocator) -> []Music_Track {
+	Json_Manifest :: struct {
+		entries: []struct {
+			fourcc, name, kind, source: string,
+		},
+	}
+	m: Json_Manifest
+	if !read_json(strings.concatenate({root, "/manifest.json"}, context.temp_allocator), &m, context.temp_allocator) {
+		return nil
+	}
+	tracks := make([dynamic]Music_Track, 0, 4, allocator)
+	for en in m.entries {
+		if en.kind == "audio" && en.source == "Music.pak" {
+			append(&tracks, Music_Track{strings.clone(en.fourcc, allocator), strings.clone(en.name, allocator)})
+		}
+	}
+	return tracks[:]
+}
+
+@(private = "file")
+res_id_less :: proc(a, b: sim.Res_ID) -> bool {
+	for k in 0 ..< len(a) {
+		if a[k] != b[k] {
+			return a[k] < b[k]
+		}
+	}
+	return false
+}
+
+// A campaign's levels, from `dir`/data/levels, numbered in the order
+// `order` names their identifiers. An identifier with no level is skipped.
+@(private = "file")
+levels_append :: proc(levels: ^[dynamic]sim.Level_Def, dir: string, order: []string, campaign: sim.Plugin_ID, allocator := context.allocator) {
+	paths := record_paths(dir, "levels", context.temp_allocator)
+	number: i32
+	for name in order {
 		for path in paths {
 			lv: Json_Level
 			if !read_json(path, &lv, context.temp_allocator) {
@@ -590,10 +890,13 @@ assets_defs_load_rest :: proc(root: string, defs: ^sim.Defs, report: ^Defs_Repor
 			if lv.identifier != name {
 				continue
 			}
+			number += 1
 			l := sim.Level_Def {
 				id         = sim.res_id(lv.id),
+				name       = strings.clone(lv.name, allocator),
 				identifier = strings.clone(lv.identifier, allocator),
-				number     = i32(i + 1),
+				number     = number,
+				campaign   = campaign,
 				background = rect_from(Rect{
 					left   = lv.background[0],
 					top    = lv.background[1],
@@ -601,6 +904,12 @@ assets_defs_load_rest :: proc(root: string, defs: ^sim.Defs, report: ^Defs_Repor
 					bottom = lv.background[3],
 				}),
 				placements = make([]sim.Placement_Def, len(lv.placements), allocator),
+			}
+			if lv.start_weapons.air != "" {
+				l.start_air = sim.res_id(lv.start_weapons.air)
+			}
+			if lv.start_weapons.ground != "" {
+				l.start_ground = sim.res_id(lv.start_weapons.ground)
 			}
 			for pl, k in lv.placements {
 				l.placements[k] = {
@@ -612,15 +921,26 @@ assets_defs_load_rest :: proc(root: string, defs: ^sim.Defs, report: ^Defs_Repor
 					terrain_effects = pl.terrain_effects,
 				}
 			}
-			mask := strings.concatenate({root, "/images/im16/", lv.media_mask, ".png"},
+			mask := strings.concatenate({dir, "/images/im16/", lv.media_mask, ".png"},
 				context.temp_allocator)
 			if px, mw, mh, ok := media_mask_from_png(mask, allocator); ok {
 				l.media, l.media_w, l.media_h = px, i32(mw), i32(mh)
 				l.media_scale = (l.background.right - l.background.left) / i32(mw)
 			}
-			append(&levels, l)
+			append(levels, l)
 			break
 		}
+	}
+}
+
+// Levels, the permanent tables: the rest of assets_defs_load.
+@(private = "file")
+assets_defs_load_rest :: proc(root: string, defs: ^sim.Defs, report: ^Defs_Report, allocator := context.allocator) {
+
+	// Levels, in play order: the original's, from the Classic Levels plugin.
+	levels := make([dynamic]sim.Level_Def, 0, 12, allocator)
+	if dir, found := classic_levels_dir(); found {
+		levels_append(&levels, dir, manifest_levels(dir), sim.CORE, allocator)
 	}
 	defs.levels = levels[:]
 	report.levels = len(levels)

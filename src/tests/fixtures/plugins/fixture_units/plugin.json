@@ -1,0 +1,6 @@
+{
+    "label": "Fixture Units",
+    "description": "One unit, for tests/data_plugins.",
+    "version": "1",
+    "session": true
+}

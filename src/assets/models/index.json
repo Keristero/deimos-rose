@@ -1,0 +1,214 @@
+{
+  "format": "deimos-rising.model-library",
+  "models": [
+    {
+      "file": "island-tree-01",
+      "tags": [
+        "tree",
+        "jungle"
+      ],
+      "source": "Island Tree 01 by Rico Cilliers, Rob Tuytel, Poly Haven (CC0): https://polyhaven.com/a/island_tree_01"
+    },
+    {
+      "file": "island-tree-02",
+      "tags": [
+        "tree",
+        "jungle"
+      ],
+      "source": "Island Tree 02 by Rico Cilliers, Rob Tuytel, Poly Haven (CC0): https://polyhaven.com/a/island_tree_02"
+    },
+    {
+      "file": "searsia-lucida",
+      "tags": [
+        "tree",
+        "scrub"
+      ],
+      "source": "Searsia Lucida by James Ray Cock, Jenelle van Heerden, Poly Haven (CC0): https://polyhaven.com/a/searsia_lucida"
+    },
+    {
+      "file": "searsia-burchellii",
+      "tags": [
+        "tree",
+        "scrub"
+      ],
+      "source": "Searsia Burchellii by James Ray Cock, Jenelle van Heerden, Poly Haven (CC0): https://polyhaven.com/a/searsia_burchellii"
+    },
+    {
+      "file": "quiver-tree-02",
+      "tags": [
+        "tree",
+        "dry"
+      ],
+      "source": "Quiver Tree 02 by Dario Barresi, Rico Cilliers, Poly Haven (CC0): https://polyhaven.com/a/quiver_tree_02"
+    },
+    {
+      "file": "pine-sapling-small",
+      "tags": [
+        "tree"
+      ],
+      "source": "Pine Sapling Small by Rico Cilliers, Rob Tuytel, Poly Haven (CC0): https://polyhaven.com/a/pine_sapling_small"
+    },
+    {
+      "file": "dead-tree-trunk-02",
+      "tags": [
+        "debris",
+        "dead",
+        "dry"
+      ],
+      "source": "Dead Tree Trunk 02 by Jenelle van Heerden, Rico Cilliers, Poly Haven (CC0): https://polyhaven.com/a/dead_tree_trunk_02"
+    },
+    {
+      "file": "shrub-02",
+      "tags": [
+        "shrub"
+      ],
+      "source": "Shrub 02 by Rico Cilliers, Poly Haven (CC0): https://polyhaven.com/a/shrub_02"
+    },
+    {
+      "file": "shrub-03",
+      "tags": [
+        "shrub"
+      ],
+      "source": "Shrub 03 by Rico Cilliers, Poly Haven (CC0): https://polyhaven.com/a/shrub_03"
+    },
+    {
+      "file": "wild-rooibos-bush",
+      "tags": [
+        "shrub",
+        "scrub",
+        "dry"
+      ],
+      "source": "Wild Rooibos Bush by James Ray Cock, Jenelle van Heerden, Poly Haven (CC0): https://polyhaven.com/a/wild_rooibos_bush"
+    },
+    {
+      "file": "fern-02",
+      "tags": [
+        "plant",
+        "jungle"
+      ],
+      "source": "Fern 02 by Rico Cilliers, Rob Tuytel, Poly Haven (CC0): https://polyhaven.com/a/fern_02"
+    },
+    {
+      "file": "calathea-orbifolia-01",
+      "tags": [
+        "plant",
+        "jungle"
+      ],
+      "source": "Calathea Orbifolia 01 by Rico Cilliers, Rob Tuytel, Poly Haven (CC0): https://polyhaven.com/a/calathea_orbifolia_01"
+    },
+    {
+      "file": "anthurium-botany-01",
+      "tags": [
+        "plant",
+        "jungle"
+      ],
+      "source": "Anthurium Botany 01 by Rico Cilliers, Rob Tuytel, Poly Haven (CC0): https://polyhaven.com/a/anthurium_botany_01"
+    },
+    {
+      "file": "nettle-plant",
+      "tags": [
+        "plant"
+      ],
+      "source": "Nettle Plant by Rico Cilliers, Rob Tuytel, Poly Haven (CC0): https://polyhaven.com/a/nettle_plant"
+    },
+    {
+      "file": "weed-plant-02",
+      "tags": [
+        "plant"
+      ],
+      "source": "Weed Plant 02 by Rico Cilliers, Rob Tuytel, Poly Haven (CC0): https://polyhaven.com/a/weed_plant_02"
+    },
+    {
+      "file": "grass-medium-01",
+      "tags": [
+        "grass"
+      ],
+      "source": "Grass Medium 01 by Rico Cilliers, Rob Tuytel, Poly Haven (CC0): https://polyhaven.com/a/grass_medium_01"
+    },
+    {
+      "file": "grass-medium-02",
+      "tags": [
+        "grass"
+      ],
+      "source": "Grass Medium 02 by Rico Cilliers, Poly Haven (CC0): https://polyhaven.com/a/grass_medium_02"
+    },
+    {
+      "file": "rock-07",
+      "tags": [
+        "rock"
+      ],
+      "source": "Rock 07 by Jenelle van Heerden, Poly Haven (CC0): https://polyhaven.com/a/rock_07"
+    },
+    {
+      "file": "rock-09",
+      "tags": [
+        "rock"
+      ],
+      "source": "Rock 09 by Jenelle van Heerden, Poly Haven (CC0): https://polyhaven.com/a/rock_09"
+    },
+    {
+      "file": "stone-01",
+      "tags": [
+        "rock"
+      ],
+      "source": "Stone 01 by Dario Barresi, Rico Cilliers, Poly Haven (CC0): https://polyhaven.com/a/stone_01"
+    },
+    {
+      "file": "boulder-01",
+      "tags": [
+        "rock",
+        "boulder"
+      ],
+      "source": "Boulder 01 by Rico Cilliers, Poly Haven (CC0): https://polyhaven.com/a/boulder_01"
+    },
+    {
+      "file": "namaqualand-boulder-02",
+      "tags": [
+        "rock",
+        "boulder",
+        "dry"
+      ],
+      "source": "Namaqualand Boulder 02 by Greg Zaal, Rico Cilliers, Poly Haven (CC0): https://polyhaven.com/a/namaqualand_boulder_02"
+    },
+    {
+      "file": "namaqualand-boulder-05",
+      "tags": [
+        "rock",
+        "boulder",
+        "dry"
+      ],
+      "source": "Namaqualand Boulder 05 by Dario Barresi, Jenelle van Heerden, Poly Haven (CC0): https://polyhaven.com/a/namaqualand_boulder_05"
+    },
+    {
+      "file": "namaqualand-stones-01",
+      "tags": [
+        "rock",
+        "dry"
+      ],
+      "source": "Namaqualand Stones 01 by Greg Zaal, Jenelle van Heerden, Poly Haven (CC0): https://polyhaven.com/a/namaqualand_stones_01"
+    },
+    {
+      "file": "rock-moss-set-01",
+      "tags": [
+        "rock",
+        "jungle"
+      ],
+      "source": "Rock Moss Set 01 by Kless Gyzen, Poly Haven (CC0): https://polyhaven.com/a/rock_moss_set_01"
+    },
+    {
+      "file": "dry-branches-medium-01",
+      "tags": [
+        "debris",
+        "dry"
+      ],
+      "source": "Dry Branches Medium 01 by Rico Cilliers, Poly Haven (CC0): https://polyhaven.com/a/dry_branches_medium_01"
+    },
+    {
+      "file": "tree-stump-01",
+      "tags": [
+        "debris"
+      ],
+      "source": "Tree Stump 01 by Rob Tuytel, Poly Haven (CC0): https://polyhaven.com/a/tree_stump_01"
+    }
+  ]
+}

@@ -18,7 +18,10 @@
 // targets die: each has a real enemy's shields, is replaced a moment after
 // it is shot down, and only the shields taken off count, so what a weapon
 // wastes on overkill is seen, and what it carries through a kill (the
-// Discharge Beam's leftover damage and shrapnel) is too.
+// Discharge Beam's leftover damage) is too. A fifth, one ground target
+// ahead, is measured only for an air weapon with a passive whose shots can
+// hit the ground (Hits_Ground): the bare weapon deals nothing there, so it
+// adds only what that passive reaches.
 //
 // A weapon is fired under every input policy weapon_policies lists, and the
 // report keeps two sets: primary fire (the best of the taps, and of holding
@@ -44,15 +47,28 @@ import "core:thread"
 import "core:time"
 
 import "dr:data"
+// The new weapons' keys and how they fire: a Discharge Beam fires only with
+// its plugin linked in, as in the game. Their passives are a plugin's too.
+import "dr:plugins/chaingun"
+import "dr:plugins/loadout"
+import "dr:plugins/new_weapons"
+import _ "dr:plugins/new_weapon_passives"
+import "dr:plugins/passives"
+// The original game's systems, which a session runs.
+import _ "dr:sim/core"
 import "dr:sim"
+import "dr:sim/systems/weapon_system"
+import "dr:sim/stats"
+import "dr:sim/systems/player_system"
+import "dr:sim/lifecycle"
 
 SEED :: 0x5eed_d95
 STEP_HZ :: 30
 
 // Where the targets stand. Air targets are this far straight ahead of (or
 // behind) the ship. Ground targets are as far from it as the crosshair,
-// where the bombs land: ahead, or behind -- where Ground Variant 1 turns the
-// bombs to.
+// where the bombs land: ahead, or behind -- where a ground charge's
+// crosshair turns to (Ground Variant 1 and 2).
 // Provisional: picked to be well inside every air weapon's reach (the Bacta
 // Gun's is the shortest, 240 px).
 AIR_RANGE :: 120
@@ -101,6 +117,7 @@ Scenario :: enum u8 {
 	Cluster,
 	Behind,
 	Wave,
+	Ground, // an air weapon's shots on a ground target: ground_measured
 }
 
 SCENARIO_NAMES := [Scenario]string {
@@ -108,7 +125,13 @@ SCENARIO_NAMES := [Scenario]string {
 	.Cluster = "Cluster of 5",
 	.Behind  = "Target behind",
 	.Wave    = "Wave of 9",
+	.Ground  = "Ground target",
 }
+
+// The scenarios every weapon is measured in, and the averages are over.
+// Ground is left out: a bare air weapon deals nothing there, so what a
+// passive reaches there is added to them, as behind is for most weapons.
+EVERY_WEAPON :: bit_set[Scenario]{.Single, .Cluster, .Behind, .Wave}
 
 // The two sets the report keeps.
 Mode :: enum u8 {
@@ -124,7 +147,7 @@ MODE_NAMES := [Mode]string {
 Policy_Kind :: enum u8 {
 	Tap,    // press for one step every `period` steps
 	Hold,   // hold fire throughout (under Auto Charge this autofires)
-	Charge, // charge to the full power level, release, repeat
+	Charge, // charge to the full power level, release, repeat; on the ground, aimed at the target
 }
 
 Policy :: struct {
@@ -135,7 +158,7 @@ Policy :: struct {
 // A loadout under test: nothing, or one passive at one level.
 Config :: struct {
 	has:     bool,
-	passive: sim.Passive,
+	passive: passives.Passive,
 	level:   u8,
 }
 
@@ -185,6 +208,8 @@ Shared :: struct {
 }
 
 main :: proc() {
+	// Every registry filled, in the same order on every platform.
+	sim.register_all()
 	if len(os.args) < 3 {
 		fmt.eprintln("usage: dps <assets root> <out dir> [-seconds:N] [-stage:N] [-threads:N] [-weapon:NAME]")
 		os.exit(2)
@@ -228,7 +253,7 @@ main :: proc() {
 		fmt.eprintfln("dps: no game data under %s (run mise run assets:all)", root)
 		os.exit(1)
 	}
-	if _, ok := data.extra_defs_load(root, &defs, alloc); !ok {
+	if _, ok := data.extra_defs_load(&defs, alloc); !ok {
 		fmt.eprintfln("dps: cannot load the new content under %s/extra", root)
 		os.exit(1)
 	}
@@ -445,15 +470,16 @@ dps_only :: proc(ws: []Weapon_Case, name: string) -> ([]Weapon_Case, bool) {
 dps_configs :: proc(alloc := context.allocator) -> []Config {
 	out := make([dynamic]Config, alloc)
 	append(&out, Config{})
-	for &def, pa in sim.PASSIVES {
-		for l in 1 ..= def.levels {
+	for i in 0 ..< passives.passive_count() {
+		pa := passives.Passive(i)
+		for l in 1 ..= passives.passive_def(pa).levels {
 			append(&out, Config{true, pa, l})
 		}
 	}
 	return out[:]
 }
 
-config_levels :: proc(c: Config) -> (lv: sim.Passive_Levels) {
+config_levels :: proc(c: Config) -> (lv: passives.Passive_Levels) {
 	if c.has {
 		lv[c.passive] = c.level
 	}
@@ -467,10 +493,17 @@ config_name :: proc(c: Config) -> string {
 	return fmt.tprintf("%s %d", passive_name(c.passive), c.level)
 }
 
-passive_name :: proc(p: sim.Passive) -> string {
-	n, _ := fmt.enum_value_to_string(p)
-	s, _ := strings.replace_all(n, "_", " ", context.temp_allocator)
-	return s
+// "weapon_1" as "Weapon 1".
+passive_name :: proc(p: passives.Passive) -> string {
+	s := transmute([]u8)strings.clone(passives.passive_def(p).name, context.temp_allocator)
+	for &c, i in s {
+		if c == '_' {
+			c = ' '
+		} else if (i == 0 || s[i - 1] == ' ') && c >= 'a' && c <= 'z' {
+			c -= 'a' - 'A'
+		}
+	}
+	return string(s)
 }
 
 // The policies worth trying for a weapon under a loadout: taps at every
@@ -483,9 +516,12 @@ weapon_policies :: proc(w: Weapon_Case, c: Config, out: ^[dynamic]Policy) {
 		append(out, Policy{.Tap, i32(p)})
 	}
 	if w.ground {
+		if c.has && passive_charges_ground(c.passive) {
+			append(out, Policy{.Charge, 0})
+		}
 		return
 	}
-	auto_charge := c.has && c.passive == .Auto_Charge
+	auto_charge := c.has && c.passive == passives.AUTO_CHARGE
 	if w.charge {
 		append(out, Policy{.Charge, 0})
 	}
@@ -502,6 +538,9 @@ dps_jobs :: proc(sh: ^Shared, alloc := context.allocator) -> []Job {
 			clear(&pols)
 			weapon_policies(w, c, &pols)
 			for sc in Scenario {
+				if sc == .Ground && !(ground_measured(w) && (!c.has || passive_hits_ground(c.passive))) {
+					continue
+				}
 				for p in pols {
 					append(&out, Job{wi, sc, ci, p})
 				}
@@ -524,17 +563,57 @@ dps_worker :: proc(data: rawptr) {
 	}
 }
 
+// Whether an air weapon has a passive whose shots can hit the ground: the
+// Ground scenario is measured for it, bare and with those passives.
+ground_measured :: proc(w: Weapon_Case) -> bool {
+	if w.ground {
+		return false
+	}
+	for i in 0 ..< passives.passive_count() {
+		pa := passives.Passive(i)
+		if wid := passives.passive_def(pa).weapon; (wid == {} || wid == w.id) && passive_hits_ground(pa) {
+			return true
+		}
+	}
+	return false
+}
+
+// Whether a passive lets an air weapon's shots hit the ground.
+passive_hits_ground :: proc(p: passives.Passive) -> bool {
+	for mod in passives.passive_def(p).mods {
+		if mod.stat == .Hits_Ground {
+			return true
+		}
+	}
+	return false
+}
+
+// Whether a passive gives the ground weapon a charge.
+passive_charges_ground :: proc(p: passives.Passive) -> bool {
+	for mod in passives.passive_def(p).mods {
+		if mod.stat == .Ground_Charge {
+			return true
+		}
+	}
+	return false
+}
+
 // The fire button for this step under the policy, from the state before it.
-policy_fire :: proc(s: ^sim.State, h: ^sim.Weapon_Handler, pol: Policy, k: int) -> bool {
+// A ground charge is held until it is ready and its crosshair points at the
+// targets, `aim` degrees about the ship, and let go for a step.
+policy_fire :: proc(s: ^sim.State, h: ^sim.Weapon_Handler, pol: Policy, k: int, ground: bool, aim: i32) -> bool {
 	switch pol.kind {
 	case .Tap:
 		return k % int(pol.period) == 0
 	case .Hold:
 		return true
 	case .Charge:
+		if ground {
+			return h.ground_charged <= stats.ground_charge_ready(s) || h.ground_aim != aim
+		}
 		pu := &h.air_powerup
 		full := pu.state == 1 && pu.percent >= 100 || pu.state == 2
-		if sim.air_auto_charge(s, h) {
+		if stats.air_auto_charge(s, h) {
 			// It charges while fire is let go; a press releases it.
 			return full
 		}
@@ -546,21 +625,26 @@ policy_fire :: proc(s: ^sim.State, h: ^sim.Weapon_Handler, pol: Policy, k: int) 
 	return false
 }
 
-dps_run :: proc(d: ^sim.Defs, w: Weapon_Case, sc: Scenario, levels: sim.Passive_Levels, pol: Policy, steps: int) -> (o: Outcome) {
+dps_run :: proc(d: ^sim.Defs, w: Weapon_Case, sc: Scenario, levels: passives.Passive_Levels, pol: Policy, steps: int) -> (o: Outcome) {
 	s := new(sim.State)
 	defer free(s)
-	sim.init(s, sim.Session{seed = SEED, level_id = d.levels[0].id, game_type = .Single}, d)
-	p := &s.players[0]
+	defer sim.destroy(s)
+	// As a player with Passive Upgrades and the new weapons has them.
+	mods := sim.mods_session(sim.mods_switch_on({}, {int(passives.id()), int(new_weapons.id()), int(chaingun.id())}))
+	sim.init(s, sim.Session{seed = SEED, level_id = d.levels[0].id, game_type = .Single, mods = mods}, d)
+	// The weapon is handed over below, not chosen on the loadout screen.
+	loadout.loadout_of(s).shown = sim.single(s, sim.Level_Info).played
+	p := sim.player_at(s, 0)
 	for i := 0; i < ENTRY_STEPS && p.state != .Playing; i += 1 {
 		sim.session_step(s, {})
 	}
 	if p.state != .Playing {
 		return
 	}
-	p.passives = levels
-	h := &p.weapons
-	sim.change_weapon(s, h, w.ground ? sim.WEP_GROUND : sim.WEP_AIR, w.index)
-	sim.player_sprite_from_weapon(s, p)
+	passives.levels_of(s, 0)^ = levels
+	h := p.weapons
+	weapon_system.change_weapon(s, h, w.ground ? sim.WEP_GROUND : sim.WEP_AIR, w.index)
+	player_system.player_sprite_from_weapon(s, p)
 	for _ in 0 ..< SETTLE_STEPS {
 		sim.session_step(s, {})
 		// Every run starts uncharged. Under Auto Charge a charge builds while
@@ -573,14 +657,14 @@ dps_run :: proc(d: ^sim.Defs, w: Weapon_Case, sc: Scenario, levels: sim.Passive_
 	}
 
 	centre := p.loc + (sc == .Behind ? sim.Vec{0, AIR_RANGE} : sim.Vec{0, -AIR_RANGE})
+	aim := sc == .Behind ? i32(180) : 0
 	if w.ground {
 		// Under the crosshair, where the bombs land: ahead where it stands,
-		// behind where it stands once a passive turns the bombs round. The
-		// crosshair in use must be where ground_aim says, or the targets
-		// would stand where nothing lands.
+		// behind where a charge turns it to. The crosshair must stand where
+		// ground_aim says, or the targets would stand where nothing lands.
 		fwd, back := ground_aim(s, p)
 		centre = sc == .Behind ? back : fwd
-		if at := sim.ground_fires_backwards(s, h) ? back : fwd; at != h.crosshair.loc {
+		if fwd != h.crosshair.loc {
 			return
 		}
 	}
@@ -589,6 +673,10 @@ dps_run :: proc(d: ^sim.Defs, w: Weapon_Case, sc: Scenario, levels: sim.Passive_
 	switch sc {
 	case .Single, .Behind:
 		offsets = CLUSTER[:1]
+	case .Ground:
+		// Where the single air target would stand, on the ground.
+		offsets = CLUSTER[:1]
+		unit = GROUND_TARGET
 	case .Cluster:
 		offsets = CLUSTER[:]
 	case .Wave:
@@ -611,12 +699,17 @@ dps_run :: proc(d: ^sim.Defs, w: Weapon_Case, sc: Scenario, levels: sim.Passive_
 	button: sim.Button = w.ground ? .Fire_Ground : .Fire_Air
 	for k in 0 ..< steps {
 		b: sim.Buttons
-		if policy_fire(s, h, pol, k) {
+		if policy_fire(s, h, pol, k, w.ground, aim) {
 			b += {button}
 		}
 		sim.session_step(s, {b, {}})
-		// The air weapon charges under Auto Charge while the Plasma Bomb is
-		// fired, but its shots cannot reach a ground target.
+		if w.ground {
+			// Under Auto Charge the air weapon would charge while the Plasma
+			// Bomb is fired, and its shots cannot reach a ground target. Left
+			// to overload, it shot the ship down a few seconds in: which it
+			// did depended on the air weapon the loadout handed over.
+			h.air_idle = 0
+		}
 		o.charged ||= !w.ground && h.air_powerup.state != 0
 		for i in 0 ..< len(offsets) {
 			if sc == .Wave {
@@ -662,15 +755,16 @@ dps_run :: proc(d: ^sim.Defs, w: Weapon_Case, sc: Scenario, levels: sim.Passive_
 	return
 }
 
-// Where the ground crosshair stands, ahead and turned round, at the ship's
-// current reach: the sums in player.odin's crosshair update. Turned round
-// it is half the reach behind the ship, kept on screen at the bottom.
-ground_aim :: proc(s: ^sim.State, p: ^sim.Player) -> (fwd, back: sim.Vec) {
+// Where the ground crosshair stands, ahead and turned round behind the ship,
+// at the ship's current reach: the sums in player_system's crosshair
+// update, each kept on screen.
+ground_aim :: proc(s: ^sim.State, p: sim.Player) -> (fwd, back: sim.Vec) {
 	gw := &s.defs.weapons[p.weapons.ground.weapon]
-	half := f32(sim.halve(p.weapons.crosshair.dims.y))
-	x := f32(gw.crosshair_x_offset) + p.loc.x
-	fwd = {x, max(f32(p.crosshair_reach + gw.crosshair_y_offset) + p.loc.y, half)}
-	back = {x, min(p.loc.y - f32(p.crosshair_reach + gw.crosshair_y_offset) / 2, f32(sim.view_height(s.defs)) - half)}
+	half := f32(lifecycle.halve(p.weapons.crosshair.dims.y))
+	x := f32(gw.crosshair_x_offset)
+	fwd = {x + p.loc.x, max(f32(p.crosshair_reach + gw.crosshair_y_offset) + p.loc.y, half)}
+	back = stats.crosshair_turned(p.loc, x, -f32(p.crosshair_reach + gw.crosshair_y_offset), 180)
+	back.y = clamp(back.y, half, f32(sim.view_height(s.defs)) - half)
 	return
 }
 
@@ -679,7 +773,7 @@ target_spawn :: proc(s: ^sim.State, unit: string, at: sim.Vec) -> sim.Entity_Ref
 	req := sim.spawn_request(sim.res_id(unit))
 	req.loc = at
 	req.stationary = true
-	r := sim.eg_request_spawn(s, req)
+	r := lifecycle.eg_request_spawn(s, req)
 	if sim.ref_valid(s, r) {
 		e := sim.entity_at(s, r.index)
 		e.appear_delay = 0
@@ -701,8 +795,10 @@ dps_best :: proc(sh: ^Shared, alloc := context.allocator) -> Table {
 	secs := f64(sh.steps) / STEP_HZ
 	for j, i in sh.jobs {
 		o := sh.outcomes[i]
+		// The ground weapon's charge is part of its primary fire: the bare
+		// weapon has none to measure against.
 		mode := Mode.Primary
-		if j.policy.kind == .Charge {
+		if j.policy.kind == .Charge && !sh.weapons[j.weapon].ground {
 			mode = .Charge
 		} else if o.charged {
 			continue

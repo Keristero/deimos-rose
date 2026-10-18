@@ -1,0 +1,117 @@
+{
+  "format": "deimos-rising.material-library",
+  "materials": [
+    {
+      "name": "red dust",
+      "image": "red-dust.png",
+      "colour": [
+        255,
+        255,
+        255
+      ],
+      "tile": 256.00000000,
+      "tags": [
+        "original-derived"
+      ],
+      "source": "le01 256,904 128x128"
+    },
+    {
+      "name": "rust plain",
+      "image": "rust-plain.png",
+      "colour": [
+        255,
+        255,
+        255
+      ],
+      "tile": 256.00000000,
+      "tags": [
+        "original-derived"
+      ],
+      "source": "le02 224,1212 128x128"
+    },
+    {
+      "name": "olive silt",
+      "image": "olive-silt.png",
+      "colour": [
+        255,
+        255,
+        255
+      ],
+      "tile": 256.00000000,
+      "tags": [
+        "original-derived"
+      ],
+      "source": "le03 176,1584 128x128"
+    },
+    {
+      "name": "slate",
+      "image": "slate.png",
+      "colour": [
+        255,
+        255,
+        255
+      ],
+      "tile": 256.00000000,
+      "tags": [
+        "original-derived"
+      ],
+      "source": "le05 64,608 128x128"
+    },
+    {
+      "name": "grey rock",
+      "image": "grey-rock.png",
+      "colour": [
+        255,
+        255,
+        255
+      ],
+      "tile": 256.00000000,
+      "tags": [
+        "original-derived"
+      ],
+      "source": "le07 0,196 128x128"
+    },
+    {
+      "name": "tan sand",
+      "image": "tan-sand.png",
+      "colour": [
+        255,
+        255,
+        255
+      ],
+      "tile": 256.00000000,
+      "tags": [
+        "original-derived"
+      ],
+      "source": "le06 288,976 128x128"
+    },
+    {
+      "name": "dry grass",
+      "image": "dry-grass.png",
+      "colour": [
+        255,
+        255,
+        255
+      ],
+      "tile": 256.00000000,
+      "tags": [
+        "original-derived"
+      ],
+      "source": "le10 160,0 128x128"
+    },
+    {
+      "name": "jungle",
+      "image": "jungle.png",
+      "colour": [
+        255,
+        255,
+        255
+      ],
+      "tile": 384.00000000,
+      "tags": [
+        "original-derived"
+      ],
+      "source": "le07 256,1160 192x192"
+    }
+  ]
+}

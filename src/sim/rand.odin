@@ -20,6 +20,9 @@ package sim
 // pitch and volume with it). Those draws are part of the gameplay sequence.
 // See docs/phase-4-sim.md.
 
+import "core:hash"
+import "core:mem"
+
 RAND_MAX :: 32767
 
 Rand :: struct {
@@ -127,4 +130,47 @@ random_float :: proc "contextless" (r: ^Rand, a, b: f32, site: Site) -> f32 {
 	lo := min(a, b)
 	v := f32(rand_next(r))
 	return (b - a) * v / f32(RAND_MAX) + lo
+}
+
+// The session's RNG, as a Rand over its Rng component and the state's draw
+// log. The sim draws through these; Rand on its own serves tools and tests.
+@(private = "file")
+session_rand :: #force_inline proc "contextless" (s: ^State) -> Rand {
+	return Rand{next = single(s, Rng).next, log = s.draws}
+}
+
+roll_int :: proc "contextless" (s: ^State, lo, hi: i32, site: Site) -> i32 {
+	r := session_rand(s)
+	v := random_int(&r, lo, hi, site)
+	single(s, Rng).next = r.next
+	return v
+}
+
+roll_float :: proc "contextless" (s: ^State, a, b: f32, site: Site) -> f32 {
+	r := session_rand(s)
+	v := random_float(&r, a, b, site)
+	single(s, Rng).next = r.next
+	return v
+}
+
+// An FNV-1a digest of `draws` pairs of random_int and random_float draws
+// from `seed`, over ranges that vary as real call sites' do: what
+// tools/rngcheck prints for each codegen setting (`mise run
+// rng:determinism`, D27) and tests/rand_test expects, so the two cannot
+// drift apart.
+rand_digest :: proc "contextless" (seed: u32, draws: int) -> u64 {
+	r := rand_init(seed)
+	h := u64(0xcbf29ce484222325)
+	for i in 0 ..< draws {
+		lo := i32(i % 2000) - 1000
+		hi := lo + i32(i % 37) + 1
+		iv := u64(u32(random_int(&r, lo, hi, 0)))
+		h = hash.fnv64a(mem.ptr_to_bytes(&iv), h)
+
+		fa := f32(i % 401) - 200.0
+		fb := fa + f32(i % 53) + 1.0
+		fv := u64(transmute(u32)random_float(&r, fa, fb, 0))
+		h = hash.fnv64a(mem.ptr_to_bytes(&fv), h)
+	}
+	return h
 }

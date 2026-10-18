@@ -1,0 +1,896 @@
+package render
+
+// Presentation: what the player sees and hears of a state. The assets it
+// is drawn from, the renderer and its render systems (render_systems.odin),
+// text, the score bar, the effects the simulation hands over (particles,
+// blurs, notices, and plugins' own through effect systems) and the sounds
+// it asks for. It reads the simulation and never changes it. Below game/
+// and ui/, so that a plugin's view/ package can draw without importing the
+// game.
+//
+// Compositing a frame the way the original does.
+//
+// Every drawable pushes sprites into one of sixteen layer lists, and the frame
+// is then assembled in three groups with the terrain and the particles between
+// them (G_GameInterface::Draw):
+//
+//     layers 0-1  ->  terrain  ->  layers 2-5  ->  particles  ->  layers 6-15
+//
+// Within a layer, insertion order. The layer comes from the object's
+// drawLayer_ID, mapped in G_GameObject::Priv_Draw.
+//
+// What is reproduced is that ordering, not the 16-bit blitter: raylib draws
+// the same frames, at the same places, in the same sequence.
+
+import "core:fmt"
+import "core:strings"
+
+import rl "vendor:raylib"
+
+import "dr:prefs"
+import "dr:sim"
+import "dr:sim/lifecycle"
+
+LAYERS :: 16
+
+// U_Display::Init hardcodes the screen to 640x480 and centres a 576-wide
+// front buffer (the 416-wide play field plus a 160-wide score bar panel,
+// im16 "scor") inside it, leaving a 32px black margin on each side --
+// confirmed against a real screenshot of the running original
+// (work/wine/cmp/orig-00900.png: the panel is exactly scor.png's own 160x480,
+// and 32+416+160+32 = 640), not derived from U_Display::Init's offset
+// arithmetic, which is a maze of raw struct offsets not worth transliterating.
+VIEW_X :: 32
+SCOREBAR_W :: 160
+SCOREBAR_X :: VIEW_X + PLAY_W
+
+// G_GameObject::Priv_Draw's switch on drawLayer_ID. "defa" splits by whether
+// the object is in the air; an empty or "none" layer is treated as "defa".
+layer_of :: proc "contextless" (id: sim.Res_ID, is_air: bool) -> int {
+	switch id {
+	case sim.res_id("grou"):
+		return 3
+	case sim.res_id("grhi"):
+		return 5
+	case sim.res_id("ailo"):
+		return 7
+	case sim.res_id("aihi"):
+		return 8
+	case sim.res_id("plwe"):
+		return 9
+	case sim.res_id("play"):
+		return 10
+	case sim.res_id("plsh"):
+		return 11
+	case sim.res_id("plef"):
+		return 12
+	case sim.res_id("plui"):
+		return 13
+	case sim.res_id("atmo"):
+		return 14
+	case sim.res_id("hud "):
+		return 15
+	}
+	return is_air ? 7 : 3 // "defa"
+}
+
+// G_GameObject::Priv_DrawShadow picks its own, lower layer.
+shadow_layer_of :: proc "contextless" (id: sim.Res_ID, is_air: bool) -> int {
+	switch id {
+	case sim.res_id("grou"):
+		return 2
+	case sim.res_id("grhi"):
+		return 4
+	case sim.res_id("hud "), sim.res_id("plwe"), sim.res_id("plef"),
+	     sim.res_id("plsh"), sim.res_id("aihi"):
+		return 6
+	}
+	return is_air ? 6 : 2
+}
+
+Item :: struct {
+	texture: rl.Texture2D,
+	src:     rl.Rectangle,
+	dst:     rl.Rectangle,
+	tint:    rl.Color,
+	effect:  Item_Effect,
+	hue:     f32, // degrees, for effect != .None
+	sat:     f32, // minimum saturation, for effect != .None
+	lighten: f32, // 0..1 towards white after recolouring, for effect != .None
+	shine:   f32, // 0..1 of the saturation lost on highlights, for effect != .None
+	// Paint the tint's colour flat in the sprite's shape (the original's
+	// colorised blit, U_PixelScale16_Colorised_Alpha) rather than multiply.
+	colorise: bool,
+	// Degrees clockwise about the rectangle's centre. The original never
+	// turns a sprite -- a unit that faces a way has a frame for it -- so
+	// only what the port adds sets it.
+	rotation: f32,
+	// How much the sprite shines of its own accord, 0..1: a shot, a muzzle
+	// flash, a glowing object. Post passes read it (post.odin), for a glow
+	// and for the light it casts. Drawing ignores it.
+	emit:     f32,
+	// A shot on its way down to the ground (a ground weapon's), which is
+	// high above it when let go and on it when it lands: `falling` says it is
+	// one, `descent` how far down it is, 0 to 1. A post pass lights the
+	// ground more the nearer it is. Drawing ignores both.
+	falling:  bool,
+	descent:  f32,
+	// Up with the air units (the object's is_air), high above the ground.
+	// Drawing ignores it.
+	aloft:    bool,
+}
+
+// Accents (Extras, never in classic mode): drawn through
+// ACCENT_SHADER rather than baked into textures, since the same sprite is
+// shared by both players and, for the ground bomb's "bgbu", by an air
+// weapon too.
+Item_Effect :: enum u8 {
+	None,
+	Recolour,   // the sprite's own shading, in the accent hue
+	Silhouette, // the sprite's shape, flat in the accent hue
+}
+
+// High enough that a white or grey sprite (the glow of the ground weapon's
+// "pbhf", say) still reads clearly as the accent colour against the map.
+ACCENT_SATURATION :: 0.85
+// The ship's trim is shaded metal, recoloured from the silver of player 1's
+// ship. Fitted to player 2's gold: over the 1,518 PL1B/PL2B pixels that are
+// grey on one and yellow on the other, gold is hue ~63, saturation ~0.55,
+// brightness equal to the silver's luminance, and paler on the highlights
+// (0.29 at full brightness). With these two constants and the slider at 63
+// the mean error is 16 per pixel (summed RGB), from 42 at the 0.8 used
+// before -- the slider's yellow-orange reproduces the original gold.
+TRIM_SATURATION :: 0.55
+TRIM_SHINE :: 0.3 // share of the saturation the brightest highlights lose
+// How far the unlocked crosshair is washed towards white: lighter and
+// paler than the locked frame's pure red, whatever the accent.
+CROSSHAIR_LIGHTEN :: 0.45
+
+// One player's accent for this frame, set by flow_draw: their hue on their
+// ship's trim, crosshair and air-to-ground shots.
+Accent :: struct {
+	on:             bool, // the player colours' plugin is on: trim, crosshair and ground shots in the hue
+	hue:            f32, // degrees; the player's colour wherever it is shown
+	hide_crosshair: bool, // the other player's, in netplay
+}
+
+// A player's accent as a plain colour, for menu text.
+accent_color :: proc(hue: int) -> rl.Color {
+	return rl.ColorFromHSV(f32(hue), ACCENT_SATURATION * 0.8, 1)
+}
+
+// Replaces each pixel's hue with the accent's and lifts its saturation to
+// at least ACCENT_SATURATION, keeping its brightness and alpha (Recolour);
+// or ignores the colour altogether for a flat silhouette (Silhouette).
+// raylib's default vertex shader feeds it.
+@(private = "file")
+ACCENT_SHADER :: `#version 330
+in vec2 fragTexCoord;
+in vec4 fragColor;
+uniform sampler2D texture0;
+uniform vec4 colDiffuse;
+uniform float hue;     // 0..1
+uniform float minSat;
+uniform float flatten; // 1 for a silhouette
+uniform float lighten; // 0..1 towards white, after the hue is applied
+uniform float shine;   // 0..1 of the saturation highlights lose, like metal
+uniform float recolour; // 1: take the accent hue
+uniform float colorise; // 1: the tint colour, flat, in the sprite's shape
+out vec4 finalColor;
+
+vec3 rgb2hsv(vec3 c) {
+	vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+	vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+	vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+	float d = q.x - min(q.w, q.y);
+	float e = 1.0e-10;
+	return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+}
+
+vec3 hsv2rgb(vec3 c) {
+	vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+	vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+	return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+}
+
+void main() {
+	vec4 tx = texture(texture0, fragTexCoord);
+	vec4 tint = colDiffuse * fragColor;
+	// The original adds the sprite's alpha weight to the draw's blend
+	// (U_SpriteBlit_DrawTranslucent, U_PixelScale16_*_Alpha: weight + blend,
+	// capped at 32) rather than multiplying them, so a fading glow loses its
+	// faint halo first.
+	float a = clamp(tx.a - (1.0 - tint.a), 0.0, 1.0);
+	vec3 rgb = colorise > 0.5 ? tint.rgb : tx.rgb * tint.rgb;
+	if (recolour > 0.5) {
+		vec3 hsv = rgb2hsv(rgb);
+		hsv.x = hue;
+		hsv.y = max(hsv.y, minSat);
+		hsv.y *= 1.0 - shine * smoothstep(0.85, 1.0, hsv.z);
+		if (flatten > 0.5) {
+			hsv.z = 1.0;
+		}
+		rgb = mix(hsv2rgb(hsv), vec3(1.0), lighten);
+	}
+	finalColor = vec4(rgb, a);
+}
+`
+
+Renderer :: struct {
+	textures: Textures,
+	layers:   [LAYERS][dynamic]Item,
+	shadows:  bool,
+	// The level's map, with everything the simulation has burned into it.
+	// The original keeps one scrolling buffer and draws craters, tank tracks
+	// and wrecks straight into it; this is the same buffer.
+	terrain:       rl.RenderTexture2D,
+	terrain_level: ^sim.Level_Def,
+	terrain_k: i32, // how many times the original's size the buffer is (terrain_prepare)
+	terrain_qt:    bool, // built with QuickTime's gamma (classic mode)
+	// The step whose marks the map holds, and whether this frame is the
+	// first drawn of a new one: marks go in once a step, however many
+	// frames draw it (the original draws a frame a step).
+	terrain_step:  Terrain_Step,
+	terrain_fresh: bool,
+	replay:        bool, // a film is playing: the original labels it "REPLAY"
+	// Set by DR_DUMP: print every sprite of the next frame, which is how a
+	// misplaced or mis-scaled draw gets identified.
+	dump:     bool,
+	// Set by DR_SHOT_FIND: count the draws whose DR_DUMP line contains this
+	// text, without printing them (run_shots reports the steps).
+	find:      string,
+	find_hits: int,
+	// -classic / Preferences' Classic Mode, copied in each frame by
+	// main.odin -- see settings.odin.
+	classic:  bool,
+	// The fixed 1280x960 frame the interactive loop draws into before
+	// scaling it to the window (main.odin). Zero for the headless capture
+	// paths, which draw straight to the window as before.
+	canvas:   rl.RenderTexture2D,
+
+	// The player at this machine, -1 for none (a demo, a session watched).
+	local_player:     int,
+	// Netplay accents, per player slot (flow_draw sets them each frame;
+	// all off otherwise), and what draws them.
+	accents:          [sim.MAX_PLAYERS]Accent,
+	scorebar:         Scorebar_View, // the meters as shown, easing (scorebar.odin)
+	accent_shader:    rl.Shader,
+	accent_hue_loc:   i32,
+	accent_sat_loc:   i32,
+	accent_flat_loc:  i32,
+	accent_light_loc: i32,
+	accent_shine_loc: i32,
+	accent_recolour_loc: i32,
+	accent_colorise_loc: i32,
+	// The units the ground weapons spawn -- their shots, which take their
+	// owner's accent. Found once from the definitions (build_frame).
+	ground_units:     [dynamic]sim.Res_ID,
+	ground_units_set: bool,
+
+	// High refresh rate interpolation, presentation only: the state as it
+	// was before the latest step, and how far the render is between that
+	// step and the next (0..1). main.odin sets both each frame; interp_prev
+	// nil means off, and every position is drawn exactly as the state has
+	// it. The simulation never sees any of this.
+	interp_prev:  ^Interp_Prev,
+	interp_alpha: f32,
+	// The scroll this frame is drawn at: build_frame's (possibly
+	// interpolated) view_top and side_scroll, read by draw_object and
+	// draw_terrain.
+	view_top:    f32,
+	side_scroll: f32,
+	// The plugins on, whose render systems draw (flow sets it each frame),
+	// and the render systems this renderer runs, rebuilt when they change.
+	mods:            sim.Mods,
+	render_schedule: Render_Schedule,
+	// The post passes' scene and chain (post.odin).
+	post:            Post_State,
+	// The plugins' settings as they apply this frame, by prefs.Setting_ID:
+	// each one's value while its plugin is on, and 0 while it is off, in
+	// classic mode and in a demo. flow_draw sets them; a plugin's view
+	// reads its own.
+	setting:         [prefs.MAX_SETTINGS]int,
+	// Steps the game is held for (a plugin's view sets it, hitstop's): a
+	// session in play does not step while it is above zero, and each held
+	// step counts it down (game/flow.odin's flow_held). Never in netplay,
+	// whose peers step in lockstep. Presentation only.
+	hold:            int,
+	// How much slower than real time the game runs, 0 (normal) to just
+	// under 1: main.odin's accumulator takes (1 - slowdown) of each frame's
+	// time (flow_speed). Set by a plugin's view, hitstop's kill cam; the
+	// same rules as `hold`.
+	slowdown:        f32,
+}
+
+// Past this many pixels in one step, something jumped (a respawn, a new
+// level, a reused entity slot) rather than moved: draw it where it is.
+@(private = "file") INTERP_MAX_JUMP :: 48
+
+// Between the previous step's value and this one's, `alpha` of the way.
+// alpha 1 (interpolation off, or caught up) returns `now` exactly, so the
+// ordinary 30 FPS path draws the very same pixels it always has.
+interp :: proc "contextless" (before, now, alpha: f32) -> f32 {
+	if alpha >= 1 || abs(now - before) > INTERP_MAX_JUMP {
+		return now
+	}
+	return before + (now - before) * alpha
+}
+
+renderer_init :: proc(r: ^Renderer, root: string, classic: bool = false, audio: bool = true) {
+	textures_load(&r.textures, root, audio)
+	for &l in r.layers {
+		l = make([dynamic]Item, 0, 64)
+	}
+	r.shadows = true
+	r.classic = classic
+	r.textures.quicktime_gamma = classic
+	r.accent_shader = rl.LoadShaderFromMemory(nil, ACCENT_SHADER)
+	r.accent_hue_loc = rl.GetShaderLocation(r.accent_shader, "hue")
+	r.accent_sat_loc = rl.GetShaderLocation(r.accent_shader, "minSat")
+	r.accent_flat_loc = rl.GetShaderLocation(r.accent_shader, "flatten")
+	r.accent_light_loc = rl.GetShaderLocation(r.accent_shader, "lighten")
+	r.accent_shine_loc = rl.GetShaderLocation(r.accent_shader, "shine")
+	r.accent_recolour_loc = rl.GetShaderLocation(r.accent_shader, "recolour")
+	r.accent_colorise_loc = rl.GetShaderLocation(r.accent_shader, "colorise")
+}
+
+renderer_destroy :: proc(r: ^Renderer) {
+	if r.terrain.id != 0 {
+		rl.UnloadRenderTexture(r.terrain)
+	}
+	if r.canvas.id != 0 {
+		rl.UnloadRenderTexture(r.canvas)
+	}
+	post_destroy(r)
+	textures_unload(&r.textures)
+	for &l in r.layers {
+		delete(l)
+	}
+	if r.accent_shader.id != 0 {
+		rl.UnloadShader(r.accent_shader)
+	}
+	delete(r.ground_units)
+}
+
+push_item :: proc(r: ^Renderer, layer: int, it: Item) {
+	if layer < 0 || layer >= LAYERS {
+		return
+	}
+	append(&r.layers[layer], it)
+}
+
+// A 1555 colour as raylib sees it, with `amount` out of 32 as its alpha --
+// the blend units U_Pixel16 works in.
+@(private = "file")
+tint_color :: proc "contextless" (c: u16, amount: i32) -> rl.Color {
+	expand :: proc "contextless" (v: u16) -> u8 {
+		return u8((u32(v) * 255 + 15) / 31)
+	}
+	a := clamp(amount, 0, 32)
+	return {
+		expand(c >> 10 & 0x1f),
+		expand(c >> 5 & 0x1f),
+		expand(c & 0x1f),
+		u8(a * 255 / 32),
+	}
+}
+
+// Where an object's sprite lands this frame: its frame of the sprite, its
+// rectangle and its layer. Not ok when nothing of it draws.
+Placed :: struct {
+	texture: rl.Texture2D,
+	src:     rl.Rectangle,
+	dst:     rl.Rectangle,
+	layer:   int,
+	x, y:    f32, // the point the frame is centred on
+}
+
+object_place :: proc(r: ^Renderer, o: ^sim.Game_Object, prev: ^sim.Game_Object = nil) -> (p: Placed, ok: bool) {
+	tex, src, found := frame_rect(&r.textures, o.sprite, o.frame)
+	if o.visibility <= 0 || o.sprite == sim.NONE || !found {
+		return {}, false
+	}
+	// Whole pixels, as the original draws -- unless interpolating, where
+	// the in-between position is the point, and the 2x canvas shows it.
+	x, y: f32
+	if prev != nil && r.interp_alpha < 1 {
+		x = interp(f32(sim.trunc_i32(prev.loc.x)), f32(sim.trunc_i32(o.loc.x)), r.interp_alpha)
+		y = interp(f32(sim.trunc_i32(prev.loc.y)), f32(sim.trunc_i32(o.loc.y)), r.interp_alpha)
+	} else {
+		x = f32(sim.trunc_i32(o.loc.x))
+		y = f32(sim.trunc_i32(o.loc.y))
+	}
+	if o.scrolls_sideways {
+		x -= r.side_scroll
+	}
+	// draw_to_terrain objects never come here: they are burned into the
+	// map (terrain_burn).
+	layer := layer_of(o.draw_layer, o.is_air)
+	return {tex, src, place_rect(x, y, src, o.scale), layer, x, y}, true
+}
+
+// U_Sprite_Draw centres the frame on the point, halving as the simulation
+// does.
+place_rect :: proc(x, y: f32, src: rl.Rectangle, scale: f32) -> rl.Rectangle {
+	w := i32(src.width * scale)
+	h := i32(src.height * scale)
+	return {x - f32(lifecycle.halve(w)), y - f32(lifecycle.halve(h)), f32(w), f32(h)}
+}
+
+// G_GameObject::Priv_Draw: the sprite, then a tint pass while `tint` is above
+// zero, then a glow pass while glowing. Nothing draws while the object is
+// fully invisible.
+//
+// Terrain-drawn objects are placed in map space: shifted 32 right and down by
+// the scroll. Everything else slides with the view's sideways scroll, which a
+// player pushes by holding left or right.
+//
+// G_GameObject::Priv_Draw draws up to three passes -- the sprite, a tint while
+// `tint` is above zero, and a glow while glowing -- and Priv_DrawShadow adds a
+// silhouette underneath. Nothing draws while the object is fully invisible.
+//
+// `prev` is the same object as it was a step ago, when interpolating and it
+// existed then; nil draws it exactly where it is.
+//
+// `accent` recolours the sprite (a player's crosshair or shots) or its trim
+// (their ship); the zero value draws it as it is.
+Draw_Accent :: struct {
+	hue:      f32,
+	recolour: bool,
+	trim:     bool, // a ship: its silver/gold trim (ship_trim) in the accent
+	lighten:  f32, // with recolour: towards white (the unlocked crosshair)
+}
+
+// `turn` draws the frame rotated by that many degrees clockwise. `fall` is
+// how far down a shot to the ground has come (fall_of), -1 for what does not
+// fall.
+draw_object :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shadow: bool, prev: ^sim.Game_Object = nil, accent := Draw_Accent{}, turn: f32 = 0, player_shot := false, fall: f32 = -1) {
+	if r.dump {
+		_, _, ok := frame_rect(&r.textures, o.sprite, o.frame)
+		if !ok || o.visibility <= 0 {
+			id := o.sprite
+			fmt.printfln("  SKIPPED %v frame %v at %.1f,%.1f  vis %.0f  %s",
+				string(id[:]), o.frame, o.loc.x, o.loc.y, o.visibility,
+				o.sprite == sim.NONE ? "no sprite" : !ok ? "no such frame" : "invisible")
+		}
+	}
+	place, ok := object_place(r, o, prev)
+	if !ok {
+		return
+	}
+	tex, src, dst, layer, x, y := place.texture, place.src, place.dst, place.layer, place.x, place.y
+
+	if r.dump || r.find != "" {
+		id := o.sprite
+		line := fmt.tprintf("  layer %2d  %v frame %v  at %.1f,%.1f  %.0fx%.0f  scale %.3f  vis %.0f  tint %.0f/%04x  glow %v  terrain %v  shadow %v",
+			layer, string(id[:]), o.frame, o.loc.x, o.loc.y, dst.width, dst.height,
+			o.scale, o.visibility, o.tint, o.tint_color, o.glowing, o.draw_to_terrain, casts_shadow)
+		if r.dump {
+			fmt.println(line)
+		}
+		if r.find != "" && strings.contains(line, r.find) {
+			r.find_hits += 1
+		}
+	}
+
+	// The shadow: a silhouette of the same frame, offset and never less than
+	// the blend floor of 20/32. Ground objects keep their size and shift a
+	// little (perm floats 0x32, 0x33); air objects drop half-size, far down
+	// and to the left (0x30, 0x31), as if lit from high behind.
+	if casts_shadow && r.shadows {
+		pf := s.defs.perm_floats
+		sscale, ox, oy: f32
+		if o.is_air {
+			sscale = o.scale * 0.5
+			k := o.shadow_scaled ? sscale : 0.5
+			ox, oy = pf[0x30] * k, pf[0x31] * k
+		} else {
+			sscale = o.scale
+			ox, oy = pf[0x32] * o.scale, pf[0x33] * o.scale
+		}
+		blend := max(i32(32 - o.visibility * 32 / 100), 20)
+		sh := place_rect(x + f32(sim.trunc_i32(ox)), y + f32(sim.trunc_i32(oy)), src, sscale)
+		push_item(r, shadow_layer_of(o.draw_layer, o.is_air), Item {
+			texture = tex,
+			src     = src,
+			dst     = sh,
+			tint    = {0, 0, 0, u8((32 - blend) * 255 / 32)},
+			rotation = turn,
+		})
+	}
+
+	alpha := u8(clamp(o.visibility, 0, 100) * 255 / 100)
+	// A colorised object (doColorise, +0x52) skips its own sprite: only the
+	// tint pass below draws, flat, in its shape (Priv_Draw). The ground
+	// bomb's glow "glow" frame 4 is one -- drawn plain it was a wide grey
+	// ball where the original shows a small cyan core.
+	if !o.colorise {
+		push_item(r, layer, Item {
+			texture = tex, src = src, dst = dst, tint = {255, 255, 255, alpha},
+			effect = accent.recolour ? .Recolour : .None, hue = accent.hue, sat = ACCENT_SATURATION,
+			lighten = accent.lighten, rotation = turn, emit = emission_of(o, player_shot),
+			falling = fall >= 0, descent = max(fall, 0), aloft = o.is_air,
+		})
+	}
+	if accent.trim {
+		if trim, tok := ship_trim(&r.textures, o.sprite); tok {
+			push_item(r, layer, Item {
+				texture = trim, src = src, dst = dst, tint = {255, 255, 255, alpha},
+				effect = .Recolour, hue = accent.hue, sat = TRIM_SATURATION, shine = TRIM_SHINE,
+				rotation = turn,
+			})
+		}
+	}
+
+	// A recoloured object's tint and glow take the accent too: the ground
+	// weapon's glow trail "pbgl" is tinted 70% cyan, which would otherwise
+	// wash its accent back out.
+	over := accent.recolour ? Item_Effect.Recolour : .None
+	// Both are flat colour in the sprite's shape (Priv_Draw sets the
+	// colorised flag, 4). The tint's weight is tint% of 32, scaled by the
+	// sprite's own visibility; the glow's amount is the blit's destination
+	// weight, so 32 is invisible and 4 (its peak) nearly solid.
+	if o.tint > 0 {
+		push_item(r, layer, Item {
+			texture = tex, src = src, dst = dst,
+			tint = tint_color(o.tint_color, i32(o.tint * 32 / 100 * clamp(o.visibility, 0, 100) / 100)),
+			effect = over, hue = accent.hue, sat = ACCENT_SATURATION, colorise = true,
+			rotation = turn,
+		})
+	}
+	if o.glowing {
+		push_item(r, layer, Item {
+			texture = tex, src = src, dst = dst,
+			tint = tint_color(o.glow_color, 32 - o.glow_amount),
+			effect = over, hue = accent.hue, sat = ACCENT_SATURATION, colorise = true,
+			rotation = turn,
+		})
+	}
+}
+
+// How much an object shines of its own accord: the player's shots and the
+// effects round them (muzzle flashes, hits) in the original's own draw
+// layers for them ("plwe", "plef"), and anything in its glow flash.
+// Provisional: an enemy's fire has no layer of its own, so it waits for the
+// emissive textures the plan adds (notes/realtime-lighting-and-effects.md).
+emission_of :: proc "contextless" (o: ^sim.Game_Object, player_shot: bool) -> f32 {
+	switch o.draw_layer {
+	case sim.res_id("plwe"), sim.res_id("plef"):
+		return 1
+	case sim.res_id("play"), sim.res_id("plsh"), sim.res_id("plui"), sim.res_id("hud "), sim.res_id("atmo"):
+		return 0
+	}
+	// What a player spawned that is not marked into the ground: their
+	// shots, which are drawn with the air or ground units' layers.
+	if player_shot && !o.draw_to_terrain {
+		return 1
+	}
+	return o.glowing ? 0.6 : 0
+}
+
+// How far down a shot to the ground has come: 0 as it leaves the ship, 1 as
+// it lands, and -1 for everything that does not fall. A unit that is
+// ground-based and owned by a player is a ground weapon's shot, or what it
+// leaves (the Plasma Bomb "plbo" and its hit flash "pbhf" are the only ones
+// today). It is up in the air until the flight ends. The bomb's state timer
+// is the flight -- "Flight" runs 19 steps at 6 pixels, the throw to the
+// crosshair 121 up the screen -- and a state that ends the unit (the bomb's
+// "Dwindle & Delete", where it hits, and the flash that follows) is the
+// landing.
+//
+// `behind` is how far back from the last step the picture is, when it is
+// interpolated between that step and the one before (1 - alpha), so the fall
+// is as smooth as the picture.
+fall_of :: proc(s: ^sim.State, e: sim.Entity, u: ^sim.Unit, behind: f32 = 0) -> f32 {
+	if e.owner_player < 0 || !u.is_ground_based || e.draw_to_terrain {
+		return -1
+	}
+	// The clock has moved on from the step the entity was last processed in.
+	steps := f32(sim.single(s, sim.Clock).time - e.state_time - 1) - behind
+	to := sim.state_of(s, e).on_timer_change_to
+	landed := to == "" || to == "none" || to == "Destroy" || to == "Delete"
+	return fall_progress(max(steps, 0), e.timer, landed)
+}
+
+fall_progress :: proc "contextless" (steps: f32, timer: i32, landed: bool) -> f32 {
+	if landed || timer <= 0 {
+		return 1
+	}
+	return clamp(steps / f32(timer), 0, 1)
+}
+
+// A shot from a ground weapon takes its owner's accent: the units the
+// weapon spawns, and everything those spawn in turn -- for "plbo" (the only
+// ground weapon today) its bomb "plbo" with its glow trail "pbgl" and hit
+// flash "pbhf", and the launch flash "pblf". Keyed by unit rather than
+// sprite, since the bomb's sprite "bgbu" is shared with an air weapon's
+// bullet. Marks drawn into the terrain (craters) keep their colours.
+shot_accent :: proc(r: ^Renderer, s: ^sim.State, e: sim.Entity) -> Draw_Accent {
+	if e.owner_player < 0 || int(e.owner_player) >= sim.MAX_PLAYERS || e.draw_to_terrain {
+		return {}
+	}
+	ac := r.accents[e.owner_player]
+	if !ac.on {
+		return {}
+	}
+	if !r.ground_units_set {
+		r.ground_units_set = true
+		for &w in s.defs.weapons {
+			if w.type == sim.WEP_GROUND {
+				for sp in w.spawns {
+					ground_units_add(r, s.defs, sp.unit)
+				}
+			}
+		}
+	}
+	id := s.defs.units[e.unit].id
+	for u in r.ground_units {
+		if u == id {
+			return {hue = ac.hue, recolour = true}
+		}
+	}
+	return {}
+}
+
+@(private = "file")
+ground_units_add :: proc(r: ^Renderer, defs: ^sim.Defs, id: sim.Res_ID) {
+	if id == sim.NONE {
+		return
+	}
+	for u in r.ground_units {
+		if u == id {
+			return // already in, which also stops a unit that spawns itself
+		}
+	}
+	append(&r.ground_units, id)
+	for &u in defs.units {
+		if u.id != id {
+			continue
+		}
+		ground_units_add(r, defs, u.destruct_spawn)
+		ground_units_add(r, defs, u.deletion_spawn)
+		for &st in u.states {
+			for &set in st.spawn_sets {
+				ground_units_add(r, defs, set.spawn)
+			}
+		}
+	}
+}
+
+// FUN_00420740, as the session's render systems (render_systems.odin).
+build_frame :: proc(r: ^Renderer, s: ^sim.State, blurs: ^Blurs, notices: ^Notices) {
+	f := Frame{blurs = blurs, notices = notices}
+	run_render_systems(r, s, &f)
+}
+
+// One item at its final screen rectangle, through ACCENT_SHADER when it
+// carries an effect. Also used directly by the Extras previews.
+draw_item :: proc(r: ^Renderer, it: Item, dst: rl.Rectangle) {
+	dst, origin := dst, rl.Vector2{}
+	if it.rotation != 0 {
+		origin = {dst.width / 2, dst.height / 2}
+		dst.x += origin.x
+		dst.y += origin.y
+	}
+	// An opaque plain draw blends the same either way; everything else goes
+	// through the shader for the original's alpha rule.
+	if (it.effect == .None && !it.colorise && it.tint.a == 255) || r.accent_shader.id == 0 {
+		rl.DrawTexturePro(it.texture, it.src, dst, origin, it.rotation, it.tint)
+		return
+	}
+	recolour := f32(it.effect != .None ? 1 : 0)
+	colorise := f32(it.colorise ? 1 : 0)
+	hue := it.hue / 360
+	sat := it.sat
+	flat := f32(it.effect == .Silhouette ? 1 : 0)
+	rl.BeginShaderMode(r.accent_shader)
+	rl.SetShaderValue(r.accent_shader, r.accent_hue_loc, &hue, .FLOAT)
+	rl.SetShaderValue(r.accent_shader, r.accent_sat_loc, &sat, .FLOAT)
+	rl.SetShaderValue(r.accent_shader, r.accent_flat_loc, &flat, .FLOAT)
+	light := it.lighten
+	rl.SetShaderValue(r.accent_shader, r.accent_light_loc, &light, .FLOAT)
+	shine := it.shine
+	rl.SetShaderValue(r.accent_shader, r.accent_shine_loc, &shine, .FLOAT)
+	rl.SetShaderValue(r.accent_shader, r.accent_recolour_loc, &recolour, .FLOAT)
+	rl.SetShaderValue(r.accent_shader, r.accent_colorise_loc, &colorise, .FLOAT)
+	rl.DrawTexturePro(it.texture, it.src, dst, origin, it.rotation, it.tint)
+	rl.EndShaderMode()
+}
+
+// Draws what build_frame collected, in the original's order.
+present :: proc(r: ^Renderer, s: ^sim.State, particles: ^Particles, scale: f32) {
+	run :: proc(r: ^Renderer, lo, hi: int, scale: f32) {
+		for l in lo ..= hi {
+			for it in r.layers[l] {
+				dst := it.dst
+				dst.x = (dst.x + VIEW_X) * scale
+				dst.y *= scale
+				dst.width *= scale
+				dst.height *= scale
+				draw_item(r, it, dst)
+			}
+		}
+	}
+	// Every blit in the original clips to the 416x480 play field
+	// (U_PixelScale16_*: x to 0..0x1a0, y to 0..0x1e0), so a unit waiting
+	// just off the left edge is not drawn in the border beside it.
+	// With a post pass on, the field is drawn into the scene texture first.
+	canvas_w, canvas_h := i32(SCREEN_W * scale), i32(SCREEN_H * scale)
+	post := post_begin(r, canvas_w, canvas_h)
+	rl.BeginScissorMode(i32(VIEW_X * scale), 0, i32(PLAY_W * scale), i32(PLAY_H * scale))
+	run(r, 0, 1, scale)
+	draw_terrain(r, s, scale)
+	run(r, 2, 5, scale)
+	t := r.interp_prev != nil ? r.interp_alpha : 1
+	particles_draw(particles, scale, r.side_scroll, t)
+	// Layer by layer, so a plugin's effects can go between them.
+	for l in 6 ..= 15 {
+		run(r, l, l, scale)
+		effect_systems_draw(r, s, l, scale, r.side_scroll, t)
+	}
+	rl.EndScissorMode()
+	if post {
+		post_end(r, &Post_Frame{scale = scale, side = r.side_scroll, t = t, particles = particles, state = s, view_top = r.view_top, width = canvas_w, height = canvas_h})
+	}
+	level_end_draw(r, s, scale) // layer 0xf text, over the sprites
+	scorebar_draw(r, s, scale)
+	if r.replay {
+		// G_Game_Play, while a film plays: game string 9 through preset 0x26.
+		text_preset_draw(r, r.textures.assets.text[0x26], game_string(r, 9), VIEW_X, scale)
+	}
+}
+
+// The map buffer for a level: the image, plus every mark burned into it
+// since the level started. Rebuilt when the level changes.
+terrain_prepare :: proc(r: ^Renderer, s: ^sim.State) {
+	if r.terrain_level == sim.level_def(s) && r.terrain.id != 0 && r.terrain_qt == r.textures.quicktime_gamma && r.terrain_k == terrain_scale(&r.textures, sim.level_def(s)) {
+		return
+	}
+	tex, ok := terrain_texture(&r.textures, sim.level_def(s))
+	if !ok {
+		return
+	}
+	if r.terrain.id != 0 {
+		rl.UnloadRenderTexture(r.terrain)
+	}
+	// A redrawn map (a texture pack's) is k times the original's size: the
+	// buffer is too, and every mark goes in at k times its place.
+	px := texture_pixels(&r.textures, tex)
+	r.terrain_k = px.x / max(tex.width, 1)
+	r.terrain = rl.LoadRenderTexture(px.x, px.y)
+	r.terrain_level = sim.level_def(s)
+	r.terrain_qt = r.textures.quicktime_gamma
+	rl.BeginTextureMode(r.terrain)
+	rl.ClearBackground(rl.BLACK)
+	// A render texture is bottom-up, so the map goes in flipped and every
+	// later read flips back.
+	rl.DrawTexturePro(tex, {0, 0, f32(tex.width), -f32(tex.height)}, {0, 0, f32(px.x), f32(px.y)}, {0, 0}, 0, rl.WHITE)
+	rl.EndTextureMode()
+	resume_canvas(r)
+}
+
+// raylib's render targets do not nest: EndTextureMode goes back to the
+// window, not to whatever target was bound before. The terrain buffer is
+// drawn into mid-frame (build_frame), so once it is done the frame's own
+// target has to be bound again or the rest of the frame lands on the window.
+resume_canvas :: proc(r: ^Renderer) {
+	if r.canvas.id != 0 {
+		rl.BeginTextureMode(r.canvas)
+	}
+}
+
+Terrain_Step :: struct {
+	level, played: i32,
+	frame:         u32,
+}
+
+// Notes whether this frame starts a new step, for the marks.
+terrain_step_begin :: proc(r: ^Renderer, s: ^sim.State) {
+	info := sim.single(s, sim.Level_Info)
+	now := Terrain_Step{info.number, info.played, sim.frame_of(s)}
+	r.terrain_fresh = now != r.terrain_step
+	r.terrain_step = now
+}
+
+// Applies this step's marks, on the first frame drawn of it. `loc` is where
+// the object was on screen, so the map position is that plus the scroll,
+// and 32 across.
+terrain_stamp :: proc(r: ^Renderer, s: ^sim.State) {
+	if r.terrain.id == 0 || s.stamps.count == 0 || !r.terrain_fresh {
+		return
+	}
+	rl.BeginTextureMode(r.terrain)
+	for st in s.stamps.events[:s.stamps.count] {
+		tex, src, ok := frame_rect(&r.textures, st.sprite, st.frame)
+		if !ok {
+			continue
+		}
+		x := sim.trunc_i32(st.loc.x) + 32
+		y := st.view_top + sim.trunc_i32(st.loc.y)
+		alpha := u8(clamp(st.visibility, 0, 100) * 255 / 100)
+		terrain_draw(r, tex, src, x, y, st.scale, {255, 255, 255, alpha})
+	}
+	rl.EndTextureMode()
+	resume_canvas(r)
+}
+
+// One frame drawn into the map, centred on (x, y) in map space, between
+// BeginTextureMode(r.terrain) and its end.
+@(private = "file")
+terrain_draw :: proc(r: ^Renderer, tex: rl.Texture2D, src: rl.Rectangle, x, y: i32, scale: f32, tint: rl.Color) {
+	w := i32(src.width * scale)
+	h := i32(src.height * scale)
+	flipped := src
+	flipped.height = -flipped.height // the buffer is bottom-up
+	top := f32(r.terrain.texture.height / r.terrain_k) - f32(y - lifecycle.halve(h)) - f32(h)
+	dst := rl.Rectangle{f32(x - lifecycle.halve(w)), top, f32(w), f32(h)}
+	k := f32(r.terrain_k)
+	dst = {dst.x * k, dst.y * k, dst.width * k, dst.height * k}
+	rl.DrawTexturePro(tex, flipped, dst, {0, 0}, 0, tint)
+}
+
+// A live object with stateDrawToTerrain -- a crater, a scorch, a tank's
+// tracks -- drawn into the map rather than the frame, so what it leaves
+// stays where it was put after it is gone. G_GameObject::Priv_Draw sets
+// such an object's sprite flag 8 (0x424760), which U_Sprite_Draw
+// (0x40a070) reads as "draw into the map buffer", and does so at most once
+// a step (+0x86 holds the last game time drawn); Priv_DrawShadow sends its
+// shadow there too. G_GameInterface::Draw draws those lists before
+// G_Bgnd_CopyToFrontBuffer, so the mark shows the step it is made.
+//
+// Only the sprite and its shadow: the tint and glow passes, which the
+// original also sends to the map, have not been seen on a terrain object.
+// Provisional until one is.
+terrain_burn :: proc(r: ^Renderer, s: ^sim.State, o: ^sim.Game_Object, casts_shadow: bool) {
+	if r.terrain.id == 0 || !r.terrain_fresh || o.visibility <= 0 {
+		return
+	}
+	tex, src, ok := frame_rect(&r.textures, o.sprite, o.frame)
+	if !ok {
+		return
+	}
+	view_top := sim.single(s, sim.Bgnd).view_top
+	x := sim.trunc_i32(o.loc.x) + 32
+	y := sim.trunc_i32(o.loc.y) + view_top
+	if r.dump || r.find != "" {
+		id := o.sprite
+		line := fmt.tprintf("  map       %v frame %v  at %.1f,%.1f  scale %.3f  vis %.0f  terrain true  shadow %v",
+			string(id[:]), o.frame, o.loc.x, o.loc.y, o.scale, o.visibility, casts_shadow)
+		if r.dump {
+			fmt.println(line)
+		}
+		if r.find != "" && strings.contains(line, r.find) {
+			r.find_hits += 1
+		}
+	}
+	rl.BeginTextureMode(r.terrain)
+	if casts_shadow && r.shadows {
+		// As draw_object's shadow, for a ground object.
+		pf := s.defs.perm_floats
+		blend := max(i32(32 - o.visibility * 32 / 100), 20)
+		ox, oy := sim.trunc_i32(pf[0x32] * o.scale), sim.trunc_i32(pf[0x33] * o.scale)
+		terrain_draw(r, tex, src, x + ox, y + oy, o.scale, {0, 0, 0, u8((32 - blend) * 255 / 32)})
+	}
+	terrain_draw(r, tex, src, x, y, o.scale, {255, 255, 255, u8(clamp(o.visibility, 0, 100) * 255 / 100)})
+	rl.EndTextureMode()
+	resume_canvas(r)
+}
+
+// G_Bgnd_CopyToFrontBuffer: the visible window of the level's map, straight to
+// the top-left of the play field. The source starts 32 pixels in, because the
+// map is 480 wide and the play field 416, plus however far the view has slid
+// sideways.
+draw_terrain :: proc(r: ^Renderer, s: ^sim.State, scale: f32) {
+	if r.terrain.id == 0 {
+		return
+	}
+	w := f32(sim.view_width(s.defs))
+	h := f32(sim.view_height(s.defs))
+	left := max(r.side_scroll + 32, 0)
+	// The map went into the buffer flipped, so it reads like any other
+	// texture from here on. r.view_top is fractional when interpolating.
+	k := f32(r.terrain_k)
+	src := rl.Rectangle{left * k, r.view_top * k, w * k, h * k}
+	dst := rl.Rectangle{VIEW_X * scale, 0, w * scale, h * scale}
+	rl.DrawTexturePro(r.terrain.texture, src, dst, {0, 0}, 0, rl.WHITE)
+}

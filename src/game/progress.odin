@@ -18,7 +18,10 @@ import "core:os"
 import "core:strconv"
 import "core:strings"
 
-// Saved as user_data_path("progress") (game/prefs.odin): the ordinary XDG
+import "dr:prefs"
+import "dr:sim"
+
+// Saved as prefs.user_data_path("progress"), prefs/user_data.odin: the XDG
 // data location on Linux, %APPDATA% on Windows. Empty when no such directory
 // is known -- headless captures (tools/oracle/) run inside a podman
 // container with HOME=/w, so this only turns up empty under a more
@@ -26,9 +29,11 @@ import "core:strings"
 // persistence available" rather than failing.
 // The highest 1-based level-list position unlocked so far, or 1 (only the
 // first level) if no save exists yet -- the same starting point as a fresh
-// install, matching a fresh U_Prefs slot 3.
-progress_load :: proc() -> int {
-	path := user_data_path("progress", context.temp_allocator)
+// install, matching a fresh U_Prefs slot 3. Each campaign keeps its own
+// (D53): the original's in "progress", a campaign plugin's in
+// "progress-<plugin name>".
+progress_load :: proc(campaign: sim.Plugin_ID) -> int {
+	path := prefs.user_data_path(progress_name(campaign), context.temp_allocator)
 	if path == "" {
 		return 1
 	}
@@ -47,6 +52,14 @@ progress_load :: proc() -> int {
 // read-only data directory or user_data_path returning "" just means progress
 // doesn't persist past this run, not a crash -- there is nothing the player
 // can do about either from inside the game.
-progress_save :: proc(highest: int) {
-	user_data_write("progress", fmt.tprintf("%d", highest))
+progress_save :: proc(campaign: sim.Plugin_ID, highest: int) {
+	prefs.user_data_write(progress_name(campaign), fmt.tprintf("%d", highest))
+}
+
+@(private = "file")
+progress_name :: proc(campaign: sim.Plugin_ID) -> string {
+	if campaign == sim.CORE {
+		return "progress"
+	}
+	return fmt.tprintf("progress-%s", sim.registered_plugins()[campaign].name)
 }

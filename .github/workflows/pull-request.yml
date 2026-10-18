@@ -1,0 +1,29 @@
+name: Pull request
+
+# What a pull request must pass besides Build, which runs on every push to
+# its branch. site:check fails a branch that adds no entry to
+# src/site/site.config.json's changes (AGENTS.md, "Branches and pull
+# requests"); the offline build proves the config and the plugin catalogue
+# still generate.
+on:
+  pull_request:
+
+jobs:
+  site:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The merge base with the pull request's base, for site:check.
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: The branch adds its entry to the site
+        run: node src/site/check.mjs "origin/${{ github.base_ref }}"
+
+      - name: The site still builds
+        run: node src/site/build.mjs --offline --out _site

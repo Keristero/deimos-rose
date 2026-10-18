@@ -74,10 +74,65 @@ Action :: enum u8 {
 BINDING_SLOTS :: 2
 Bindings :: [Action][BINDING_SLOTS]i32
 
+// What drives a local player: the keyboard's keys, or a controller's buttons
+// and sticks (Prefs.pad_bindings).
+Input_Kind :: enum u8 {
+	Keyboard,
+	Controller,
+}
+
+// A controller binding is 0 for none, a raylib GamepadButton (1..17), or a
+// stick/trigger axis pushed one way: PAD_AXIS + 2*axis, and 1 more for the
+// positive direction.
+PAD_NONE :: 0
+PAD_AXIS :: 100
+
+pad_axis_code :: proc "contextless" (axis: int, positive: bool) -> i32 {
+	return i32(PAD_AXIS + axis * 2 + (positive ? 1 : 0))
+}
+
+// The axis and direction of an axis code; not ok for a button or none.
+pad_axis_of :: proc "contextless" (code: i32) -> (axis: int, positive: bool, ok: bool) {
+	if code < PAD_AXIS {
+		return
+	}
+	return int(code - PAD_AXIS) / 2, (code - PAD_AXIS) % 2 == 1, true
+}
+
+// A controller's name as the system gives it, as chosen in Preferences.
+PAD_NAME_MAX :: 64
+
+Pad_Name :: struct {
+	buf: [PAD_NAME_MAX]u8,
+	len: int,
+}
+
+pad_name_string :: proc(n: ^Pad_Name) -> string {
+	return string(n.buf[:n.len])
+}
+
+pad_name_set :: proc(n: ^Pad_Name, text: string) {
+	out: Pad_Name
+	for i in 0 ..< len(text) {
+		if c := text[i]; c >= 0x20 && c <= 0x7e && out.len < PAD_NAME_MAX {
+			out.buf[out.len] = c
+			out.len += 1
+		}
+	}
+	n^ = out
+}
+
 VOLUME_STEP :: 10 // percent per click of the volume arrows
 
 Prefs :: struct {
 	bindings:     [sim.MAX_PLAYERS]Bindings,
+	// Each local player's device, and for a controller which one (its name
+	// and its place in the system's list, to tell two alike apart) and its
+	// buttons.
+	input:        [sim.MAX_PLAYERS]Input_Kind,
+	pad_name:     [sim.MAX_PLAYERS]Pad_Name,
+	pad_index:    [sim.MAX_PLAYERS]i32,
+	pad_bindings: [sim.MAX_PLAYERS]Bindings,
 	sfx_volume:   int, // percent, 0..100
 	music_volume: int, // percent, 0..100
 	fullscreen:   bool,
@@ -86,57 +141,14 @@ Prefs :: struct {
 	// The name last entered in the netplay lobby, offered again next time
 	// and recorded against this player's high scores after a netplay game.
 	netplay_name: Name,
-	// Enhancements beyond the original, each off in classic mode
-	// (game/extras.odin). One value per entry of EXTRAS.
-	extras: [Extra]int,
-}
-
-// Extras: every setting for a feature the original did not have. Adding
-// one means an entry here and in EXTRAS, and using it through game/
-// extras.odin's extra_on/extra_value -- saving, loading and its row on the
-// Preferences Extras page all come from this table. Classic mode switches
-// every one of them off, so classic stays the original game.
-Extra :: enum {
-	High_Refresh_Rate, // draw at the monitor's rate, interpolating between the fixed 30 Hz steps
-	Accent_Colours,    // the two hues below, on or off together
-	Accent_Hue,        // player 1's colour, and yours in netplay: ship trim, crosshair and air-to-ground shots
-	Accent_Hue_P2,     // player 2's colour in a local game
-	Self_Outline,      // an outline in your accent round your own ship
-	Easy_Mode,         // a passive upgrade to choose after every level (sim/passives.odin); also on level select and the lobby
-	New_Weapons,       // the new weapons, and a loadout screen at the start of each stage (sim/loadout.odin); also in the lobby
-}
-
-Extra_Kind :: enum {
-	Toggle, // 0 or 1
-	Hue,    // degrees, 0..359
-}
-
-Extra_Info :: struct {
-	key:     string, // in the save file; high_refresh_rate and accent_hue predate the table
-	label:   string,
-	kind:    Extra_Kind,
-	default: int,
-}
-
-EXTRAS := [Extra]Extra_Info {
-	.High_Refresh_Rate = {"high_refresh_rate", "HIGH REFRESH RATE", .Toggle, 0},
-	.Accent_Colours    = {"accent_colours", "ACCENT COLOURS", .Toggle, 1},
-	.Accent_Hue        = {"accent_hue", "P1 ACCENT HUE", .Hue, 190}, // the cyan of the original crosshair
-	.Accent_Hue_P2     = {"accent_hue_p2", "P2 ACCENT HUE", .Hue, 63}, // player 2's own gold (game/render.odin TRIM_SATURATION)
-	.Self_Outline      = {"self_outline", "SELF OUTLINE", .Toggle, 0},
-	.Easy_Mode         = {"easy_mode", "EASY MODE", .Toggle, 0},
-	.New_Weapons       = {"new_weapons", "NEW WEAPONS", .Toggle, 1},
-}
-
-// Clamps or wraps a value to what its kind allows.
-extra_clean :: proc(e: Extra, v: int) -> int {
-	switch EXTRAS[e].kind {
-	case .Toggle:
-		return v != 0 ? 1 : 0
-	case .Hue:
-		return hue_wrap(v)
-	}
-	return v
+	// The mods this player has on (sim/plugins.odin), all off in classic
+	// mode. Saved by name: a plugin's ID is only its place in this build's
+	// registry. A companion (sim.Plugin.companion) is saved as off instead,
+	// where its dependencies are on: one new to the build then comes on
+	// for a player who has them.
+	mods:     sim.Mods,
+	// The mods' settings (settings.odin), by Setting_ID.
+	settings: [MAX_SETTINGS]int,
 }
 
 // A player's name, the same 20 printable-ASCII characters the high score
@@ -173,15 +185,6 @@ name_set :: proc(n: ^Name, text: string) {
 	n^ = out
 }
 
-extra_by_key :: proc(key: string) -> (Extra, bool) {
-	for info, e in EXTRAS {
-		if info.key == key {
-			return e, true
-		}
-	}
-	return {}, false
-}
-
 // Any whole number of degrees, brought into 0..359.
 hue_wrap :: proc(h: int) -> int {
 	return ((h % 360) + 360) % 360
@@ -198,8 +201,15 @@ defaults :: proc() -> Prefs {
 		sfx_volume   = 100,
 		music_volume = 100,
 	}
-	for info, e in EXTRAS {
-		p.extras[e] = info.default
+	on: sim.Mods
+	for pl, id in sim.registered_plugins() {
+		if pl.default_on {
+			on += {id}
+		}
+	}
+	p.mods = sim.mods_switch_on({}, on)
+	for s, id in registered_settings() {
+		p.settings[id] = s.default
 	}
 	p.bindings[0] = {
 		.Up          = {KEY_UP, KEY_W},
@@ -221,7 +231,36 @@ defaults :: proc() -> Prefs {
 		.Change_Air  = {KEY_SEMICOLON, KEY_NONE},
 		.Pause       = {KEY_NONE, KEY_NONE}, // the original has one pause key, player 1's
 	}
+	// A controller's: the d-pad and left stick to move, A and X to fire, B
+	// to change weapon, Start to pause (raylib's Xbox-style names).
+	for &b in p.pad_bindings {
+		b = {
+			.Up          = {1, pad_axis_code(1, false)}, // d-pad up, stick up
+			.Down        = {3, pad_axis_code(1, true)},
+			.Left        = {4, pad_axis_code(0, false)},
+			.Right       = {2, pad_axis_code(0, true)},
+			.Fire_Air    = {7, 12}, // A, right trigger
+			.Fire_Ground = {8, 10}, // X, left trigger
+			.Change_Air  = {6, 11}, // B, right bumper
+			.Pause       = {15, PAD_NONE}, // Start
+		}
+	}
 	return p
+}
+
+// Binds controller `code` to one slot of a player's, first taking it off
+// anything else of theirs it drove. PAD_NONE just clears.
+bind_pad :: proc(p: ^Prefs, player: int, button: Action, slot: int, code: i32) {
+	if code != PAD_NONE {
+		for &codes in p.pad_bindings[player] {
+			for &c in codes {
+				if c == code {
+					c = PAD_NONE
+				}
+			}
+		}
+	}
+	p.pad_bindings[player][button][slot] = code
 }
 
 // Binds `key` to one slot, first taking it off anything else it was bound
@@ -251,7 +290,7 @@ step_volume :: proc(v: ^int, dir: int) {
 // "pause_key": a "pause" line is from when P was the default, and every save
 // wrote it out, so honouring it would keep everyone off the default. It is
 // ignored.
-@(private = "file")
+@(private = "file", rodata)
 BUTTON_KEYS := [Action]string {
 	.Up          = "up",
 	.Down        = "down",
@@ -273,15 +312,49 @@ format :: proc(p: ^Prefs, allocator := context.allocator) -> string {
 	fmt.sbprintf(&sb, "diagnostics=%d\n", p.diagnostics ? 1 : 0)
 	fmt.sbprintf(&sb, "classic=%d\n", p.classic ? 1 : 0)
 	fmt.sbprintf(&sb, "netplay_name=%s\n", name_string(&p.netplay_name))
-	for info, e in EXTRAS {
-		fmt.sbprintf(&sb, "%s=%d\n", info.key, p.extras[e])
+	format_mods(&sb, "mods", p.mods)
+	format_mods(&sb, "mods_off", sim.mods_companions(p.mods) - p.mods)
+	for s, id in registered_settings() {
+		fmt.sbprintf(&sb, "%s=%d\n", s.key, p.settings[id])
 	}
 	for b, player in p.bindings {
 		for keys, button in b {
 			fmt.sbprintf(&sb, "p%d.%s=%d,%d\n", player + 1, BUTTON_KEYS[button], keys[0], keys[1])
 		}
 	}
+	for player in 0 ..< sim.MAX_PLAYERS {
+		fmt.sbprintf(&sb, "p%d.input=%s\n", player + 1, p.input[player] == .Controller ? "controller" : "keyboard")
+		fmt.sbprintf(&sb, "p%d.pad=%s\n", player + 1, pad_name_string(&p.pad_name[player]))
+		fmt.sbprintf(&sb, "p%d.pad_index=%d\n", player + 1, p.pad_index[player])
+		for codes, button in p.pad_bindings[player] {
+			fmt.sbprintf(&sb, "p%d.pad.%s=%d,%d\n", player + 1, BUTTON_KEYS[button], codes[0], codes[1])
+		}
+	}
 	return strings.to_string(sb)
+}
+
+@(private = "file")
+format_mods :: proc(sb: ^strings.Builder, key: string, mods: sim.Mods) {
+	fmt.sbprintf(sb, "%s=", key)
+	sep := ""
+	for pl, id in sim.registered_plugins() {
+		if id in mods {
+			fmt.sbprintf(sb, "%s%s", sep, pl.name)
+			sep = ","
+		}
+	}
+	fmt.sbprint(sb, "\n")
+}
+
+@(private = "file")
+parse_mods :: proc(value: string) -> (mods: sim.Mods) {
+	names := value
+	for mod in strings.split_iterator(&names, ",") {
+		if id, ok := sim.plugin_find(strings.trim_space(mod)); ok {
+			mods += {int(id)}
+		}
+	}
+	return
 }
 
 // Starts from defaults() and applies whatever lines it understands, so a
@@ -295,6 +368,8 @@ format :: proc(p: ^Prefs, allocator := context.allocator) -> string {
 parse :: proc(text: string) -> Prefs {
 	p := defaults()
 	from_file: [sim.MAX_PLAYERS]bit_set[Action]
+	have_mods := false
+	legacy_on, legacy_off, mods_off: sim.Mods
 	rest := text
 	for line in strings.split_lines_iterator(&rest) {
 		eq := strings.index_byte(line, '=')
@@ -316,11 +391,29 @@ parse :: proc(text: string) -> Prefs {
 			parse_flag(value, &p.classic)
 		case "netplay_name":
 			name_set(&p.netplay_name, value)
+		case "mods":
+			have_mods = true
+			p.mods = parse_mods(value)
+		case "mods_off":
+			mods_off = parse_mods(value)
 		case:
-			if e, ok := extra_by_key(name); ok {
+			if id, ok := setting_by_key(name); ok {
 				if v, vok := strconv.parse_int(value); vok {
-					p.extras[e] = extra_clean(e, v)
+					p.settings[id] = setting_clean(id, v)
 				}
+				continue
+			}
+			if mod, ok := legacy_mod(name); ok {
+				if v, vok := strconv.parse_int(value); vok {
+					if v != 0 {
+						legacy_on += {int(mod)}
+					} else {
+						legacy_off += {int(mod)}
+					}
+				}
+				continue
+			}
+			if parse_pad_line(name, value, &p) {
 				continue
 			}
 			if player, button, ok := parse_binding(name, value, &p); ok {
@@ -328,8 +421,33 @@ parse :: proc(text: string) -> Prefs {
 			}
 		}
 	}
+	if have_mods {
+		p.mods = (p.mods + sim.mods_companions(p.mods)) - mods_off
+	} else {
+		p.mods = sim.mods_switch_on(sim.mods_resolve(p.mods - legacy_off), legacy_on)
+	}
 	drop_colliding_defaults(&p, from_file)
 	return p
+}
+
+// A save from before the Mods page switched the features that are now
+// mods with a line each; a "mods=" line, once written, supersedes them.
+@(private = "file", rodata)
+LEGACY_MODS := [][2]string {
+	{"high_refresh_rate", "fps_unlock"},
+	{"accent_colours", "accent"},
+	{"easy_mode", "easy_mode"},
+	{"new_weapons", "new_weapons"},
+}
+
+@(private = "file")
+legacy_mod :: proc(key: string) -> (sim.Plugin_ID, bool) {
+	for m in LEGACY_MODS {
+		if m[0] == key {
+			return sim.plugin_find(m[1])
+		}
+	}
+	return sim.CORE, false
 }
 
 @(private = "file")
@@ -375,6 +493,46 @@ parse_binding :: proc(name, value: string, p: ^Prefs) -> (player: int, button: A
 	}
 	p.bindings[player][button] = {i32(k0), i32(k1)}
 	return player, button, true
+}
+
+// A `p<N>.input`, `.pad`, `.pad_index` or `.pad.<action>` line.
+@(private = "file")
+parse_pad_line :: proc(name, value: string, p: ^Prefs) -> bool {
+	if len(name) < 4 || name[0] != 'p' || name[2] != '.' {
+		return false
+	}
+	player := int(name[1] - '1')
+	if player < 0 || player >= sim.MAX_PLAYERS {
+		return false
+	}
+	rest := name[3:]
+	switch rest {
+	case "input":
+		p.input[player] = value == "controller" ? .Controller : .Keyboard
+		return true
+	case "pad":
+		pad_name_set(&p.pad_name[player], value)
+		return true
+	case "pad_index":
+		if v, ok := strconv.parse_int(value); ok {
+			p.pad_index[player] = i32(clamp(v, 0, 15))
+		}
+		return true
+	}
+	if !strings.has_prefix(rest, "pad.") {
+		return false
+	}
+	comma := strings.index_byte(value, ',')
+	for key, b in BUTTON_KEYS {
+		if key == rest[4:] && comma >= 0 {
+			c0, ok0 := strconv.parse_int(value[:comma])
+			c1, ok1 := strconv.parse_int(value[comma + 1:])
+			if ok0 && ok1 {
+				p.pad_bindings[player][b] = {i32(c0), i32(c1)}
+			}
+		}
+	}
+	return true
 }
 
 @(private = "file")

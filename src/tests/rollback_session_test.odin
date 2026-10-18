@@ -2,8 +2,10 @@ package tests
 
 import "core:testing"
 
-import net "dr:net"
+import net "dr:plugins/netplay/net"
+import netplay_plugin "dr:plugins/netplay"
 import "dr:sim"
+import "dr:sim/systems/level_system"
 
 // Phase 6 stage 3's real guarantee: two independent Rollback_Sessions, each
 // driving one local player and predicting the other, must end up bit-
@@ -30,7 +32,9 @@ rollback_session_converges_under_latency_and_loss :: proc(t: ^testing.T) {
 	}
 
 	state_a := new(sim.State, context.temp_allocator)
+	defer sim.destroy(state_a)
 	state_b := new(sim.State, context.temp_allocator)
+	defer sim.destroy(state_b)
 	sim.init(state_a, session, defs)
 	sim.init(state_b, session, defs)
 
@@ -90,8 +94,11 @@ rollback_session_converges_under_latency_and_loss :: proc(t: ^testing.T) {
 		net.rollback_session_advance(&rs_b, inputs1[i])
 
 		send_count += 1
-		if send_count % 5 == 0 {
-			continue // drop this tick's send in both directions
+		// Drop this tick's send in both directions -- but not the last
+		// tick's: nothing sends after it, so the last frame's input would
+		// never arrive and each side would end on its own guess.
+		if send_count % 5 == 0 && i < FRAMES - 1 {
+			continue
 		}
 
 		win: [WINDOW]sim.Buttons
@@ -141,7 +148,7 @@ rollback_session_converges_under_latency_and_loss :: proc(t: ^testing.T) {
 		deliver_due(&to_b, i, &rs_b, &dm_b)
 	}
 
-	testing.expect_value(t, state_a.frame, u32(FRAMES))
+	testing.expect_value(t, sim.frame_of(state_a), u32(FRAMES))
 	testing.expect_value(t, sim.checksum(state_a), sim.checksum(state_b))
 	// Otherwise this test would prove nothing: with inputs changing this
 	// often against 4 frames of latency, prediction must have guessed wrong
@@ -158,6 +165,7 @@ rollback_session_converges_under_latency_and_loss :: proc(t: ^testing.T) {
 rollback_session_local_window_caps_to_what_has_actually_been_played :: proc(t: ^testing.T) {
 	defs := synthetic_defs()
 	state := new(sim.State, context.temp_allocator)
+	defer sim.destroy(state)
 	sim.init(state, sim.Session{seed = 1, level_id = sim.level_id("le01"), game_type = .Single}, defs)
 
 	rs: net.Rollback_Session
@@ -196,6 +204,7 @@ rollback_session_local_window_caps_to_what_has_actually_been_played :: proc(t: ^
 rollback_session_frame_advantage_tracks_the_confirmed_remote_frame :: proc(t: ^testing.T) {
 	defs := synthetic_defs()
 	state := new(sim.State, context.temp_allocator)
+	defer sim.destroy(state)
 	sim.init(state, sim.Session{seed = 1, level_id = sim.level_id("le01"), game_type = .Co_Op}, defs)
 
 	rs: net.Rollback_Session
@@ -204,15 +213,15 @@ rollback_session_frame_advantage_tracks_the_confirmed_remote_frame :: proc(t: ^t
 
 	testing.expect_value(t, net.rollback_session_frame_advantage(&rs), 0)
 
-	// Simulate 6 local frames (0..5, state.frame becomes 6) with nothing at
+	// Simulate 6 local frames (0..5, sim.frame_of(state) becomes 6) with nothing at
 	// all confirmed from the peer yet -- still predicting throughout.
-	for i in 0 ..< 6 {
+	for _ in 0 ..< 6 {
 		net.rollback_session_advance(&rs, {})
 	}
 	testing.expect_value(t, net.rollback_session_frame_advantage(&rs), 0)
 
 	// The peer confirms frames 0..2: this side has simulated frames 0..5
-	// (state.frame == 6) but only knows the peer's real input through frame
+	// (sim.frame_of(state) == 6) but only knows the peer's real input through frame
 	// 2, i.e. it is 3 frames ahead of what it can confirm (6 - 2 - 1 == 3).
 	frames: [3]sim.Buttons
 	buf: [64]byte
@@ -223,7 +232,7 @@ rollback_session_frame_advantage_tracks_the_confirmed_remote_frame :: proc(t: ^t
 	testing.expect_value(t, net.rollback_session_frame_advantage(&rs), 3)
 
 	// Advancing further without any new confirmation widens the lead.
-	for i in 0 ..< 2 {
+	for _ in 0 ..< 2 {
 		net.rollback_session_advance(&rs, {})
 	}
 	testing.expect_value(t, net.rollback_session_frame_advantage(&rs), 5)
@@ -233,11 +242,12 @@ rollback_session_frame_advantage_tracks_the_confirmed_remote_frame :: proc(t: ^t
 // netplay_playing_step gates a whole tick on. Drives a Rollback_Session's
 // frame straight to a chosen value (rather than replaying real ticks) via
 // repeated no-input advances, so each case's frame_advantage is exact and
-// the period math can be checked directly against rs.state.frame's parity.
+// the period math can be checked directly against sim.frame_of(rs.state)'s parity.
 @(test)
 rollback_session_should_stall_throttles_only_once_over_threshold :: proc(t: ^testing.T) {
 	defs := synthetic_defs()
 	state := new(sim.State, context.temp_allocator)
+	defer sim.destroy(state)
 	sim.init(state, sim.Session{seed = 1, level_id = sim.level_id("le01"), game_type = .Co_Op}, defs)
 
 	rs: net.Rollback_Session
@@ -251,12 +261,12 @@ rollback_session_should_stall_throttles_only_once_over_threshold :: proc(t: ^tes
 	// (rollback_session_frame_advantage_tracks_the_confirmed_remote_frame
 	// above), well under THRESHOLD, so never stalls regardless of how many
 	// frames have been simulated locally.
-	for i in 0 ..< 10 {
+	for _ in 0 ..< 10 {
 		net.rollback_session_advance(&rs, {})
 		testing.expect(t, !net.rollback_session_should_stall(&rs, THRESHOLD, MIN_EVERY))
 	}
 
-	// Confirm frame 3: state.frame is 10, so frame_advantage == 10-3-1 == 6,
+	// Confirm frame 3: sim.frame_of(state) is 10, so frame_advantage == 10-3-1 == 6,
 	// one over THRESHOLD -- every == max(5-1, 2) == 4. 10 % 4 == 2, not a
 	// stall point.
 	frames: [4]sim.Buttons
@@ -270,12 +280,12 @@ rollback_session_should_stall_throttles_only_once_over_threshold :: proc(t: ^tes
 
 	// Advancing without any further confirmation widens the lead each tick,
 	// which shrinks (more aggressive) the throttle period each tick too:
-	// at state.frame 11, advantage 7, every == max(5-2, 2) == 3 (11 % 3 == 2,
-	// no stall); at state.frame 12, advantage 8, every == max(5-3, 2) == 2
+	// at sim.frame_of(state) 11, advantage 7, every == max(5-2, 2) == 3 (11 % 3 == 2,
+	// no stall); at sim.frame_of(state) 12, advantage 8, every == max(5-3, 2) == 2
 	// (12 % 2 == 0, a stall point).
-	net.rollback_session_advance(&rs, {}) // state.frame -> 11
+	net.rollback_session_advance(&rs, {}) // sim.frame_of(state) -> 11
 	testing.expect(t, !net.rollback_session_should_stall(&rs, THRESHOLD, MIN_EVERY))
-	net.rollback_session_advance(&rs, {}) // state.frame -> 12
+	net.rollback_session_advance(&rs, {}) // sim.frame_of(state) -> 12
 	testing.expect(t, net.rollback_session_should_stall(&rs, THRESHOLD, MIN_EVERY))
 }
 
@@ -300,11 +310,10 @@ rollback_session_converges_across_level_changes_and_pauses :: proc(t: ^testing.T
 		l.background.bottom = 700 // a ~220-step scroll per level
 	}
 	defs.levels = levels
-	session := sim.Session{seed = 0xC0FFEE, level_id = levels[0].id, game_type = .Co_Op}
+	session := sim.Session{seed = 0xC0FFEE, level_id = levels[0].id, game_type = .Co_Op, mods = session_mods(false, false, online = true)}
 
 	FRAMES :: 1100
 	LATENCY :: 6
-	WINDOW :: 8
 	inputs := [2][]sim.Buttons{make([]sim.Buttons, FRAMES, context.temp_allocator), make([]sim.Buttons, FRAMES, context.temp_allocator)}
 	r := sim.rand_init(77)
 	for i in 0 ..< FRAMES {
@@ -326,6 +335,7 @@ rollback_session_converges_across_level_changes_and_pauses :: proc(t: ^testing.T
 	hold(inputs[0][:], 560)
 
 	states := [2]^sim.State{new(sim.State, context.temp_allocator), new(sim.State, context.temp_allocator)}
+	defer for st in states { sim.destroy(st) }
 	rs: [2]net.Rollback_Session
 	for p in 0 ..< 2 {
 		sim.init(states[p], session, defs)
@@ -333,56 +343,104 @@ rollback_session_converges_across_level_changes_and_pauses :: proc(t: ^testing.T
 	}
 	defer for p in 0 ..< 2 { net.rollback_session_destroy(&rs[p], context.temp_allocator) }
 
-	Delivery :: struct {
-		deliver_at: int,
-		pkt:        net.Input_Packet,
-	}
-	queues := [2][dynamic]Delivery{make([dynamic]Delivery, context.temp_allocator), make([dynamic]Delivery, context.temp_allocator)}
+	link := link_make(LATENCY, context.temp_allocator)
 	paused_frames := 0
 	max_level: i32 = 0
 
 	for i in 0 ..< FRAMES + LATENCY + 1 {
-		for p in 0 ..< 2 {
-			w := 0
-			for d in queues[p] {
-				if d.deliver_at <= i {
-					net.rollback_session_receive(&rs[p], d.pkt)
-				} else {
-					queues[p][w] = d
-					w += 1
-				}
-			}
-			resize(&queues[p], w)
-		}
+		link_deliver(&link, rs[:], i)
 		if i >= FRAMES {
 			continue // just draining what is still in flight
 		}
 		for p in 0 ..< 2 {
 			net.rollback_session_advance(&rs[p], inputs[p][i])
-			_ = sim.level_transition(states[p]) // what game/flow.odin used to do here
+			_ = level_system.level_transition(states[p]) // what game/flow.odin used to do here
 			if i % 5 == 4 {
 				continue // lose this tick's packet
 			}
-			win: [WINDOW]sim.Buttons
-			start, count := net.rollback_session_local_window(&rs[p], WINDOW, win[:])
-			if count > 0 {
-				buf: [64]byte
-				n := net.encode_input(buf[:], u8(p), start, win[:count])
-				pkt, _ := net.decode_input(buf[:n])
-				append(&queues[1 - p], Delivery{i + LATENCY, pkt})
-			}
+			link_send(&link, rs[:], p, i)
 		}
-		if states[0].paused {
+		if netplay_plugin.paused(states[0]) {
 			paused_frames += 1
 		}
-		max_level = max(max_level, states[0].level_number)
+		max_level = max(max_level, sim.single(states[0], sim.Level_Info).number)
 	}
 
 	testing.expect(t, rs[0].rollback_count > 0 && rs[1].rollback_count > 0, "test never exercised a rollback")
 	testing.expect(t, max_level >= 3, "test never reached the third level")
 	testing.expect(t, paused_frames > 0, "test never paused")
-	testing.expect_value(t, states[0].level_number, states[1].level_number)
-	testing.expect_value(t, states[0].time, states[1].time)
-	testing.expect_value(t, states[0].paused, states[1].paused)
+	testing.expect_value(t, sim.single(states[0], sim.Level_Info).number, sim.single(states[1], sim.Level_Info).number)
+	testing.expect_value(t, sim.single(states[0], sim.Clock).time, sim.single(states[1], sim.Clock).time)
+	testing.expect_value(t, netplay_plugin.paused(states[0]), netplay_plugin.paused(states[1]))
 	testing.expect_value(t, sim.checksum(states[0]), sim.checksum(states[1]))
+}
+
+// A sound the peer's input starts lands on a frame first run on a guess,
+// and is only made when a rollback reruns it; the session hands it over as
+// late, once, and never hands back one the first run already played. The
+// weapon change's click (perm sound 0x12) stands in for a charge beginning:
+// both are made on the step a button goes down.
+@(test)
+rollback_session_plays_a_resimulated_sound_late :: proc(t: ^testing.T) {
+	CLICK :: sim.Res_ID{'c', 'l', 'i', 'k'}
+	defs := synthetic_defs()
+	defs.perm_sounds[0x12] = CLICK
+	session := sim.Session{seed = 0x50D, level_id = sim.level_id("le01"), game_type = .Co_Op}
+	FRAMES :: 30
+	LOCAL_PRESS :: 5
+	REMOTE_PRESS :: 20
+
+	clicks :: proc(events: []sim.Sound_Event) -> (n: int) {
+		for ev in events {
+			if ev.id == CLICK {
+				n += 1
+			}
+		}
+		return
+	}
+	local_input :: proc(f: int) -> sim.Buttons {
+		return f >= LOCAL_PRESS ? {.Change_Air} : {}
+	}
+
+	// Straight through, both presses click.
+	plain := new(sim.State, context.temp_allocator)
+	defer sim.destroy(plain)
+	sim.init(plain, session, defs)
+	straight := 0
+	for f in 0 ..< FRAMES {
+		_ = sim.session_step(plain, {local_input(f), f >= REMOTE_PRESS ? {.Change_Air} : {}})
+		straight += clicks(plain.sounds.events[:plain.sounds.count])
+	}
+	testing.expect_value(t, straight, 2)
+
+	// Nothing heard from the peer: its press is guessed away, and only the
+	// local click is played.
+	state := new(sim.State, context.temp_allocator)
+	defer sim.destroy(state)
+	sim.init(state, session, defs)
+	rs: net.Rollback_Session
+	net.rollback_session_init(&rs, state, 0, context.temp_allocator)
+	defer net.rollback_session_destroy(&rs, context.temp_allocator)
+	played := 0
+	for f in 0 ..< FRAMES {
+		net.rollback_session_advance(&rs, local_input(f))
+		played += clicks(state.sounds.events[:state.sounds.count])
+	}
+	testing.expect_value(t, played, 1)
+	testing.expect_value(t, len(net.rollback_session_late(&rs)), 0)
+
+	// The peer's real input arrives: the rerun clicks for it, late, and
+	// only for it.
+	pkt := net.Input_Packet{player = 1, start_frame = 0, count = FRAMES}
+	for f in 0 ..< FRAMES {
+		if f >= REMOTE_PRESS {
+			pkt.frames[f] = {.Change_Air}
+		}
+	}
+	net.rollback_session_receive(&rs, pkt)
+	testing.expect_value(t, rs.rollback_count, 1)
+	late := net.rollback_session_late(&rs)
+	testing.expect_value(t, clicks(late), 1)
+	testing.expect_value(t, len(late), 1)
+	testing.expect_value(t, len(net.rollback_session_late(&rs)), 0)
 }

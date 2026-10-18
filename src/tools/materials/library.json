@@ -1,0 +1,17 @@
+{
+  "exemplar": 128,
+  "cell": 16,
+  "size": 256,
+  "block": 40,
+  "overlap": 8,
+  "materials": [
+    {"name": "red dust", "image": "red-dust.png", "level": "le01", "box": [0, 600, 480, 1150], "tile": 256},
+    {"name": "rust plain", "image": "rust-plain.png", "level": "le02", "box": [0, 1100, 480, 1500], "tile": 256},
+    {"name": "olive silt", "image": "olive-silt.png", "level": "le03", "box": [0, 1200, 480, 1800], "tile": 256},
+    {"name": "slate", "image": "slate.png", "level": "le05", "box": [0, 240, 280, 800], "tile": 256},
+    {"name": "grey rock", "image": "grey-rock.png", "level": "le07", "box": [0, 100, 480, 700], "tile": 256},
+    {"name": "tan sand", "image": "tan-sand.png", "level": "le06", "box": [0, 800, 480, 1400], "tile": 256},
+    {"name": "dry grass", "image": "dry-grass.png", "level": "le10", "box": [0, 0, 480, 600], "tile": 256},
+    {"name": "jungle", "image": "jungle.png", "level": "le07", "box": [0, 1000, 480, 1900], "tile": 384, "exemplar": 192}
+  ]
+}

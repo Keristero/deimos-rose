@@ -1,0 +1,115 @@
+{
+  "format": "deimos-rising.level-project",
+  "version": 4,
+  "width": 480,
+  "length": 3600,
+  "height": "untitled.unsaved.height.png",
+  "height_unit": 0.03125000,
+  "albedo": "",
+  "splat": "",
+  "canopy": "",
+  "canopy_height": 0.00000000,
+  "canopy_material": -1,
+  "occlusion": "",
+  "water": "",
+  "materials": [
+    {
+      "name": "ground",
+      "colour": [
+        150,
+        132,
+        104
+      ],
+      "image": "",
+      "tile": 0.00000000,
+      "tags": [
+
+      ]
+    }
+  ],
+  "cliff": {
+    "material": -1,
+    "from": 0.00000000,
+    "to": 0.00000000
+  },
+  "shore": {
+    "material": -1,
+    "from": 0.00000000,
+    "to": 0.00000000
+  },
+  "level": {
+    "id": "",
+    "name": "",
+    "identifier": "",
+    "description": "",
+    "copyright": "",
+    "briefing": "",
+    "background": [
+      0,
+      0,
+      480,
+      3600
+    ],
+    "background_image": "",
+    "preview_image": "",
+    "music": "",
+    "media_mask": "",
+    "placements": [
+
+    ],
+    "start_weapons": {
+      "air": "",
+      "ground": ""
+    },
+    "wind": {
+      "direction_degrees": 0.00000000,
+      "strength": 0.00000000
+    },
+    "water": {
+      "height": 24.00000000,
+      "colour": [
+        40,
+        72,
+        96
+      ],
+      "visible": true
+    },
+    "lighting": {
+      "sun_azimuth_degrees": 36.00000000,
+      "sun_elevation_degrees": 40.00000000,
+      "sun_colour": [
+        255,
+        255,
+        255
+      ],
+      "ambient_colour": [
+        255,
+        255,
+        255
+      ],
+      "ambient": 0.44000000,
+      "softness": 3.00000000
+    },
+    "skybox": "",
+    "layers": {
+      "albedo": "",
+      "normal": "",
+      "height": "",
+      "shadow_mask": "",
+      "hd_map": ""
+    }
+  },
+  "models": [
+
+  ],
+  "instances": [
+
+  ],
+  "preview": [
+    21,
+    2682
+  ],
+  "audio": [
+
+  ]
+}

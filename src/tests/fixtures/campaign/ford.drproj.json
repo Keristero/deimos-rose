@@ -1,0 +1,132 @@
+{
+  "format": "deimos-rising.level-project",
+  "version": 3,
+  "width": 480,
+  "length": 1000,
+  "height": "ford.height.png",
+  "height_unit": 0.03125,
+  "albedo": "",
+  "splat": "",
+  "canopy": "",
+  "canopy_height": 0.0,
+  "canopy_material": -1,
+  "occlusion": "",
+  "water": "",
+  "materials": [
+    {
+      "name": "ground",
+      "colour": [
+        150,
+        132,
+        104
+      ],
+      "image": "",
+      "tile": 0.0,
+      "tags": []
+    }
+  ],
+  "cliff": {
+    "material": -1,
+    "from": 0.0,
+    "to": 0.0
+  },
+  "shore": {
+    "material": -1,
+    "from": 0.0,
+    "to": 0.0
+  },
+  "level": {
+    "id": "",
+    "name": "The Ford",
+    "identifier": "Ford",
+    "description": "A fixture for mise run editor:play-check.",
+    "copyright": "",
+    "briefing": "",
+    "background": [
+      0,
+      0,
+      480,
+      1000
+    ],
+    "background_image": "",
+    "preview_image": "",
+    "music": "mu03",
+    "media_mask": "",
+    "placements": [
+      {
+        "unit": "pola",
+        "layer": "grnd",
+        "x": 300,
+        "y": 330,
+        "heading_degrees": 0,
+        "is_stationary": false,
+        "terrain_effects": false
+      },
+      {
+        "unit": "bsde",
+        "layer": "grnd",
+        "x": 120,
+        "y": 260,
+        "heading_degrees": 0,
+        "is_stationary": false,
+        "terrain_effects": false
+      },
+      {
+        "unit": "sc03",
+        "layer": "air ",
+        "x": 240,
+        "y": 230,
+        "heading_degrees": 0,
+        "is_stationary": false,
+        "terrain_effects": false
+      }
+    ],
+    "start_weapons": {
+      "air": "",
+      "ground": ""
+    },
+    "wind": {
+      "direction_degrees": 0.0,
+      "strength": 0.0
+    },
+    "water": {
+      "height": 10.0,
+      "colour": [
+        40,
+        72,
+        96
+      ],
+      "visible": true
+    },
+    "lighting": {
+      "sun_azimuth_degrees": 36.0,
+      "sun_elevation_degrees": 40.0,
+      "sun_colour": [
+        255,
+        255,
+        255
+      ],
+      "ambient_colour": [
+        255,
+        255,
+        255
+      ],
+      "ambient": 0.44,
+      "softness": 3.0
+    },
+    "skybox": "",
+    "layers": {
+      "albedo": "",
+      "normal": "",
+      "height": "",
+      "shadow_mask": "",
+      "hd_map": ""
+    }
+  },
+  "models": [],
+  "instances": [],
+  "preview": [
+    21,
+    82
+  ]
+}

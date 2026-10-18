@@ -10,10 +10,43 @@ Two things, kept separate:
 
 - **Analysis of the original 2003 Windows build** — `orig/`, `game/`,
   `symbols/`, `notes/`, `tools/`. Read-only archaeology.
-- **A new game in Odin** — `src/`. The actual deliverable.
+- **A new game in Odin** — `src/`. The actual deliverable: a small core
+  that is the original game, and everything Deimos Rose adds as plugins
+  under `src/plugins/` (see "A small core" below).
 
 `src/docs/` records progress per phase. `notes/odin-rewrite-plan.md` is the
 overall plan. `src/docs/decisions.md` logs cross-cutting choices.
+`src/site/` generates the public website from `site.config.json`
+(`src/site/README.md`).
+
+## A small core
+
+The scope crept: by October 2026 one zip carried the game, netplay, two
+new weapons, nine passives, a level editor, a terrain toolchain and a
+second set of levels, and it had grown from 167 MB to 252 MB in four days.
+Phase 10 (`src/docs/phase-10-plugin-split.md`) splits it, and the rule it
+leaves behind is:
+
+- **The core is the original game.** `sim/`, `data/`, `render/`, `ui/`,
+  `prefs/` and `game/` hold what the 2003 build does, and the extension
+  points plugins use. Nothing else.
+- **Everything new is a plugin, installed separately.** A gameplay
+  addition, a screen, a tool, a set of levels: a folder under
+  `src/plugins/` that registers itself through the extension points, and
+  ships as its own download, a zip with every plugin it needs, unzipped
+  over the game's folder (`mise run dist:zips`, D87). The game runs, and
+  its tests pass, with no plugin installed; `mise run dist:check`
+  installs each download as a player would.
+- **Before building a feature, say where it installs.** If the answer is
+  "in the core", the feature needs a reason in its pull request, and the
+  reason is usually a missing extension point (see "Count the places a
+  feature touches").
+- **The core imports no plugin.** The game loads each code plugin from
+  its library, `plugins/<name>/<name>.so` (`.dll`), at startup, and
+  `mise run purity` fails a core file that names one. A plugin reaches
+  the core through the extension points below, never the core through a
+  plugin. `src/all_plugins/` imports them all, for the tests, the tools
+  and the static build: a new plugin is added there too.
 
 ## The core habit: verify, then build
 
@@ -74,6 +107,11 @@ remaster, say so and note whether you confirmed it.
 
 ## Rules that hold
 
+**Build with CI's Odin.** CI pins Odin dev-2026-09; an older local Odin
+can fail on vendor bindings (`terrain/model.odin` with dev-2026-07). Run
+`MISE_ODIN_VERSION=dev-2026-09 mise run <task>` when the local default
+is older, and do not take a toolchain failure for a regression.
+
 **Every task lives in `src/mise.toml`.** If you ran a command to build,
 extract, check or verify something, it belongs there as a task. Ad-hoc shell
 invocations are how a project becomes unbuildable by anyone else.
@@ -90,12 +128,31 @@ and fast tests all die without it, and it cannot be retrofitted cheaply.
 **RNG lives in the state.** An ambient global generator desyncs rollback
 silently. `G_Film::GetRandomSeed` shows the original made the same choice.
 
+**Register through a named step.** An `@(init)` procedure only calls
+`sim.register_step`, and `blocks.declare` for its package's block. `sim.register_all` runs the steps in a fixed order,
+and every `main` that touches the simulation calls it first. Odin orders
+`@(init)` procedures differently for different targets, and a registry's
+order gives the ids peers exchange. That once made a Linux host's Easy
+Mode a Windows guest's Loadout (decisions.md D50).
+
+**A package's state lives in its block.** A plugin is loaded from a
+library of its own, which carries its own copy of every package it
+imports; only a package's block is shared with the game's. So a mutable
+variable goes in the package's `Shared` struct, read through `shared.`,
+and a literal table is `@(rodata)`. A value set at registration, a
+plugin's id included, is state: other packages read it through an
+accessor (`new_weapons.beam()`). A `@(static)` local is state too. A
+block starts zeroed. `mise run purity` enforces all of it (decisions.md
+D83, `src/blocks/blocks.odin`).
+
 **Classic mode is the original, exactly.** With classic mode on, the game
 must look and behave as the 2003 build does: same sprites, colours, frames,
 text and timing. Anything this port adds — a colour, an outline, a menu, a
-smoothing — is an *extra* (decisions.md D35): an entry in `prefs.EXTRAS`,
-read only through `extra_on`/`extra_value`, which classic mode switches
-off. Never change a default look to suit an enhancement; add an extra.
+smoothing — belongs to a *mod*, a plugin under `src/plugins/`
+(decisions.md D40, D42). Its settings are registered with
+`prefs.setting_register`, and it is read only through `prefs_mod_on`,
+`setting_on` and `setting_value`, which classic mode switches off. Never
+change a default look to suit an enhancement; put it in a mod.
 Check a visual change with classic on as well as off. When the port
 differs from the original in classic mode, that is a bug to port, not an
 enhancement to keep (the crosshair's red lock was missing this way).
@@ -107,9 +164,21 @@ frame's draw list; `mise run menu-shot MENU=...` renders one screen. Look
 at one image once the numbers say it is the right one. When a question
 comes up twice, build the tool for it rather than a third ad-hoc script.
 
+**Measure against the base with its own code.** `mise run ref
+REF=<base> TASK=bench` runs the base's own task in a worktree of it
+(`TASK=dps:report`, `TASK=build`). `mise run menu-shots:all OUT=dir`
+renders every menu scenario (`ROOT=` the worktree's `src/` for the
+base's), and `mise run menu-shots:diff A=base B=new` compares them.
+
 **Tests must not require the original game data.** Use synthetic fixtures.
 Integration checks against `game/` are fine but must skip cleanly when absent,
-so CI runs for someone without a copy of the game.
+so CI runs for someone without a copy of the game. A test of the extracted
+content starts from `assets_defs` (`src/tests/support`), which does the
+skipping; `content_defs`, `weapon_index`, `play_start`, `unit_spawn` and
+`mine_spawn` there, and the `Link` between two netplay sessions in
+`src/tests/link.odin`, are the shared fixtures. Reach for them before
+writing another. A plugin owns the tests of what it adds, in
+`src/plugins/<name>/tests` (`mise run test` runs each).
 
 **Never commit the original game itself.** `orig/`, `game/`, `src/build/`
 and `src/.deps/` are ignored. The one exception is `src/assets/` — the
@@ -117,8 +186,63 @@ extracted, converted data the game loads — which the project owner chose to
 commit so CI can ship playable release zips (decisions.md D29). Keep it
 regenerable from a local installer copy with `mise run assets:all`.
 
-**Do not push to any remote.** Standing instruction from the project owner.
-Commit locally; that is all.
+## Branches and pull requests
+
+Every change lands through a pull request from a feature branch. Nobody
+commits or pushes to `main` directly; merging is the project owner's call.
+
+```mermaid
+flowchart LR
+  B[feature branch] -->|push| P[prerelease build<br/>v0.1.N-branch]
+  B -->|pull request| R{review + CI<br/>+ site:check}
+  R -->|owner merges| M[main]
+  M --> Rel[release v0.1.N]
+  M --> S[website rebuilt]
+```
+
+- **One branch, one purpose.** Name it for what it does, in kebab-case
+  (`runtime-plugins`, `fix-level-skip`); the name is also its site entry's
+  `id` and its prerelease's tag suffix. Branch from the branch it builds on:
+  `main`, or the integration branch while one is open (`ecs-refactor`
+  until it merges). A branch that needs another unmerged branch stacks on
+  it, and its pull request targets that branch, so each shows only its own
+  diff.
+- **Push feature branches; never `main`.** Every push to any branch builds
+  both platforms and publishes a prerelease, so push when a branch is
+  worth trying, not after every commit.
+- **Every branch adds a site entry.** One entry at the top of `changes` in
+  `src/site/site.config.json`, and the plugin list kept in step with
+  `src/plugins/`. The pull request workflow runs `mise run site:check`
+  and fails without it; `src/site/README.md` has the format.
+- **Every plugin has a screenshot.** Its entry names the scenario it is
+  pictured in (`"shot"`), and `mise run site:shots ONLY=<name>` renders
+  it into `src/site/shots/`, committed. The site fails to build without
+  it. A new plugin with a look of its own registers a scenario for it
+  (`ui.shot_register`); one without uses `playing -mod <name>`. Render
+  it again when its look changes.
+- **Open the pull request with `gh pr create`**, against the branch it
+  stacks on, with the body written as below.
+
+### Writing the pull request
+
+The pull request is read once, by someone deciding whether to merge. Make
+it short, exact and good to look at. `.github/pull_request_template.md`
+has the sections: **What**, **Why**, **How**, **Verified**, **Still open**.
+
+- **Lead with the outcome.** The first paragraph says what is different,
+  for a player or for the next developer. No preamble.
+- **Draw the engineering.** An optimisation, a new extension point, a
+  change to how data or control flows: show it as a `mermaid` diagram
+  (GitHub renders them), before and after when something moved. A
+  diagram replaces paragraphs; it does not decorate them.
+- **Numbers, not adjectives.** Before and after, in a table: step time,
+  zip size, snapshot bytes, DPS. Say how each was measured.
+- **Verified is evidence.** List what ran and what it showed
+  (`oracle:diff` exact, fingerprints unchanged, the screenshot you looked
+  at), and say plainly what was not checked.
+- **Keep it tidy.** Headings, short paragraphs, tables for comparisons,
+  collapsed `<details>` for long logs. When later commits change the
+  story, update the body rather than appending an "Update:" section.
 
 ## Commits and patch notes
 
@@ -130,7 +254,9 @@ release notes are copied out of commit messages by
 patch notes are written.** A push to any other branch builds too, and
 becomes a prerelease tagged `v<major.minor>.<commits>-<branch>`, whose
 notes list the branch's own `Changelog:` blocks and link the latest
-release of `main`.
+release of `main`. Merge pull requests with a merge commit, not a
+squash: the branch's commits, and their `Changelog:` blocks, then reach
+the release.
 
 Any commit a player would notice carries a `Changelog:` block after the
 body and before the trailers:
@@ -203,10 +329,97 @@ The goal is a codebase that is a pleasure to read.
   reports leaks; treat that as a failure, not noise.
 - Keep faithful behaviour in `sim/` and write everything else the modern way.
 
-## Finishing a phase
+## Continuous improvement
 
-1. `mise run ci` green, and the phase's own verification task green.
-2. Write `src/docs/phase-N-*.md` while it is fresh: what was built, what the
+Leave the structure better than you found it: when a change is harder
+than it should be, the difficulty is a finding, like a failed check. Fix
+the cause, or record it, rather than only working around it.
+
+**Count the places a feature touches.** Before building a feature in a
+plugin, list every file outside the plugin (and its `view/`) that it would
+change. More than its data means a missing extension point. The Discharge
+Beam once needed seven: a field on the core's `Weapon`, parsing in the
+loader, two branches in the weapon handler, a queue on `State`, and
+drawing and clearing in the renderer and the game (decisions.md D48).
+Then:
+
+1. Add the generic extension point first, in its own commit, changing
+   nothing observable: a registry, a hook, a registered key or event kind.
+   Name it for what it does, never for the first feature to use it.
+2. Move the existing feature onto it and prove the move neutral:
+   `oracle:diff` exact, `tests/golden/fingerprints.txt` unchanged, and the
+   feature's own numbers (`WEAPON=... mise run dps:report` for a weapon)
+   and screenshots as before. Presentation particles take random
+   directions, so compare two runs of the old build before calling a
+   screenshot difference real.
+3. Build the new feature on it.
+
+**The core names no plugin's feature.** A field, branch, queue or draw
+call in `sim/`, `data/`, `render/` or `game/` that exists for one plugin's
+content is the same debt found later. `grep` for the feature's names
+outside its plugin when you touch it. Move what you find behind an
+extension point, or list it under "Still open" in the phase doc so it is
+not forgotten.
+
+**Questions are reviews.** When someone asks what it would take to add
+something, and the honest answer is "edit N unrelated places", say so,
+and propose the extension point that would make it one. Offering the fix
+is part of the answer.
+
+**The third copy is a helper.** When the same few lines appear a third
+time, make them one procedure next to the data they work on, and replace
+all the copies. First check whether a helper already exists
+(`sim.Registry`, `walk_entities`, `cursor_walk`, `prefab_tag`,
+`first_state`, `hit_taker`); a helper nobody finds is written twice.
+
+**Use libraries through their public API.** odecs's internals and encoded
+query terms are off limits outside `third_party/`, as `mise run purity`
+enforces. When a rule like this matters, make a check enforce it, as the
+purity and odecs checks do, rather than relying on everyone remembering.
+
+**Record why.** A new extension point, or a rule that changes how
+features are built, gets a decisions.md entry, and the table below stays
+current.
+
+The extension points today:
+
+| To add | Use | Where |
+|---|---|---|
+| a step of the game | `system_register`, `player_stage_register`, `entity_stage_register` with `after`/`before` | `sim/systems.odin` |
+| behaviour for units or states by their definitions | a component, `prefab_builder_register`, and a stage's `with`/`without` | `sim/prefabs.odin` |
+| data on the session, players or entities | `kind_component` | `sim/ecs.odin` |
+| a change to the core's numbers | `stat_provider_register` | `sim/hooks.odin` |
+| a pause or a screen between levels | `hold_register`; `pause = true` for a pause the players asked for (`sim.paused`) | `sim/hooks.odin` |
+| a plugin that is on exactly when the session is online | `online = true` in `plugin_register` (`sim.mods_online`) | `sim/plugins.odin` |
+| which weapons are flown, and in what order | `weapon_chooser_register`, `weapon_filter_register` | `sim/hooks.odin` |
+| a new way for a weapon to fire | `weapon_fire_register` | `sim/hooks.odin` |
+| something that follows a shot's hit | `shot_hit_register` | `sim/hooks.odin` |
+| a new key on weapon definitions | `weapon_key_register` | `sim/def_keys.odin` |
+| an event for a plugin's view to draw | `effect_kind_register`, `effect_push` | `sim/queue_effects.odin` |
+| something drawn in the frame | `render_system_register` | `render/render_systems.odin` |
+| effects that live between steps and draw between layers | `effect_system_register` | `render/render_systems.odin` |
+| a pass over the finished play field (lighting, glow, water) | `render.post_pass_register` | `render/post.odin` (D78) |
+| a screen over the play field | `ui.overlay_register` | `ui/overlays.odin` |
+| a screen of its own on the main menu, which may drive the session it starts (netplay's lobby) | `game.screen_register`, `game.flow_drive` | `game/screens.odin` (D86) |
+| a setting on the Extras page | `prefs.setting_register`; `player = n` for player n's colour (`prefs.player_hue_setting`) | `prefs/settings.odin` |
+| the Extras page itself | `prefs.settings_page_register` | `prefs/settings.odin` |
+| a preview drawn on the Extras page | `ui.settings_preview_register` | `ui/settings_previews.odin` |
+| a launch flag that turns a plugin on for one run (`-mod <name>` works for any) | `prefs.launch_switch_register` | `prefs/launch.odin` |
+| a switch on Level Select or the netplay lobby | `ui.setup_switch_register` | `ui/setup_switches.odin` |
+| presenting faster than the original's 30 frames a second | `render.frame_rate_register` | `render/frame_rate.odin` |
+| records, weapons, sprites, im16 images and sounds of a plugin's own | `plugins/<name>/{data,sprites,images/im16,audio}` beside its code, a recipe in `tools/recolour/`, `content = true` | `data/assets.odin` (D49, D51) |
+| a plugin with code: a library the game loads | `plugins/<name>/` and its `view/`, built by `build:plugins`; imported in `all_plugins/` | `game/plugin_libs.odin`, `plugin_entry/` (D85) |
+| a plugin with no code: content and a manifest | `plugins/<name>/plugin.json` beside its content, found at startup | `data/plugins.odin` (D52) |
+| a campaign: levels played in their own order | `levels` in its `plugin.json`, records in `data/levels/`, maps and previews in `images/im16/` | `data/assets.odin`, `sim/defs.odin` (D53) |
+| a screenshot scenario (`mise run menu-shot MENU=...`) | `ui.shot_register`; `ui.menu_shot_register` for a core menu with a plugin on | `ui/shots.odin` |
+| state a package keeps between calls | its `Shared` block, declared to `blocks.declare` | `blocks/blocks.odin` (D83) |
+
+## Finishing a branch or a phase
+
+A branch is finished when its pull request could be merged as it stands:
+
+1. `mise run ci` green, and the change's own verification task green.
+2. For a phase, write `src/docs/phase-N-*.md` while it is fresh: what was built, what the
    original turned out to do, what was decided and why, what is still open.
    Record the concrete numbers — they are the regression baseline.
 3. Update the status table in `src/docs/README.md`.
@@ -214,6 +427,10 @@ The goal is a codebase that is a pleasure to read.
 5. Correct the plan if the phase proved it wrong. Phase 1 in the original plan
    claimed definition records would round-trip through JSON; that was
    misscoped and moved to Phase 3. Say so rather than quietly dropping it.
+6. Add the branch's entry to `src/site/site.config.json` (`mise run
+   site:check`), and look at it: `mise run site:serve`.
+7. Push the branch and open its pull request (see "Branches and pull
+   requests"). Stop there: the owner merges.
 
 ## Reporting
 

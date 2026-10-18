@@ -1,0 +1,54 @@
+name: Site
+
+# The website is generated, never edited: src/site/build.mjs turns
+# src/site/site.config.json, the plugin folders and the releases API into
+# pages, and this workflow deploys them to GitHub Pages.
+#
+# It runs once Build has finished on main rather than on the push itself:
+# Build publishes the release whose zips the download buttons link, and a
+# site built at push time would still link the one before. A release
+# published with GITHUB_TOKEN triggers no workflow, but workflow_run does.
+on:
+  workflow_run:
+    workflows: [Build]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; a newer push's replaces a queued one.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The commit Build ran on, not whatever main is by now.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Generate the site
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node src/site/build.mjs --out _site
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

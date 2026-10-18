@@ -26,5 +26,41 @@
   {"sprite": "edut", "frame": 1, "fit": 11, "x": 26, "y": 26}]},
  {"name": "weapon_4", "layers": [
   {"sprite": "wesy", "frame": 2, "fit": 26, "x": 15, "y": 15},
-  {"sprite": "edut", "frame": 1, "fit": 11, "x": 26, "y": 26}]}
+  {"sprite": "edut", "frame": 1, "fit": 11, "x": 26, "y": 26}]},
+ {"name": "weapon_5", "layers": [
+  {"sprite": "wesy", "frame": 4, "fit": 26, "x": 15, "y": 15},
+  {"sprite": "edut", "frame": 1, "fit": 11, "x": 26, "y": 26}]},
+ {"name": "weapon_6", "layers": [
+  {"sprite": "wesd", "frame": 0, "fit": 26, "x": 15, "y": 15},
+  {"sprite": "edut", "frame": 1, "fit": 11, "x": 26, "y": 26}]},
+ {"name": "weapon_1_charge", "layers": [
+  {"sprite": "phbe", "frame": 1, "fit": 44, "x": 15, "y": 15},
+  {"sprite": "wesy", "frame": 0, "fit": 18, "x": 15, "y": 15},
+  {"sprite": "edut", "frame": 1, "fit": 11, "x": 26, "y": 26}]},
+ {"name": "weapon_2_charge", "layers": [
+  {"sprite": "phbe", "frame": 1, "fit": 44, "x": 15, "y": 15},
+  {"sprite": "wesy", "frame": 1, "fit": 18, "x": 15, "y": 15},
+  {"sprite": "edut", "frame": 1, "fit": 11, "x": 26, "y": 26}]},
+ {"name": "weapon_3_charge", "layers": [
+  {"sprite": "phbe", "frame": 1, "fit": 44, "x": 15, "y": 15},
+  {"sprite": "wesy", "frame": 3, "fit": 18, "x": 15, "y": 15},
+  {"sprite": "edut", "frame": 1, "fit": 11, "x": 26, "y": 26}]},
+ {"name": "weapon_4_charge", "layers": [
+  {"sprite": "phbe", "frame": 1, "fit": 44, "x": 15, "y": 15},
+  {"sprite": "wesy", "frame": 2, "fit": 18, "x": 15, "y": 15},
+  {"sprite": "edut", "frame": 1, "fit": 11, "x": 26, "y": 26}]},
+ {"name": "weapon_5_charge", "layers": [
+  {"sprite": "phbe", "frame": 1, "fit": 44, "x": 15, "y": 15},
+  {"sprite": "wesy", "frame": 4, "fit": 18, "x": 15, "y": 15},
+  {"sprite": "edut", "frame": 1, "fit": 11, "x": 26, "y": 26}]},
+ {"name": "weapon_6_charge", "layers": [
+  {"sprite": "phbe", "frame": 1, "fit": 44, "x": 15, "y": 15},
+  {"sprite": "wesd", "frame": 0, "fit": 18, "x": 15, "y": 15},
+  {"sprite": "edut", "frame": 1, "fit": 11, "x": 26, "y": 26}]},
+ {"name": "ground_variant_2", "layers": [
+  {"sprite": "pbta", "frame": 1, "fit": 10, "x": 16, "y": 5, "alpha": 0.4},
+  {"sprite": "pbta", "frame": 1, "fit": 10, "x": 27, "y": 16, "alpha": 0.6},
+  {"sprite": "pbta", "frame": 1, "fit": 10, "x": 5,  "y": 16, "alpha": 0.6},
+  {"sprite": "pbta", "frame": 1, "fit": 12, "x": 16, "y": 27},
+  {"sprite": "pl1b", "frame": 0, "fit": 16, "x": 16, "y": 15}]}
 ]}

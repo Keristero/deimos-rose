@@ -1,0 +1,11 @@
+{
+    "id": "le01",
+    "name": "Fixture Alpha",
+    "identifier": "Alpha",
+    "background": [0, 0, 480, 900],
+    "background_image": "none",
+    "preview_image": "none",
+    "music": "none",
+    "media_mask": "none",
+    "placements": []
+}

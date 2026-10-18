@@ -4,7 +4,8 @@
 //   icons <recipe.json> <assets root> <out dir>
 //
 // A recipe is a canvas size and a list of icons, each a stack of layers drawn
-// bottom first. A layer is one frame of a sprite plate (sprites/index.json),
+// bottom first. A layer is one frame of a sprite plate (sprites/index.json,
+// or a plugin's own in plugins/<name>/sprites, for those imported below),
 // scaled so its longer side is `fit` pixels (its own size when fit is left
 // out), centred on (x, y) (the canvas centre when left out), optionally
 // flipped, and faded to `alpha`:
@@ -15,7 +16,7 @@
 //       {"sprite": "edut", "frame": 1, "fit": 11, "x": 26, "y": 26}]}]}
 //
 // Each icon is written to <out dir>/<name>.png. The game finds a passive's
-// icon by its sim.Passive name in lower case, so a new passive needs only a
+// icon by its Passive_Def.name (plugins/passives), so a new passive needs only a
 // recipe entry of that name and `mise run assets:icons`.
 //
 // Only raylib's CPU-side image functions are used: no window, no audio
@@ -32,6 +33,8 @@ import "core:strings"
 import rl "vendor:raylib"
 
 import "dr:data"
+// For its plates (the Discharge Beam's red symbol, WESD).
+import _ "dr:plugins/new_weapons"
 import "dr:sim"
 
 Layer :: struct {
@@ -56,6 +59,8 @@ Recipe :: struct {
 }
 
 main :: proc() {
+	// Every registry filled, in the same order on every platform.
+	sim.register_all()
 	if len(os.args) != 4 {
 		fmt.eprintln("usage: icons <recipe.json> <assets root> <out dir>")
 		os.exit(2)
@@ -128,7 +133,7 @@ draw_layer :: proc(canvas: ^rl.Image, assets: ^data.Assets, plates: ^map[sim.Res
 	}
 	sheet, loaded := plates[id]
 	if !loaded {
-		sheet = rl.LoadImage(fmt.ctprintf("%s/%s", root, plate.image))
+		sheet = rl.LoadImage(strings.clone_to_cstring(plate.image, context.temp_allocator))
 		if sheet.data == nil {
 			return false
 		}

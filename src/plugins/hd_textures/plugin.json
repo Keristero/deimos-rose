@@ -1,0 +1,13 @@
+{
+    "label": "HD Textures",
+    "description": "The game's sprites and menu pictures redrawn at twice their size by an AI upscaler",
+    "version": "1",
+    "deps": [
+
+    ],
+    "default_on": false,
+    "session": false,
+    "texture_scale": 2,
+    "original_free": false,
+    "made_with": "tools/hd_textures (Nomos SPAN 2x, CC-BY-4.0)"
+}

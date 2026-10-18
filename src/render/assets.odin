@@ -1,0 +1,509 @@
+package render
+
+// Textures, loaded from the assets tree the extractor writes.
+//
+// One texture per sprite plate (the game has 125) and one per level's terrain
+// map. Frames are sub-rectangles of a plate, from the index baked at extract
+// time, so nothing is cut or re-packed at runtime.
+
+import "core:fmt"
+import "core:math"
+import "core:strings"
+
+import rl "vendor:raylib"
+
+import "dr:data"
+import "dr:sim"
+
+Plate :: struct {
+	texture: rl.Texture2D,
+	frames:  []data.Json_Frame,
+	image:   string, // where the PNG is
+}
+
+// A handful of independent playback handles sharing one clip's sample data
+// (rl.LoadSoundAlias), so a retrigger while the clip is already sounding
+// layers instead of cutting the earlier instance off. The original instead
+// caches one handle per playing sound and steals the lowest-priority one
+// when its channel budget is full (FUN_0044fab0); raylib/miniaudio mixes far
+// more simultaneous voices than that budget, so channel stealing by
+// priority is not reproduced -- see sounds_step.
+SOUND_VOICES :: 3
+
+Sound_Clip :: struct {
+	voices: [SOUND_VOICES]rl.Sound,
+	next:   int,
+}
+
+Textures :: struct {
+	root:    string,
+	assets:  data.Assets,
+	plates:  map[sim.Res_ID]Plate,
+	terrain: map[string]rl.Texture2D, // by im16 image id
+	images:  map[string]rl.Texture2D, // by im16 image id -- menu backgrounds, not level-tied
+
+	// The plugins drawn with (Renderer.mods), for the texture packs they
+	// bring: redrawn images that stand in for the game's own.
+	mods:      sim.Mods,
+	pack:      map[string]rl.Texture2D, // by the redrawn file's path; id 0 for one that would not load
+	pack_size: map[u32]rl.Vector2, // by texture id: the redrawn image's real size in pixels
+
+	// Classic mode: im16 images as the original showed them, through
+	// QuickTime's gamma (im16_load). main.odin copies it in every frame.
+	quicktime_gamma: bool,
+	sounds:  map[sim.Res_ID]Sound_Clip,
+	music:   map[string]rl.Music, // by the level's own music id, e.g. "mu03"
+
+	// Preferences' volumes as 0..1, applied at each play (sounds_step,
+	// menu_play_sound) and each music_track lookup -- main.odin copies them
+	// in every frame, so a change takes effect at once.
+	sfx_volume:   f32,
+	music_volume: f32,
+	// How much slower every sound and the music play, 0 (normal) to 1,
+	// which a plugin's view sets (hitstop's kill cam): the pitch drops with
+	// it, as a slowed record does. Applied at each play and each frame.
+	audio_slow:   f32,
+}
+
+// `audio` is false for a headless run (DR_SHOT): main.odin skips
+// InitAudioDevice there, and rl.LoadSound/LoadMusicStream against a
+// non-existent device would just fail per call (harmless, but noisy in the
+// log and pointless work for frames nothing will ever hear) -- see
+// sounds_step and music_track, which no-op cleanly when these maps stay empty.
+textures_load :: proc(t: ^Textures, root: string, audio: bool = true) {
+	t.root = strings.clone(root)
+	t.sfx_volume, t.music_volume = 1, 1
+	t.assets = data.assets_open(root)
+	t.plates = make(map[sim.Res_ID]Plate, len(t.assets.sprites))
+	t.terrain = make(map[string]rl.Texture2D)
+	t.images = make(map[string]rl.Texture2D)
+	t.pack = make(map[string]rl.Texture2D)
+	t.pack_size = make(map[u32]rl.Vector2)
+	for &p in t.assets.sprites {
+		tex := rl.LoadTexture(strings.clone_to_cstring(p.image, context.temp_allocator))
+		if tex.id == 0 {
+			continue
+		}
+		t.plates[p.id] = Plate{texture = tex, frames = p.frames, image = p.image}
+	}
+
+	t.sounds = make(map[sim.Res_ID]Sound_Clip, audio ? len(t.assets.sounds) : 0)
+	if audio {
+		for id in t.assets.sounds {
+			snd := rl.LoadSound(strings.clone_to_cstring(data.assets_audio_path(&t.assets, id), context.temp_allocator))
+			if snd.frameCount == 0 {
+				continue
+			}
+			clip: Sound_Clip
+			clip.voices[0] = snd
+			for i in 1 ..< SOUND_VOICES {
+				clip.voices[i] = rl.LoadSoundAlias(snd)
+			}
+			t.sounds[sim.res_id(id)] = clip
+		}
+	}
+	t.music = make(map[string]rl.Music)
+}
+
+textures_unload :: proc(t: ^Textures) {
+	for _, p in t.plates {
+		rl.UnloadTexture(p.texture)
+	}
+	for _, tex in t.terrain {
+		rl.UnloadTexture(tex)
+	}
+	for _, tex in t.images {
+		rl.UnloadTexture(tex)
+	}
+	for _, tex in t.pack {
+		rl.UnloadTexture(tex)
+	}
+	for _, clip in t.sounds {
+		for i in 1 ..< SOUND_VOICES {
+			rl.UnloadSoundAlias(clip.voices[i])
+		}
+		rl.UnloadSound(clip.voices[0])
+	}
+	for _, m in t.music {
+		rl.UnloadMusicStream(m)
+	}
+	delete(t.plates)
+	delete(t.terrain)
+	delete(t.images)
+	delete(t.pack)
+	delete(t.pack_size)
+	delete(t.sounds)
+	delete(t.music)
+}
+
+// The level's music track (Level_Media.music), loaded on first use and
+// looped -- raylib's LoadMusicStream defaults Music.looping to true, which
+// matches a level's track outlasting the level (mu03 alone runs ~196s).
+music_track :: proc(t: ^Textures, level: ^sim.Level_Def) -> (rl.Music, bool) {
+	media := data.assets_level_media(&t.assets, level.campaign, level.id)
+	if media == nil || media.music == "" || media.music == "none" {
+		return {}, false
+	}
+	return music_load(t, media.music)
+}
+
+// "Interface Music Loop" (inmu, Music.pak -- the name is the one
+// assets/manifest.json records for it): the menus' music, ~60s, looped.
+MENU_MUSIC :: "inmu"
+
+// Any track by its audio id, loaded on first use; volume follows
+// Preferences' music setting on every call.
+music_load :: proc(t: ^Textures, id: string) -> (rl.Music, bool) {
+	if m, ok := t.music[id]; ok {
+		rl.SetMusicVolume(m, t.music_volume)
+		return m, true
+	}
+	m := rl.LoadMusicStream(strings.clone_to_cstring(data.assets_audio_path(&t.assets, id), context.temp_allocator))
+	if m.frameCount == 0 {
+		return {}, false
+	}
+	t.music[id] = m
+	rl.SetMusicVolume(m, t.music_volume)
+	return m, true
+}
+
+// The terrain map for a level, loaded on first use: one 480-wide image as tall
+// as the level is long.
+terrain_texture :: proc(t: ^Textures, level: ^sim.Level_Def) -> (rl.Texture2D, bool) {
+	media := data.assets_level_media(&t.assets, level.campaign, level.id)
+	if media == nil || media.background == "" || media.background == "none" {
+		return {}, false
+	}
+	return im16_texture(t, &t.terrain, media.background)
+}
+
+// How many times the original's size the level's map is drawn in: 1, or a
+// texture pack's scale when one in use redraws it.
+terrain_scale :: proc(t: ^Textures, level: ^sim.Level_Def) -> i32 {
+	media := data.assets_level_media(&t.assets, level.campaign, level.id)
+	if media == nil || media.background == "" || media.background == "none" {
+		return 1
+	}
+	_, scale, ok := image_pack(t, &t.terrain, media.background)
+	return ok ? scale : 1
+}
+
+// The original decodes every TGA (the im16 images: terrain, menu and
+// loading backdrops, the score bar) through QuickTime's GraphicsImporter
+// (U_Image_LoadInBuffer, 0x44cba0), which gamma-corrects it on the way into
+// the 16-bit buffer; its sprites are GIFs (U_Sprite_Load asks for 'GIF '),
+// which come through unchanged. Fitted against Wine captures of demo 1 at
+// steps 300/900/1500/2100 (oracle:shot), ~1.4M pixel channels of terrain and
+// score-bar panel: each 5-bit channel v shows as round(31 * (v/31)^0.75),
+// exactly, for every v from 1 to 24 with enough samples to call (1->2, 2->4,
+// 4->7, 8->11, 12->15, 17->20, 22->24); sprite pixels (the shield meter)
+// match with no curve. It is why the original looks lighter and less
+// saturated. QuickTime runs the same code under Wine as on Windows, so this
+// is the original's look, not the emulator's -- though that is inferred, not
+// checked on a Windows machine.
+@(private = "file") QUICKTIME_GAMMA :: 0.75
+
+@(private = "file")
+quicktime_gamma_table :: proc() -> (tab: [32]u8) {
+	for v in 0 ..< 32 {
+		g := u8(math.round(31 * math.pow(f32(v) / 31, QUICKTIME_GAMMA)))
+		tab[v] = (g << 3) | (g >> 2) // expanded as data/tga.odin expands
+	}
+	return
+}
+
+// An im16 image, cached in `cache` by id -- with QuickTime's gamma applied
+// in classic mode, cached beside the plain one as "<id>@qt".
+im16_texture :: proc(t: ^Textures, cache: ^map[string]rl.Texture2D, id: string) -> (rl.Texture2D, bool) {
+	// A pack's redrawn image stands in for the original, kept beside it under "<id>@hd".
+	hd_path, scale, hd := image_pack(t, cache, id)
+	key := t.quicktime_gamma ? fmt.tprintf("%s@qt", id) : hd ? fmt.tprintf("%s@hd", id) : id
+	if tex, ok := cache[key]; ok {
+		return tex, tex.id != 0
+	}
+	img := rl.LoadImage(strings.clone_to_cstring(hd ? hd_path : data.assets_image_path(&t.assets, id), context.temp_allocator))
+	if img.data == nil {
+		return {}, false
+	}
+	defer rl.UnloadImage(img)
+	if t.quicktime_gamma {
+		rl.ImageFormat(&img, .UNCOMPRESSED_R8G8B8A8)
+		tab := quicktime_gamma_table()
+		for &c in ([^]rl.Color)(img.data)[:img.width * img.height] {
+			c.r, c.g, c.b = tab[c.r >> 3], tab[c.g >> 3], tab[c.b >> 3]
+		}
+	}
+	tex := rl.LoadTextureFromImage(img)
+	if tex.id == 0 {
+		return {}, false
+	}
+	pack_adopt(t, &tex, scale)
+	cache[t.quicktime_gamma || hd ? strings.clone(key) : id] = tex
+	return tex, true
+}
+
+// The pack's redrawn file for the im16 image `id`, when a pack in use has one.
+image_pack :: proc(t: ^Textures, cache: ^map[string]rl.Texture2D, id: string) -> (path: string, scale: i32, ok: bool) {
+	if !pack_active(t) {
+		return
+	}
+	return data.assets_texture_pack(&t.assets, t.mods, fmt.tprintf("images/im16/%s.png", id))
+}
+
+// A redrawn texture, drawn by the original's size (see pack_texture); not
+// when `scale` is 0, the original's own.
+@(private = "file")
+pack_adopt :: proc(t: ^Textures, tex: ^rl.Texture2D, scale: i32) {
+	if scale > 1 {
+		t.pack_size[tex.id] = {f32(tex.width), f32(tex.height)}
+		tex.width, tex.height = tex.width / scale, tex.height / scale
+	}
+}
+
+// A full-screen im16 image not tied to any level (menu backgrounds: "back",
+// "lese", …), loaded once and cached by name -- the same lazy-load pattern
+// terrain_texture uses, minus the per-level media indirection.
+// This port's own look for the menu backgrounds (outside classic mode): the
+// original's teal recoloured to rose -- each pixel's luminance carried onto
+// a rose hue, so the art's detail and brightness survive. ROSE is scaled so
+// its own luminance is 1 (0.299*1.40 + 0.587*0.78 + 0.114*1.0 = 1.0).
+@(private = "file") ROSE :: [3]f32{1.40, 0.78, 1.0}
+
+// A menu background tinted rose, built from the im16 image the first time
+// it is asked for and cached beside the original under "<id>@rose".
+menu_image_rose :: proc(t: ^Textures, id: string) -> (rl.Texture2D, bool) {
+	hd_path, scale, hd := image_pack(t, &t.images, id)
+	key := fmt.tprintf(hd ? "%s@rose@hd" : "%s@rose", id)
+	if tex, ok := t.images[key]; ok {
+		return tex, true
+	}
+	img := rl.LoadImage(strings.clone_to_cstring(hd ? hd_path : data.assets_image_path(&t.assets, id), context.temp_allocator))
+	if img.data == nil {
+		return {}, false
+	}
+	defer rl.UnloadImage(img)
+	rl.ImageFormat(&img, .UNCOMPRESSED_R8G8B8A8)
+	pixels := ([^]rl.Color)(img.data)[:img.width * img.height]
+	for &c in pixels {
+		l := 0.299 * f32(c.r) + 0.587 * f32(c.g) + 0.114 * f32(c.b)
+		c.r = u8(min(l * ROSE[0], 255))
+		c.g = u8(min(l * ROSE[1], 255))
+		c.b = u8(min(l * ROSE[2], 255))
+	}
+	tex := rl.LoadTextureFromImage(img)
+	if tex.id == 0 {
+		return {}, false
+	}
+	pack_adopt(t, &tex, scale)
+	t.images[strings.clone(key)] = tex
+	return tex, true
+}
+
+menu_image :: proc(t: ^Textures, id: string) -> (rl.Texture2D, bool) {
+	return im16_texture(t, &t.images, id)
+}
+
+// The frame rectangle within a plate, or nothing when the sprite or frame is
+// missing. A state may name a frame the plate does not have; the original
+// draws nothing in that case rather than failing.
+frame_rect :: proc(t: ^Textures, sprite: sim.Res_ID, frame: i32) -> (rl.Texture2D, rl.Rectangle, bool) {
+	p, ok := t.plates[sprite]
+	if !ok || frame < 0 || int(frame) >= len(p.frames) {
+		return {}, {}, false
+	}
+	f := p.frames[frame]
+	tex := p.texture
+	if rel, packed := pack_rel(t, p.image); packed {
+		if hd, found := pack_texture(t, rel, {tex.width, tex.height}); found {
+			tex = hd
+		}
+	}
+	return tex, {f32(f.x), f32(f.y), f32(f.w), f32(f.h)}, true
+}
+
+// The texture packs stand in for the images only outside classic mode,
+// which shows the original's.
+@(private = "file")
+pack_active :: proc(t: ^Textures) -> bool {
+	return !t.quicktime_gamma && len(t.assets.texture_packs) > 0 && t.mods != {}
+}
+
+// `path` as the original's tree names it ("sprites/im08/BAGU.png"), when
+// it is under the assets root and a pack is drawn with.
+@(private = "file")
+pack_rel :: proc(t: ^Textures, path: string) -> (rel: string, ok: bool) {
+	if !pack_active(t) || !strings.has_prefix(path, t.assets.root) {
+		return
+	}
+	rel = path[len(t.assets.root):]
+	return strings.trim_prefix(rel, "/"), true
+}
+
+// The redrawn texture a pack in use has for the image at `rel`, when there
+// is one. Its width and height are the original's (`logical`), so every
+// place that draws it by those sizes and its frame rectangles is unchanged
+// and the extra pixels are only more detail; what needs the real size asks
+// texture_pixels. Loaded on first use, and kept.
+@(private = "file")
+pack_texture :: proc(t: ^Textures, rel: string, logical: [2]i32) -> (rl.Texture2D, bool) {
+	path, scale, ok := data.assets_texture_pack(&t.assets, t.mods, rel)
+	if !ok {
+		return {}, false
+	}
+	if tex, cached := t.pack[path]; cached {
+		return tex, tex.id != 0
+	}
+	tex := rl.LoadTexture(strings.clone_to_cstring(path, context.temp_allocator))
+	if tex.id != 0 {
+		if logical.x * scale != tex.width || logical.y * scale != tex.height {
+			// Not the size the pack said: unusable, and the original stays.
+			rl.UnloadTexture(tex)
+			tex = {}
+		} else {
+			t.pack_size[tex.id] = {f32(tex.width), f32(tex.height)}
+			tex.width, tex.height = logical.x, logical.y
+		}
+	}
+	t.pack[strings.clone(path)] = tex
+	return tex, tex.id != 0
+}
+
+// A texture's size in pixels: the width and height it carries, unless it is
+// a pack's redrawn one, which carries the original's.
+texture_pixels :: proc(t: ^Textures, tex: rl.Texture2D) -> [2]i32 {
+	if size, ok := t.pack_size[tex.id]; ok {
+		return {i32(size.x), i32(size.y)}
+	}
+	return {tex.width, tex.height}
+}
+
+// A ship's trim, for the accent hues: the metal that is silver on player
+// 1's ship ("pl1?") and gold on player 2's ("pl2?"). A pixel is trim when
+// player 1's is grey and player 2's is yellower than it. The weapon's
+// colour on the wings and canopy is also different between the pair
+// (blue on PL1B, teal on PL2B), but it is not grey, so it stays out.
+// Both tests use absolute channel differences, not saturation or summed
+// distance: the engines at the back are dark, and there a faint blue cast
+// reads as high saturation while gold and silver differ by only a few
+// levels, which left them a patchwork of accent and original colour.
+// Checked by rendering the mask for all 7 frames (level and banked) of
+// all four pairs (B, C, G, O). Each trim pixel keeps player 1's silver
+// shading as a grey the accent shader can colour. The mask is soft: its
+// alpha ramps with both tests, then is feathered one pixel, so the accent
+// blends into the shared shading instead of stopping on a hard, aliased
+// edge. Both plates share one layout (394x48 for every pair), so the
+// ship's own frame rectangles address it. Built on first use, cached as
+// "<id>@trim".
+//
+// The score bar's ship icon ("play") is the same pair as frames 0 (silver)
+// and 1 (gold) of one plate; its trim covers frame 0, for either frame to
+// draw over.
+SCOREBAR_ICON :: sim.Res_ID{'p', 'l', 'a', 'y'}
+
+ship_trim :: proc(t: ^Textures, sprite: sim.Res_ID) -> (rl.Texture2D, bool) {
+	icon := sprite == SCOREBAR_ICON
+	if !icon && (sprite[0] != 'p' || sprite[1] != 'l' || (sprite[2] != '1' && sprite[2] != '2')) {
+		return {}, false
+	}
+	name := sprite
+	key := fmt.tprintf("%s@trim", string(name[:]))
+	if tex, ok := t.images[key]; ok {
+		return tex, tex.id != 0
+	}
+	silver, gold := sprite, sprite
+	if !icon {
+		silver[2], gold[2] = '1', '2'
+	}
+	tex := ship_trim_build(t, silver, gold, icon)
+	t.images[strings.clone(key)] = tex // cached even when it failed, so it is tried once
+	return tex, tex.id != 0
+}
+
+// Player 1's chroma (largest channel minus smallest): grey metal below
+// TRIM_GREY, weapon colour above TRIM_COLOUR, a ramp between.
+@(private = "file") TRIM_GREY :: 40
+@(private = "file") TRIM_COLOUR :: 70
+// How much yellower player 2's pixel is than player 1's, in yellowness
+// min(r, g) - b: none below TRIM_SOFT, certainly gold above TRIM_HARD.
+@(private = "file") TRIM_SOFT :: 2
+@(private = "file") TRIM_HARD :: 14
+
+@(private = "file")
+smooth :: proc(lo, hi, x: f32) -> f32 {
+	t := clamp((x - lo) / (hi - lo), 0, 1)
+	return t * t * (3 - 2 * t)
+}
+
+@(private = "file")
+ship_trim_build :: proc(t: ^Textures, silver, gold: sim.Res_ID, icon: bool) -> rl.Texture2D {
+	path :: proc(t: ^Textures, id: sim.Res_ID) -> cstring {
+		for &p in t.assets.sprites {
+			if p.id == id {
+				return strings.clone_to_cstring(p.image, context.temp_allocator)
+			}
+		}
+		return ""
+	}
+	a := rl.LoadImage(path(t, silver))
+	defer rl.UnloadImage(a)
+	b := rl.LoadImage(path(t, gold))
+	defer rl.UnloadImage(b)
+	if a.data == nil || b.data == nil || a.width != b.width || a.height != b.height {
+		return {}
+	}
+	rl.ImageFormat(&a, .UNCOMPRESSED_R8G8B8A8)
+	rl.ImageFormat(&b, .UNCOMPRESSED_R8G8B8A8)
+	if icon {
+		// Gold's frame laid over silver's, so the two line up.
+		_, f0, ok0 := frame_rect(t, silver, 0)
+		_, f1, ok1 := frame_rect(t, silver, 1)
+		if !ok0 || !ok1 {
+			return {}
+		}
+		rl.ImageDrawRectangleRec(&b, f0, {}) // cleared: ImageDraw blends
+		rl.ImageDraw(&b, a, f1, f0, rl.WHITE)
+	}
+	w, h := int(a.width), int(a.height)
+	pa := ([^]rl.Color)(a.data)[:w * h]
+	pb := ([^]rl.Color)(b.data)[:w * h]
+
+	// How much of each pixel is trim, 0..1.
+	mask := make([]f32, w * h)
+	defer delete(mask)
+	yellow :: proc(c: rl.Color) -> f32 {return f32(min(c.r, c.g)) - f32(c.b)}
+	for c, i in pa {
+		chroma := f32(max(c.r, c.g, c.b) - min(c.r, c.g, c.b))
+		mask[i] = (1 - smooth(TRIM_GREY, TRIM_COLOUR, chroma)) * smooth(TRIM_SOFT, TRIM_HARD, yellow(pb[i]) - yellow(c))
+	}
+	// Feathered with a 3x3 tent, but never below the pixel's own value, so
+	// the trim itself stays solid and only its edge softens outwards.
+	// Frames sit side by side on the plate; a ship's alpha is 0 between
+	// them, so the feather never carries colour onto a visible neighbour.
+	for y in 0 ..< h {
+		for x in 0 ..< w {
+			i := y * w + x
+			c := pa[i]
+			if c.a == 0 {
+				c = {}
+				pa[i] = c
+				continue
+			}
+			sum, wsum: f32
+			for dy in -1 ..= 1 {
+				for dx in -1 ..= 1 {
+					nx, ny := x + dx, y + dy
+					if nx < 0 || ny < 0 || nx >= w || ny >= h {
+						continue
+					}
+					k := f32((2 - abs(dx)) * (2 - abs(dy)))
+					sum += mask[ny * w + nx] * k
+					wsum += k
+				}
+			}
+			m := max(mask[i], sum / wsum)
+			l := u8(0.299 * f32(c.r) + 0.587 * f32(c.g) + 0.114 * f32(c.b))
+			pa[i] = {l, l, l, u8(m * f32(c.a))}
+		}
+	}
+	return rl.LoadTextureFromImage(a)
+}

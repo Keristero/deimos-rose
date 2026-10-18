@@ -1,0 +1,32 @@
+{
+  "comment": "The level editor's model library: which Poly Haven models (all CC0, https://polyhaven.com/license), tagged for the Models tab, and the trees allowed more triangles than tools/models gives the rest. `mise run models:fetch` downloads them, `mise run models:library` builds assets/models from them and profiles.json.",
+  "models": [
+    {"id": "island_tree_01", "triangles": 20000, "tags": ["tree", "jungle"]},
+    {"id": "island_tree_02", "triangles": 20000, "tags": ["tree", "jungle"]},
+    {"id": "searsia_lucida", "triangles": 20000, "tags": ["tree", "scrub"]},
+    {"id": "searsia_burchellii", "triangles": 20000, "tags": ["tree", "scrub"]},
+    {"id": "quiver_tree_02", "triangles": 20000, "tags": ["tree", "dry"]},
+    {"id": "pine_sapling_small", "triangles": 20000, "tags": ["tree"]},
+    {"id": "dead_tree_trunk_02", "tags": ["debris", "dead", "dry"]},
+    {"id": "shrub_02", "tags": ["shrub"]},
+    {"id": "shrub_03", "tags": ["shrub"]},
+    {"id": "wild_rooibos_bush", "tags": ["shrub", "scrub", "dry"]},
+    {"id": "fern_02", "tags": ["plant", "jungle"]},
+    {"id": "calathea_orbifolia_01", "tags": ["plant", "jungle"]},
+    {"id": "anthurium_botany_01", "tags": ["plant", "jungle"]},
+    {"id": "nettle_plant", "tags": ["plant"]},
+    {"id": "weed_plant_02", "tags": ["plant"]},
+    {"id": "grass_medium_01", "tags": ["grass"]},
+    {"id": "grass_medium_02", "tags": ["grass"]},
+    {"id": "rock_07", "tags": ["rock"]},
+    {"id": "rock_09", "tags": ["rock"]},
+    {"id": "stone_01", "tags": ["rock"]},
+    {"id": "boulder_01", "tags": ["rock", "boulder"]},
+    {"id": "namaqualand_boulder_02", "tags": ["rock", "boulder", "dry"]},
+    {"id": "namaqualand_boulder_05", "tags": ["rock", "boulder", "dry"]},
+    {"id": "namaqualand_stones_01", "tags": ["rock", "dry"]},
+    {"id": "rock_moss_set_01", "tags": ["rock", "jungle"]},
+    {"id": "dry_branches_medium_01", "tags": ["debris", "dry"]},
+    {"id": "tree_stump_01", "tags": ["debris"]}
+  ]
+}

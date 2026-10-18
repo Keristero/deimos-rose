@@ -1,0 +1,180 @@
+package passives_view
+
+// Easy mode's passive upgrades as the player sees them: names, icons and
+// how each stat reads on the reward screen (plugins/easy_mode/view), and the
+// effects that show a passive at work in play, as effect systems
+// (render/render_systems.odin): two here, and the corrosive clouds
+// (clouds.odin). The passives themselves are plugins/passives;
+// nothing here feeds back into the simulation.
+
+import "core:fmt"
+import "core:math"
+import "core:math/rand"
+import "core:strings"
+
+import rl "vendor:raylib"
+
+import "dr:plugins/passives"
+import "dr:render"
+import "dr:sim"
+import "dr:sim/stats"
+
+// A passive's icon, loaded on first use and cached with the other derived
+// images (a missing file is cached too, so it is tried once). The icons are
+// assets/icons/passives/<name>.png, 32x32, composited from the game's own
+// sprites by `mise run assets:icons` (tools/icons/passives.json holds the
+// recipes), each named after its Passive_Def.name.
+passive_icon :: proc(t: ^render.Textures, pa: passives.Passive) -> (rl.Texture2D, bool) {
+	key := fmt.tprintf("icons/passives/%s", passives.passive_def(pa).name)
+	if tex, ok := t.images[key]; ok {
+		return tex, tex.id != 0
+	}
+	tex := rl.LoadTexture(fmt.ctprintf("%s/%s.png", t.root, key))
+	t.images[strings.clone(key)] = tex
+	return tex, tex.id != 0
+}
+
+Stat_Format :: enum {
+	Percent,  // of the base value: 100% is unchanged
+	Count,    // a flat number added
+	Seconds,
+	Rate,     // percentage points a second
+	Per_Shot, // percentage points added with each shot
+	Toggle,
+}
+
+Stat_Display :: struct {
+	label:  string,
+	format: Stat_Format,
+	// Meaningless until this is on: the shield regeneration's delay and
+	// rate read "--" before Shield_Regenerates.
+	needs:  Maybe(sim.Stat),
+}
+
+@(rodata)
+STAT_DISPLAY := [sim.Stat]Stat_Display {
+	.Maneuverability          = {"MANOEUVRABILITY", .Percent, nil},
+	.Risky_Reward             = {"RISKY REWARD", .Toggle, nil},
+	.Auto_Charge_Air_To_Air   = {"AUTO CHARGE", .Toggle, nil},
+	.Prevent_Overheat         = {"OVERHEAT PROTECTION", .Toggle, nil},
+	.Charge_Rate              = {"CHARGE RATE", .Percent, nil},
+	.Overheat_Delay           = {"OVERHEAT DELAY", .Percent, nil},
+	.Maximum_Charge           = {"MAXIMUM CHARGE", .Percent, nil},
+	.Shield_Regenerates       = {"SHIELD REGENERATION", .Toggle, nil},
+	.Recharge_Delay           = {"RECHARGE DELAY", .Seconds, .Shield_Regenerates},
+	.Shield_Regen_Rate        = {"REGENERATION RATE", .Rate, .Shield_Regenerates},
+	.Volley_Delay             = {"VOLLEY DELAY", .Percent, nil},
+	.Extra_Projectiles        = {"EXTRA PROJECTILES", .Count, nil},
+	.Extra_Volley             = {"EXTRA VOLLEYS", .Count, nil},
+	.Accelerating_Projectiles = {"ACCELERATING SHOTS", .Toggle, nil},
+	.Initial_Projectile_Speed = {"LAUNCH SPEED", .Percent, nil},
+	.Projectile_Lifetime      = {"RANGE", .Percent, nil},
+	.Side_Firing_Volley       = {"SIDE FIRE", .Toggle, nil},
+	.Firing_Delay             = {"FIRING DELAY", .Percent, nil},
+	.Projectile_Damage        = {"DAMAGE", .Percent, nil},
+	.Random_Spread_Range      = {"SPREAD", .Percent, nil},
+	.Shot_Width               = {"BEAM WIDTH", .Percent, nil},
+	.Ground_Charge            = {"CHARGED BOMB", .Toggle, nil},
+	.Charge_Aim_Behind        = {"AIMS BEHIND", .Toggle, .Ground_Charge},
+	.Charge_Aim_Around        = {"AIMS AROUND", .Toggle, .Ground_Charge},
+	.Chains                   = {"CHAIN BEAM", .Toggle, nil},
+	.Release_Ramp             = {"RELEASE SPEED-UP", .Per_Shot, nil},
+	.Overcharge_Projectiles   = {"OVERCHARGE SHOTS", .Toggle, nil},
+	.Shot_Scale               = {"SHOT SIZE", .Percent, nil},
+	.Wears_Down               = {"WEARING SHOTS", .Toggle, nil},
+	.Hit_Cloud                = {"CORROSIVE CLOUDS", .Toggle, nil},
+	.Cloud_Lifetime           = {"CLOUD TIME", .Percent, .Hit_Cloud},
+	.Hits_Ground              = {"HITS GROUND", .Toggle, nil},
+	.Ground_Damage            = {"GROUND DAMAGE", .Percent, .Hits_Ground},
+}
+
+// A stat's value for a player holding `levels`, as the reward screen shows
+// it. Every passive's contribution is in it, not only the one on offer.
+stat_text :: proc(levels: ^passives.Passive_Levels, stat: sim.Stat, weapon: sim.Res_ID, charge := false) -> string {
+	d := STAT_DISPLAY[stat]
+	if needs, ok := d.needs.?; ok && !passives.stat_total(levels, needs, weapon, charge).enabled {
+		return "--"
+	}
+	t := passives.stat_total(levels, stat, weapon, charge)
+	switch d.format {
+	case .Percent:
+		return fmt.tprintf("%d%%", max(100 + t.percent, 0))
+	case .Count:
+		return fmt.tprintf("+%d", t.extra)
+	case .Seconds:
+		return fmt.tprintf("%dS", t.extra)
+	case .Rate:
+		return fmt.tprintf("%d%%/S", t.extra)
+	case .Per_Shot:
+		return fmt.tprintf("+%d%%/SHOT", t.percent)
+	case .Toggle:
+		return t.enabled ? "ON" : "OFF"
+	}
+	return ""
+}
+
+// In-play effects, stepped with the particles once per sim step: accent
+// motes drawn in to a ship whose shields are regenerating, and sparks off
+// a charge climbing past the weapon's own maximum. Presentation only, so
+// core:math/rand is fine here.
+
+@(private = "file") REGEN_EVERY :: 3      // steps between motes
+@(private = "file") REGEN_RADIUS :: 26    // how far out they start
+@(private = "file") REGEN_STEPS :: 9      // steps to reach the ship
+@(private = "file") REGEN_FADE :: 14      // starting fade: faint, out of 32
+@(private = "file") SPARK_MAX :: 3        // sparks a step at the raised maximum
+@(private = "file") SPARK_SPEED :: 3
+
+register_passives_view :: proc() {
+	render.effect_system_register({name = "passive_particles", plugin = passives.id(), step = passive_particles_step})
+	register_clouds_view()
+}
+
+@(init)
+register_passives_view_step :: proc "contextless" () {
+	sim.register_step(.View, "plugins/passives/view register_passives_view", register_passives_view)
+}
+
+passive_particles_step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles) {
+	if sim.session_frozen(s) {
+		return
+	}
+	for pl, i in sim.players_of(s) {
+		if pl.state != .Playing {
+			continue
+		}
+		if passives.player_regenerating(s, pl) && sim.single(s, sim.Clock).time % REGEN_EVERY == 0 {
+			a := rand.float32() * 2 * math.PI
+			from := pl.loc + sim.Vec{math.cos(a), math.sin(a)} * REGEN_RADIUS
+			shade := colour5(render.accent_color(int(r.accents[i].hue)))
+			append(&p.live, render.Particle {
+				loc    = from - 3,
+				prev   = from - 3,
+				vel    = (pl.loc - from) / REGEN_STEPS,
+				shade  = shade,
+				fringe = shade / 2,
+				fade   = REGEN_FADE,
+			})
+		}
+		if over := stats.player_overcharge(s, pl); over > 0 {
+			n := int(math.ceil(over * SPARK_MAX))
+			for _ in 0 ..< n {
+				a := rand.float32() * 2 * math.PI
+				at := pl.loc + {0, -f32(pl.half.y)}
+				append(&p.live, render.Particle {
+					loc    = at - 3,
+					prev   = at - 3,
+					vel    = sim.Vec{math.cos(a), math.sin(a)} * SPARK_SPEED * (0.5 + rand.float32()),
+					shade  = {31, 31, 24},
+					fringe = {31, 20, 8},
+					fade   = i32(16 - over * 12),
+				})
+			}
+		}
+	}
+}
+
+@(private = "file")
+colour5 :: proc(c: rl.Color) -> [3]u8 {
+	return {c.r >> 3, c.g >> 3, c.b >> 3}
+}

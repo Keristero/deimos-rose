@@ -1,0 +1,8 @@
+{
+    "plugin": "new_weapons",
+    "plates": [
+        {"from": "PL1O", "to": "PL1D", "hue_min": 20, "hue_max": 75, "saturation": 1.0, "value": 1.0, "hue_shift": -50},
+        {"from": "PL2O", "to": "PL2D", "hue_min": 20, "hue_max": 75, "saturation": 1.0, "value": 1.0, "hue_shift": -50},
+        {"from": "WESY", "to": "WESD", "hue_min": 20, "hue_max": 75, "saturation": 1.0, "value": 1.0, "hue_shift": -50}
+    ]
+}

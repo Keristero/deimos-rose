@@ -16,6 +16,8 @@ import "core:strings"
 
 import "dr:data"
 import "dr:oracle"
+// The original game's systems, which a session runs.
+import _ "dr:sim/core"
 import "dr:sim"
 
 Symbol :: struct {
@@ -97,6 +99,8 @@ describe :: proc(syms: []Symbol, d: Maybe(sim.Draw)) -> string {
 }
 
 main :: proc() {
+	// Every registry filled, in the same order on every platform.
+	sim.register_all()
 	trace_path := len(os.args) > 1 ? os.args[1] : fmt.tprintf("%s/../work/wine/traces/trace.txt", os.get_env("DR_SRC", context.temp_allocator))
 	films_dir := fmt.tprintf("%s/films", os.get_env("DR_ASSETS", context.temp_allocator))
 	syms := load_symbols()
@@ -112,11 +116,18 @@ main :: proc() {
 		os.exit(2)
 	}
 
-	// Index the shipped films by seed; each demo's seed is distinct.
+	// Index every film by seed: the shipped demos and the players' films
+	// (mise run assets:films), whose seeds are all distinct. The original
+	// plays the players' films too, from Data/Local/film, so one trace
+	// may hold any of them.
 	films: map[u32]string
-	for i in 1 ..= 4 {
-		name := fmt.tprintf("de%02d", i)
-		bytes, ferr := os.read_entire_file(fmt.tprintf("%s/%s.film", films_dir, name), context.allocator)
+	entries, _ := os.read_all_directory_by_path(films_dir, context.allocator)
+	for e in entries {
+		if !strings.has_suffix(e.name, ".film") {
+			continue
+		}
+		name := strings.trim_suffix(e.name, ".film")
+		bytes, ferr := os.read_entire_file(fmt.tprintf("%s/%s", films_dir, e.name), context.allocator)
 		if ferr != nil {
 			continue
 		}
@@ -171,11 +182,11 @@ main :: proc() {
 		snaps := make([dynamic]oracle.Player_Snapshot, 0, len(t.players), context.temp_allocator)
 		max_steps := 4 * len(film.frames) + 10_000
 		sim.init(state, film.session, &defs, &log, len(t.events) > 0 ? &events : nil)
-		for i := 0; i < max_steps && !sim.film_finished(state, &film); i += 1 {
+		for i := 0; i < max_steps && !sim.demo_over(state, &film); i += 1 {
 			if len(t.players) > 0 {
-				for &p in state.players {
+				for p in sim.players_of(state) {
 					append(&snaps, oracle.Player_Snapshot {
-						frame   = u32(state.film_cursor[0]),
+						frame   = u32(sim.single(state, sim.Film_Cursor).reads[0]),
 						player  = p.number,
 						state   = i32(p.state),
 						loc     = p.loc,
@@ -195,7 +206,7 @@ main :: proc() {
 
 		pct := d.want == 0 ? 100.0 : 100.0 * f64(d.matched) / f64(d.want)
 		fmt.printfln("%s  seed %d  %d frames  %d steps traced; replay: %d steps, %d film reads",
-			name, t.seed, len(film.frames), t.steps, state.frame, state.film_cursor[0])
+			name, t.seed, len(film.frames), t.steps, sim.frame_of(state), sim.single(state, sim.Film_Cursor).reads[0])
 		fmt.printfln("    calls matched %d / %d (%.1f%%), simulation made %d", d.matched, d.want, pct, d.got)
 		if t.unpaired > 0 {
 			fmt.printfln("    WARNING: %d rand() calls not attributed to RandomInt/RandomFloat", t.unpaired)
@@ -288,17 +299,21 @@ main :: proc() {
 		}
 
 		if div, bad := d.first.?; bad {
-			// The trace runs on past the film: when the demo ends the
-			// original starts the next session, whose first act is the nag
-			// draw at the top of G_Game_Play. The replay stops with the
-			// film, so calls left over at a step beyond its last frame are
-			// out of scope, not a disagreement.
-			after_film := false
+			// The trace runs on past the demo: when it ends the original
+			// starts the next session, whose first act is the nag draw at
+			// the top of G_Game_Play, still counted on the last demo's
+			// final read. The replay stops where the demo does
+			// (sim.demo_over), so that draw, left over at or after our last
+			// read, belongs to the next demo. Only that draw: any other
+			// leftover means the original played on where we stopped, as
+			// after a game over it never had.
+			NAG_DRAW :: sim.Site(0x41e6b6) // G_Game_Play+0x26, RandomInt(400, 2000)
+			after_demo := false
 			if w, ok := div.want.?; ok && div.got == nil {
-				after_film = int(w.frame) > len(film.frames)
+				after_demo = w.site == NAG_DRAW && w.frame >= u32(sim.single(state, sim.Film_Cursor).reads[0])
 			}
-			if after_film {
-				fmt.printfln("    matched the original to the last frame of the film;" +
+			if after_demo {
+				fmt.printfln("    matched the original to the end of the demo;" +
 					" %d later call(s) belong to the next demo", len(t.calls) - div.index)
 				continue
 			}

@@ -185,6 +185,13 @@ with new (netplay) menu items added in the same style but hidden under
   original binary can show but are hidden developer tools, not normal player
   menus. Deferred to a new "Bonus — Developer tools" phase rather than
   in scope for faithful player-menu recreation (see `docs/README.md`).
+  *Corrected:* the level editor is not in the binary. Its art (`edpa`,
+  `EDBU`, `EDPR`, `EDUT`, `BIGR`), its string list and its unit-def fields
+  ship, but no code in the Windows 1.0.2 or Mac 1.0.6 build reads the
+  editor tags, and no key, menu or flag reaches it. It ran in a developer
+  build. Only 10 console commands are registered: `G_Console_RegisterCommand`
+  (0x4114e0) drops the 54 debug-only ones. Evidence in
+  `notes/headless-3d-to-2d-findings.md`.
 - **Pause has no "PAUSED" banner in the original.** *Corrected:* this
   first said it showed no text at all, which was wrong.
   `G_GameInterface::Process_StartFrame` (0x4230f0) pauses on Caps Lock and
@@ -581,7 +588,7 @@ terrain shifts 1 canvas pixel at 0.5 and 2 at 1, its scroll speed.
 
 Outside classic mode, the menu backgrounds (`back`, and Level Select's
 `lese`) are recoloured to rose, fitting the project's name: each pixel's
-luminance is carried onto a rose hue (`game/assets.odin`'s
+luminance is carried onto a rose hue (`render/assets.odin`'s
 `menu_image_rose`), so the art's detail and lighting survive. Built once
 per image at first use. Classic mode draws the original colours.
 
@@ -592,6 +599,8 @@ without them. `mise run menu-shot` stays non-classic: it is for looking at
 this port's own screens, which classic hides.
 
 ### D35 — Extras: one table for every enhancement, off in classic mode
+
+*Superseded by D42: the extras are now mods and the settings they register.*
 
 Classic mode is the original game, look and behaviour both. Everything this
 port adds on top is an *extra*: listed once in `prefs.EXTRAS` (key, label,
@@ -637,8 +646,9 @@ netplay `Start` packet's new flags byte.
 ### D37 — New content lives in its own tree, appended after the originals
 
 New Weapons (docs/new-weapons.md) adds records and sprites the original
-never had. They live in `assets/extra`, laid out like `assets/`, rather
-than beside the extracted records. `data.extra_defs_load` appends them after
+never had. They live in `assets/extra` (since D51, in each plugin's own
+folder), laid out like `assets/`, rather than beside the extracted
+records. `data.extra_defs_load` appends them after
 the original definitions, and `assets_open` reads the extra sprite index
 beside the game's own.
 
@@ -657,9 +667,10 @@ of play by marking it rather than by not loading it:
 - only a New Weapons session's loadout (`sim/loadout.odin`) hands them
   out.
 
-A record's new behaviour goes in an `x_`-prefixed tag that only the extra
-loader reads, such as `x_AimedRelease_BOOL`. The generated `Wep_Def` stays
-the original's layout.
+A record's new behaviour goes in an `x_`-prefixed tag, such as
+`x_AimedRelease_BOOL`. The generated `Wep_Def` stays the original's
+layout. *Since D48, the plugin that reads a tag registers it and the loader
+fills it generically.*
 
 The extra records are hand-authored source: each was cloned from its
 nearest original record and then edited. The extra sprites are derived from
@@ -678,7 +689,8 @@ step it fires. The original has nothing like it: every shot is an entity
 that flies and collides. The beam is not one. `sim/beam.odin` casts the line
 when the weapon fires, hits the targets through `entity_hit` nearest first,
 and pushes a `Beam_Event` onto `State.beams`, a per-step queue like the
-particle and blur requests. Presentation draws each event and lets it fade.
+particle and blur requests. *Since D48 all of it is the New Weapons
+plugin's, and the queue is the plugins' generic effect queue.* Presentation draws each event and lets it fade.
 
 Why not a very fast, very long projectile:
 - a projectile takes steps to cross the screen, and one fast enough to
@@ -689,8 +701,12 @@ Why not a very fast, very long projectile:
   event carries.
 
 Nothing new is kept between steps. What the beam did lives in the
-entities it hit and the shrapnel it spawned, which are ordinary state, so
-snapshots, rollback and `sim.checksum` needed no change. The queue is
+entities it hit, which are ordinary state, so snapshots, rollback and
+`sim.checksum` needed no change. *For a while a charge also left motes,
+ordinary units too; they were taken out again
+(notes/extra-weapons-and-passives-3.md).* *The wind-up
+added one field, `Weapon_Handler.air_windup`, which is hashed with the
+rest.* The queue is
 presentation input only, cleared each step, and not hashed. The target
 filter (`air_shot_can_hit`) is the one the Chaingun's aiming already uses,
 so the beam can hit exactly what an air shot can.
@@ -698,3 +714,1610 @@ so the beam can hit exactly what an air shot can.
 The weapon still charges through the ordinary power-up state machine. A
 beam weapon's release calls `beam_release` in place of the release spawn
 timing, so Improved Charge and Auto Charge apply unchanged.
+
+### D39 — The simulation's state lives in odecs, created once in a fixed order
+
+*The first rule is tightened by D47: a slot now gets its components when
+the world is built, and nothing is added or removed after.*
+
+notes/ecs-refactor.md moves the sim to an entity component system: data in
+components, behaviour in systems, and new content in plugins that add their
+own of each. The ECS is odecs (NateTheGreatt/odecs), vendored unmodified in
+`third_party/odecs/` and held to the purity rule (D3).
+
+Why odecs rather than our own:
+- it is a small, plain Odin archetype ECS with typed queries, so systems
+  read as ordinary loops over component columns;
+- it takes an allocator, so a world can live in the session's arena like
+  the rest of the state;
+- it is MIT and small enough (about 3,500 lines) to vendor and read.
+
+odecs was not written for rollback, so the sim uses it under three rules:
+- **Every entity is created at world creation, in a fixed order, and never
+  destroyed.** The original has fixed pools (1,000 entities, 1,024 groups),
+  and `Entity_Ref` identifies a slot plus a spawn number. Spawning adds
+  components to a slot, and freeing removes them. So entity ids are the
+  same in every world, on every machine, and after every restore.
+- **No behaviour depends on archetype or row order.** odecs moves rows
+  when components come and go, and the rows' order depends on history. The
+  original's update order is its linked lists (groups in activation order,
+  entities in group order), and the RNG draws depend on it, so those lists
+  stay, as components, and anything order-sensitive walks them.
+- **Pointers into odecs never outlive a structural change.** Columns are
+  byte arrays that grow and swap-remove. A system that adds or removes
+  components re-fetches what it holds.
+
+### D40 — Deimos Rose's additions are plugins, and a session names the ones it runs
+
+notes/ecs-refactor.md splits new content into plugins, each in a folder of
+its own under `plugins/`, with dependencies between them. A plugin
+registers itself (`sim.plugin_register`), its components, its systems and
+its hooks from an `@(init)` procedure (a registration step since D50). A
+plugin's ID is its place in the registry, and a set of plugins is
+`sim.Mods`, a 32-bit set.
+
+- **A plugin is on only while everything it needs is.** `mods_resolve`
+  drops the rest. The Mods page turns dependencies on with a plugin, and
+  dependants off with it, so a saved set never relies on resolving.
+- **A plugin imports the plugins it needs.** The import is what lets it
+  use their components, and it guarantees they are linked, so their
+  `@(init)` registers them. `import _` is enough where nothing is used.
+- **A session plugin is part of `sim.Session`.** It changes the
+  simulation, so peers must agree on it. The session's systems are
+  ordered once, when it starts (`schedule_build`). Any other plugin, such
+  as how the game looks, is the player's own and never reaches the
+  simulation.
+- **A plugin's sim half is held to D3.** `mise run purity` checks every
+  plugin folder except `view/`, where its presentation goes.
+
+Plugin IDs follow registration order, which is fixed for a build. Peers
+agree on them only when they run the same build, which netplay already
+requires (D43).
+
+### D41 — The core reaches plugins only through hooks
+
+`sim/` must not name a plugin: the core is the original game, and runs
+alone in classic mode, in films and for the oracle. Where the original's
+code has to give way to a plugin, the plugin registers a hook
+(`sim/hooks.odin`):
+- a stat provider: a modifier on a player or weapon stat (the passives);
+- a hold: a screen that keeps the level from moving on (the reward and
+  loadout screens);
+- a weapon chooser: which air weapon a new game or Change_Air picks (the
+  loadout);
+- a weapon filter: which of the new weapons the rules may choose (New
+  Weapons).
+
+A hook runs only while its plugin is on in the session (`mod_on`). With
+none on, each query returns the original's answer untouched, so
+`oracle:diff` stays exact by construction.
+
+The alternative was for the core to call each plugin directly. That would
+have had `sim/` import the plugins, so they could not depend on the core
+without a cycle, and a new plugin would mean editing the core.
+
+### D42 — Mods replace the extras; their settings are registered by the mods
+
+This supersedes D35's table. Each of the four extras that switched a
+feature on or off is now a mod. High Refresh Rate is 30FPS Unlock,
+Accent Colours is Accent Color, and Easy Mode and New Weapons are their
+mods. What is left of the extras are the mods' settings. A plugin
+registers them with `prefs.setting_register`, and the Extras page (the
+Extra Preferences plugin's) lists those of the mods that are on.
+
+- **Settings are registered from a plugin's `view/` package.** The plugin
+  itself cannot register them: `prefs` formats text, which D3 keeps out
+  of anything the simulation runs.
+- **Mods are saved by name** (`mods=accent,new_weapons,...`), since an ID
+  is only a place in one build's registry. A name the build does not know
+  is dropped.
+- **Older saves carry over.** Without a `mods=` line, the four old keys
+  (`high_refresh_rate`, `accent_colours`, `easy_mode`, `new_weapons`) turn
+  their mods on or off. Settings keep the keys they had (`accent_hue`,
+  `accent_hue_p2`, `self_outline`).
+- **Classic mode turns every mod off** whatever is saved (`prefs_mods`),
+  as it did every extra.
+
+A new player starts with Accent Color, New Weapons and Netplay on, as
+the extras' defaults had them, plus what those need.
+
+### D43 — Start carries the session's mods by ID, after the old flags
+
+Start and Level_Choice gained four bytes after the flags byte (D36): the
+host's session plugins as a `sim.Mods`. They supersede the flags, which
+are still sent. A build that reads only the flags then sees what it did
+before. A Start from such a build has no mods, and `mods_from_flags`
+turns on what its flags turned on then.
+
+The mods travel by registry ID, not by name. Names would not fit the
+reliable channel's buffer, which is sized for Hello, and the IDs already
+have to agree: peers must run the same build for their simulations to
+agree at all. Netplay's own plugin is added exactly when the session is
+online (`session_from_mods`), whatever either player has on.
+
+### D44 — Behaviour lives in packages of systems; the host knows no game
+
+`dr:sim` keeps the state, the registries, the schedule and the
+definitions. The systems moved into packages under `sim/systems/`, with
+`sim/stats` and `sim/lifecycle` beneath them and `sim/core` above, which
+registers the original's systems in its order. A package imports only
+those below it (phase-9-ecs.md has the order), so dependencies between
+systems are explicit and acyclic.
+
+`sim/lifecycle` is the one way to spawn, change state, destroy or free an
+entity, so the pool and its group lists change in one place. The
+alternative, leaving the systems in `sim/` split by file, kept every
+system able to call every other, which is what the refactor set out to
+end.
+
+### D45 — Definition flags are components on prefab entities, and stages query them
+
+*Revised by D47: one prefab per (unit, state), holding both levels'
+components, and stages match through queries run once at build.*
+
+Each unit and each of its states is a prefab entity in a world owned by
+the state but not part of it. Builders registered by the system packages
+turn the definitions' flags into components on those prefabs when a
+session starts, with the session's plugins. An entity's components, for
+a stage, are its own plus its unit's plus its current state's. A stage
+declares `with` and `without` sets and runs only on entities that match.
+
+- **Prefabs, not components on each entity.** An entity changes state
+  mid-step. Changing its components would move it between archetypes,
+  and odecs swaps rows when it does (D39). The prefab's components stay
+  put, and only the state index changes.
+- **Not state.** Prefabs follow from the definitions and the mods, fixed
+  for a session. Snapshots, checksums and the golden fingerprints leave
+  them out. A state read in from elsewhere builds its own.
+- **The step's view.** A stage is matched against the state G_EG_Process
+  holds in its local, refreshed where the original refreshes it, not the
+  entity's state at that instant. The two differ after the movement AI
+  changes state, and the stages after it read the old one, as the
+  original does.
+- **Order is still the original's.** Stages run entity by entity in group
+  order, since the random draws depend on it. A query decides whether a
+  stage runs for an entity, not the order entities are visited in.
+
+### D46 — Presentation is in packages below the game, and plugins draw their own
+
+`render` (the renderer, assets, text, effects and render systems) and `ui`
+(menu widgets and overlays) sit below `game`. Each plugin's presentation
+is in its `view/` package, which registers its render systems, overlays
+and effect systems itself. The game imports each plugin and view in one
+file (`game/plugins.odin`) and names none of their screens.
+
+Before this, `game` drew the reward, loadout and passives screens and the
+Self Outline, each gated by plugin ID, because a view package could not
+reach the renderer's types without importing `game`, and `game` imports
+the views. Moving the renderer down removed the cycle. `sim` and the
+plugins' simulation halves may not import `render` or `ui`
+(`mise run purity`).
+
+### D47 — odecs through its public API only: a fixed world, merged prefabs
+
+The first ECS pass wrapped odecs in its own machinery: it read the
+world's records and archetype signatures, moved entities between
+archetypes itself, reserved column rows, did arithmetic on entity ids,
+and matched stages with a component bitmask of its own. It worked, but
+it depended on internals odecs does not promise, and duplicated what the
+library's API already does.
+
+Now the sim calls only odecs's public procedures: `create_world`,
+`delete_world`, `register_component`, `add_entity`, `add_component`
+(building prefabs only), `get_component`, `has_component`, `query_raw`,
+`get_table`, `get_entities` and `get_entity_archetype`. `mise run purity`
+fails on any use of its internals or of its encoded query terms outside
+`third_party/`.
+
+- **A fixed world, built through the API.** Every entity is made once,
+  with `add_entity`, carrying every component its kind (session, player,
+  crosshair, group, pool slot) will ever need for the session's mods, the
+  way the original's pools are fixed. Nothing is added or removed after,
+  so the world never changes shape in a session: the pointers and tables
+  taken after the last `add_entity` stay good (odecs's own rule), and the
+  ids are the same on every peer without depending on how odecs numbers
+  them. A plugin contributes components to a kind (`kind_component`)
+  instead of adding them in a setup system.
+- **Snapshots walk the tables.** For each component, in catalog order,
+  the archetype tables `query_raw` finds, row by row. The rows are in
+  creation order and never move, so two worlds with the same mods lay out
+  the same. The header carries the catalog's and the world's shapes, and
+  a read into a world of another shape is refused.
+- **One prefab per (unit, state).** Builders get the unit and the state
+  together and add the unit's components first, so the state's value is
+  the one kept, as flecs's Inherit trait overrides. Each stage's `with`
+  and `without` become a prefab query, run once over the prefab world
+  when it is built; each prefab keeps the set of queries it matches, so
+  whether a stage runs for an entity is one bit test.
+- **No encoded terms.** odecs builds `not`, `or` and pair terms through
+  a package-global counter that each query resets, which parallel tests
+  race on, and its query cache keys `or` groups ambiguously. `without` is
+  done by subtracting archetype sets instead.
+
+Writing every slot of the fixed world made each snapshot 617 KB, where
+the first pass wrote only live rows: 64 µs to save and 168 µs to
+checksum, and two-thirds of every replayed frame's cost. So the
+pool and the groups, which are nearly all of it, are written only as far
+as they have been used. Both are handed out lowest first, and
+`Pool.slots_touched` and `groups_touched` mark one past the highest ever
+handed out this session. They never go down, not even at a level's
+start, because a freed slot keeps what its last entity left, which a
+stale `Entity_Ref` still reads. Everything above the marks has never
+been used and holds its start values, so the snapshot's header carries
+the marks and a read puts rows above them back to their start values.
+Mid-level on level 6 the world is now 48 KB: a snapshot takes 6 µs, a
+checksum 13 µs and a 10-frame rollback 80 µs. The fullest level of the
+benchmark's sessions (level 11, 170 slots) takes 109 KB, 12 µs, 30 µs and
+252 µs. The one rule this adds: nothing may write to a slot or group that
+has not been handed out, since the snapshot would not see it.
+
+### D48 — New weapons live in their plugin, through four extension points
+
+Adding the Discharge Beam touched seven places outside anything it owned:
+a field and a struct on the core's `Weapon`, parsing in the loader, two
+branches in the weapon handler, a queue on `State`, its clearing, and
+drawing and clearing in the renderer and the game. The Chaingun's aimed
+release added another field and branch. None of it could be switched off
+with its plugin, and the next weapon would have touched the same places.
+
+Now the core has one generic way for each of those, and the Beam and the
+aimed release are entirely `plugins/new_weapons` and its `view/`:
+- **Definition keys** (`sim/def_keys.odin`). A plugin registers the `x_`
+  keys it reads, typed by their suffix, and the loader fills every
+  registered key of every weapon into `Weapon.keys`, knowing none of them.
+- **Weapon_Fire** (`sim/hooks.odin`). A plugin fires the weapons whose
+  keys it recognises: with each press, as a charge's release all at once,
+  or as each of a charge's volleys. Unlike the other hooks it is not
+  gated by the session's mods: how a weapon fires belongs to the weapon,
+  which only reaches play through its plugin's filter, and a tool that
+  flies it alone (`tools/dps`) should see it fire.
+- **Effect events** (`sim/queue_effects.odin`). A plugin registers a kind
+  with the type it carries and pushes values for its view, a per-step
+  queue like the core's, left out of snapshots and checksums.
+- **Effect systems that draw** (`render/render_systems.odin`). A plugin's
+  view keeps its effects, draws them over the draw layer it names, and
+  forgets them when a level starts.
+
+The Beam's and the Chaingun's DPS figures, the golden fingerprints and
+`oracle:diff` are unchanged. A new weapon with new behaviour now needs a
+plugin and its data, and no core change unless it needs a kind of hook
+the core does not have yet.
+
+### D49 — A plugin owns its content and its screenshots
+
+Making the Chaingun a plugin of its own showed what D48 had left shared.
+Its records and sprites sat in one `assets/extra` tree with the Discharge
+Beam's, let in by New Weapons' filter that allowed every extra weapon.
+Its recolour plates were in a recipe with the Beam's. Its screenshot
+scenarios, like every plugin's, were cases in `game/main.odin`, which
+imported the plugins to write them. Three extension points now make a
+weapon, or any content, one plugin:
+
+- **Content trees.** A plugin's content is `assets/extra/<plugin name>`
+  (since D51, `plugins/<plugin name>/` beside its code), laid out as
+  `assets/` is. `data.extra_defs_load` reads the tree of each
+  plugin in the build, and orders what it loads by id rather than by
+  plugin, so moving a record between plugins renumbers nothing. Each
+  weapon records its plugin (`Weapon.plugin`), and `weapon_allowed` lets
+  it into play while that plugin is on. A plugin marked `content` is left
+  out of a session when its tree did not load (`sim.mods_with_content`),
+  where flow used to check for New Weapons by name. Each recolour recipe
+  names its plugin and writes into its tree; `assets:extra` runs them
+  all. A tool that registers no plugin (`tools/simbench`) loads no
+  content, which suits it: it runs the core alone.
+- **Screenshot scenarios** (`ui/shots.odin`). A plugin's view registers a
+  named scenario: its plugin, the level and players, a setup procedure,
+  and phases of held buttons played with the presentation following.
+  `mise run menu-shot MENU=<name>` runs it. `game/main.odin` names no
+  plugin's scenario; only Level Select's Easy Mode switch remains, which
+  waits for a menu-item extension point.
+- **`loadout.loadout_give`**, handing a player a weapon as if chosen on
+  the loadout screen, for scenarios and tests.
+
+The Chaingun (`plugins/chaingun`) needs New Weapons, which hands the new
+weapons over and gives the aim its targets (`air_shot_can_hit`). It is on
+by default and lists under New Weapons on the Mods page, where it can be
+turned off alone. Turning New Weapons off takes it too, as with any
+dependant. The lobby has one New Weapons switch, so turning that on
+brings back the default-on plugins that need it
+(`sim.mods_default_dependants`); an older build's Start flag reads the
+same way. The Mods page keeps its rule that turning a mod on turns on
+only what it needs, since the dependants have rows of their own there.
+
+The split was proved neutral at each step: the extra units and weapons
+load at the same indexes (only the extra sprites' order changed, and
+sprites are only found by id); the golden fingerprints, `coop_extras_l6`
+among them, are unchanged; both weapons' `dps:report` pages are
+byte-identical; and every moved scenario renders byte-identical, bar the
+three whose particles take random directions, which differ from before
+by no more than two runs of one build differ from each other.
+
+The Discharge Beam could follow the same pattern, leaving New Weapons
+as the shared part: the loadout hand-over, the targets and the beam's
+effect queue if a second weapon ever wants it.
+
+### D50 — Registration runs in a fixed order, and peers compare builds
+
+A Windows player joining a Linux host crashed when Easy Mode's reward
+screen opened at the end of the first level, and again on rejoining.
+Both machines ran v0.1.166. The cause was the order the packages'
+`@(init)` procedures ran in. Odin runs a package's after those of the
+packages it imports, but orders unrelated packages differently for
+different targets. The Linux and Windows objects of one commit, compiled
+with `-build-mode:obj`, call them in different orders:
+
+- the components: movement, entity, collision on Linux; collision,
+  entity, movement on Windows (with winsock's start-up between them);
+- the plugins: passives 4, netplay 5, Easy Mode 6, Loadout 7 on Linux;
+  netplay 4, passives 5, Loadout 6, Easy Mode 7 on Windows.
+
+Every registry hands out ids in the order it fills: plugins, components,
+effect kinds, weapon keys and prefab queries. It also breaks ties
+between systems by that order, and the state keeps the schedule as
+indexes into the registries. So a Linux host's mods meant other plugins
+to a Windows guest. The host's Easy Mode was the guest's Loadout, and
+the guest had no reward screen for the host's to hold. On rejoining, the
+guest's catalog check refused the host's snapshot ("the game state
+received is not from this build"). The guest played on without a world
+and page-faulted. That was reproduced: a Windows v166 build under Wine
+rejoined a Linux v166 host held at the reward screen. The Linux release
+rejoined the same host cleanly.
+
+- **An `@(init)` only names a step.** `sim.register_step(stage, name,
+  proc)` records it, and `sim.register_all`, first thing in every
+  `main` and in the tests' set-up, runs the steps by stage (core,
+  plugins, presentation, views), then by name. A view runs after every
+  plugin, so it may read its plugin's ids. A plugin's step reads
+  nothing another plugin registers. `sim.init` asserts that
+  registration ran. The order no longer depends on the compiler, so a
+  plugin's id follows its name (`plugins_ids_follow_their_names`).
+- **Peers compare builds in their Hello.** `sim.registration_hash`
+  digests the catalog, the plugins, the systems, the stages and the
+  weapon keys, in id order. The Hello carries it after the name, where
+  older builds ignore it. A host that meets another build answers with
+  its own Hello and waits for a peer it can play with. A guest that
+  meets one returns to the lobby menu saying "the host runs a different
+  version of the game". An older build sends no digest and is refused
+  the same way.
+- **A snapshot that does not read ends the connection.** Before, the
+  resync logged the failure and played on.
+
+Saved preferences name their mods, so the new ids leave them as they
+were. The golden fingerprints are unchanged, and the Chaingun's
+`dps:report` page is byte-identical. `mise run netplay:level-end` plays
+two instances to the reward screen headlessly. `HOST_BIN` or `GUEST_BIN`
+runs one side on another build: v166 as the host is refused by the new
+guest, and v166 as the guest by the new host. A Windows build is not
+linked locally (D27), so the fix is unproven on Windows itself until a
+release's Windows build joins a Linux host.
+
+### D51 — A plugin's content sits beside its code
+
+The level editor (notes/level-editor-plan.md) exports levels as plugins,
+and a plugin with levels brings maps, masks, previews and perhaps music.
+Under D49 content lived apart from its plugin, in `assets/extra/<name>`,
+and could only be records and sprites. Now:
+
+- **Where.** A plugin's content is in `plugins/<name>/`, beside its
+  `.odin` files: `data/` and `sprites/` as before, and now `images/im16/`
+  and `audio/`. Odin compiles only the folders something imports, so
+  content subfolders are ignored by the build. A plugin folder with none
+  of these four has no content (`data.plugin_content_dir`).
+- **The plugins root** is `$DR_PLUGINS`, or `plugins` in the working
+  directory. mise sets it to `src/plugins`. A release has
+  `deimos/plugins/<name>/` holding only each plugin's content: `mise run
+  dist` copies every file of `src/plugins` that is not Odin source, and
+  CI zips that folder.
+- **Sprite paths** in a plugin's `sprites/index.json` are relative to the
+  plugin's folder (`sprites/im08/PL1K.png`). `data.Sprite_Plate.image` now
+  holds the joined path, which the renderer and `tools/icons` load as it
+  is.
+- **Images and sounds add, never replace.** `assets_open` lists each
+  plugin's `images/im16/*.png` and `audio/*.wav` by id, and
+  `assets_image_path` and `assets_audio_path` find a plugin's file before
+  the core tree's. An id the core tree already has is not taken from a
+  plugin. Content is loaded in every session, classic included (D37), so
+  a plugin able to replace an original image would change classic mode.
+  A plugin that wants another look for an original ships it under a new
+  id and points its own records at that.
+  A plugin's sounds may be `.ogg` or `.mp3` as well (D76).
+
+`assets/extra` is gone. The recoloured plates, rebuilt with `mise run
+assets:extra` into the new folders, are byte-identical to the moved ones.
+The golden fingerprints, `oracle:diff:saved` and the Chaingun and
+Discharge Beam `dps:report` pages are unchanged. The two weapons load in
+a laid-out release run with neither `DR_ASSETS` nor `DR_PLUGINS` set.
+
+### D52 — Data plugins are found at startup, after the compiled ones
+
+The level editor cannot compile Odin, so what it exports has to be a
+plugin the game finds at run time.
+
+- **A data plugin** is a folder under a plugins root (D51) with a
+  `plugin.json`: label, description, version, deps, `default_on` and
+  `session`. Its name is the folder's: lower-case letters, digits and
+  underscores. `data.plugins_discover` reads them, in name order, taking
+  a name from the first root that has it, and reports any it cannot read.
+  `game/main` declares them (`sim.plugins_declare`) before
+  `sim.register_all`, which registers them after every compiled plugin
+  and before the presentation's steps. So compiled plugins keep their ids
+  whatever folders are installed, and two machines with the same folders
+  agree on every id.
+- **A compiled plugin's folder may have a `plugin.json` too.** It then
+  only gives the plugin its label, description and version.
+- **Every data plugin is `content`.** It is dropped from a session when
+  its content did not load, like the Chaingun without its folder. One that
+  needs a plugin not in the build can never be on: the Mods page shows N/A
+  and names the missing plugin (`sim.plugin_missing_dep`).
+- **Peers compare content.** `data.plugins_digest` hashes every file of
+  each plugin's content folder but Odin source (XXH3, by relative path and
+  contents), and `registration_hash` covers each plugin's version and
+  digest. Two peers with different level packs refuse each other at Hello
+  rather than desync.
+- **`Mods` is 64 bits** (`MAX_PLUGINS` 63). Start carries it in 8 bytes
+  and Level_Choice is 11 bytes long. Both still read the 4-byte form, but
+  an older build is refused at Hello anyway (D50), which is deliberate.
+- **Tests.** `tests/fixtures/plugins` holds synthetic plugins: one unit,
+  one depending on it, one with a missing dependency, a relabel of Accent
+  and a badly named folder. `tests/data_plugins` is a test package of its
+  own, which declares them before registering, so the main suite still
+  sees the ids a game sees. `DR_PLUGINS=$PWD/tests/fixtures/plugins:$PWD/plugins
+  mise run menu-shot MENU=preferences_mods_end` shows them on the Mods
+  page. `DR_PLUGINS` may list several roots, split by `:` (`;` on
+  Windows), searched in order; since D53 the original levels are in
+  `plugins/`, so a run needs that root too.
+
+The Session is not part of the hashed world, so widening `Mods` moved no
+golden fingerprint. The Mods page as a new player finds it is
+pixel-identical.
+
+### D53 — Campaigns, and the original levels as the Classic Levels plugin
+
+A level pack the editor exports has to play as its own campaign, without
+taking the place of the original twelve.
+
+- **The move.** The twelve level records and their maps, masks and
+  previews are in `plugins/classic_levels/` (`data/levels/`,
+  `images/im16/`), a data plugin that is on by default. Its
+  `plugin.json` lists the levels in play order; `LEVEL_ORDER` keeps its
+  provenance and is what `defs_load` (the PAK loader the oracle uses)
+  still reads, and a test holds the two lists equal. `assets:extract`,
+  `assets:records` and `assets:verify` take the plugins root, and the
+  asset manifest names the plugin each level image belongs to. Music
+  `mu03` is shared, so it stays in the core.
+- **A campaign is a plugin with `levels`**, its manifest's list of
+  identifiers in play order. `Level_Def.campaign` names it (CORE for the
+  originals) and `number` counts within it. `defs.levels` holds the
+  originals first, then each campaign's, each run contiguous:
+  `sim.campaign_levels` returns one, `level_by_id` looks only within one,
+  and a campaign's `le01` is not the original's.
+- **The session carries it.** `sim.Session.campaign` picks the levels a
+  game plays; `sim.session_levels` returns them, and level advance, the
+  last-level check and Easy Mode's reward use it. Start (17 bytes) and
+  Level_Choice (12) carry it in their last byte, and the shorter forms
+  read as CORE.
+- **Level Select** shows a switch above the level number when more than
+  one campaign is offered: Classic Levels while it is on, then each other
+  campaign plugin that is on, in the Mods page's order. Classic mode
+  offers only the originals, and with nothing else installed the screen
+  is as before. A level without a preview shows an empty slot under its
+  identifier. The campaign's name steps to the next, and the `<` and `>`
+  either side of it step either way, round either end.
+- **The netplay lobby** shows the campaign above CONNECTED while the host
+  is offered more than one, or plays another than the originals: the host
+  steps it with `<` and `>` as on Level Select (which starts the level
+  choice over), and the guest reads the host's choice. A pack may reuse
+  the originals' level names, so the level alone does not say which.
+- **Progress is per campaign**: `progress` for the originals, as before,
+  and `progress-<plugin>` for each other. High scores are one table, as
+  in the original.
+- **The level title** (`Notice_Level_01`..`12`) is only shown for level
+  numbers the original has.
+
+Films, `DR_SHOT` and the oracle play the originals, whose ids, order and
+numbers are unchanged. `oracle:diff` and `oracle:diff:saved` are exact,
+the goldens unchanged, and Level Select, with and without Easy Mode, and
+the main menu are pixel-identical to before. `tests/fixtures/plugins/
+fixture_campaign` is a two-level campaign whose manifest order is the
+reverse of its file names; `tests/data_plugins` plays it through to the
+end, and `MENU=level_select_campaigns` shows it on Level Select and
+`MENU=netplay_lobby_campaigns` in the host's lobby.
+
+### D54 — Optional level fields, and launching straight into a level
+
+The editor's levels carry what the originals never did, and its Play
+button needs the game to start one without the menus.
+
+- **Level fields**, each optional; no original level has any, so the
+  twelve load exactly as before.
+  - `start_weapons` (`air`, `ground`: weapon ids) sets what players start
+    the level with, at a new game and at the level's start, in place of
+    the weapon its number brings. It changes play, so it is in the sim
+    (`Level_Def.start_air`, `start_ground`, zero for none). A plugin's
+    weapon chooser still chooses when it is on: the loadout is the
+    player's.
+  - `wind` (`direction_degrees`, as placements' headings, `strength`),
+    `water` (`height`, `colour`, `visible`), `lighting`
+    (`sun_azimuth_degrees`, `sun_elevation_degrees`, `sun_colour`,
+    `ambient_colour`, `ambient`, `softness` in map pixels), `skybox` (an
+    im16 id) and `layers` (`albedo`, `normal`, `height`, `shadow_mask`,
+    `hd_map`: im16 ids) are the presentation's and the editor's, on
+    `data.Level_Media`. The sim still reads only the media mask. Light a
+    level leaves out is `LIGHTING_MEASURED`, the originals' as measured on
+    their maps (notes/headless-3d-to-2d-findings.md): a white sun at
+    azimuth 36°, 40° up, and neutral shadow at 0.44 (the silos alone said
+    28° up; D55 fitted 40).
+- **Launch flags**, in `game/settings.odin` and the `run` task's usage:
+  - `-campaign <plugin>` picks a campaign, and turns its plugin on for the
+    run as `-highrefreshrate` does 30FPS Unlock. Alone it only picks what
+    Level Select shows. Classic mode refuses any but the originals.
+  - `-level <identifier or id>` plays that level at once, and `-row <n>`
+    from map row n (the view's top); either alone plays the campaign's
+    first level. A name that is not installed exits with a message.
+    With `DR_SHOT` they pick the level the shots play (`launch_level`).
+  - `-plugins <dir>` adds a plugins root searched before `$DR_PLUGINS`.
+- **`level_start_at_row`** is `level_skip_to_end` under a name for what it
+  does: the view's top at the row, the entities cleared and the rows in
+  and 64 above the view spawned, as at a level's start. What lies below is
+  never met, which is fine for testing a level. Netplay's
+  `DR_NETPLAY_END` still uses it.
+
+`tests/level_start_test.odin` starts le07 at row 1500 and finds exactly
+its placements from rows 1436 to 1980 spawned, and checks the start
+weapons rule on the synthetic fixture. The fixture campaign's first level
+names start weapons and a wind, and `tests/data_plugins` plays it with
+them. Goldens, `oracle:diff` and `oracle:diff:saved` are unchanged.
+
+### D55 — The terrain renderer and the level project
+
+A level's terrain is data again (notes/level-editor-plan.md, Stage 5):
+the editor saves it, and one renderer draws it for the editor, for
+exports and for comparison with the original art.
+
+- **The project**, `terrain/project.odin`: `<level>.drproj.json` beside
+  its side files, each one PNG pixel per map pixel.
+  - the heightmap, 16-bit grey in 1/32 map pixel (up to 2048 high);
+  - optionally the unlit colour (RGB), four materials' weights (RGBA),
+    the canopy cover (grey), with the canopy's height and material, the
+    occlusion (grey, D56) and the water (RGBA, D57);
+  - up to four materials (a colour, or a tiling image tinted by it, and
+    tags such as `original-derived`), and the cliff and shore rules that
+    lay one automatically by slope or by height above the water;
+  - the level record itself, as the game reads it, lighting, water and
+    wind included (D54): nothing is kept twice.
+
+  Saving the same project writes the same bytes, JSON and PNGs alike
+  (`terrain/png.odin` writes its own PNGs: raylib's are 8-bit only).
+  Maps, masks, previews and HD layers are exports of it.
+- **The renderer**, `terrain/render.odin`: from straight above, one
+  fragment shader per output pixel, placed by `gl_FragCoord` and not by
+  interpolation, so a map drawn in strips of at most 4096 rows is the map
+  drawn at once, bit for bit. A 4x le07 (1920x14400) is four strips.
+  - Light: ambient, plus the sun by how squarely it meets the ground,
+    scaled so flat ground in the sun is exactly its unlit colour, times
+    the share of the sun not blocked.
+  - Shadow: a march toward the sun over the height texture, a map pixel at
+    a time, from a whole pixel past the penumbra; the deepest the ray goes
+    under the surface sets a smoothstep `softness` pixels wide. No shadow
+    maps, so strips have no seams and the shadow layer comes free.
+  - Outputs: lit, albedo, normal, height (16-bit), shadow and occlusion
+    (D56), at any whole scale, each optionally through the originals'
+    15-bit colour.
+  - Textures go through `DrawMesh`'s material maps, seven slots, since
+    rlgl's batch binds only four; the height texture is RGBA32F (surface
+    with canopy, cover, bare ground, then the surface unsmoothed). The
+    editor's tilted view (Stage 7) will feed the same shader a mesh.
+  - Geometry is drawn smoothed: a Gaussian of `GEOMETRY_SMOOTHING` (1 map
+    pixel) over the surface and ground on upload, so a heightmap's
+    per-pixel steps shade as a smooth surface, as smooth vertex normals
+    would. Done on the CPU, it keeps strips identical to the whole; the
+    height output is the project's own heights; `-smoothing=0` turns it
+    off.
+- **`terrain/analysis.odin`** finds shadows as the findings did (much
+  darker than the 85th percentile of the 81-pixel square around, not
+  water, opened by a 3x3 cross), for `tools/terrain compare`.
+- **Headless only.** The tool and `tests/terrain` open a hidden window;
+  the mise tasks run them under `xvfb-run` with `DISPLAY` and
+  `WAYLAND_DISPLAY` cleared, and without xvfb the GL tests skip. CI
+  installs xvfb and Mesa's software GL.
+
+`tests/terrain` checks the analytic cases (flat ground unshadowed and its
+own colour; a wall's shadow h/tan(e) long; strips and row ranges equal to
+the whole; 2x averaged down within quantisation of 1x; heights back
+exactly), the save-load-save round trip and the 15-bit colour. Goldens,
+`oracle:diff` and `oracle:diff:saved` are unchanged: nothing in the game
+uses the package yet.
+
+### D56 — Recovered levels: the renderer's light divided out, and a baked occlusion layer
+
+Stage 6 of notes/level-editor-plan.md turns each original map back into a
+level project (`tools/terrain_recover/`). Three choices in it hold beyond
+the originals.
+
+- **The colour is divided by the renderer's own light.** The recovery
+  writes the project, has `tools/terrain` draw its normals and shadow at
+  the art's sun, and divides the art by ambient + (1 − ambient) × slope
+  term × shadow, with the shadow counted only where the art is detected in
+  shadow. A render at the original sun then gives the art back, apart
+  from shadows the heights cast wrongly, and a relight does not shade the
+  slopes twice. Dividing out only the detected shadows had left the art's
+  slope shading in the colour: le01 rendered at shadow IoU 0.709, 0.920
+  with this. The light is the renderer's, not a copy of it in Python: a
+  copy from the refinement's half-size shadow gave 0.887.
+- **Canopy is a layer, not height.** CLIPSeg's zero-shot "trees" finds
+  it, and the heights are split under it into a smooth ground and the
+  cover above it. The split is lossless: ground + cover × canopy_height is
+  the heights, so the render does not change, and the editor can treat
+  the trees as vegetation.
+- **Ambient occlusion is a baked project layer, `occlusion`** (grey,
+  255 open to the sky, optional). The renderer multiplies only the
+  ambient light by it. It is baked, by `tools/terrain_occlusion` with
+  FLUX.2 [klein] 4B from the renderer's albedo, rather than computed from
+  the heights, because the texture shows what the heights lack: stones,
+  cracks, the gaps between crowns. GTAO on the heights saw only the
+  geometry, and was heavy on the jungle. Marigold V2 normals of the
+  colour added under a pixel of relief (work/reports/level-recovery.md,
+  chapter 6). A painted level bakes its layer the same way.
+  - It rides in the albedo texture's alpha: `DrawMesh` binds material
+    slots 7–9 as cubemaps, so an eighth texture would need a gap in the
+    slots. The white stand-in texture reads as fully open when neither
+    layer is present.
+  - It is an output of the renderer too, for the deferred layers of
+    Stage 10.
+
+### D57 — Recovered water: a translucent layer over the bed, its surface unshadowed
+
+The originals' water is not flat colour. Their shallows show the sand
+through, and the surface has a fine grain. A level drawn with flat water,
+the median water colour (Stage 6 before this), was 2.0 to 6.2 levels of
+255 from the art under the water, with 0.17 to 0.56 of its grain. The
+recovery now bakes the water as a project layer, `water` (RGBA: the
+water's own unlit colour, and how opaque it is; optional).
+
+- **What the art shows.** Fitting art ≈ s × ((1 − A) × bed + A × W) per
+  pixel, with the bed the land within 4 px of the shore carried in and W
+  the deep water's colour, the water is mostly opaque (le01's A about
+  0.9, le03's 0.96). The see-through part is a band at the shore. A
+  follows the distance from the shore (correlation 0.56), not the depth
+  the heights give (0.08), so it is baked from the art and not computed
+  from the heights. The grain is white noise, so the layer's colour is
+  the art with the lit bed taken out and divided by A, and keeps it.
+- **The surface takes no cast shadow.** The heights put 52% of le01's
+  water in shadow, yet the fitted light on it, s, is 0.99. The renderer
+  mixes the bed, lit and shadowed as the land is, with the layer lit by
+  the same sun without the shadow:
+  mix(bed × light, layer × light unshadowed, A). The shadow shows only
+  through the shallows, as in the art.
+- **The colour under the water is the bed.** It was the art's water
+  colour divided by the light; it is now the unlit bed carried in from
+  the shore, so a painted level edits the bed and the water apart.
+- **Without the layer** the water is the level's water colour, opaque,
+  and now unshadowed too. That moved le01's shadow IoU from 0.920 to
+  0.918; the others moved by at most 0.003.
+- **Slot 10.** The layer is the renderer's eighth texture. `DrawMesh`
+  binds slots 7–9 as cubemaps, so it is bound to slot 10 (BRDF,
+  `map_slot()`).
+
+With it the twelve are 0.3 to 2.2 levels from the art under the water,
+with 0.98 to 1.13 of its grain (`terrain:compare` prints both, and
+`terrain:report` has them per level). The weak spot is le01's shallows
+under the right-hand cliff, which read darker than the art: the bed in
+the cliff's shadow shows through thin water there, where the art's
+shallows are lit. The layer is a still frame. An animated water shader
+(Stage 10, or the renderer's own with no wind) would take it as its
+colour and opacity.
+
+### D58 — The level editor: a binary of its own, drawn by the terrain renderer, undo by tiles
+
+Stage 7's editor is `deimos-editor`, built from `editor/` beside the game
+and shipped in the same zip. It is a program of its own, not a screen of
+the game: it opens GL windows of any size, needs no assets and no
+simulation, and its UI is raygui, which the game does not use.
+
+- **The viewport is the renderer.** `terrain.render_into` draws rows of a
+  project into a render texture the caller owns, which `render` now draws
+  its strips through too. `terrain.renderer_update` uploads one region
+  again after an edit: grown by the smoothing's radius (⌈3σ⌉) and
+  computed from the heights grown by twice it, so the upload is the same
+  bytes as the whole project's (tests/terrain `an_update_is_a_new_upload`).
+  The renderer's `max_height` became `surface_max`, which only rises: the
+  shadow march reads it as a bound, so a bound too high marches further
+  and changes no pixel, and an edit never has to scan the map for it.
+  le07 renders byte for byte as before (the committed tool against the
+  new, the whole map).
+- **Undo keeps tiles, not maps.** A stroke keeps the 32 x 32 tiles of the
+  heights and water layer it touches, before its first dab; undo swaps
+  them back, so the same edit then redoes. Settings keep their value
+  before, and a drag records once. 256 edits or 512 MB, the newest always
+  kept. Stage 8's paint brush adds the splat weights to the tiles.
+- **The water layer follows the ground.** Ground lowered under the water
+  where the layer is clear gets the water's colour, opaque; raised out, it
+  loses it. A shader rule that read a clear pixel as "no water" would have
+  been simpler, but recovered layers hold clear pixels under water (2670 on
+  le05), so it would have changed their render.
+- **No prompt on close.** raylib cannot cancel a window close, so unsaved
+  work is written to `<level>.unsaved.drproj.json` beside the project;
+  Open and New discard only on a second press.
+- **`sim.register_all()` is not called yet** (D50): the editor reads no
+  unit definitions until Stage 8 places units, which will call it first.
+
+### D59 — Recovered colour relit to its occlusion; water on the unsmoothed ground
+
+Recovered levels drew darker than the art in the shadows under cliffs,
+their shallows read wrong at the shore, and le03's open water showed
+rocks the art does not have. Diffs of every level against its original
+(the renders with the occlusion layer, as the game draws them) traced
+each to a cause.
+
+- **The colour is relit to the occlusion it is drawn with.**
+  `terrain:recover` divides the art by the light the renderer will give
+  it, but the occlusion is baked afterwards (by Flux, from that colour),
+  so it was never in the division, and the game then darkened the art's
+  shadows twice. The new `terrain:relight` step (`recover.py --relight`,
+  CPU, no model) runs after `terrain:occlusion`. It fits the baked layer
+  and divides the art again with it in the light. The fit: Flux reads
+  the art's shadows as occluded (0.53–0.78, against 0.82–0.90 just
+  beside them), so inside the detected shadows the layer is divided by
+  its mean there over its mean within 24 px outside. Outside the water,
+  it is floored where the art is brighter than the light would allow.
+  The baked layer is kept as `cache/occlusion-baked.png` and a relight
+  starts from it again, so it can be rerun. A new bake is needed only
+  after `terrain:recover`, not after a relight.
+- **The division keeps the hue.** Where the light is below the art, the
+  colour is scaled by its brightest channel, not clipped per channel,
+  which had turned bright land teal or grey.
+- **The shadow's weight is soft and as wide as the shadow.** The penumbra
+  the detector misses now counts in proportion to its ratio (0.66
+  detected to 0.9 lit), which removes the dashed dark line at shadow
+  rims. The ratio is the lower one of an 81 px and a 241 px window,
+  because a shadow as wide as the small window darkens its own
+  reference (0.83–1.03 on le01's cliff foot). Detection itself is
+  unchanged.
+- **The water layer lies over the bed as the renderer lights it**, with
+  the shadow and occlusion, instead of the bed unlit. The first water
+  pixel at the shore was 5–21 levels off and is now 1.5–5.
+- **The water surface takes no occlusion.** Flux bakes occlusion onto
+  the water too, from whatever texture it reads there, and le03's open
+  water drew those rocks (deep water 2.9 levels off, now 0.07). The
+  surface is lit by the sky and sun alone. Only the bed under it is
+  occluded. This beats skipping the occlusion away from shores, because
+  it needs no distance and no threshold, and a shore bed keeps its
+  shading.
+- **Water is decided on the unsmoothed ground.** The smoothed ground put
+  the waterline up to the smoothing's radius into the bank, so a bank
+  read as water, or the water as land, and only 44.5% of le01's
+  shoreline matched the layer's mask. It now matches 100%, and agrees
+  with the editor's water brush, which compares the raw heights. The
+  land's normal comes from its visible surface, the water's height
+  where the water is higher, so a bank's slope stops at the waterline.
+  tests/terrain `water_follows_the_ground`.
+- **No soft edge on the water mask.** With the layer over the lit bed
+  and the waterline on the raw ground, the shore is already within a few
+  levels of the art, and the layer's own opacity is the soft edge.
+
+On all twelve, the share of land more than 20% darker than the art went
+from 15–39% to 0.1–3.5%, and the land's error from 3.1–8.8 levels to
+0.3–2.1. The art's old shadows, relit under an overhead sun, went from
+0.45–0.90 of the ground beside them to 0.65–1.07. `terrain:report` now
+scores the draw with the occlusion layer (shadow IoU 0.844–0.977,
+before 0.714–0.890). The draw without it is kept as a reference column
+(0.741–0.887): the colour now expects the layer. Weak spots: le02, le05
+and le08's banks (about 9–10 levels off within 2 px of the water);
+le07's jungle, whose shadows still read darker in the colour (0.74 of
+the ground beside them); and le06 and le10, a little brighter
+(1.2).
+
+### D60 — Unit placement: the level's own list, undone whole, shown by the unit's flags
+
+Stage 8's placement is the editor's Units tab (docs/level-editor.md).
+
+- **The project holds the units as a list of its own.**
+  `terrain.Project.placements` is lifted out of `level.placements` on open
+  and written back on save, so the file format is unchanged. The record's
+  slice is fixed and in the project's arena; the editor's list grows and
+  shrinks.
+- **Undo keeps the whole list, not a diff.** The list is a few hundred
+  records at most (le07's 38 are 2 KB), and a copy cannot go wrong the
+  way a diff of moves, deletions and insertions can. It uses the
+  sliders' settle pattern: the list is kept once when a change starts,
+  and recorded when the mouse is let go, if it differs. So a drag, a
+  slide, a placement or a deletion is one undo, and a change back to the
+  start is none. The history counts its bytes as the lists swap.
+- **A placement's point is the one the spawn reads.** Ground x is the
+  map's column; air x is the play field's, 32 columns into the map
+  (`DAT_004e34b8`, named `sim.GROUND_PLACEMENT_SHIFT` for this). Whether
+  a unit is on the ground is its unit's `is_ground_based`, which is what
+  `spawn.odin` reads, not the record's layer. The layer is written from
+  that on placing, and read only for a unit this build lacks.
+- **The palette is the units with a preview face**: 134 of the 386,
+  among them all 114 the twelve levels place. The chaingun's and New
+  Weapons' units have none, and the editor imports no compiled plugin.
+  The core names neither.
+- **The look is a reading, not a recovery.** The original editor is not
+  in the release. The preview face is used where
+  `use_preview_appearance_in_placement_editor` asks for it or the first
+  state draws nothing; otherwise the first state's sprite. That sprite
+  faces the heading where `initial_heading_set_in_editor` is set, and
+  shows its least frame elsewhere (the game rolls one). The heading's
+  frame is the game's own: `sim.state_frame_for_angle` holds
+  `G_Entity::GetFrameForAngle`'s rounding, and `lifecycle.frame_for_angle`
+  calls it.
+- **Only a heading that counts is editable.** The spawn takes the
+  placement's heading only for `initial_heading_set_in_editor` units, so
+  only they get the slider and the Q and E keys.
+- **`sim.register_all()` arrives** (D50). The editor's `main` discovers
+  and declares the data plugins and registers, then loads the definitions
+  and sprite plates from `$DR_ASSETS`. Without them the palette is empty
+  and the tab says so.
+
+The two changes to `sim/` move code and name a constant. `oracle:diff`
+is exact, and tests/golden is unchanged.
+
+### D61 — Materials: images kept beside the project, hex-tiled, a library quilted from the recovered ground
+
+Stage 8's materials are the editor's Paint tab (docs/level-editor.md).
+
+- **A material's image lives beside the project**, under `materials/`,
+  written by `terrain.project_save` from the image in memory. A dropped
+  file is copied, not referred to, so a project stands alone and an
+  export takes the folder whole. It is scaled to 1024 px at most.
+- **Image materials are always hex-tiled** (Mikkelsen 2022), with
+  offsets but no turns. The originals' ground never repeats, and an
+  image repeating every tile was the first thing to see. Turns would
+  scatter a photograph's light. Provisional: a per-material switch for
+  turns, if a material wants them.
+- **Without an unlit colour, the first material is the ground under the
+  rest.** What the weights leave short of full is its. Before this, the
+  weights were scaled up to full, so a light stroke showed as all of its
+  material. A recovered level keeps its unlit colour under the weights,
+  as before.
+- **Undo keeps the weights in the heights' tiles**, 12 KiB a tile now.
+  Adding or removing a material keeps the materials as a value, with
+  their images and the rules that name them. The images are in the
+  project's memory, which outlives the history.
+- **The library is made from the recovered levels, not the installer.**
+  `mise run materials:library` quilts it from `work/recovered`, into
+  `assets/materials`, committed as the assets tree is (D29). `assets:all`
+  cannot make it: it needs the recovery's models. Every entry is tagged
+  `original-derived` and records its level, window and size.
+- **Quilting takes a block within 30% of the best**, not the paper's
+  10%, which repeated the red dust's pebbles in a 256 px tile. The quilt
+  wraps, so it tiles on its own before the hex-tiling.
+- **The level record keeps the originals' description, copyright and
+  briefing**, which the records had and the game's type dropped. The
+  Level tab edits them; the game does not show them yet.
+
+The game's code is unchanged but for the three fields it reads and does
+not use. `oracle:diff` is exact, and tests/golden is unchanged.
+
+### D62 — Structure bases measured from the maps by correlation; the vents' detector kept by rule
+
+Stage 8's structure footprints and helpers (docs/level-editor.md).
+
+- **A base is found by how its crops correlate, not by their colours.**
+  The same base is drawn in each map's light and tint, so crops of it on
+  desert and on grass differ in colour, and a colour test missed 7 of
+  the 10 bases a montage showed. Each crop's brightness is taken
+  relative to its own mean and spread. A type is baked when its crops
+  score 0.5 or more and 0.25 over the ground beside them. Provisional:
+  the bar is set from the one table there is, where the single-image
+  bases score 0.71–0.94 and the rest 0.49 or less.
+- **The bases are committed assets**, in `assets/bases`, made by `mise
+  run levels:bases` from the Classic Levels maps, which are themselves
+  extracted (D29). They are regenerable from an installer copy.
+- **A base is drawn unturned**, whatever its unit's heading: the maps
+  show no base turning with its heading (the hospital's agree unturned;
+  turning crops by heading lowers every score).
+- **The vents' detector is the editor's to keep.** In every original,
+  the one detector counts all the level's vents and sits on the
+  northmost. When the vents change, the editor puts it back on that rule
+  in the same edit, and leaves it alone otherwise, so an original opens
+  and saves unchanged. The detectors' counts are hardcoded
+  (`editor/helpers.odin`), from their rules' ranges.
+
+The game is unchanged. `oracle:diff` is exact, and tests/golden is
+unchanged.
+
+### D63 — Scenery models: meshes drawn into the map's light, a CC0 library shipped, profiles in the user's data
+
+Stage 8's scenery models (docs/level-editor.md).
+
+- **Vegetation is 3D models, not painted colour.** The originals' trees
+  were rendered from models into their maps, and an albedo that good is
+  far harder to paint than models are to scatter. Each instance is its
+  mesh drawn straight down into a layer of colour, top height, normal
+  and underside height. The terrain shader lights the layer, and the
+  sun's march is blocked between underside and top. So the models'
+  shadows are in the lit map that Stage 9 exports. The models are not
+  baked into sprites, as the plan had it: the project owner wanted
+  their real shadows. A lean is then just a rotation.
+- **3 map pixels a metre**, models life size: le11's palm crowns are
+  about 30 px across, and a real one is 8-10 m. Provisional, until
+  Stage 9's export is compared with the originals.
+- **The library is committed and ships in the zip.** It is in
+  `assets/models`, 27 Poly Haven models (CC0) in 16 MB. The project owner
+  wants the editor usable from the release zip as it comes. The library
+  is regenerable: `models:fetch` downloads the sources into a cache
+  outside the repository, and `models:library` rebuilds the same bytes.
+  To keep it small, its images are 256 px, with the cutout's coverage
+  kept (Castaño 2010), and its models are under 10,000 triangles, or
+  20,000 for a tree. CREDITS.md credits every model and carries Poly
+  Haven's "Powered by Poly Haven".
+- **Heavy models are simplified by clustering, with leaves treated as
+  leaves.** Vertex clustering is quick and keeps the cover from above,
+  which is all the layer draws. Pieces smaller than two cells are
+  clustered on their own grid, and thinned with the kept ones grown, so
+  a crown keeps its cover. Imports are brought under 60,000 triangles.
+  Provisional: no frame-time budget has been measured.
+- **The cutout reads the full-size texels**, not the mipmaps, whose
+  averaged alpha drops thin leaves under the cutoff.
+- **Profiles and imported models are the author's, in the user's
+  data**, as the game's progress is: `editor/brush-profiles.json` and
+  `editor/models/`. A project keeps a copy of each model it uses, in
+  `models/`, so it stands alone. The user-data path moved from `game/`
+  to `prefs/`, so the game and the editor share it.
+
+The game is unchanged. `oracle:diff` is exact, and tests/golden is
+unchanged.
+
+### D64 — Campaigns built in the editor: a campaign file, exports the editor marks as its own, ids that carry the campaign
+
+Stage 9's export and Play (docs/level-editor.md).
+
+- **A campaign is a file of its own**, `<name>.drcampaign.json`, holding
+  the plugin's words and switches and its levels' projects in play
+  order, saved relative to it. A campaign's levels are its own
+  projects, and one project can be in two campaigns, so the list is
+  not part of any project. The plugin is the export, made again from
+  the file at any time, and the projects are not copied into it.
+- **The editor writes only into a plugin it made.** Its `plugin.json`
+  carries `"made_with": "deimos-rising level editor"`. An export into a
+  folder whose manifest lacks it is refused. So is the name
+  `classic_levels`. Within its own folder, an export removes the records
+  and images of levels taken out, which would otherwise still be found
+  by identifier.
+- **Image ids carry the campaign's name**, as `<campaign>_leNN_map`,
+  `_preview` and `_mask`. im16 ids are one namespace across all plugins,
+  the first found winning (data.plugin_media_add). Level ids stay
+  `le01` to `le99` in play order, as a campaign's levels are its own
+  (D53).
+- **Nothing is written while a level cannot play.** Every level is
+  checked first: its identifier, unique in the campaign; its width; its
+  units and start weapons, whose plugins become the campaign's
+  dependencies; and provenance. Warnings (no name, no music) do not
+  stop it.
+- **Provenance is by tag and by layer.** "Free of the originals' art"
+  is refused when a material or model is tagged `original-derived`, or
+  when the project has a colour, water or occlusion layer. Only the
+  recovery tools make those layers, from the original maps. A layer the
+  editor can make itself will need a mark of its own.
+- **Play is an export into the user's data**, as the campaign
+  `editor_play` in `editor-play/`, never into a plugins folder the game
+  searches unasked. The game is started beside the editor with
+  `-plugins`, `-campaign`, `-level` and `-row` (D54). Its view's bottom
+  is where the editor's is.
+- **The preview's look is fitted, not hand-tuned**, by `tools/preview_fit`
+  from the originals and generated into `terrain/preview_look.odin`. The
+  crop is the project's own (project version 3).
+
+The game is unchanged. `oracle:diff` is exact, and tests/golden is
+unchanged.
+
+### D65 — Recovered Levels is an editor campaign, exported as any other
+
+Recovered Levels was packaged by a script of its own
+(`tools/terrain_mod/package.py`), which drew each recovered project's map
+and copied the original's record with only its map changed. The record
+named the original's preview and mask, but the game reads a campaign's
+masks only from the campaign's own folder (data.levels_append), so the
+levels played with no water.
+
+- **It is now a campaign file**,
+  `tools/terrain_mod/recovered_levels.drcampaign.json`, and
+  `terrain:mod` is the editor's `-export`. Recovered Levels gets what
+  every editor campaign gets, and fixes to the export reach it too: a
+  media mask from the project's water, a preview, the checks, and a
+  `plugin.json` the editor marks as its own.
+- **The preview crop is the original's.** `terrain preview` sets each
+  project's crop where its original preview was cut from its original
+  map, with `terrain.preview_locate`, the template match
+  `tools/preview_fit` uses. `terrain:recover-all` runs it, so a crop
+  chosen later in the editor is not overwritten by `terrain:mod`.
+- **Level ids follow play order** (`le01` is Lucena), as in every
+  editor campaign (D53, D64), and no longer the originals' numbers. The
+  game numbers levels by play order, and high scores and `-level` find
+  them by identifier. Only `-level` given an id (`le01`) now names
+  another level.
+
+The maps are pixel for pixel the ones the script drew. The masks match the
+originals' at 0.945–0.981 IoU. The game is unchanged.
+
+### D66 — Companion plugins: what two plugins add together
+
+Some content belongs to two plugins at once: upgrades for New Weapons'
+weapons need Passive Upgrades for the upgrades and New Weapons for the
+weapons. Neither plugin should carry it, or a player could not keep
+both and turn it off. As a plugin of its own that depends on both, the
+existing kinds fit badly. Default-on, it would bring Passive Upgrades
+in for every new player, and the lobby's New Weapons switch would turn
+Passive Upgrades on. Off by default, nobody would find it.
+
+- **A companion** (`sim.Plugin.companion`) is on wherever its
+  dependencies all are, and never brings them in. It comes on as the
+  last of them does (`sim.mods_switch_on`), which is what every "turn
+  this on" path now calls: the Mods page, the lobby, Level Select's
+  Easy Mode switch, launch flags, and an older build's Start flags. A
+  player turns it off alone. Turning something else on does not bring
+  it back while its dependencies stayed on.
+- **Saved as off, not on.** Preferences list a companion on a
+  `mods_off=` line when its dependencies are on and it is off. One
+  that the file does not mention comes on with its dependencies, so a
+  companion new to the build reaches a player who already has them. An
+  older build ignores the line.
+- **New Weapon Upgrades** (`plugins/new_weapon_passives`) is the first.
+  It registers Weapon 5 and 6 (`passives.passive_register`), which
+  Passive Upgrades carried before. They keep their names, so the icons
+  and the golden runs, which go by name, are unchanged.
+- **A plugin owns its tests**, in `plugins/<name>/tests`, a package with
+  its own `@(init)`. `mise run test` runs each, `check` vets them, and
+  `coverage` counts them. The helpers every package shares are in
+  `tests/support`. A test in `tests/` that asked for a plugin's content
+  moves there as that plugin's tests are next touched.
+- **Every plugin folder with code must be imported by
+  `game/plugins.odin`**, or nothing registers it. A test now says so:
+  the new plugin was missing at first, and only a golden run's reward
+  pool showed it.
+
+### D67 — A weapon's charge is a stat scope of its own
+
+notes/extra-weapons-and-passives-3.md asks for passives that change each
+weapon's charge attack, beside the passives that already change its shots.
+The two must not leak into each other. The Ion Cannon's passive makes its
+shots start slow, and its charge's bullets must not; a charge passive's
+extra damage must not reach the shots.
+
+- **Two scopes.** A stat provider is asked for a weapon's stat either
+  for its shots or for its charge (`sim.Stat_Provider`'s `charge`). The
+  charge covers how it climbs (Maximum_Charge, Charge_Rate, the overheat)
+  and the shots its release fires.
+- **Tagged at the release.** The shots a release fires are tagged with
+  the scope (`stats.shape_spawn`, `Shaped.shaped_charge`), and what they
+  spawn inherits it, as it inherits the weapon. So the same stat
+  (Projectile_Damage, say) means the shots' in one scope and the
+  charge's in the other.
+- **Passives.** A charge passive (`Passive_Def.charge`) counts in the
+  charge scope only, any other weapon passive in the shots' only, and a
+  ship passive in both (`passives.passive_applies`). No shipped passive
+  changed scope: the weapon passives touch no charge stat, and Improved
+  Charge is a ship passive.
+- **The Discharge Beam's release** is a plugin's own (`Weapon_Fire.release`)
+  and keeps reading its damage and width in the shots' scope. Its passive
+  was tuned with the release sharing them, as plugins/new_weapon_passives
+  records.
+
+### D68 — The ground weapon's charge is a plugin's, apart from its power-up
+
+notes/extra-weapons-and-passives-3.md gives the ground weapon a charge
+attack, aimed by a crosshair that turns about the ship. The original's
+one ground weapon has no power-up, and the ground power-up it might have
+had (0x44741a) is not ported.
+
+- **Its own state.** The charge is held in `Weapon_Handler.ground_charged`,
+  not in `ground_powerup`. The original's release of a ground power-up
+  also ends the air one's overload. Kept apart, the charge cannot reach
+  that, or be mistaken for the unported power-up.
+- **Only where there is no power-up.** A ground weapon whose data has a
+  power-up still reports it unported, charge or not.
+- **Its stats are the charge's scope (D67).** The bomb it drops is tagged
+  as the charge's, so a passive that makes it heavier leaves the burst as
+  it was.
+- **The crosshair's turn is the handler's** (`ground_aim`), so a rollback
+  restores it with the rest. At 0 the crosshair is placed by the
+  original's code untouched.
+- **Ready after half a second.** Let go sooner, the charge drops nothing
+  (`stats.ground_charge_ready`). The DPS report's first runs had a heavy
+  bomb dropped the moment a charge began, straight ahead, outdo the burst
+  it was added to; it now comes when the crosshair is round behind.
+
+### D69 — Alternative passives give each other up
+
+The notes ask for a second ground charge that "replaces other passive when
+picked", and for the first to replace it the same way.
+
+- **A group, not a pair.** `Passive_Def.exclusive` names a group; any
+  passive may join one, another plugin's too. Taking a passive of a
+  group drops every other held (`passives.passive_take`).
+- **From level 1.** The one taken starts at level 1, as any new passive
+  does. Carrying the levels over would let a player switch for free, and
+  the two charges are tuned level for level, not as one.
+- **Offered as before.** An alternative is offered while its own levels
+  are not maxed, whatever its group holds. The reward screen names the
+  passive it would give up.
+- **The gain behind.** The ground charges add DPS only behind the ship,
+  where the bare bomb reaches nothing. The DPS report's Gain is now the
+  change in DPS averaged over all four scenarios, so that counts. It was
+  averaged over the scenarios the bare weapon reaches, with the backwards
+  bomb measured behind against its single target ahead. No other
+  passive's Gain changed: none of them reaches a scenario its bare
+  weapon cannot.
+
+### D70 — A beam is a list of runs, and its chain is a stat
+
+notes/extra-weapons-and-passives-3.md asks for a Discharge Beam charge
+upgrade whose beam "chains to the next closest enemy that has not already
+been hit" in place of piercing straight on.
+
+- **Runs, not one line.** `beam_fire` pushes one `Beam_Event` for each
+  straight run, from `from` to `to`, and the view draws each at any
+  angle. A straight beam is still one run, from the gun to where it
+  stopped, so the event a beam was before is the first run of a chain.
+  The events and the log (`Beam_Log`, up from 32 to 64 entries for a
+  chain's runs) are presentation; the state and the goldens are as
+  before.
+- **A core stat.** `Chains` is a toggle in the core's Stat enum, read in
+  the beam's scope (D67), so a pulse passive or a charge passive can
+  turn it on. It names a way a shot cast as a line behaves, not the
+  passive that grants it.
+- **The nearest from the kill, on screen.** "Next closest" is measured
+  from the target just killed, among those an air shot can hit that are
+  on screen and not yet hit. Ties go to the lower entity number, so a
+  rollback picks the same target.
+- **The same stops.** A chain ends where a straight beam would: a target
+  left standing, one the hit delay protects, or the damage spent. Its
+  damage is carried the same way, so against one tough target a chained
+  beam deals what a straight one does.
+
+### D71 — A release ramps up to the hit delay, not past it
+
+notes/extra-weapons-and-passives-3.md asks for a Chaingun charge upgrade
+whose "firing speed ramps up as it fires".
+
+- **A core stat.** `Release_Ramp` is a percentage each spawn a release
+  has fired adds to its pace (`stats.powerup_release_due`), in the
+  charge's scope. At 0 the release is timed by the original's own test.
+  The Powerup counts the spawns (`released`) and the pace restarts each
+  time it lets go (`weapon_system.powerup_let_go`, now the one place the
+  air and ground power-ups and a release at max let go).
+- **Capped at the hit gap.** One target takes a hit every
+  `sim.hit_gap` steps at most (the original's Entity_HitDelay, now
+  named `PF_ENTITY_HIT_DELAY`). Ramped to a spawn a step, the Chaingun's
+  release lost 20% of its DPS in every DPS report scenario, the wave
+  too. The shots past one target's hits were wasted, and the release
+  was spent sooner. So the ramp stops at a spawn every hit gap.
+
+
+### D72 — Overcharge lanes fan out from the release's level
+
+notes/extra-weapons-and-passives-3.md asks for a Photon Beam charge
+upgrade whose release "gains 2 extra projectiles for every x charge over
+the base amount", falling back to the base "as the charge level
+depletes".
+
+- **A core stat.** `Overcharge_Projectiles` is a toggle in the charge's
+  scope (D67). `stats.overcharge_lanes` turns the level a release fires
+  a spawn at into 2 lanes for every `OVERCHARGE_STEP` (25%) of the
+  weapon's own max power level it stands over. A release counts its
+  levels down, so the count falls with it, and only a higher max charge
+  takes a release over at all.
+- **Carried on the spawn.** The release's spawner is spawned at one
+  level and fires its lanes later, when the handler's level is no longer
+  its own, so the count is a field on it (`Shaped.overcharge`, set from
+  the spawn request) rather than a stat it reads. `shaped_spawn_child`
+  adds the pairs after `Extra_Projectiles`' lanes, from the outermost,
+  each `OVERCHARGE_FAN` degrees wider. They are not passed on to what
+  the lanes spawn.
+- **The default release only.** A weapon whose release a plugin fires
+  (`weapon_fire_register`) has its own volley, and does not fan out.
+  Without the stat the field is 0, and every release is the original's:
+  the goldens did not change until the passive was offered.
+
+### D73 — A wearing shot gives its damage and takes no hits
+
+notes/extra-weapons-and-passives-3.md asks for a Rear Gun charge upgrade
+whose bubbles "reduce in size when they damage enemies until they run out
+of damage to give", each level making them "larger and longer lasting".
+
+- **Two core stats.** `Shot_Scale` multiplies a shaped projectile's
+  states' scales (`Shaped.size`, in `appearance_stage`), and so what it
+  reaches. `Wears_Down` is a toggle: the shot has its damage times its
+  size to give (`stats.wear_pool`, kept in `Shaped.wear`). Both are
+  read in the shot's own scope (D67), so a pulse passive or a charge
+  passive can grant them, and name how a shot behaves, not the bubble.
+- **No hits taken.** In the original a shot meeting a target takes the
+  target's damage against its own shields, so a bubble nearly always
+  bursts on its first hit. A wearing shot takes none, either way round
+  (a player's shot or one an enemy's shot can hit). Its own hit gives no
+  more than it has left and spends what the hit dealt, so one turned
+  away by the target's hit delay flies on with all of it
+  (collision_system's `shot_hit`).
+- **Its size shows what is left.** The shot shrinks in proportion to
+  what it has left, to no less than `WEAR_MIN_SIZE`. Once spent it is
+  destroyed, as the hit back would have destroyed it, with its own
+  destruction effects.
+- Without the stats both fields are 0 and every collision is the
+  original's two hits: the goldens did not change until the passive was
+  offered.
+
+### D74 — A shot's hit can leave something behind; lingering harm is not a hit
+
+notes/extra-weapons-and-passives-3.md asks for a Bacta Gun charge upgrade
+whose hits "create corrosive clouds which linger for (2 seconds base)",
+which "deal small amounts of damage to enemies inside them".
+
+- **A hook after a shot's hit.** `Shot_Hit` (`shot_hit_register`, in
+  `sim/hooks.odin`) is run by collision_system after a shaped player
+  shot's hit, with the damage it dealt: 0 when the target's hit delay
+  turned it away. The core names no cloud: a plugin decides what follows
+  a hit, in the shot's own scope (D67).
+- **Lingering harm is not a hit.** `collision_system.entity_damage`
+  takes shields without the hit's delay, glow, sound, particles or
+  collision spawn, and emptying them does what a hit's would (score,
+  then destruction or the depletion state, now `entity_depleted`, shared
+  with `entity_hit`). Using `entity_hit` for a cloud would start the
+  target's 2-step hit delay each step and turn the shots away, so the
+  cloud would cost more than it gave.
+- **The clouds are plugin state.** Passive Upgrades keeps them in the
+  session (`passives.Clouds`, a ring of `MAX_CLOUDS`), so a rollback
+  restores them, and harms from its own system between the entities and
+  the sweep. Its view reads them from there, so a rollback's clouds draw
+  as they are. Two stats name what the passive grants: `Hit_Cloud` and
+  `Cloud_Lifetime`.
+- Nothing calls a `Shot_Hit` that no plugin registers, and
+  `entity_damage` has no caller in the core: oracle:diff and the goldens
+  did not change until the passive was offered.
+
+### D75 — An air shot can hit the ground, for a share of its damage
+
+notes/extra-weapons-and-passives-3.md asks for an Ion Cannon charge
+upgrade whose "fired projectiles can also hit ground targets, damage is
+reduced but the penalty goes down each level".
+
+- **Two core stats.** `Hits_Ground` lets a shaped air shot hit ground
+  targets as well as air ones. `Ground_Damage` scales its damage to
+  them. Both are read in the shot's own scope (D67). The share is set on
+  the shot as it spawns (`Shaped.ground`, `stats.ground_share`), so
+  `entity_collisions` tests it against the ground targets it overlaps
+  (`ground_shot_targets`, the ground's counterpart of
+  `air_shot_targets`), and `collide_entities` scales the damage it deals
+  them.
+- **A hit like any other.** The target hits the shot back, as an air
+  target would, so a shot spent on a tank does not fly on to the air
+  enemy past it. Air shots and ground units are drawn on different
+  layers, but they share the play field's coordinates, so the overlap is
+  the same test.
+- **Measured on its own target.** The DPS report adds a ground target
+  for an air weapon with such a passive. The bare weapon deals nothing
+  there, so it adds only what the passive reaches, and the averages
+  stay over the four scenarios, as a target behind does: no other
+  passive's row changes.
+- Without the stat the share is 0 and every shot's candidates and
+  damage are the original's: the goldens did not change until the
+  passive was offered.
+
+### D76 — A plugin's audio may be compressed
+
+The level editor is to import music into the levels it exports, and a
+track kept as WAV is about 10 MB a minute: `mu03`, 196 s, is 34 MB. D6
+kept the extracted audio WAV because nothing in Odin's vendored libraries
+encodes Vorbis, but the game only has to decode, and raylib as built
+decodes WAV, Ogg Vorbis and MP3 (its FLAC decoder is not built in).
+
+- **What.** A plugin's `audio/` may hold `<id>.wav`, `<id>.ogg` or
+  `<id>.mp3` (`data.AUDIO_EXTENSIONS`). An id with more than one is the
+  first of those; the first plugin with an id still keeps it.
+- **The core tree stays WAV**, as extracted. A plugin's file is not taken
+  for an id the core has a `.wav` of, whatever its own extension, so
+  images and sounds still add and never replace (D51).
+- **Nothing else changes.** Plugin audio was already loaded by path, as a
+  stream for music and decoded whole for a sound effect, and both of
+  raylib's loaders take all three.
+- `plugin_audio_kinds_decode` loads a quarter second of each from
+  `tests/fixtures/audio`, made with ffmpeg, so a raylib built without one
+  fails on CI's Linux and Windows runs.
+
+### D77 — A level brings its own music, and every asset list says where each is from
+
+The project owner asked for "an interface for importing assets into the
+plugin for adding music, and a music selector", one import for every
+kind of asset, and in all asset lists "another column that indicates
+when an asset comes from a plugin rather than the base game". F5's Play
+had also stopped working, fixed first.
+
+- **The music is the level's.** An imported file is kept beside the
+  project, `audio/<id>.<ext>` as it was (`terrain.Audio_File`), and
+  listed in the project; export copies it into the plugin. The owner
+  chose this over the user's data, which the models use (Stage 8): a
+  track is one level's, and a project then stands alone as with its
+  materials. PROJECT_VERSION is 4, so an older editor refuses the
+  project rather than save it without its audio.
+- **One way in.** A drop, a file dialog and each tab's Import go through
+  `editor_import`, by the file's kind (`file_kind`, from one table of
+  extensions the dialogs' filters are made from too).
+- **Ids are file names.** Lower case letters, digits, - and _, so the id
+  is the same file name in the project, the plugin and on every
+  filesystem; `-2`, `-3` after one the game, a plugin or the level has.
+  Plugins' audio ids are one namespace, the first found winning (D51),
+  so export names a track `<campaign>_<id>`, and `<campaign>_leNN_<id>`
+  when two levels bring different files under one id. A record's music
+  is rewritten to match. Exporting again sweeps `audio/<campaign>_*`
+  that no level wrote, as it does the images.
+- **What the list offers.** The game's music is Music.pak's audio in
+  `manifest.json` (`data.assets_music`): `ammu`, `inmu` and `mu03`.
+  Nothing marks a plugin's audio as music, so a plugin's music is its
+  audio that a level of it plays, not the ids its sounds use; a level
+  using one depends on its plugin. Music in none of these is still a
+  warning, as before: the level plays, silent.
+- **Undo.** An import or removal is one edit with the music, the files'
+  headers kept and their bytes in the project's arena.
+- **The Source column** (`asset_list`) is drawn over raygui's list view,
+  to the right, as wide as the widest source: a plugin's folder name, as
+  its dependencies name it, `this level`, or `imported`. The game's own
+  rows leave it empty. The units palette, Paint's two lists, Models'
+  two lists and the music use it. The Campaign tab's list of levels is
+  not of assets and stays plain.
+- Classic mode, `sim/` and the goldens are unchanged; the game reads the
+  exported track as any plugin's audio (D76).
+
+
+### D78 — Post passes: the play field is drawn into a texture when a plugin wants to change it
+
+The project owner asked for a new rendering pipeline for realtime
+lighting, a glow, water and wind (notes/realtime-lighting-and-effects.md),
+using raylib's own capabilities and without costing image quality.
+
+- **The extension point** is `render.post_pass_register` (`render/post.odin`).
+  A pass has `enabled`, `prepare` and `apply`. With no pass enabled the play
+  field is drawn straight to the canvas as before, at no cost. With one or
+  more, it is drawn into a scene texture, every pass's `prepare` runs, then
+  the `apply`s are chained through two textures, the last to the canvas under
+  the play field's scissor. The split is because raylib's render textures do
+  not nest: a pass makes its own light and blur targets in `prepare`, when
+  none is bound, and only reads and draws in `apply`. Order is by
+  `after`/`before`, as the render systems' is.
+- **What a pass reads.** `Item.emit` (0..1, how much a drawn thing shines),
+  set from the object in `draw_object`: the weapon layers, a player's shots
+  and what is in its glow flash. And `Renderer.setting`, the saved settings,
+  so a pass reads its sliders without the game's types.
+- **Player's own presentation plugins.** A plugin registered with `session`
+  false is never in a session's mods, so `flow_set_accents` adds the player's
+  own to `Renderer.mods` (never a session plugin they have on that the
+  session lacks), and effect systems run for either.
+- **Settings.** `prefs.Percent`, a 0..100 slider on the Extras page.
+- **Plugins.** Realtime Lighting (`plugins/lighting`): a half-resolution
+  additive light map, a quarter-resolution blurred glow and one composite
+  shader. Wind (`plugins/wind`): the level's `Level_Wind` pushes particles.
+  Moving Water (`plugins/water`): an effect system at layer 6 draws one
+  shader quad masked by the media mask (waves, a reflected sky with
+  clouds, a sun glint), so a ship over the river is not tinted. All three
+  are off by default, presentation only, and absent in classic mode.
+- **Provisional:** no sprite has albedo, a normal or an emissive map yet, so
+  light brightens by the scene's own colour and does not shade by direction;
+  every radius and gain was picked by eye; the wind's direction convention
+  (degrees clockwise from up) and unit are assumed. The other items of the
+  note are listed in [realtime-effects.md](realtime-effects.md).
+- Classic mode, `sim/` and the goldens are unchanged.
+
+### D79 — A shot that falls tells the post pass how far it has fallen
+
+- **Why.** An air-to-ground shot (the Plasma Bomb) should read as coming down
+  from the ship: its light should be faint high up and strong, reaching into
+  shadow, as it lands.
+- **How.** `render.Item` carries `falling` and `descent` (0 at launch, 1 at
+  the ground), set from the shot's state timer by `fall_of`, interpolated with
+  the frame. Drawing ignores them; the lighting plugin reads them and
+  scales the light's gain, and a second "reach into shadow" term.
+- **Why in the alpha.** raylib binds only four extra samplers, all used, so the
+  reach is packed in the light map's alpha (premultiplied additive blend)
+  and the composite lifts the shadowed pixels by it. Shadow is the level's
+  `layers.shadow_mask`, exported by the editor from the terrain renderer's
+  Shadow output (so it includes trees' and models' shadows, and no dark
+  paint); merged with the specular mask into one texture, for the same
+  sampler limit. A level without a mask falls back to dark pixels.
+- Classic mode, `sim/` and the goldens are unchanged.
+
+### D80 — HD textures are a plugin's `textures/` folder, drawn at the original's size
+
+- **Why.** A 2x redraw of every sprite and menu image (Nomos SPAN, chosen by
+  `tools/hd_textures`'s benchmark; see its README) should be an optional look,
+  not a change to the original's assets, and the core should not know of it.
+- **How.** A plugin whose manifest sets `texture_scale` and has a `textures/`
+  folder laid out as the game's tree is (`sprites/im08/X.png`,
+  `images/im16/X.png`) is a texture pack. While it is among the plugins drawn
+  with (`Renderer.mods`), `frame_rect` and the menu images use its file in
+  place of the original. The redrawn `Texture2D` carries the original's width
+  and height, so every draw site, frame rectangle and UV is unchanged and only
+  the pixel density differs; `render.texture_pixels` gives the real size to
+  whoever reads pixels back (the lighting plugin's light colours). Textures
+  load on first use and stay, so switching the plugin takes effect at once.
+- Level maps are in the pack too: the terrain buffer is built at the redrawn
+  size (`Renderer.terrain_k`) and marks are burned in at k times their place,
+  so the whole world is at twice the resolution. Switching the plugin rebuilds
+  the buffer, so marks burned earlier in the level are lost. Classic mode
+  ignores packs.
+
+### D81 — Feature branches, pull requests, and a generated website
+
+The project outgrew committing to one branch and pushing when asked.
+From Phase 10 on (AGENTS.md, "Branches and pull requests"):
+
+- **Every change is a pull request.** A feature branch per change,
+  stacked on the branch it builds on; nobody pushes to `main`, and the
+  owner merges. Merge commits, not squashes, so each commit's
+  `Changelog:` block still reaches the release notes.
+- **The website is built, not written.** `src/site/build.mjs` (Node 20,
+  no dependencies) generates it from `src/site/site.config.json`, the
+  plugin folders and the releases API, and `.github/workflows/site.yml`
+  deploys it to GitHub Pages. It runs on `workflow_run` after Build
+  finishes on main rather than on the push, because Build publishes the
+  release the download buttons link: a site built at push time would
+  link the one before.
+- **The newest release of main is found by tag.** Every release is a
+  prerelease, which the API's `/releases/latest` skips (404, checked
+  2026-10-08), so the generator takes the newest `v<major>.<minor>.<n>`
+  tag with no branch suffix.
+- **Every branch adds a site entry.** `site:check` compares the
+  branch's `changes` with the merge base's and fails when nothing was
+  added; the pull request workflow runs it against the pull request's
+  base. Plugin labels and descriptions are read from the plugins
+  themselves (their `plugin.json` or `plugin_register` call), and a
+  plugin folder missing from the config fails the build, so the site
+  says what the Mods page says.
+
+
+### D82 — The core asks; plugins answer
+
+Phase 10 stage 1 (`docs/phase-10-plugin-split.md`). `game/` named six
+plugins at 29 call sites, so the core could not build without them. Each
+question it asked a plugin by name is now a hook the plugin registers
+from its view, and `mise run purity` fails any core import of a plugin
+outside `game/plugins.odin`.
+
+- **Hooks are named for what they do.** A setup switch, a launch flag, a
+  frame rate, a settings preview, a menu shot: none is called after
+  Easy Mode or 30FPS Unlock, so the next plugin uses the same one.
+- **Plugins are found by role, not by name.** Netplay is the plugin with
+  `online`, a pause is a `Hold` with `pause`, a player's colour is a
+  `Hue` setting with `player`. The core never `plugin_find`s a plugin it
+  expects, except `LEGACY_MODS`, which reads preference files from before
+  mods were saved by name (still open).
+- **The renderer gets the effective settings.** `Renderer.setting`
+  holds each on plugin's settings, and nothing in classic mode or a
+  demo, so a plugin's render system reads its own setting ids
+  (`SELF_OUTLINE`) rather than the core carrying a field for it
+  (`Accent.outline` is gone). The field is the one D78 added for the
+  post passes, which held every saved setting; it now holds only those
+  of the plugins on, and is cleared each frame.
+- **A test turns a plugin on from the command line.** `-mod <name>` does
+  for any plugin what its own launch flag does, without saving it. The
+  netplay level-end check used to turn Easy Mode on in code; it passes
+  `-mod easy_mode` now.
+- **The Start packet's flags are retired, not removed.** Sent as 0 and
+  ignored: every build since 2026-09-27 sends mods in Start and checks a
+  build hash in Hello, so nothing reads them, and keeping the field keeps
+  the packet's layout.
+
+### D83 — One block of state per package
+
+Phase 10 stage 2 (`docs/phase-10-plugin-split.md`). A plugin built as a
+shared library compiles its own copy of every package it imports,
+globals included, so its registrations would land in a copy the game
+never reads.
+
+- **A package's mutable state is one struct, reached through one
+  pointer.** `Shared`, a zeroed `shared_block`, and `shared :=
+  &shared_block`, declared to `dr:blocks` from an `@(init)`. Binding
+  points a plugin's `shared` at the game's block; every read already
+  goes through it, so the package's code does not know which module it
+  runs in.
+- **Bind is all or nothing, and checked by type.** A block whose
+  `Shared` differs from the game's means the plugin was built from other
+  sources; nothing is bound, and the package is named. Stage 3's ABI
+  stamp refuses such a plugin earlier; this is the backstop.
+- **What a plugin made before binding is merged, by name.** Its
+  `@(init)`s run at load, before it can bind, so sim queues their steps
+  locally and its `merge` adds them to the game's, skipping steps the
+  game has.
+- **Tables are `@(rodata)`.** A literal table is the same in every
+  module, so a copy is harmless; marking it read-only says so, and lets
+  the check tell it from state.
+- **Ids set at registration are state.** They live in the plugin's
+  block, behind a `#force_inline` accessor (`new_weapons.beam()`).
+- **A block starts zeroed.** An initialiser moved sim's 135 KB block
+  into the executable's `.data`.
+- **The rule is enforced.** `mise run purity` runs `tools/globals
+  -check`, which fails any other mutable package variable, any
+  `@(static)` local but `component_slot`'s, and any block initialiser,
+  in every package a plugin can import.
+- **odecs is exempt.** Its package state is its encoded query terms,
+  which no code outside it may use (D47).
+
+### D84 — Every plugin is pictured, by the game, and the picture is committed
+
+Asked for on 2026-10-18: each mod must have a screenshot on the website.
+
+- **The game takes it.** A plugin's entry in `site.config.json` names a
+  menu-shot scenario and launch flags (`"shot"`), and `site/shots.mjs`
+  runs the game on it, so a picture is reproducible and shows what the
+  build draws, never a mock-up. `playing`, a plain level with only the
+  flags' plugins on, covers a plugin with no scenario of its own, a data
+  plugin's textures or levels among them; headless runs now honour `-mod`
+  (`launch_mods`), which they ignored.
+- **Committed, not rendered in CI.** The deploy job has no display, the
+  game's assets or HD Textures' generated textures; a picture changes
+  only when its plugin's look does; 17 come to 1.6 MB as 960x720 WebP.
+  Rendering them in the Build workflow and handing them to the site job
+  would remove the commit, at the cost of a display server and the
+  textures in CI.
+- **Missing is a failure.** `site/build.mjs` fails on a plugin without
+  its image, as on one missing from the list, so a new plugin cannot
+  reach the site unpictured.
+
+### D85 — A code plugin is a library built from the game's own sources
+
+Phase 10 stage 3, 2026-10-18. The game imports no plugin: it loads
+`plugins/<name>/<name>.so` (`.dll`) at startup (`game/plugin_libs.odin`).
+
+- **Same sources or refused.** The game and every library carry an ABI
+  stamp, a digest of every source a library can copy
+  (`tools/plugins/abi.sh`). A library from other sources is refused by
+  name before its runtime starts. Mixing releases is out of scope; a
+  plugin download is built in the same CI run as the game it goes with.
+- **Self-contained libraries.** Each library carries its own copy of
+  every package it imports, and binds its blocks to the game's (D83).
+  No library links another, so loading needs no order and no search
+  path beyond the game's folder.
+- **raylib shared**, beside the game, so there is one window and one GL
+  context whatever loads.
+- **The loader starts a library's runtime** where loading did not
+  (Odin dev-2026-09 on Linux, phase-10-plugin-split.md), and never
+  unloads one it started.
+- **`all_plugins` is the static build.** The tests, tools and
+  `build:static` import every plugin through it; `plugins:check`
+  requires the libraries to register exactly what it does, in CI on both
+  systems.
+
+### D86 — A plugin's screen, which may drive the session
+
+Phase 10 stage 4, 2026-10-18. A plugin adds a screen with
+`game.screen_register` (`game/screens.odin`). The main menu lists its
+item while its plugin is on, and the Flow shows it as `.Screen`. A
+screen may then drive the session it began (`game.flow_drive`). It
+steps it in place of this machine's input, polls each frame, and says
+what holds it still. The game keeps the shared pause, Escape and F5,
+the end of the session and the high scores.
+
+- **Why a screen and not a lobby hook.** Netplay needed the menu item,
+  a full-screen UI, its own session stepping and a say in leaving it.
+  Those are four places in `game/`. A screen covers all of them in one
+  registration, and names no network idea: a replay browser or a
+  spectator view would register the same way.
+- **`game` is shared state.** A plugin that imports `dr:game` carries a
+  copy of it, so `game` keeps its state in a block and its tables in
+  `@(rodata)`, as `sim` and the rest do (D83). `mise run purity`
+  checks it.
+- **Netplay's code is the plugin's.** `net/` lives in
+  `plugins/netplay/net/`, and the lobby and session code in its view.
+  The core builds, runs and passes its checks without them.
+
+### D87 — A release is the game, and a download per plugin
+
+Phase 10 stage 5, 2026-10-18. A release carries
+`deimos-<tag>-<os>-amd64.zip`, the game alone with Classic Levels;
+`-editor.zip`, the level editor with its model and material libraries;
+and `-plugin-<name>.zip` for each plugin (`tools/dist/zips.sh`). Each
+holds a `deimos/` folder, so all of them unzip over the same one.
+
+- **A plugin's zip bundles its dependencies.** A library registers its
+  dependencies whether or not their folders are there (D85), and a
+  plugin with no content plays without it, silently. So a zip takes the
+  folder of every plugin its plugin needs, as the game reports them,
+  rather than asking the player to fetch them in order.
+- **The game reports what it lacks.** `-list-plugins` marks a plugin
+  registered without its content, and exits 1. `dist:check` runs it on
+  each download over the game's.
+- **No zip of everything.** It was most of the release's size, and the
+  game a player needs to start is now under half of it. Every plugin is
+  still one unzip away.
+- **Same build, or none.** The zips are made from one release folder in
+  one CI run; a library from another refuses to load (D85). A player
+  updating the game updates the plugins with it.

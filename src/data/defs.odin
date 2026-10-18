@@ -27,7 +27,10 @@ Defs_Report :: struct {
 // Level play order: the twelve identifiers G_Level_BuildInfoList compares
 // against, stored encrypted (tagged-text transform) at 0x4e7ba9 in the
 // executable, 64 bytes apart. Level n is the level whose identifier is the
-// n-th name.
+// n-th name. defs_load reads the originals with it; the game reads the same
+// list from plugins/classic_levels/plugin.json (D53), which
+// tests/assets_test.odin holds to this one.
+@(rodata)
 LEVEL_ORDER := [12]string {
 	"Lucena", "Yippe", "Vista", "Swoop", "Conrad", "Delos",
 	"Sparta", "Saratoga", "Hannibal", "Leonidas", "Thebes", "Yamato",
@@ -311,6 +314,7 @@ defs_load :: proc(p: ^Resource_Provider, allocator := context.allocator) -> (def
 			}
 			l := sim.Level_Def {
 				id         = sim.Res_ID(key.id),
+				name       = strings.clone(lv.name, allocator),
 				identifier = strings.clone(lv.identifier, allocator),
 				number     = i32(i + 1),
 				background = rect_from(lv.background),

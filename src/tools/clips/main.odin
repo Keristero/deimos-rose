@@ -25,10 +25,18 @@ import "core:strings"
 
 import rl "vendor:raylib"
 
+import _ "dr:all_plugins"
 import "dr:data"
 import "dr:game"
+import "dr:plugins/loadout"
+import "dr:plugins/new_weapons"
 import "dr:prefs"
+import "dr:render"
 import "dr:sim"
+// The original game's systems, which a session runs.
+import _ "dr:sim/core"
+import "dr:sim/systems/player_system"
+import "dr:sim/systems/weapon_system"
 
 WARM :: 150
 TAPS :: 60
@@ -39,13 +47,15 @@ STEPS :: 145
 SEED :: 0x1234_5678
 
 main :: proc() {
+	// Every registry filled, in the same order on every platform.
+	sim.register_all()
 	if len(os.args) < 4 {
 		fmt.eprintln("usage: clips <assets root> <out dir> <weapon id>...")
 		os.exit(2)
 	}
 	root, out_dir := os.args[1], os.args[2]
 	defs, _ := data.assets_defs_load(root)
-	data.extra_defs_load(root, &defs)
+	data.extra_defs_load(&defs)
 	if len(defs.levels) == 0 {
 		fmt.eprintfln("clips: no game data under %s (run mise run assets:all)", root)
 		os.exit(1)
@@ -53,15 +63,16 @@ main :: proc() {
 
 	rl.SetTraceLogLevel(.WARNING)
 	rl.SetConfigFlags({.WINDOW_HIDDEN})
-	rl.InitWindow(game.SCREEN_W * game.WINDOW_SCALE, game.SCREEN_H * game.WINDOW_SCALE, "clips")
+	rl.InitWindow(render.SCREEN_W * render.WINDOW_SCALE, render.SCREEN_H * render.WINDOW_SCALE, "clips")
 	defer rl.CloseWindow()
-	r: game.Renderer
-	game.renderer_init(&r, root, false, false)
-	defer game.renderer_destroy(&r)
-	r.canvas = rl.LoadRenderTexture(game.SCREEN_W * game.WINDOW_SCALE, game.SCREEN_H * game.WINDOW_SCALE)
+	r: render.Renderer
+	render.renderer_init(&r, root, false, false)
+	defer render.renderer_destroy(&r)
+	r.canvas = rl.LoadRenderTexture(render.SCREEN_W * render.WINDOW_SCALE, render.SCREEN_H * render.WINDOW_SCALE)
 
 	state := new(sim.State)
 	defer free(state)
+	defer sim.destroy(state)
 	for id in os.args[3:] {
 		if !clip(&r, &defs, state, root, id, out_dir) {
 			os.exit(1)
@@ -69,7 +80,7 @@ main :: proc() {
 	}
 }
 
-clip :: proc(r: ^game.Renderer, defs: ^sim.Defs, state: ^sim.State, root, id, out_dir: string) -> bool {
+clip :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, root, id, out_dir: string) -> bool {
 	wi := -1
 	for &w, i in defs.weapons {
 		if w.id == sim.res_id(id) {
@@ -89,28 +100,24 @@ clip :: proc(r: ^game.Renderer, defs: ^sim.Defs, state: ^sim.State, root, id, ou
 	// mode with New Weapons on.
 	ps := game.Prefs_State{saved = prefs.defaults()}
 	ps.saved.classic, r.classic = false, false
-	game.extra_set(&ps, .New_Weapons, 1)
+	game.prefs_mod_set(&ps, new_weapons.id(), true)
 	fl: game.Flow
 	game.flow_init(&fl, root, defs, state, r, &ps)
 	defer game.flow_destroy(&fl)
-	particles: game.Particles
-	game.particles_init(&particles)
-	defer game.particles_destroy(&particles)
-	blurs: game.Blurs
-	game.blurs_init(&blurs)
-	defer game.blurs_destroy(&blurs)
-	notices: game.Notices
+	fx: render.Effects
+	render.effects_init(&fx)
+	defer render.effects_destroy(&fx)
 
 	game.flow_start_session(&fl, SEED, .Single, max(int(wd.minimum_level_available) - 1, 0))
-	state.loadout.shown = true
+	loadout.loadout_of(state).shown = sim.single(state, sim.Level_Info).played
 	fl.mode = .Playing
-	p := &state.players[0]
+	p := sim.player_at(state, 0)
 	if ground {
-		sim.change_weapon(state, &p.weapons, sim.WEP_GROUND, i32(wi))
+		weapon_system.change_weapon(state, p.weapons, sim.WEP_GROUND, i32(wi))
 	} else {
-		p.weapons.loadout[0] = i32(wi)
-		sim.change_weapon(state, &p.weapons, sim.WEP_AIR, i32(wi))
-		sim.player_sprite_from_weapon(state, p)
+		loadout.slots_of(state, 0).loadout[0] = i32(wi)
+		weapon_system.change_weapon(state, p.weapons, sim.WEP_AIR, i32(wi))
+		player_system.player_sprite_from_weapon(state, p)
 	}
 
 	name := strings.trim_prefix(strings.trim_prefix(wd.name, "Air - "), "Ground - ")
@@ -136,14 +143,14 @@ clip :: proc(r: ^game.Renderer, defs: ^sim.Defs, state: ^sim.State, root, id, ou
 		}
 		_ = sim.session_step(state, {b, {}})
 		p.shields = 100
-		game.flow_effects_sync(&fl, &particles, &blurs, &notices)
-		game.flow_effects_step(&fl, r, &particles, &blurs, &notices)
+		game.flow_effects_sync(&fl, &fx)
+		game.flow_effects_step(&fl, r, &fx)
 		if k < 0 {
 			continue
 		}
 		rl.BeginTextureMode(r.canvas)
 		rl.ClearBackground(rl.Color{0, 0, 0, 255})
-		game.flow_draw(&fl, r, &particles, &blurs, &notices, game.WINDOW_SCALE)
+		game.flow_draw(&fl, r, &fx, render.WINDOW_SCALE)
 		rl.EndTextureMode()
 		img := rl.LoadImageFromTexture(r.canvas.texture)
 		rl.ImageFlipVertical(&img) // render textures are bottom-up
