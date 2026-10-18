@@ -11,7 +11,9 @@ const inline = (s) => esc(s).replace(/`([^`]+)`/g, '<code>$1</code>')
 const fmtDate = (iso) =>
 	new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
 
-const mb = (bytes) => `${Math.round(bytes / 1e6)} MB`
+// A download's size: whole megabytes for the game, kilobytes for a plugin
+// smaller than one.
+const mb = (bytes) => (bytes < 1e6 ? `${Math.round(bytes / 1e3)} KB` : bytes < 1e7 ? `${(bytes / 1e6).toFixed(1)} MB` : `${Math.round(bytes / 1e6)} MB`)
 
 const NAV = [
 	['index.html', 'Home'],
@@ -61,11 +63,25 @@ function downloads(config, release) {
 		asset
 			? `<a class="button${primary ? ' primary' : ''}" href="${esc(asset.browser_download_url)}">${os}<small>${mb(asset.size)}</small></a>`
 			: ''
+	const editor = smallLinks(release.editor)
 	return `<div class="downloads">
     ${button(release.windows, 'Windows', true)}
     ${button(release.linux, 'Linux', false)}
   </div>
+  <p class="fine">The original game, alone. Each <a href="plugins.html">plugin</a> is a download of its own${editor ? `, as is the level editor (${editor})` : ''}: unzip it over the same folder.</p>
   <p class="fine"><a href="${esc(release.url)}">${esc(release.tag)}</a>, ${fmtDate(release.date)} · <a href="${all}">all releases</a></p>`
+}
+
+// "Windows 1.4 MB · Linux 1.4 MB", for a download smaller than the game's.
+function smallLinks(pair) {
+	if (!pair) return ''
+	return [
+		[pair.windows, 'Windows'],
+		[pair.linux, 'Linux'],
+	]
+		.filter(([a]) => a)
+		.map(([a, os]) => `<a href="${esc(a.browser_download_url)}">${os}</a> <small>${mb(a.size)}</small>`)
+		.join(' · ')
 }
 
 const KIND_LABEL = { feature: 'Feature', engineering: 'Engineering', content: 'Content', fix: 'Fix' }
@@ -117,7 +133,7 @@ function home({ config, plugins, release, diagram }) {
 	return layout({ config, page: 'index.html', title: '', body })
 }
 
-function pluginPage({ config, plugins }) {
+function pluginPage({ config, plugins, release }) {
 	const byName = Object.fromEntries(plugins.map((p) => [p.name, p]))
 	const groups = [...new Set(plugins.map((p) => p.group))]
 	const card = (p) => {
@@ -127,22 +143,32 @@ function pluginPage({ config, plugins }) {
 			p.defaultOn ? '<span class="tag on">On by default</span>' : '',
 			p.companion ? '<span class="tag" title="Comes on with its dependencies">Companion</span>' : '',
 		].join('')
+		// Where a player gets it: Classic Levels is the game itself; a
+		// plugin's zip brings everything it needs.
+		const get = (p) => {
+			if (p.name === 'classic_levels') return '<p class="get">Comes with the game.</p>'
+			const links = smallLinks(release?.plugins?.[p.name])
+			if (!links) return ''
+			return `<p class="get">Download ${links}${p.deps.length ? ', with what it needs' : ''}</p>`
+		}
 		const deps = p.deps.length
 			? `<p class="deps">Needs ${p.deps.map((d) => `<a href="#${esc(d)}">${esc(byName[d]?.label ?? d)}</a>`).join(', ')}</p>`
 			: ''
 		return `<article class="plugin" id="${esc(p.name)}">
+      <img class="plugin-shot" src="shots/${esc(p.name)}.webp" alt="${esc(p.label)} in the game" width="960" height="720" loading="lazy">
       <h3>${esc(p.label)}</h3>
       <p>${esc(p.description)}.</p>
       ${p.about ? `<p class="muted">${inline(p.about)}</p>` : ''}
       ${p.levels ? `<p class="muted">${p.levels} levels.</p>` : ''}
       ${deps}
+      ${get(p)}
       <p class="tags">${tags}<code>${esc(p.name)}</code></p>
     </article>`
 	}
 	const body = `
 <section class="page-head">
   <h1>Plugins</h1>
-  <p class="lede">The core is the original game. Everything below is optional, switched on or off from the Mods page. In classic mode all of them are off.</p>
+  <p class="lede">The core is the original game. Everything below is optional: download a plugin, unzip it over the game's folder, and switch it on or off from the Mods page. In classic mode all of them are off.</p>
 </section>
 ${groups
 	.map(

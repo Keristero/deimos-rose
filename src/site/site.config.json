@@ -26,32 +26,84 @@
   ],
 
   "plugins": [
-    { "name": "classic_levels", "group": "Content" },
-    { "name": "recovered_levels", "group": "Content", "about": "Each original map was lifted back into a height field, relit, and repainted in the level editor." },
-    { "name": "extra_prefs", "group": "Presentation" },
-    { "name": "fps_unlock", "group": "Presentation", "about": "The simulation still steps at the original 30 Hz; frames in between are drawn from both sides of a step." },
-    { "name": "accent", "group": "Presentation" },
-    { "name": "lighting", "group": "Presentation" },
-    { "name": "water", "group": "Presentation" },
-    { "name": "wind", "group": "Presentation" },
-    { "name": "hitstop", "group": "Presentation" },
-    { "name": "hd_textures", "group": "Presentation", "about": "Upscaled by the Nomos SPAN 2x model; classic mode always draws the originals." },
-    { "name": "netplay", "group": "Multiplayer" },
-    { "name": "passives", "group": "Gameplay" },
-    { "name": "easy_mode", "group": "Gameplay" },
-    { "name": "loadout", "group": "Gameplay" },
-    { "name": "new_weapons", "group": "Gameplay", "about": "The Discharge Beam: an instant laser that carries leftover damage through its kills and chains between targets when charged." },
-    { "name": "chaingun", "group": "Gameplay" },
-    { "name": "new_weapon_passives", "group": "Gameplay" }
+    { "name": "classic_levels", "group": "Content", "shot": "playing" },
+    { "name": "recovered_levels", "group": "Content", "shot": "playing -campaign recovered_levels -level Delos", "about": "Each original map was lifted back into a height field, relit, and repainted in the level editor." },
+    { "name": "extra_prefs", "group": "Presentation", "shot": "preferences_extras_sliders" },
+    { "name": "fps_unlock", "group": "Presentation", "shot": "playing -mod fps_unlock -level Vista", "about": "The simulation still steps at the original 30 Hz; frames in between are drawn from both sides of a step." },
+    { "name": "accent", "group": "Presentation", "shot": "preferences_extras" },
+    { "name": "lighting", "group": "Presentation", "shot": "lighting" },
+    { "name": "water", "group": "Presentation", "shot": "water_splash" },
+    { "name": "wind", "group": "Presentation", "shot": "playing -mod wind -level Thebes" },
+    { "name": "hitstop", "group": "Presentation", "shot": "hitstop" },
+    { "name": "hd_textures", "group": "Presentation", "shot": "playing -mod hd_textures -level Sparta", "about": "Upscaled by the Nomos SPAN 2x model; classic mode always draws the originals." },
+    { "name": "netplay", "group": "Multiplayer", "shot": "netplay_lobby_connected" },
+    { "name": "passives", "group": "Gameplay", "shot": "rear_gun_side" },
+    { "name": "easy_mode", "group": "Gameplay", "shot": "reward" },
+    { "name": "loadout", "group": "Gameplay", "shot": "loadout" },
+    { "name": "new_weapons", "group": "Gameplay", "shot": "discharge", "about": "The Discharge Beam: an instant laser that carries leftover damage through its kills and chains between targets when charged." },
+    { "name": "chaingun", "group": "Gameplay", "shot": "chaingun_release" },
+    { "name": "new_weapon_passives", "group": "Gameplay", "shot": "chaingun_upgrade" }
   ],
 
   "changes": [
+    {
+      "id": "separate-downloads",
+      "title": "The game, and a download per plugin",
+      "date": "2026-10-18",
+      "kind": "feature",
+      "pr": 7,
+      "summary": "A release is now the original game on its own, 119 MB instead of 258 MB, plus the level editor and one small download for each plugin. Unzip any of them over the game's folder.",
+      "highlights": [
+        "Each plugin's download brings every plugin it needs: the Chaingun's brings New Weapons and the Loadout screen with it.",
+        "The plugins page links each plugin's own download.",
+        "Every download is installed and started on Windows and Linux before a release is published."
+      ]
+    },
+    {
+      "id": "netplay-plugin",
+      "title": "Netplay is a plugin",
+      "date": "2026-10-18",
+      "kind": "engineering",
+      "pr": 6,
+      "summary": "Netplay's lobby and network code have moved out of the game and into the netplay plugin. The game starts and plays without them, and the NETPLAY item appears only while the plugin is there.",
+      "highlights": [
+        "A plugin can now add a screen to the main menu that runs the session it starts: netplay's lobby is the first.",
+        "1,395 lines of netplay code left the core game.",
+        "Two games still connect and play a level to its end through the plugin, and every menu screen looks exactly as before."
+      ]
+    },
+    {
+      "id": "runtime-plugins",
+      "title": "Plugins load from their own files",
+      "date": "2026-10-18",
+      "kind": "engineering",
+      "pr": 5,
+      "summary": "The game no longer carries its mods inside it. Each one is a library in its own folder, and the game loads whichever it finds when it starts, and starts without any.",
+      "highlights": [
+        "The game binary drops from 18.0 MB to 1.9 MB; the 14 code plugins are their own files.",
+        "A plugin built from other sources is refused by name, and the game goes on.",
+        "CI proves the libraries register exactly what the plugins compiled in do, on Linux and Windows."
+      ]
+    },
+    {
+      "id": "plugin-screenshots",
+      "title": "A screenshot of every plugin",
+      "date": "2026-10-18",
+      "kind": "feature",
+      "pr": 4,
+      "summary": "Every card on the Plugins page now shows its plugin in the game. The game takes each picture itself, from a scene its entry names, and the site will not build with one missing.",
+      "highlights": [
+        "17 plugins, 17 screenshots, 1.6 MB in all.",
+        "`mise run site:shots` renders them again; a new plugin needs one.",
+        "A new scene for the Chaingun's upgrade, and a plain level for plugins with no scene of their own."
+      ]
+    },
     {
       "id": "shared-state",
       "title": "One copy of the game's state",
       "date": "2026-10-08",
       "kind": "engineering",
-      "pr": null,
+      "pr": 3,
       "summary": "A plugin loaded from its own library would carry a private copy of everything the game keeps, and its registrations would never reach the game. Every package now keeps its state in one block, which a loaded plugin is pointed at: the groundwork for installing plugins separately.",
       "highlights": [
         "142 package variables across 29 packages moved into 28 blocks, or became read-only tables.",
@@ -65,7 +117,7 @@
       "title": "The core names no plugin",
       "date": "2026-10-08",
       "kind": "engineering",
-      "pr": null,
+      "pr": 2,
       "summary": "The game used to call seven of its plugins by name, so it could not be built without them. Now each plugin registers what it adds, and the game only asks: the first step to installing plugins separately.",
       "highlights": [
         "Level Select and lobby switches, launch flags, frame pacing, the Extras previews and the netplay pause are all registered by their plugins.",
@@ -80,7 +132,7 @@
       "title": "A website, and feature branches with reviewed pull requests",
       "date": "2026-10-08",
       "kind": "engineering",
-      "pr": null,
+      "pr": 1,
       "summary": "This site. A dependency-free Node script builds it from this config before every deployment to GitHub Pages, so it is never edited by hand and cannot fall behind main.",
       "highlights": [
         "Work happens on feature branches, merged by pull request.",

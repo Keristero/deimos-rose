@@ -4,7 +4,7 @@ package tests
 // send, through the wire format, arrives `latency` steps after it was
 // sent, in the order sent. A test drops a send by not making it.
 
-import "dr:net"
+import net "dr:plugins/netplay/net"
 import "dr:sim"
 
 // The input frames each send carries.

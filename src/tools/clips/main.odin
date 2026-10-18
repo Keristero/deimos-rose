@@ -25,6 +25,7 @@ import "core:strings"
 
 import rl "vendor:raylib"
 
+import _ "dr:all_plugins"
 import "dr:data"
 import "dr:game"
 import "dr:plugins/loadout"

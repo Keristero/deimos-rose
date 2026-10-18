@@ -164,8 +164,6 @@ gather_input :: proc(ps: ^Prefs_State, player: int) -> sim.Buttons {
 	return out
 }
 
-@(private = "file") axis_was: [sim.MAX_PLAYERS][prefs.Action][prefs.BINDING_SLOTS]bool
-
 // Whether `player`'s `action` went down this frame. Pause answers to the
 // keyboard's binding too, whatever the player drives with, so Escape always
 // pauses a game played on a controller.
@@ -175,10 +173,10 @@ binding_pressed :: proc(ps: ^Prefs_State, player: int, action: prefs.Action) -> 
 		if id, ok := pad_of(ps, player); ok {
 			for c, slot in ps.saved.pad_bindings[player][action] {
 				down := pad_code_down(id, c)
-				if down && !axis_was[player][action][slot] && (c >= prefs.PAD_AXIS || rl.IsGamepadButtonPressed(id, rl.GamepadButton(c))) {
+				if down && !shared.axis_was[player][action][slot] && (c >= prefs.PAD_AXIS || rl.IsGamepadButtonPressed(id, rl.GamepadButton(c))) {
 					pressed = true
 				}
-				axis_was[player][action][slot] = down
+				shared.axis_was[player][action][slot] = down
 			}
 		}
 		if action != .Pause {

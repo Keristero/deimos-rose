@@ -8,6 +8,9 @@
 // What it reads, and why from there:
 // - site.config.json: everything said about the project, and one entry
 //   per merged feature branch (AGENTS.md, "Branches and pull requests").
+// - site/shots/: a screenshot of each plugin, rendered by the game itself
+//   from the scenario its entry names (site/shots.mjs, `mise run
+//   site:shots`), and committed. A plugin without one fails the build.
 // - src/plugins/: each plugin's label, description and dependencies, from
 //   its plugin.json or its plugin_register call. The game shows the same
 //   words on its Mods page, so the site cannot drift from it. A plugin
@@ -63,6 +66,7 @@ export function loadConfig(path = join(here, 'site.config.json')) {
 		need(text(p.name), `plugins[${i}].name`, 'a plugin folder name')
 		need(text(p.group), `plugins[${i}].group`, 'a group')
 		need(!names.has(p.name), `plugins[${i}]`, `${p.name} listed twice`)
+		need(text(p.shot), `plugins[${i}].shot`, 'the scenario its screenshot is taken in (site/shots.mjs)')
 		names.add(p.name)
 	}
 
@@ -138,6 +142,9 @@ export function loadPlugins(config) {
 	for (const entry of config.plugins) {
 		const dir = join(root, entry.name)
 		if (!existsSync(dir)) continue
+		if (!existsSync(join(here, 'shots', `${entry.name}.webp`))) {
+			problems.push(`plugins/${entry.name} has no screenshot, site/shots/${entry.name}.webp: mise run site:shots ONLY=${entry.name}`)
+		}
 		const manifest = join(dir, 'plugin.json')
 		let meta
 		if (existsSync(manifest)) {
@@ -174,22 +181,40 @@ export function loadPlugins(config) {
 
 const MAIN_TAG = /^v\d+\.\d+\.\d+$/
 
+// A release carries the game, the level editor and each plugin as zips of
+// their own (decisions.md D87): deimos-<tag>-<os>-amd64.zip, then
+// -editor.zip and -plugin-<name>.zip. SITE_RELEASES=<file> reads the
+// releases API's answer from a file instead, to see the download links
+// before a release has them.
 async function latestRelease(repo) {
 	if (flag('--offline')) return null
 	const headers = { accept: 'application/vnd.github+json', 'user-agent': 'deimos-rose-site' }
 	if (process.env.GITHUB_TOKEN) headers.authorization = `Bearer ${process.env.GITHUB_TOKEN}`
 	try {
-		const res = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=50`, { headers, signal: AbortSignal.timeout(15000) })
-		if (!res.ok) throw new Error(`HTTP ${res.status}`)
-		const release = (await res.json()).find((r) => MAIN_TAG.test(r.tag_name) && !r.draft)
+		let releases
+		if (process.env.SITE_RELEASES) {
+			releases = JSON.parse(readFileSync(process.env.SITE_RELEASES, 'utf8'))
+		} else {
+			const res = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=50`, { headers, signal: AbortSignal.timeout(15000) })
+			if (!res.ok) throw new Error(`HTTP ${res.status}`)
+			releases = await res.json()
+		}
+		const release = releases.find((r) => MAIN_TAG.test(r.tag_name) && !r.draft)
 		if (!release) return null
-		const asset = (os) => release.assets.find((a) => a.name.endsWith(`-${os}-amd64.zip`))
+		const asset = (os, suffix = '') => release.assets.find((a) => a.name.endsWith(`-${os}-amd64${suffix}.zip`))
+		const both = (suffix) => ({ linux: asset('linux', suffix), windows: asset('windows', suffix) })
+		const plugins = {}
+		for (const a of release.assets) {
+			const name = a.name.match(/-amd64-plugin-([a-z0-9_]+)\.zip$/)?.[1]
+			if (name) plugins[name] ??= both(`-plugin-${name}`)
+		}
 		return {
 			tag: release.tag_name,
 			url: release.html_url,
 			date: release.published_at.slice(0, 10),
-			linux: asset('linux'),
-			windows: asset('windows'),
+			...both(''),
+			editor: both('-editor'),
+			plugins,
 		}
 	} catch (err) {
 		console.warn(`site: no release information (${err.message}); linking the releases page`)
@@ -209,6 +234,10 @@ async function main() {
 	mkdirSync(out, { recursive: true })
 	copyFileSync(join(here, 'style.css'), join(out, 'style.css'))
 	copyFileSync(join(here, 'icon.svg'), join(out, 'icon.svg'))
+	mkdirSync(join(out, 'shots'))
+	for (const p of plugins) {
+		copyFileSync(join(here, 'shots', `${p.name}.webp`), join(out, 'shots', `${p.name}.webp`))
+	}
 	if (config.site.screenshot) {
 		copyFileSync(resolve(here, config.site.screenshot), join(out, 'screenshot.png'))
 	}

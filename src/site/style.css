@@ -142,10 +142,13 @@ h3 { font-size: 1.05rem; margin: 0 0 6px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
 .plugin { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 22px; display: flex; flex-direction: column; }
 .plugin p { margin: 0 0 8px; }
+.plugin-shot { display: block; width: calc(100% + 44px); height: auto; aspect-ratio: 4 / 3; margin: -18px -22px 14px; border-radius: var(--radius) var(--radius) 0 0; border-bottom: 1px solid var(--line); background: #000; image-rendering: auto; }
 .plugin .tags { margin: auto 0 0; padding-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .plugin .tags code { margin-left: auto; color: var(--muted); background: none; padding: 0; }
 .plugin:target { border-color: var(--rose); }
 .deps { color: var(--muted); font-size: 0.92rem; }
+.get { font-size: 0.92rem; }
+.get small, .fine small { color: var(--muted); font: 500 0.8rem var(--mono); }
 .tag { font: 600 0.72rem var(--mono); padding: 2px 8px; border-radius: 99px; background: var(--surface-2); color: var(--muted); }
 .tag.on { color: var(--green); }
 

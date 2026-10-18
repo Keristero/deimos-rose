@@ -61,9 +61,30 @@ description = "Create local dev symlinks for X11/GL so raylib links on immutable
 run = "bash tools/setupdeps/setup.sh"
 
 [tasks.build]
-description = "Build the game binary"
+description = "Build the game and every code plugin's library beside it (build/plugins/<name>/), as a release lays them out (D85)"
+depends = ["build:game", "build:plugins"]
+
+[tasks."build:game"]
+description = "Build the game binary alone, with raylib's shared library beside it: the core, which runs with no plugin"
 depends = ["setup"]
-run = "odin build game -out:$DR_BUILD/deimos$DR_EXT $DR_COLL $DR_LINK -o:speed -define:DR_VERSION=$(bash tools/version/version.sh)"
+run = [
+  "odin build game -out:$DR_BUILD/deimos$DR_EXT $DR_COLL $DR_LINK -o:speed -define:RAYLIB_SHARED=true -define:DR_ABI=$(bash tools/plugins/abi.sh) -define:DR_VERSION=$(bash tools/version/version.sh)",
+  "bash tools/plugins/raylib_lib.sh",
+]
+
+[tasks."build:static"]
+description = "Build the game with every plugin compiled in, build/static/deimos: the reference plugins:check compares the libraries against, and one binary to debug (D85)"
+depends = ["setup"]
+run = "bash tools/plugins/static.sh"
+
+[tasks."plugins:check"]
+description = "Plugins load from their libraries as they did compiled in: the same plugins, ids and registration hash; the game alone registers none; a library from other sources is refused. No window, so CI runs it on both systems (build and build:static first)"
+run = "bash tools/plugins/check.sh"
+
+[tasks."build:plugins"]
+description = "Build each code plugin as a shared library, build/plugins/<name>/<name>.so or .dll, where the game beside it loads them (D85); NAMES='a b' for some"
+depends = ["setup"]
+run = "bash tools/plugins/plugin_libs.sh ${NAMES:-}"
 
 [tasks."build:editor"]
 description = "Build the level editor (editor/, notes/level-editor-plan.md Stage 7)"
@@ -138,30 +159,52 @@ echo "editor:play-check: both levels played, shots in $OUT"
 '''
 
 [tasks.dist]
-description = "Lay out the release folder, dist/deimos: the built binary (build or build:windows first), assets/ and each plugin's content in plugins/<name>/ (every file of src/plugins that is not Odin source; D51). CI zips it"
+description = "Lay out the release folder, dist/deimos: the built binary and raylib's library (build or build:windows first), assets/ and each plugin's content and library in plugins/<name>/ (every file of src/plugins that is not Odin source, D51, and build/plugins' libraries, D85). CI zips it"
 run = '''
 #!/usr/bin/env bash
 set -euo pipefail
 rm -rf dist/deimos
 mkdir -p dist/deimos/plugins
 cp "$DR_BUILD/deimos$DR_EXT" dist/deimos/
+# raylib, shared by the game and the plugins' libraries (D85).
+bash tools/plugins/raylib_lib.sh dist/deimos
 # The level editor, when it was built (build:linux and build:windows do).
 if [ -f "$DR_BUILD/deimos-editor$DR_EXT" ]; then cp "$DR_BUILD/deimos-editor$DR_EXT" dist/deimos/; fi
 cp -r assets dist/deimos/
-# Plugin folders that hold only code (and view/ subpackages) copy nothing.
-(cd plugins && find . -type f ! -name '*.odin' | sort) | while read -r f; do
+# Plugin folders that hold only code (and view/ subpackages) copy nothing,
+# and a folder's .gitignore is not content.
+(cd plugins && find . -type f ! -name '*.odin' ! -name '.*' | sort) | while read -r f; do
   mkdir -p "dist/deimos/plugins/$(dirname "$f")"
   cp "plugins/$f" "dist/deimos/plugins/$f"
 done
+# Each code plugin's library beside its content (D85); not the import
+# library and exports file the Windows linker leaves with a .dll.
+for lib in "$DR_BUILD"/plugins/*/*.so "$DR_BUILD"/plugins/*/*.dll; do
+  [ -f "$lib" ] || continue
+  name=$(basename "$(dirname "$lib")")
+  mkdir -p "dist/deimos/plugins/$name"
+  cp "$lib" "dist/deimos/plugins/$name/"
+done
 '''
 
+[tasks."dist:zips"]
+description = "Split the release folder (mise run dist first) into the release's downloads, in zips/: the game, which plays the original alone; the level editor; and each plugin, with every plugin it needs (OUT=dir, VER=tag). Each holds a deimos/ folder and unzips over the game's (D87)"
+run = "bash tools/dist/zips.sh"
+
+[tasks."dist:check"]
+description = "Install each download as a player would, with no window: the game's zip alone registers Classic Levels and nothing else; each plugin's zip over it loads every library and finds every plugin's content; all of them together are the release folder, file for file (IN=dir, default zips/)"
+run = "bash tools/dist/check.sh"
+
 [tasks."build:windows"]
-description = "Build the game binary for Windows (x86-64). Native on a Windows host (mise/Odin there just do an ordinary same-target build). Cross-compiling from Linux additionally needs vendor:raylib's windows/*.lib (absent from this Odin install's vendor tree) and currently fails outright regardless: this Odin toolchain's own linker refuses windows_amd64 cross-links from a linux_amd64 host ('Linking for cross compilation for this platform is not yet supported'), confirmed directly against it -- see docs/decisions.md D27. Does not depend on `setup` (that task materialises Linux-only X11/GL symlinks) or use $DR_LINK (Linux-only linker search path), neither of which apply to a Windows link."
+description = "Build the game binary, raylib.dll and the plugins' DLLs for Windows (x86-64). Native on a Windows host (mise/Odin there just do an ordinary same-target build). Cross-compiling from Linux additionally needs vendor:raylib's windows/*.lib (absent from this Odin install's vendor tree) and currently fails outright regardless: this Odin toolchain's own linker refuses windows_amd64 cross-links from a linux_amd64 host ('Linking for cross compilation for this platform is not yet supported'), confirmed directly against it -- see docs/decisions.md D27. Does not depend on `setup` (that task materialises Linux-only X11/GL symlinks) or use $DR_LINK (Linux-only linker search path), neither of which apply to a Windows link."
 run = '''
 #!/usr/bin/env bash
 set -euo pipefail
 mkdir -p "$DR_BUILD"
-odin build game -out:"$DR_BUILD/deimos.exe" -target:windows_amd64 $DR_COLL -o:speed -define:DR_VERSION="$(bash tools/version/version.sh)"
+odin build game -out:"$DR_BUILD/deimos.exe" -target:windows_amd64 $DR_COLL -o:speed -define:RAYLIB_SHARED=true -define:DR_ABI="$(bash tools/plugins/abi.sh)" -define:DR_VERSION="$(bash tools/version/version.sh)"
+bash tools/plugins/raylib_lib.sh
+# The plugins' DLLs, as build:plugins builds them on Linux (D85).
+DR_LINK= TARGET=windows_amd64 bash tools/plugins/plugin_libs.sh
 odin build editor -out:"$DR_BUILD/deimos-editor.exe" -target:windows_amd64 $DR_COLL -o:speed -define:DR_VERSION="$(bash tools/version/version.sh)"
 # odin build exits 0 even when this particular cross-link failure occurs
 # (confirmed against this toolchain) and simply produces no binary, so a
@@ -176,7 +219,10 @@ fi
 [tasks.dev]
 description = "Build unoptimised with debug info"
 depends = ["setup"]
-run = "odin build game -out:$DR_BUILD/deimos-dev$DR_EXT $DR_COLL $DR_LINK -debug -define:DR_VERSION=$(bash tools/version/version.sh)"
+run = [
+  "odin build game -out:$DR_BUILD/deimos-dev$DR_EXT $DR_COLL $DR_LINK -debug -define:RAYLIB_SHARED=true -define:DR_ABI=$(bash tools/plugins/abi.sh) -define:DR_VERSION=$(bash tools/version/version.sh)",
+  "bash tools/plugins/raylib_lib.sh",
+]
 
 [tasks.run]
 description = "Build and run the game"
@@ -231,15 +277,17 @@ run = [
   "odin check game $DR_COLL -vet -strict-style",
   "odin check sim  $DR_COLL -vet -strict-style -no-entry-point",
   "odin check blocks $DR_COLL -vet -strict-style -no-entry-point",
+  "odin check plugin_entry $DR_COLL -vet -strict-style -no-entry-point",
+  "odin check all_plugins $DR_COLL -vet -strict-style -no-entry-point",
   "for p in sim/*/ sim/systems/*/; do [ -d $p ] && [ \"$(basename $p)\" != systems ] || continue; odin check $p $DR_COLL -vet -strict-style -no-entry-point || exit 1; done",
   "odin check data $DR_COLL -vet -strict-style -no-entry-point",
-  "odin check net  $DR_COLL -vet -strict-style -no-entry-point",
   "odin check prefs $DR_COLL -vet -strict-style -no-entry-point",
   "odin check render $DR_COLL -vet -strict-style -no-entry-point",
   "odin check ui $DR_COLL -vet -strict-style -no-entry-point",
   "odin check oracle $DR_COLL -vet -strict-style -no-entry-point",
-  # A data plugin's folder holds no code (D52).
-  "for p in plugins/*/ plugins/*/view/ plugins/*/tests/; do ls $p*.odin >/dev/null 2>&1 || continue; odin check $p $DR_COLL -vet -strict-style -no-entry-point || exit 1; done",
+  # A data plugin's folder holds no code (D52). A plugin's packages are
+  # its folder, view/, tests/ and any other (netplay's net/).
+  "for p in plugins/*/ plugins/*/*/; do ls $p*.odin >/dev/null 2>&1 || continue; odin check $p $DR_COLL -vet -strict-style -no-entry-point || exit 1; done",
   "odin check tools/extract $DR_COLL -vet -strict-style",
   "odin check tools/verify  $DR_COLL -vet -strict-style",
   "odin check tools/records $DR_COLL -vet -strict-style",
@@ -267,7 +315,7 @@ run = [
   # Every package again as the other OS CI builds on would see it: a
   # `when ODIN_OS` block or a Linux-only file can leave an import unused
   # only there, which failed the Windows build (CI run 36967083184).
-  "other=windows_amd64; [ \"$OS\" = Windows_NT ] && other=linux_amd64; for p in game sim sim/*/ sim/systems/*/ data net prefs render ui oracle terrain editor plugins/*/ plugins/*/view/ plugins/*/tests/ tools/*/ tests tests/support tests/data_plugins tests/terrain tests/editor; do ls $p/*.odin >/dev/null 2>&1 || continue; e=-no-entry-point; grep -qs '^main ::' $p/*.odin && e=; odin check $p $DR_COLL -vet -strict-style $e -target:$other || exit 1; done",
+  "other=windows_amd64; [ \"$OS\" = Windows_NT ] && other=linux_amd64; for p in game blocks plugin_entry all_plugins sim sim/*/ sim/systems/*/ data prefs render ui oracle terrain editor plugins/*/ plugins/*/*/ tools/*/ tests tests/support tests/data_plugins tests/terrain tests/editor; do ls $p/*.odin >/dev/null 2>&1 || continue; e=-no-entry-point; grep -qs '^main ::' $p/*.odin && e=; odin check $p $DR_COLL -vet -strict-style $e -target:$other || exit 1; done",
 ]
 
 [tasks.test]
@@ -821,6 +869,11 @@ run = 'node site/build.mjs --out "${OUT:-$DR_BUILD/site}" ${OFFLINE:+--offline}'
 [tasks."site:check"]
 description = "Fail unless this branch adds an entry to site/site.config.json's changes, compared with BASE (default origin/main): every feature branch merged to main does (AGENTS.md). The pull request workflow runs it against the pull request's base"
 run = 'node site/check.mjs ${BASE:-}'
+
+[tasks."site:shots"]
+description = "Render each plugin's screenshot for the website into site/shots/<plugin>.webp, from the scenario its entry in site.config.json names (ONLY='water wind' for some); commit the images. Needs the game's assets, a display and ImageMagick (site/shots.mjs)"
+depends = ["build"]
+run = 'node site/shots.mjs'
 
 [tasks."site:serve"]
 description = "Build the website and serve it on http://localhost:8000 (PORT=n to change it)"

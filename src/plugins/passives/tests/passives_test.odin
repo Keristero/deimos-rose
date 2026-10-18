@@ -16,6 +16,7 @@ import "core:testing"
 import vmem "core:mem/virtual"
 
 // Every plugin in the build, registered as the game registers them.
+import _ "dr:all_plugins"
 import _ "dr:game"
 import "dr:plugins/easy_mode"
 import "dr:plugins/passives"

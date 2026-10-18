@@ -178,7 +178,7 @@ slots_used :: proc(s: ^sim.State) -> i32 {
 }
 
 // A snapshot every step, then a restore and a checksum; and a whole
-// rollback as net/session.odin makes one: a restore, then ten frames each
+// rollback as plugins/netplay/net/session.odin makes one: a restore, then ten frames each
 // stepped and saved again.
 rollback_bench :: proc(s: ^sim.State, label: string) {
 	REPS :: 5
