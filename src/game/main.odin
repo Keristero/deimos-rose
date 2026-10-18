@@ -59,7 +59,7 @@ main :: proc() {
 	// Peers with different plugin content refuse each other (D52).
 	data.plugins_digest()
 	if settings.list_plugins {
-		plugins_list(len(lib_problems) == 0)
+		plugins_list(len(lib_problems) == 0, defs.content)
 	}
 	if len(defs.levels) == 0 {
 		fmt.eprintfln("no level definitions under %v -- run `mise run assets:all`", root)

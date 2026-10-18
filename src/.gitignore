@@ -1,8 +1,9 @@
 build/
 .deps/
 mise.local.toml
-dist/
+/dist/
 # Players' demo films from the add-ons archive (mise run assets:films):
 # third-party recordings, fetched rather than committed.
 /assets/films/pd*.film
 /assets/films/dl*.film
+/zips/

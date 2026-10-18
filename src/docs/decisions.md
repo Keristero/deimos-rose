@@ -2298,3 +2298,26 @@ the end of the session and the high scores.
 - **Netplay's code is the plugin's.** `net/` lives in
   `plugins/netplay/net/`, and the lobby and session code in its view.
   The core builds, runs and passes its checks without them.
+
+### D87 — A release is the game, and a download per plugin
+
+Phase 10 stage 5, 2026-10-18. A release carries
+`deimos-<tag>-<os>-amd64.zip`, the game alone with Classic Levels;
+`-editor.zip`, the level editor with its model and material libraries;
+and `-plugin-<name>.zip` for each plugin (`tools/dist/zips.sh`). Each
+holds a `deimos/` folder, so all of them unzip over the same one.
+
+- **A plugin's zip bundles its dependencies.** A library registers its
+  dependencies whether or not their folders are there (D85), and a
+  plugin with no content plays without it, silently. So a zip takes the
+  folder of every plugin its plugin needs, as the game reports them,
+  rather than asking the player to fetch them in order.
+- **The game reports what it lacks.** `-list-plugins` marks a plugin
+  registered without its content, and exits 1. `dist:check` runs it on
+  each download over the game's.
+- **No zip of everything.** It was most of the release's size, and the
+  game a player needs to start is now under half of it. Every plugin is
+  still one unzip away.
+- **Same build, or none.** The zips are made from one release folder in
+  one CI run; a library from another refuses to load (D85). A player
+  updating the game updates the plugins with it.
