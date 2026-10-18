@@ -42,6 +42,7 @@ import "dr:ui"
 @(private = "file") PREFS_SLOT_X :: [prefs.BINDING_SLOTS]f32{350, 470}
 
 @(private = "file")
+@(rodata)
 BUTTON_NAMES := [prefs.Action]string {
 	.Up          = "UP",
 	.Down        = "DOWN",
@@ -64,6 +65,7 @@ Option :: enum {
 }
 
 @(private = "file")
+@(rodata)
 OPTION_NAMES := [Option]string {
 	.Sound       = "SOUND VOLUME",
 	.Music       = "MUSIC VOLUME",

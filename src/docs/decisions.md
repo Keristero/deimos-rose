@@ -2251,3 +2251,73 @@ Asked for on 2026-10-18: each mod must have a screenshot on the website.
 - **Missing is a failure.** `site/build.mjs` fails on a plugin without
   its image, as on one missing from the list, so a new plugin cannot
   reach the site unpictured.
+
+### D85 — A code plugin is a library built from the game's own sources
+
+Phase 10 stage 3, 2026-10-18. The game imports no plugin: it loads
+`plugins/<name>/<name>.so` (`.dll`) at startup (`game/plugin_libs.odin`).
+
+- **Same sources or refused.** The game and every library carry an ABI
+  stamp, a digest of every source a library can copy
+  (`tools/plugins/abi.sh`). A library from other sources is refused by
+  name before its runtime starts. Mixing releases is out of scope; a
+  plugin download is built in the same CI run as the game it goes with.
+- **Self-contained libraries.** Each library carries its own copy of
+  every package it imports, and binds its blocks to the game's (D83).
+  No library links another, so loading needs no order and no search
+  path beyond the game's folder.
+- **raylib shared**, beside the game, so there is one window and one GL
+  context whatever loads.
+- **The loader starts a library's runtime** where loading did not
+  (Odin dev-2026-09 on Linux, phase-10-plugin-split.md), and never
+  unloads one it started.
+- **`all_plugins` is the static build.** The tests, tools and
+  `build:static` import every plugin through it; `plugins:check`
+  requires the libraries to register exactly what it does, in CI on both
+  systems.
+
+### D86 — A plugin's screen, which may drive the session
+
+Phase 10 stage 4, 2026-10-18. A plugin adds a screen with
+`game.screen_register` (`game/screens.odin`). The main menu lists its
+item while its plugin is on, and the Flow shows it as `.Screen`. A
+screen may then drive the session it began (`game.flow_drive`). It
+steps it in place of this machine's input, polls each frame, and says
+what holds it still. The game keeps the shared pause, Escape and F5,
+the end of the session and the high scores.
+
+- **Why a screen and not a lobby hook.** Netplay needed the menu item,
+  a full-screen UI, its own session stepping and a say in leaving it.
+  Those are four places in `game/`. A screen covers all of them in one
+  registration, and names no network idea: a replay browser or a
+  spectator view would register the same way.
+- **`game` is shared state.** A plugin that imports `dr:game` carries a
+  copy of it, so `game` keeps its state in a block and its tables in
+  `@(rodata)`, as `sim` and the rest do (D83). `mise run purity`
+  checks it.
+- **Netplay's code is the plugin's.** `net/` lives in
+  `plugins/netplay/net/`, and the lobby and session code in its view.
+  The core builds, runs and passes its checks without them.
+
+### D87 — A release is the game, and a download per plugin
+
+Phase 10 stage 5, 2026-10-18. A release carries
+`deimos-<tag>-<os>-amd64.zip`, the game alone with Classic Levels;
+`-editor.zip`, the level editor with its model and material libraries;
+and `-plugin-<name>.zip` for each plugin (`tools/dist/zips.sh`). Each
+holds a `deimos/` folder, so all of them unzip over the same one.
+
+- **A plugin's zip bundles its dependencies.** A library registers its
+  dependencies whether or not their folders are there (D85), and a
+  plugin with no content plays without it, silently. So a zip takes the
+  folder of every plugin its plugin needs, as the game reports them,
+  rather than asking the player to fetch them in order.
+- **The game reports what it lacks.** `-list-plugins` marks a plugin
+  registered without its content, and exits 1. `dist:check` runs it on
+  each download over the game's.
+- **No zip of everything.** It was most of the release's size, and the
+  game a player needs to start is now under half of it. Every plugin is
+  still one unzip away.
+- **Same build, or none.** The zips are made from one release folder in
+  one CI run; a library from another refuses to load (D85). A player
+  updating the game updates the plugins with it.

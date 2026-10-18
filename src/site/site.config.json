@@ -47,6 +47,45 @@
 
   "changes": [
     {
+      "id": "separate-downloads",
+      "title": "The game, and a download per plugin",
+      "date": "2026-10-18",
+      "kind": "feature",
+      "pr": 7,
+      "summary": "A release is now the original game on its own, 119 MB instead of 258 MB, plus the level editor and one small download for each plugin. Unzip any of them over the game's folder.",
+      "highlights": [
+        "Each plugin's download brings every plugin it needs: the Chaingun's brings New Weapons and the Loadout screen with it.",
+        "The plugins page links each plugin's own download.",
+        "Every download is installed and started on Windows and Linux before a release is published."
+      ]
+    },
+    {
+      "id": "netplay-plugin",
+      "title": "Netplay is a plugin",
+      "date": "2026-10-18",
+      "kind": "engineering",
+      "pr": 6,
+      "summary": "Netplay's lobby and network code have moved out of the game and into the netplay plugin. The game starts and plays without them, and the NETPLAY item appears only while the plugin is there.",
+      "highlights": [
+        "A plugin can now add a screen to the main menu that runs the session it starts: netplay's lobby is the first.",
+        "1,395 lines of netplay code left the core game.",
+        "Two games still connect and play a level to its end through the plugin, and every menu screen looks exactly as before."
+      ]
+    },
+    {
+      "id": "runtime-plugins",
+      "title": "Plugins load from their own files",
+      "date": "2026-10-18",
+      "kind": "engineering",
+      "pr": 5,
+      "summary": "The game no longer carries its mods inside it. Each one is a library in its own folder, and the game loads whichever it finds when it starts, and starts without any.",
+      "highlights": [
+        "The game binary drops from 18.0 MB to 1.9 MB; the 14 code plugins are their own files.",
+        "A plugin built from other sources is refused by name, and the game goes on.",
+        "CI proves the libraries register exactly what the plugins compiled in do, on Linux and Windows."
+      ]
+    },
+    {
       "id": "plugin-screenshots",
       "title": "A screenshot of every plugin",
       "date": "2026-10-18",

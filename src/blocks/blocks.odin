@@ -83,6 +83,29 @@ Bind_Error :: enum {
 	Full, // the game's table has no room for the plugin's own packages
 }
 
+// The sources this module was built from: a digest of the core's, passed
+// to the game and every plugin library by the build (-define:DR_ABI=...,
+// tools/plugins/abi.sh). A plugin is loaded only into a game built from
+// the same; empty in a build that set none, as tests and tools are.
+ABI :: #config(DR_ABI, "")
+
+// What a plugin's library exports (dr:plugin_entry), in the order the
+// game calls it: the sources it was built from, whether its runtime has
+// started (its `@(init)`s have run), what starts it where it has not, and
+// bind, with why it refused and the package concerned.
+ABI_SYMBOL :: "deimos_plugin_abi"
+STARTED_SYMBOL :: "deimos_plugin_started"
+START_SYMBOL :: "_odin_entry_point"
+BIND_SYMBOL :: "deimos_plugin_bind"
+Abi_Proc :: #type proc "c" () -> cstring
+Started_Proc :: #type proc "c" () -> bool
+Start_Proc :: #type proc "c" ()
+Load_Result :: struct {
+	err:    Bind_Error,
+	detail: string,
+}
+Bind_Proc :: #type proc "c" (host: ^Table) -> Load_Result
+
 // Points this module's blocks at `host`'s, the game's: called in a plugin,
 // with the game's table. A package the game does not have (another
 // plugin's) joins the table, so the next plugin to carry it binds to this

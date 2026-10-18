@@ -38,13 +38,13 @@ Mods_Page :: struct {
 // order would not do: it is the order packages initialise in, which
 // changes whenever the imports between them do.
 mods_order :: proc() -> []sim.Plugin_ID {
-	@(static) order: Mods_Order
+	order := &shared.mods_order
 	order.count = 0
-	mods_children_add(&order, sim.CORE)
+	mods_children_add(order, sim.CORE)
 	return order.ids[:order.count]
 }
 
-@(private = "file")
+@(private)
 Mods_Order :: struct {
 	ids:   [sim.MAX_PLUGINS]sim.Plugin_ID,
 	count: int,

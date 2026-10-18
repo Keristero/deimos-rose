@@ -181,22 +181,40 @@ export function loadPlugins(config) {
 
 const MAIN_TAG = /^v\d+\.\d+\.\d+$/
 
+// A release carries the game, the level editor and each plugin as zips of
+// their own (decisions.md D87): deimos-<tag>-<os>-amd64.zip, then
+// -editor.zip and -plugin-<name>.zip. SITE_RELEASES=<file> reads the
+// releases API's answer from a file instead, to see the download links
+// before a release has them.
 async function latestRelease(repo) {
 	if (flag('--offline')) return null
 	const headers = { accept: 'application/vnd.github+json', 'user-agent': 'deimos-rose-site' }
 	if (process.env.GITHUB_TOKEN) headers.authorization = `Bearer ${process.env.GITHUB_TOKEN}`
 	try {
-		const res = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=50`, { headers, signal: AbortSignal.timeout(15000) })
-		if (!res.ok) throw new Error(`HTTP ${res.status}`)
-		const release = (await res.json()).find((r) => MAIN_TAG.test(r.tag_name) && !r.draft)
+		let releases
+		if (process.env.SITE_RELEASES) {
+			releases = JSON.parse(readFileSync(process.env.SITE_RELEASES, 'utf8'))
+		} else {
+			const res = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=50`, { headers, signal: AbortSignal.timeout(15000) })
+			if (!res.ok) throw new Error(`HTTP ${res.status}`)
+			releases = await res.json()
+		}
+		const release = releases.find((r) => MAIN_TAG.test(r.tag_name) && !r.draft)
 		if (!release) return null
-		const asset = (os) => release.assets.find((a) => a.name.endsWith(`-${os}-amd64.zip`))
+		const asset = (os, suffix = '') => release.assets.find((a) => a.name.endsWith(`-${os}-amd64${suffix}.zip`))
+		const both = (suffix) => ({ linux: asset('linux', suffix), windows: asset('windows', suffix) })
+		const plugins = {}
+		for (const a of release.assets) {
+			const name = a.name.match(/-amd64-plugin-([a-z0-9_]+)\.zip$/)?.[1]
+			if (name) plugins[name] ??= both(`-plugin-${name}`)
+		}
 		return {
 			tag: release.tag_name,
 			url: release.html_url,
 			date: release.published_at.slice(0, 10),
-			linux: asset('linux'),
-			windows: asset('windows'),
+			...both(''),
+			editor: both('-editor'),
+			plugins,
 		}
 	} catch (err) {
 		console.warn(`site: no release information (${err.message}); linking the releases page`)

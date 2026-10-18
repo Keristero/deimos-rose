@@ -2,6 +2,7 @@ package tests
 
 import "base:runtime"
 
+import _ "dr:all_plugins"
 import "dr:sim"
 import support "dr:tests/support"
 
