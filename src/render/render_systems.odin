@@ -10,7 +10,6 @@ package render
 // Every draw only appends to its own layer's list, and present draws the
 // layers in order, so what the order decides is the order within a layer.
 
-
 import "dr:sim"
 
 MAX_RENDER_SYSTEMS :: 32
@@ -32,18 +31,15 @@ Render_System :: struct {
 	run:    proc(r: ^Renderer, s: ^sim.State, f: ^Frame),
 }
 
-@(private = "file")
-render_systems: sim.Registry(Render_System, MAX_RENDER_SYSTEMS)
-
 // Called from registration steps only (sim.register_step), like sim.system_register, and as
 // there the `after` and `before` lists must outlive the call: package
 // variables, not slice literals, which live on the caller's stack.
 render_system_register :: proc(sys: Render_System) {
-	sim.registry_add(&render_systems, sys)
+	sim.registry_add(&shared.render_systems, sys)
 }
 
 registered_render_systems :: proc "contextless" () -> []Render_System {
-	return sim.registry_items(&render_systems)
+	return sim.registry_items(&shared.render_systems)
 }
 
 // The render systems a renderer runs, in order, by registry index: the
@@ -56,7 +52,7 @@ Render_Schedule :: struct {
 }
 
 render_schedule_build :: proc(sched: ^Render_Schedule, mods: sim.Mods) {
-	sched.count = sim.order_registered(sim.registry_items(&render_systems), mods, sched.order[:])
+	sched.count = sim.order_registered(sim.registry_items(&shared.render_systems), mods, sched.order[:])
 	sched.built = true
 	sched.mods = mods
 }
@@ -67,7 +63,7 @@ run_render_systems :: proc(r: ^Renderer, s: ^sim.State, f: ^Frame) {
 		render_schedule_build(&r.render_schedule, r.mods)
 	}
 	for idx in r.render_schedule.order[:r.render_schedule.count] {
-		render_systems.items[idx].run(r, s, f)
+		shared.render_systems.items[idx].run(r, s, f)
 	}
 }
 
@@ -227,12 +223,9 @@ Effect_System :: struct {
 	clear:  proc(),
 }
 
-@(private = "file")
-effect_systems: sim.Registry(Effect_System, MAX_EFFECT_SYSTEMS)
-
 // Called from registration steps only (sim.register_step).
 effect_system_register :: proc(sys: Effect_System) {
-	sim.registry_add(&effect_systems, sys)
+	sim.registry_add(&shared.effect_systems, sys)
 }
 
 // A system runs in a session with its plugin on, or when the player has a
@@ -243,7 +236,7 @@ effect_on :: proc(r: ^Renderer, s: ^sim.State, id: sim.Plugin_ID) -> bool {
 }
 
 effect_systems_step :: proc(r: ^Renderer, s: ^sim.State, p: ^Particles) {
-	for &sys in sim.registry_items(&effect_systems) {
+	for &sys in sim.registry_items(&shared.effect_systems) {
 		if sys.step != nil && effect_on(r, s, sys.plugin) {
 			sys.step(r, s, p)
 		}
@@ -253,7 +246,7 @@ effect_systems_step :: proc(r: ^Renderer, s: ^sim.State, p: ^Particles) {
 // Those that draw over `layer`, for present. `t` is how far the frame is
 // from the last step to this one.
 effect_systems_draw :: proc(r: ^Renderer, s: ^sim.State, layer: int, scale, side, t: f32) {
-	for &sys in sim.registry_items(&effect_systems) {
+	for &sys in sim.registry_items(&shared.effect_systems) {
 		if sys.draw != nil && sys.layer == layer && effect_on(r, s, sys.plugin) {
 			sys.draw(r, scale, side, t)
 		}
@@ -263,7 +256,7 @@ effect_systems_draw :: proc(r: ^Renderer, s: ^sim.State, layer: int, scale, side
 // Every effect system forgets what it keeps, whether its plugin is on or
 // not: what is on screen belongs to the session that is ending.
 effect_systems_clear :: proc() {
-	for &sys in sim.registry_items(&effect_systems) {
+	for &sys in sim.registry_items(&shared.effect_systems) {
 		if sys.clear != nil {
 			sys.clear()
 		}

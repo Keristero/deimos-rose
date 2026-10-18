@@ -28,16 +28,18 @@ import "dr:sim"
 #assert(i32(rl.KeyboardKey.ESCAPE) == prefs.KEY_ESCAPE)
 
 // What was saved, plus this run's launch flags. A flag (-classic,
-// -diagnostics, -fullscreen, -highrefreshrate) switches its setting on for the run without
-// saving it; changing that setting in Preferences then drops the flag and
-// saves the new value, so the menu always shows and controls what is live.
+// -diagnostics, -fullscreen, or a plugin's launch switch) switches its
+// setting on for the run without saving it; changing that setting in
+// Preferences then drops the flag and saves the new value, so the menu
+// always shows and controls what is live.
 Prefs_State :: struct {
-	saved:  prefs.Prefs,
-	launch: Settings,
+	saved:       prefs.Prefs,
+	launch:      Settings,
+	launch_mods: sim.Mods, // what the plugins' launch switches turned on
 }
 
 prefs_state_load :: proc(launch: Settings) -> Prefs_State {
-	ps := Prefs_State{saved = prefs.defaults(), launch = launch}
+	ps := Prefs_State{saved = prefs.defaults(), launch = launch, launch_mods = prefs.launch_mods(launch.args)}
 	path := prefs.user_data_path("preferences", context.temp_allocator)
 	if path == "" {
 		return ps
@@ -162,8 +164,6 @@ gather_input :: proc(ps: ^Prefs_State, player: int) -> sim.Buttons {
 	return out
 }
 
-@(private = "file") axis_was: [sim.MAX_PLAYERS][prefs.Action][prefs.BINDING_SLOTS]bool
-
 // Whether `player`'s `action` went down this frame. Pause answers to the
 // keyboard's binding too, whatever the player drives with, so Escape always
 // pauses a game played on a controller.
@@ -173,10 +173,10 @@ binding_pressed :: proc(ps: ^Prefs_State, player: int, action: prefs.Action) -> 
 		if id, ok := pad_of(ps, player); ok {
 			for c, slot in ps.saved.pad_bindings[player][action] {
 				down := pad_code_down(id, c)
-				if down && !axis_was[player][action][slot] && (c >= prefs.PAD_AXIS || rl.IsGamepadButtonPressed(id, rl.GamepadButton(c))) {
+				if down && !shared.axis_was[player][action][slot] && (c >= prefs.PAD_AXIS || rl.IsGamepadButtonPressed(id, rl.GamepadButton(c))) {
 					pressed = true
 				}
-				axis_was[player][action][slot] = down
+				shared.axis_was[player][action][slot] = down
 			}
 		}
 		if action != .Pause {

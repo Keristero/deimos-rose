@@ -55,25 +55,20 @@ Register_Step :: struct {
 	run:   proc(),
 }
 
-@(private = "file")
-register_steps: Registry(Register_Step, 64)
-@(private = "file")
-registered_all: bool
-
 // Called from registration steps only (sim.register_step).
 register_step :: proc "contextless" (stage: Register_Stage, name: string, run: proc()) {
 	context = runtime.default_context()
-	registry_add(&register_steps, Register_Step{stage, name, run})
+	registry_add(&shared.register_steps, Register_Step{stage, name, run})
 }
 
 // Runs the registration steps, once, before anything reads a registry:
 // first thing in every program's main, and in the tests' set-up.
 register_all :: proc() {
-	if registered_all {
+	if shared.registered_all {
 		return
 	}
-	registered_all = true
-	steps := registry_items(&register_steps)
+	shared.registered_all = true
+	steps := registry_items(&shared.register_steps)
 	slice.sort_by(steps, proc(a, b: Register_Step) -> bool {
 		return a.stage != b.stage ? a.stage < b.stage : a.name < b.name
 	})
@@ -93,7 +88,7 @@ register_all :: proc() {
 
 // Whether register_all has run: what builds a session checks first.
 registered :: proc "contextless" () -> bool {
-	return registered_all
+	return shared.registered_all
 }
 
 // A digest of everything peers must register alike: the component

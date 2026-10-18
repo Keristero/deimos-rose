@@ -13,15 +13,9 @@ import "dr:sim"
 // so the Chaingun's needs the Chaingun's plugin on as well.
 // docs/passive-upgrades.md records how each was read.
 
-ID: sim.Plugin_ID
-
 // The design's Weapon 5 and 6: the Chaingun (plugins/chaingun) and the
 // Discharge Beam (plugins/new_weapons).
-WEAPON_5: passives.Passive
-WEAPON_6: passives.Passive
 // The design's charge passives for Weapon 5 and 6 (Passive_Def.charge).
-WEAPON_5_CHARGE: passives.Passive
-WEAPON_6_CHARGE: passives.Passive
 
 WEAPON_CHAINGUN :: sim.Res_ID{'a', 'i', 'c', 'g'}
 WEAPON_DISCHARGE_BEAM :: sim.Res_ID{'a', 'i', 'd', 'b'}
@@ -80,7 +74,7 @@ X :: passives.X
 DEPS := []string{"passives", "new_weapons"}
 
 register :: proc() {
-	ID = sim.plugin_register({
+	shared.id = sim.plugin_register({
 		name        = "new_weapon_passives",
 		label       = "NEW WEAPON UPGRADES",
 		description = "Passive upgrades for the new weapons",
@@ -90,10 +84,10 @@ register :: proc() {
 	})
 	// Their names are the ones the passives had when Passive Upgrades
 	// carried them: the icons and the golden runs find them by name.
-	WEAPON_5 = passives.passive_register({name = "weapon_5", label = "CHAINGUN UPGRADE", plugin = ID, levels = 3, weapon = WEAPON_CHAINGUN, mods = CHAINGUN_MODS})
-	WEAPON_6 = passives.passive_register({name = "weapon_6", label = "DISCHARGE BEAM UPGRADE", plugin = ID, levels = 3, weapon = WEAPON_DISCHARGE_BEAM, mods = DISCHARGE_BEAM_MODS})
-	WEAPON_5_CHARGE = passives.passive_register({name = "weapon_5_charge", label = "CHAINGUN CHARGE", plugin = ID, levels = 3, weapon = WEAPON_CHAINGUN, charge = true, mods = CHAINGUN_CHARGE_MODS})
-	WEAPON_6_CHARGE = passives.passive_register({name = "weapon_6_charge", label = "DISCHARGE BEAM CHARGE", plugin = ID, levels = 3, weapon = WEAPON_DISCHARGE_BEAM, charge = true, mods = DISCHARGE_BEAM_CHARGE_MODS})
+	shared.weapon_5 = passives.passive_register({name = "weapon_5", label = "CHAINGUN UPGRADE", plugin = shared.id, levels = 3, weapon = WEAPON_CHAINGUN, mods = CHAINGUN_MODS})
+	shared.weapon_6 = passives.passive_register({name = "weapon_6", label = "DISCHARGE BEAM UPGRADE", plugin = shared.id, levels = 3, weapon = WEAPON_DISCHARGE_BEAM, mods = DISCHARGE_BEAM_MODS})
+	shared.weapon_5_charge = passives.passive_register({name = "weapon_5_charge", label = "CHAINGUN CHARGE", plugin = shared.id, levels = 3, weapon = WEAPON_CHAINGUN, charge = true, mods = CHAINGUN_CHARGE_MODS})
+	shared.weapon_6_charge = passives.passive_register({name = "weapon_6_charge", label = "DISCHARGE BEAM CHARGE", plugin = shared.id, levels = 3, weapon = WEAPON_DISCHARGE_BEAM, charge = true, mods = DISCHARGE_BEAM_CHARGE_MODS})
 }
 
 @(init)

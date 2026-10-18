@@ -9,7 +9,6 @@ package chaingun_view
 // - chaingun_release: the step a charge is let go, its muzzle flash at full
 //   strength (chaingun: the burst's, at half).
 
-
 import "dr:plugins/chaingun"
 import "dr:plugins/loadout"
 import "dr:sim"
@@ -37,9 +36,9 @@ CHARGE := []ui.Shot_Phase{{70, {{.Fire_Air}, {}}}, {12, {}}}
 RELEASE := []ui.Shot_Phase{{70, {{.Fire_Air}, {}}}, {1, {}}}
 
 register_shots :: proc() {
-	ui.shot_register({name = "chaingun", plugin = chaingun.ID, level = 6, setup = chaingun_shot, phases = TAP})
-	ui.shot_register({name = "chaingun_charge", plugin = chaingun.ID, level = 6, setup = chaingun_shot, phases = CHARGE})
-	ui.shot_register({name = "chaingun_release", plugin = chaingun.ID, level = 6, setup = chaingun_shot, phases = RELEASE})
+	ui.shot_register({name = "chaingun", plugin = chaingun.id(), level = 6, setup = chaingun_shot, phases = TAP})
+	ui.shot_register({name = "chaingun_charge", plugin = chaingun.id(), level = 6, setup = chaingun_shot, phases = CHARGE})
+	ui.shot_register({name = "chaingun_release", plugin = chaingun.id(), level = 6, setup = chaingun_shot, phases = RELEASE})
 }
 
 @(init)

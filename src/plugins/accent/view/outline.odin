@@ -3,14 +3,13 @@ package accent_view
 // Self Outline: the local player's ship ringed in its accent, a render
 // system of the Accent Color plugin's, drawn only while the plugin is on.
 
-
 import "dr:plugins/accent"
 import "dr:render"
 import "dr:sim"
 
 register_outline :: proc() {
 	// Under the local player's ship, so ahead of it.
-	render.render_system_register({name = "outline", before = OUTLINE_BEFORE, plugin = accent.ID, run = outline_render})
+	render.render_system_register({name = "outline", before = OUTLINE_BEFORE, plugin = accent.id(), run = outline_render})
 }
 
 @(init)
@@ -27,7 +26,7 @@ OUTLINE_BEFORE := []string{"players"}
 outline_render :: proc(r: ^render.Renderer, s: ^sim.State, f: ^render.Frame) {
 	for p, k in sim.players_of(s) {
 		ac := r.accents[k]
-		if !ac.outline || !p.active || p.state != .Playing {
+		if r.setting[shared.self_outline] == 0 || k != r.local_player || !p.active || p.state != .Playing {
 			continue
 		}
 		place, ok := render.object_place(r, p.obj, render.ship_before(f, k))

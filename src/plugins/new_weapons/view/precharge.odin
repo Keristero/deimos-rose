@@ -26,7 +26,7 @@ import "dr:sim"
 @(private = "file") PRECHARGE_COLOR :: rl.Color{255, 56, 32, 255}
 @(private = "file") PRECHARGE_CORE :: rl.Color{255, 200, 170, 255}
 
-@(private = "file")
+@(private)
 Precharge_Mote :: struct {
 	player: int,
 	from:   sim.Vec, // where it started, from the gun
@@ -36,21 +36,16 @@ Precharge_Mote :: struct {
 
 // Where each player's gun was the step before and this step, to draw the
 // motes between them at high refresh rates.
-@(private = "file")
+@(private)
 Gun :: struct {
 	prev, loc: sim.Vec,
 	live:      bool,
 }
 
-@(private = "file")
-motes: [dynamic]Precharge_Mote
-@(private = "file")
-guns: [sim.MAX_PLAYERS]Gun
-
 register_precharge :: proc() {
 	render.effect_system_register({
 		name   = "beam_precharge",
-		plugin = new_weapons.ID,
+		plugin = new_weapons.id(),
 		step   = precharge_step,
 		draw   = precharge_draw,
 		layer  = render.layer_of(sim.res_id("play"), true), // over the ships
@@ -65,8 +60,8 @@ register_precharge_step :: proc "contextless" () {
 
 @(private = "file")
 precharge_clear :: proc() {
-	clear(&motes)
-	guns = {}
+	clear(&shared.motes)
+	shared.guns = {}
 }
 
 @(private = "file")
@@ -75,28 +70,28 @@ precharge_step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles)
 		return
 	}
 	n := 0
-	for m in motes {
+	for m in shared.motes {
 		m := m
 		m.age += 1
-		if m.age < m.life && guns[m.player].live {
-			motes[n] = m
+		if m.age < m.life && shared.guns[m.player].live {
+			shared.motes[n] = m
 			n += 1
 		}
 	}
-	resize(&motes, n)
+	resize(&shared.motes, n)
 	for pl, i in sim.players_of(s) {
 		h := pl.weapons
 		wd := sim.weapon_def(s, h.air.weapon)
-		if pl.obj == nil || pl.state != .Playing || h.air_windup <= 0 || !sim.weapon_bool(wd, new_weapons.BEAM) {
-			guns[i].live = false
+		if pl.obj == nil || pl.state != .Playing || h.air_windup <= 0 || !sim.weapon_bool(wd, new_weapons.beam()) {
+			shared.guns[i].live = false
 			continue
 		}
 		gun := new_weapons.beam_origin(wd, pl.loc)
-		guns[i] = {prev = guns[i].live ? guns[i].loc : gun, loc = gun, live = true}
+		shared.guns[i] = {prev = shared.guns[i].live ? shared.guns[i].loc : gun, loc = gun, live = true}
 		for _ in 0 ..< PRECHARGE_PER_STEP {
 			a := rand.float32() * 2 * math.PI
 			d := PRECHARGE_RADIUS_MIN + rand.float32() * (PRECHARGE_RADIUS_MAX - PRECHARGE_RADIUS_MIN)
-			append(&motes, Precharge_Mote{player = i, from = {math.cos(a), math.sin(a)} * d, life = h.air_windup})
+			append(&shared.motes, Precharge_Mote{player = i, from = {math.cos(a), math.sin(a)} * d, life = h.air_windup})
 		}
 	}
 }
@@ -105,12 +100,12 @@ precharge_step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles)
 // first, slowing as it arrives. It brightens as it closes.
 @(private = "file")
 precharge_draw :: proc(r: ^render.Renderer, scale, side, t: f32) {
-	if len(motes) == 0 {
+	if len(shared.motes) == 0 {
 		return
 	}
 	rl.BeginBlendMode(.ADDITIVE)
-	for &m in motes {
-		g := guns[m.player]
+	for &m in shared.motes {
+		g := shared.guns[m.player]
 		u := clamp((f32(m.age) + t) / f32(max(m.life, 1)), 0, 1)
 		gun := g.prev + (g.loc - g.prev) * t
 		at := gun + m.from * (1 - u) * (1 - u)

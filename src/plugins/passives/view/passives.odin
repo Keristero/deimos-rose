@@ -126,7 +126,7 @@ stat_text :: proc(levels: ^passives.Passive_Levels, stat: sim.Stat, weapon: sim.
 @(private = "file") SPARK_SPEED :: 3
 
 register_passives_view :: proc() {
-	render.effect_system_register({name = "passive_particles", plugin = passives.ID, step = passive_particles_step})
+	render.effect_system_register({name = "passive_particles", plugin = passives.id(), step = passive_particles_step})
 	register_clouds_view()
 }
 

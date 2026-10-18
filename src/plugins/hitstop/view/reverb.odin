@@ -13,8 +13,8 @@ import rl "vendor:raylib"
 COMB_LEN :: 2048
 ALLPASS_LEN :: 700
 
-@(private = "file") COMB_DELAYS := [2][4]int{{1557, 1617, 1491, 1422}, {1580, 1640, 1514, 1445}}
-@(private = "file") ALLPASS_DELAYS := [2][2]int{{556, 441}, {579, 464}}
+@(private = "file", rodata) COMB_DELAYS := [2][4]int{{1557, 1617, 1491, 1422}, {1580, 1640, 1514, 1445}}
+@(private = "file", rodata) ALLPASS_DELAYS := [2][2]int{{556, 441}, {579, 464}}
 @(private = "file") FEEDBACK :: 0.86
 @(private = "file") DAMPING :: 0.3
 
@@ -55,42 +55,37 @@ reverb_process :: proc "contextless" (rv: ^Reverb, buf: []f32, wet: f32) {
 	}
 }
 
-@(private = "file") room: Reverb
-@(private = "file") wet: f32 // what the audio thread reads
-@(private = "file") attached: bool
-@(private = "file") was_wet: bool
-
 // Called on the audio thread with the mix as interleaved stereo f32.
 @(private = "file")
 processor :: proc "c" (buffer: rawptr, frames: u32) {
-	amount := intrinsics.volatile_load(&wet)
+	amount := intrinsics.volatile_load(&shared.wet)
 	if amount < 0.002 {
-		was_wet = false
+		shared.was_wet = false
 		return
 	}
-	if !was_wet {
-		room = {} // a room that was empty when it started
-		was_wet = true
+	if !shared.was_wet {
+		shared.room = {} // a room that was empty when it started
+		shared.was_wet = true
 	}
-	reverb_process(&room, ([^]f32)(buffer)[:int(frames) * 2], amount)
+	reverb_process(&shared.room, ([^]f32)(buffer)[:int(frames) * 2], amount)
 }
 
 // Sets the reverb, 0 off to 1, attaching the processor the first time it
 // is wanted; nothing without an audio device.
 reverb_set :: proc(amount: f32) {
-	if !attached {
+	if !shared.attached {
 		if amount <= 0 || !rl.IsAudioDeviceReady() {
 			return
 		}
 		rl.AttachAudioMixedProcessor(processor)
-		attached = true
+		shared.attached = true
 	}
-	intrinsics.volatile_store(&wet, clamp(amount, 0, 1))
+	intrinsics.volatile_store(&shared.wet, clamp(amount, 0, 1))
 }
 
 reverb_destroy :: proc() {
-	if attached && rl.IsAudioDeviceReady() {
+	if shared.attached && rl.IsAudioDeviceReady() {
 		rl.DetachAudioMixedProcessor(processor)
 	}
-	attached = false
+	shared.attached = false
 }

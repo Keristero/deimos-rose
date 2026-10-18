@@ -15,12 +15,6 @@ import "core:time"
 import rl "vendor:raylib"
 
 import "dr:data"
-import "dr:net"
-import "dr:plugins/accent"
-import accent_view "dr:plugins/accent/view"
-import "dr:plugins/easy_mode"
-import netplay_plugin "dr:plugins/netplay"
-import "dr:plugins/new_weapons"
 import "dr:prefs"
 import "dr:render"
 import "dr:sim"
@@ -35,7 +29,7 @@ Flow_Mode :: enum {
 	High_Scores,
 	Score_Entry,
 	Preferences,
-	Netplay_Lobby,
+	Screen, // a plugin's (screens.odin): Flow.screen
 	Playing,
 	Paused,
 	Game_Over,
@@ -100,20 +94,19 @@ Flow :: struct {
 	high_scores: High_Scores,
 	score_entry: Score_Entry,
 
-	// Phase 7 stage 6 / Phase 6 stage 5: the netplay lobby
-	// (game/netplay.odin, reached from Main Menu's Netplay item when
-	// !r.classic -- see menu_main.odin and mise.toml's --classic flag).
-	// netplay_active distinguishes a netplay .Playing session (stepped via
-	// netplay_playing_step, net.Rollback_Session-driven) from the ordinary
-	// local one (flow_sim_step, gather_input()) -- both share every other
-	// Flow_Mode.
-	netplay:        Netplay,
-	netplay_active: bool,
-	// The names both players entered in the netplay lobby, by player slot.
-	// While session_named, the end of the session records their scores
-	// under these names instead of asking (flow_finish_session). Kept here,
-	// not in Netplay, because leaving a session resets Netplay before it
-	// finishes, and "continue alone" keeps the session going without it.
+	// A plugin's screen (screens.odin): the one shown while mode is
+	// .Screen, and the one stepping the session while driven -- netplay's
+	// lobby, and its sessions, stepped through its rollback session rather
+	// than from this machine's input (flow_sim_step). Both share every
+	// other Flow_Mode.
+	screen: int,
+	driven: bool,
+	// The names both players entered in a screen (netplay's lobby), by
+	// player slot. While session_named, the end of the session records
+	// their scores under these names instead of asking
+	// (flow_finish_session). Kept here, not in the screen, because leaving
+	// a session releases it before it finishes, and "continue alone" keeps
+	// the session going without it.
 	session_names: [sim.MAX_PLAYERS]prefs.Name,
 	session_named: bool,
 	// Each player's accent hue from the lobby, drawn while session_named
@@ -129,7 +122,7 @@ Flow :: struct {
 	// levels_played for the level the particles, ghosts and notices on
 	// screen belong to; 0 once a new session starts (see flow_effects_sync).
 	effects_level:      i32,
-	netplay_was_paused: bool, // the shared pause as last seen, to notice it starting
+	driven_was_paused: bool, // a driven session's shared pause as last seen, to notice it starting
 	music_paused: bool, // whether flow_music_update last left fl.music paused
 }
 
@@ -154,8 +147,9 @@ Flow :: struct {
 // read Caps Lock as a key (see prefs.Action).
 //
 // Outside classic mode a MAIN MENU button sits under the notice (new
-// content). A netplay pause is a state inside the simulation both peers
-// share (sim.session_step), not .Paused, but looks the same.
+// content). A driven session's pause (netplay's) is a state inside the
+// simulation both peers share (sim.session_step), not .Paused, but looks
+// the same.
 Pause_Menu :: struct {
 	main_menu: ui.Text_Button,
 	notice:    bool, // the notice is up, or still fading after a resume
@@ -192,7 +186,7 @@ pause_begin :: proc(fl: ^Flow, r: ^render.Renderer) {
 @(private = "file")
 pause_notice_step :: proc(fl: ^Flow) {
 	m := &fl.pause_menu
-	if m.notice && !netplay_plugin.paused(fl.state) {
+	if m.notice && !sim.paused(fl.state) {
 		m.blend += max(sim.trunc_i32(fl.defs.perm_floats[PF_NOTICE_FADE_OUT]), 1)
 		if m.blend >= 32 {
 			m.notice = false
@@ -271,7 +265,7 @@ flow_init :: proc(fl: ^Flow, root: string, defs: ^sim.Defs, state: ^sim.State, r
 // and has levels, in the Mods page's order; the original's alone when
 // none is. Classic mode offers only the original's.
 flow_campaigns :: proc(fl: ^Flow) -> []sim.Plugin_ID {
-	@(static) list: [sim.MAX_PLUGINS + 1]sim.Plugin_ID
+	list := &shared.campaigns
 	n := 0
 	if !prefs_classic(fl.prefs) {
 		if id, ok := sim.plugin_find(data.CLASSIC_LEVELS); ok && prefs_mod_on(fl.prefs, id) {
@@ -330,7 +324,9 @@ flow_destroy :: proc(fl: ^Flow) {
 		data.film_destroy(&fl.film)
 		fl.has_film = false
 	}
-	netplay_reset(&fl.netplay) // no-op if no socket was ever opened
+	for s in registered_screens() {
+		s.close()
+	}
 }
 
 // Once per render frame, ahead of the fixed-step loop below: discrete key
@@ -353,44 +349,49 @@ flow_handle_input :: proc(fl: ^Flow, r: ^render.Renderer) {
 		score_entry_update(fl, r, &fl.score_entry)
 	case .Preferences:
 		preferences_update(fl, r, &fl.preferences)
-	case .Netplay_Lobby:
-		netplay_lobby_update(fl, r, &fl.netplay)
+	case .Screen:
+		flow_screen(fl).update(fl, r)
 	case .Playing:
-		if fl.netplay_active {
-			netplay_playing_poll(fl, r, &fl.netplay)
+		if fl.driven {
+			s := flow_screen(fl)
+			s.poll(fl, r)
+			if !fl.driven || fl.mode != .Playing {
+				return // it let the session go
+			}
 			// The Pause binding pauses through the simulation itself:
 			// gather_input sets the Pause input bit, so both peers pause
 			// on the same frame. The notice and button appear once the
 			// (shared) state says paused, whoever pressed it.
-			if netplay_plugin.paused(fl.state) != fl.netplay_was_paused {
-				fl.netplay_was_paused = netplay_plugin.paused(fl.state)
-				if netplay_plugin.paused(fl.state) {
+			if sim.paused(fl.state) != fl.driven_was_paused {
+				fl.driven_was_paused = sim.paused(fl.state)
+				if sim.paused(fl.state) {
 					pause_begin(fl, r)
 				}
 			}
-			if netplay_plugin.paused(fl.state) {
+			held, _ := s.banner()
+			if sim.paused(fl.state) {
 				if pause_menu_update(r, &fl.pause_menu) {
 					// The peer sees a Goodbye and freezes, able to continue
 					// alone (F5) -- the same as any mid-game disconnect.
-					netplay_disconnect(&fl.netplay)
+					s.release(true)
 					flow_finish_session(fl)
 				}
-			} else if fl.netplay.link_state != .Live && rl.IsKeyPressed(.ESCAPE) {
+			} else if held != "" && rl.IsKeyPressed(.ESCAPE) {
 				// Frozen on a lost peer (the banner's "ESC TO EXIT"). The
 				// sim is not stepping, so Escape cannot reach it as a
 				// Pause bit -- it leaves instead, as it always did here.
-				netplay_disconnect(&fl.netplay)
+				s.release(true)
 				flow_finish_session(fl)
-			} else if fl.netplay.link_state != .Live && rl.IsKeyPressed(.F5) {
+			} else if held != "" && rl.IsKeyPressed(.F5) {
 				// Phase 8 stage 3: "F5 to continue alone"
 				// (notes/netcode-enhancements.md), only while frozen waiting
-				// on a peer. Dropping netplay_active is the entire change
-				// needed -- flow_step's non-netplay branch below fills
-				// player 1's input from this machine's player 2 keys, so the
-				// vacated player sits idle rather than vanishing (or is
-				// flown locally, if someone here takes those keys).
-				netplay_reset(&fl.netplay)
-				fl.netplay_active = false
+				// on a peer. No longer driven is the entire change needed --
+				// flow_step's local branch below fills player 1's input from
+				// this machine's player 2 keys, so the vacated player sits
+				// idle rather than vanishing (or is flown locally, if
+				// someone here takes those keys).
+				s.release(false)
+				fl.driven = false
 			}
 		} else if pause_key_pressed(fl) {
 			fl.mode = .Paused
@@ -425,16 +426,14 @@ flow_handle_input :: proc(fl: ^Flow, r: ^render.Renderer) {
 // G_Res_GetPermScore result against G_Scores_IsAHighScore and, if any
 // qualifies, opens the name-entry screen before finally returning to the
 // menu.
-@(private = "file")
 flow_finish_session :: proc(fl: ^Flow) {
-	fl.pause_menu.notice, fl.netplay_was_paused = false, false
-	if fl.netplay_active {
-		// A netplay match ending normally (not a mid-game disconnect, which
-		// netplay_poll's Goodbye handling already clears this on) -- close
-		// the socket so a later single-player session doesn't find
-		// netplay_active still set and try to step through a dead one.
-		netplay_reset(&fl.netplay)
-		fl.netplay_active = false
+	fl.pause_menu.notice, fl.driven_was_paused = false, false
+	if fl.driven {
+		// A driven session ending normally (not one its player left, which
+		// released it already): let it go, so a later single-player session
+		// is not stepped through a dead one.
+		flow_screen(fl).release(false)
+		fl.driven = false
 	}
 	scores := [sim.MAX_PLAYERS]int{}
 	active := [sim.MAX_PLAYERS]bool{}
@@ -455,7 +454,7 @@ flow_finish_session :: proc(fl: ^Flow) {
 		sector = sim.level_def(fl.state).name
 	}
 	if fl.session_named {
-		// Netplay: both names are already known, so there is nothing to
+		// Netplay's: both names are already known, so there is nothing to
 		// type -- each qualifying score goes straight into the table, which
 		// is then shown.
 		fl.session_named = false
@@ -488,15 +487,16 @@ flow_finish_session :: proc(fl: ^Flow) {
 // than only after (and if) the level happens to finish scrolling.
 flow_step :: proc(fl: ^Flow, r: ^render.Renderer, fx: ^render.Effects) {
 	switch fl.mode {
-	case .Title, .Level_Select, .Credits, .High_Scores, .Score_Entry, .Preferences, .Netplay_Lobby, .Paused:
+	case .Title, .Level_Select, .Credits, .High_Scores, .Score_Entry, .Preferences, .Screen, .Paused:
 	// nothing to step
 	case .Playing:
-		if fl.netplay_active {
-			// Phase 8 stage 3: frozen (Waiting_Reconnect/Resync_Sending)
-			// means don't step -- matches .Paused above, which also still
-			// draws the last frame without advancing it.
-			if fl.netplay.link_state == .Live {
-				netplay_playing_step(fl, r, fx, &fl.netplay)
+		if fl.driven {
+			// Phase 8 stage 3: held (waiting on a lost peer) means don't
+			// step -- matches .Paused above, which also still draws the
+			// last frame without advancing it.
+			s := flow_screen(fl)
+			if held, _ := s.banner(); held == "" {
+				s.step(fl, r, fx)
 			}
 		} else {
 			// Player 2 is only in play in a local 2 Player session
@@ -507,7 +507,7 @@ flow_step :: proc(fl: ^Flow, r: ^render.Renderer, fx: ^render.Effects) {
 				input[1] = gather_input(fl.prefs, 1)
 			}
 			// A local session pauses through flow (.Paused, the original's
-			// kind of pause), never the sim's netplay pause.
+			// kind of pause), never the sim's shared pause.
 			input[0] -= {.Pause}
 			input[1] -= {.Pause}
 			flow_sim_step(fl, r, fx, input, nil, true)
@@ -517,7 +517,7 @@ flow_step :: proc(fl: ^Flow, r: ^render.Renderer, fx: ^render.Effects) {
 		// (sim.session_step), so complete still being set means the list
 		// is finished -- unless easy mode's reward screen is holding the
 		// move back. Flow only reads the state here, never changes it:
-		// in netplay, the state is the rollback session's to change.
+		// in a driven session, the state is its screen's to change.
 		switch {
 		case sim.single(fl.state, sim.Game_Status).game_over:
 			fl.mode, fl.end_timer = .Game_Over, 0
@@ -562,7 +562,7 @@ flow_music_update :: proc(fl: ^Flow, r: ^render.Renderer) {
 	want: rl.Music
 	ok: bool
 	switch fl.mode {
-	case .Title, .Level_Select, .Credits, .High_Scores, .Score_Entry, .Preferences, .Netplay_Lobby:
+	case .Title, .Level_Select, .Credits, .High_Scores, .Score_Entry, .Preferences, .Screen:
 		key = MENU_MUSIC_KEY
 		want, ok = render.music_load(&r.textures, render.MENU_MUSIC)
 	case .Playing, .Paused, .Game_Over, .Complete, .Attract:
@@ -582,8 +582,8 @@ flow_music_update :: proc(fl: ^Flow, r: ^render.Renderer) {
 		}
 	}
 	if fl.music.frameCount != 0 {
-		// Either pause: local (.Paused) or a netplay pause in the state.
-		paused := fl.mode == .Paused || (fl.mode == .Playing && netplay_plugin.paused(fl.state))
+		// Either pause: local (.Paused) or a shared pause in the state.
+		paused := fl.mode == .Paused || (fl.mode == .Playing && sim.paused(fl.state))
 		if paused != fl.music_paused {
 			if paused {
 				rl.PauseMusicStream(fl.music)
@@ -594,7 +594,7 @@ flow_music_update :: proc(fl: ^Flow, r: ^render.Renderer) {
 		rl.SetMusicPitch(fl.music, 1 - r.textures.audio_slow)
 		rl.UpdateMusicStream(fl.music)
 	}
-	fl.music_paused = fl.music.frameCount != 0 && (fl.mode == .Paused || (fl.mode == .Playing && netplay_plugin.paused(fl.state)))
+	fl.music_paused = fl.music.frameCount != 0 && (fl.mode == .Paused || (fl.mode == .Playing && sim.paused(fl.state)))
 }
 
 @(private = "file")
@@ -604,6 +604,13 @@ flow_sim_step :: proc(fl: ^Flow, r: ^render.Renderer, fx: ^render.Effects, input
 	} else {
 		sim.step(fl.state, input, film)
 	}
+	flow_after_step(fl, r, fx)
+}
+
+// The presentation's part of a step, once the state has taken it: the
+// effects, cleared for a new level, and the sounds. A screen driving the
+// session calls it after its own step (screens.odin).
+flow_after_step :: proc(fl: ^Flow, r: ^render.Renderer, fx: ^render.Effects) {
 	flow_effects_sync(fl, fx)
 	flow_effects_step(fl, r, fx)
 	render.sounds_step(&r.textures, fl.state)
@@ -624,7 +631,7 @@ flow_held :: proc(fl: ^Flow, r: ^render.Renderer) -> bool {
 	if r.hold <= 0 {
 		return false
 	}
-	if fl.mode != .Playing || fl.netplay_active || sim.session_frozen(fl.state) {
+	if fl.mode != .Playing || fl.driven || sim.session_frozen(fl.state) {
 		r.hold = 0
 		return false
 	}
@@ -637,7 +644,7 @@ flow_held :: proc(fl: ^Flow, r: ^render.Renderer) -> bool {
 // anything to a session in play on this machine alone, so it ends with
 // anything else, and the sound's with it.
 flow_speed :: proc(fl: ^Flow, r: ^render.Renderer) -> f64 {
-	if fl.mode != .Playing || fl.netplay_active || sim.session_frozen(fl.state) {
+	if fl.mode != .Playing || fl.driven || sim.session_frozen(fl.state) {
 		r.slowdown, r.textures.audio_slow = 0, 0
 		return 1
 	}
@@ -645,7 +652,7 @@ flow_speed :: proc(fl: ^Flow, r: ^render.Renderer) -> f64 {
 }
 
 // The presentation effects' step, after a sim step. They freeze with the
-// game: under the netplay pause and the reward and loadout screens, which
+// game: under the shared pause and the reward and loadout screens, which
 // all stop the sim's clock while it keeps stepping.
 flow_effects_step :: proc(fl: ^Flow, r: ^render.Renderer, fx: ^render.Effects) {
 	if sim.session_frozen(fl.state) {
@@ -662,7 +669,7 @@ flow_effects_step :: proc(fl: ^Flow, r: ^render.Renderer, fx: ^render.Effects) {
 // After every sim.init: whatever the last session left on screen is not
 // part of this one.
 flow_session_began :: proc(fl: ^Flow) {
-	fl.pause_menu.notice, fl.netplay_was_paused = false, false
+	fl.pause_menu.notice, fl.driven_was_paused = false, false
 	fl.effects_level = 0
 }
 
@@ -689,46 +696,22 @@ flow_random_seed :: proc() -> u32 {
 
 // The session plugins this player has on, as Start carries them: none in
 // classic mode, nor any whose own content is not there (plugins/<name>/).
-// Netplay's own is left to session_from_mods, which knows whether the
-// session is online.
+// The online plugins (netplay's) are left to session_from_mods, which knows
+// whether the session is online.
 flow_session_mods :: proc(fl: ^Flow) -> sim.Mods {
 	mods := sim.mods_with_content(prefs_mods(fl.prefs), fl.defs.content)
 	// Resolved before the session's are picked out: a session plugin's
 	// dependencies need not be session plugins themselves.
-	return sim.mods_session(mods) - {int(netplay_plugin.ID)}
+	return sim.mods_session(mods) - sim.mods_online()
 }
 
-// The session, with netplay's plugin exactly when it is online.
+// The session, with the online plugins exactly when it is online.
 session_from_mods :: proc(seed: u32, level: sim.Level_ID, game_type: sim.Game_Type, mods: sim.Mods, online := false, campaign := sim.CORE) -> sim.Session {
-	session := sim.Session{seed = seed, level_id = level, game_type = game_type, mods = mods - {int(netplay_plugin.ID)}, campaign = campaign}
+	session := sim.Session{seed = seed, level_id = level, game_type = game_type, mods = mods - sim.mods_online(), campaign = campaign}
 	if online {
-		session.mods += {int(netplay_plugin.ID)}
+		session.mods += sim.mods_online()
 	}
 	return session
-}
-
-// Start's flags for the session's mods, for a build that reads only them.
-flags_from_mods :: proc(mods: sim.Mods) -> (flags: u8) {
-	if int(easy_mode.ID) in mods {
-		flags |= net.START_EASY
-	}
-	if int(new_weapons.ID) in mods {
-		flags |= net.START_LOADOUT
-	}
-	return
-}
-
-// The session's mods from a Start without them, from a build before they
-// were sent: what its flags turned on then.
-mods_from_flags :: proc(flags: u8) -> sim.Mods {
-	want: sim.Mods
-	if flags & net.START_EASY != 0 {
-		want += {int(easy_mode.ID)}
-	}
-	if flags & net.START_LOADOUT != 0 {
-		want += {int(new_weapons.ID)} + sim.mods_default_dependants(new_weapons.ID)
-	}
-	return sim.mods_session(sim.mods_switch_on({}, want))
 }
 
 // Called once Level Select's accept pulse finishes (game/menu_level_select.odin).
@@ -805,8 +788,8 @@ flow_draw :: proc(fl: ^Flow, r: ^render.Renderer, fx: ^render.Effects, scale: f3
 	case .Preferences:
 		preferences_draw(r, &fl.preferences, fl.prefs)
 		return
-	case .Netplay_Lobby:
-		netplay_lobby_draw(fl, r, &fl.netplay)
+	case .Screen:
+		flow_screen(fl).draw(fl, r)
 		return
 	case .Playing, .Paused, .Game_Over, .Complete, .Attract:
 	}
@@ -831,19 +814,19 @@ flow_draw :: proc(fl: ^Flow, r: ^render.Renderer, fx: ^render.Effects, scale: f3
 				16, render.SCREEN_H * render.WINDOW_SCALE - 28, 18, rl.Color{200, 200, 200, 200})
 		}
 	case .Playing:
-		// Phase 8 stage 3: frozen waiting on a peer -- title == "" (link_state
-		// == .Live) draws nothing, the ordinary case for every prior netplay
-		// session.
-		if fl.netplay_active {
-			if title, sub := netplay_disconnect_banner(&fl.netplay); title != "" {
+		// Phase 8 stage 3: held waiting on a peer -- title == "" while it
+		// plays draws nothing, the ordinary case.
+		if fl.driven {
+			s := flow_screen(fl)
+			if title, sub := s.banner(); title != "" {
 				draw_banner(title, sub)
 			} else {
-				pause_draw(fl, r, scale, netplay_plugin.paused(fl.state), "PAUSED FOR BOTH PLAYERS -- EITHER CAN RESUME")
+				pause_draw(fl, r, scale, sim.paused(fl.state), s.pause_note)
 			}
 		} else {
 			pause_draw(fl, r, scale, false, "") // the notice fading after a resume
 		}
-	case .Title, .Level_Select, .Credits, .High_Scores, .Score_Entry, .Preferences, .Netplay_Lobby:
+	case .Title, .Level_Select, .Credits, .High_Scores, .Score_Entry, .Preferences, .Screen:
 	}
 }
 
@@ -861,38 +844,45 @@ draw_banner :: proc(line, sub: cstring) {
 }
 
 // Who is drawn with an accent this frame (Extras; nothing in classic mode or
-// a demo). In netplay both players have one, each the colour its owner
-// picked, and the other player's crosshair is left out: it only helps
-// whoever is aiming with it. In a local game each player has the hue set
-// for them in Extras. Accent Colours turns the colours off; Self Outline
-// is separate, and only ever rings the ship of the player at this machine.
-// The plugins drawn with (Renderer.mods) are set here with them.
+// a demo). In a named session (netplay's) both players have one, each the
+// colour its owner picked, and in a driven one the other player's
+// crosshair is left out: it only helps whoever is aiming with it. In a local game each player has the colour
+// set for them in Extras (prefs.Setting.player). The colours are drawn
+// while the plugin of those settings is on. The plugins drawn with
+// (Renderer.mods), the settings as they apply (Renderer.setting) and the
+// player at this machine are set here with them: a plugin's view reads
+// what else it draws from those (Self Outline's ring).
 flow_set_accents :: proc(fl: ^Flow, r: ^render.Renderer) {
 	r.accents = {}
+	r.setting = {}
+	r.local_player = -1
 	r.mods = fl.state.session.mods
 	defer r.textures.mods = r.mods
 	if fl.mode == .Attract || prefs_classic(fl.prefs) {
 		return
 	}
-	// The player's own presentation plugins, with the session's; a session
-	// plugin they have on that this session lacks stays off.
-	own := prefs_mods(fl.prefs)
-	r.mods += own - sim.mods_session(own)
-	r.setting = fl.prefs.saved.settings
-	colours := prefs_mod_on(fl.prefs, accent.ID)
-	outline := setting_on(fl.prefs, accent_view.SELF_OUTLINE)
+	// The player's own plugins (how the game looks) draw as well.
+	mods := prefs_mods(fl.prefs)
+	r.mods += mods - sim.mods_session(mods)
+	for s, id in prefs.registered_settings() {
+		if int(s.plugin) in mods {
+			r.setting[id] = fl.prefs.saved.settings[id]
+		}
+	}
+	colours := player_colours_on(fl.prefs)
 	if fl.session_named {
-		local := fl.netplay_active ? fl.netplay.rs.local_player : -1
+		r.local_player = fl.driven ? flow_screen(fl).local_player() : -1
 		for i in 0 ..< sim.MAX_PLAYERS {
 			r.accents[i] = {
 				on             = colours,
 				hue            = f32(fl.session_hues[i]),
-				outline        = outline && i == local,
-				hide_crosshair = fl.netplay_active && i != local,
+				hide_crosshair = fl.driven && i != r.local_player,
 			}
 		}
 		return
 	}
-	r.accents[0] = {on = colours, hue = f32(setting_value(fl.prefs, accent_view.HUE_P1)), outline = outline}
-	r.accents[1] = {on = colours, hue = f32(setting_value(fl.prefs, accent_view.HUE_P2))}
+	r.local_player = 0
+	for i in 0 ..< sim.MAX_PLAYERS {
+		r.accents[i] = {on = colours, hue = f32(player_hue(fl.prefs, i))}
+	}
 }

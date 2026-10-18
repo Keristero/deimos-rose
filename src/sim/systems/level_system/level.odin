@@ -147,7 +147,7 @@ level_end_system :: proc(s: ^sim.State, step: ^sim.Step) {
 // below is never met. For -row, testing a level from where it gets
 // interesting, and for tests that skip to a level's end. Deterministic, so
 // two netplay peers that both call it straight after starting stay in step
-// (game/netplay.odin, DR_NETPLAY_END).
+// (plugins/netplay/view/netplay.odin, DR_NETPLAY_END).
 level_start_at_row :: proc(s: ^sim.State, row: i32) {
 	b := sim.single(s, sim.Bgnd)
 	h := sim.view_height(s.defs)

@@ -65,7 +65,7 @@ import "dr:sim"
 @(private = "file")
 Colour_Key :: [5]i32 // texture id, then the frame's rectangle
 
-@(private = "file")
+@(private)
 State :: struct {
 	ready:      bool,
 	w, h:       i32, // the canvas the targets were made for
@@ -103,13 +103,10 @@ State :: struct {
 	plates:     map[u32]rl.Image,
 }
 
-@(private = "file")
-st: State
-
 register_lights :: proc() {
 	render.post_pass_register({
 		name    = "lighting",
-		plugin  = lighting.ID,
+		plugin  = lighting.id(),
 		enabled = enabled,
 		prepare = prepare,
 		apply   = apply,
@@ -124,7 +121,7 @@ register_lights_step :: proc "contextless" () {
 
 @(private = "file")
 enabled :: proc(r: ^render.Renderer) -> bool {
-	return r.setting[LIGHT_STRENGTH] > 0 || r.setting[GLOW_STRENGTH] > 0
+	return r.setting[shared.light_strength] > 0 || r.setting[shared.glow_strength] > 0
 }
 
 // Eight-bit light maps clip at 1, which is where lights stop adding.
@@ -238,33 +235,33 @@ void main() {
 
 @(private = "file")
 ensure :: proc(f: ^render.Post_Frame) {
-	if !st.ready {
-		st.ready = true
-		st.blur = rl.LoadShaderFromMemory(nil, BLUR_SHADER)
-		st.blur_dir = rl.GetShaderLocation(st.blur, "dir")
-		st.composite = rl.LoadShaderFromMemory(nil, COMPOSITE_SHADER)
-		st.lights_loc = rl.GetShaderLocation(st.composite, "lights")
-		st.glow_loc = rl.GetShaderLocation(st.composite, "glow")
-		st.spec_loc = rl.GetShaderLocation(st.composite, "specular")
-		st.normal_loc = rl.GetShaderLocation(st.composite, "normals")
-		st.texel_loc = rl.GetShaderLocation(st.composite, "lightPx")
-		st.spec_gain = rl.GetShaderLocation(st.composite, "specGain")
-		st.canvas_loc = rl.GetShaderLocation(st.composite, "canvas")
-		st.field_loc = rl.GetShaderLocation(st.composite, "field")
-		st.map_loc = rl.GetShaderLocation(st.composite, "mapRect")
-		st.shadow_loc = rl.GetShaderLocation(st.composite, "hasShadow")
-		st.filtered = make(map[u32]bool)
+	if !shared.st.ready {
+		shared.st.ready = true
+		shared.st.blur = rl.LoadShaderFromMemory(nil, BLUR_SHADER)
+		shared.st.blur_dir = rl.GetShaderLocation(shared.st.blur, "dir")
+		shared.st.composite = rl.LoadShaderFromMemory(nil, COMPOSITE_SHADER)
+		shared.st.lights_loc = rl.GetShaderLocation(shared.st.composite, "lights")
+		shared.st.glow_loc = rl.GetShaderLocation(shared.st.composite, "glow")
+		shared.st.spec_loc = rl.GetShaderLocation(shared.st.composite, "specular")
+		shared.st.normal_loc = rl.GetShaderLocation(shared.st.composite, "normals")
+		shared.st.texel_loc = rl.GetShaderLocation(shared.st.composite, "lightPx")
+		shared.st.spec_gain = rl.GetShaderLocation(shared.st.composite, "specGain")
+		shared.st.canvas_loc = rl.GetShaderLocation(shared.st.composite, "canvas")
+		shared.st.field_loc = rl.GetShaderLocation(shared.st.composite, "field")
+		shared.st.map_loc = rl.GetShaderLocation(shared.st.composite, "mapRect")
+		shared.st.shadow_loc = rl.GetShaderLocation(shared.st.composite, "hasShadow")
+		shared.st.filtered = make(map[u32]bool)
 		gloss := rl.GenImageColor(1, 1, {u8(SPECULAR_DEFAULT * 255), 0, 0, 255})
 		rl.ImageFormat(&gloss, .UNCOMPRESSED_GRAYSCALE)
-		st.plain = rl.LoadTextureFromImage(gloss)
+		shared.st.plain = rl.LoadTextureFromImage(gloss)
 		rl.UnloadImage(gloss)
 		up := rl.GenImageColor(1, 1, {128, 128, 255, 255})
-		st.flat = rl.LoadTextureFromImage(up)
+		shared.st.flat = rl.LoadTextureFromImage(up)
 		rl.UnloadImage(up)
-		st.light_k = rl.GetShaderLocation(st.composite, "lightGain")
-		st.glow_k = rl.GetShaderLocation(st.composite, "glowGain")
-		st.colours = make(map[Colour_Key]rl.Color)
-		st.plates = make(map[u32]rl.Image)
+		shared.st.light_k = rl.GetShaderLocation(shared.st.composite, "lightGain")
+		shared.st.glow_k = rl.GetShaderLocation(shared.st.composite, "glowGain")
+		shared.st.colours = make(map[Colour_Key]rl.Color)
+		shared.st.plates = make(map[u32]rl.Image)
 		// A light's falloff: bright at the middle, smoothly to nothing at
 		// the edge, in white, tinted when drawn.
 		img := rl.GenImageColor(FALLOFF_SIZE, FALLOFF_SIZE, rl.BLACK)
@@ -278,17 +275,17 @@ ensure :: proc(f: ^render.Post_Frame) {
 				px[y * FALLOFF_SIZE + x] = {v, v, v, v}
 			}
 		}
-		st.falloff = rl.LoadTextureFromImage(img)
-		rl.SetTextureFilter(st.falloff, .BILINEAR)
+		shared.st.falloff = rl.LoadTextureFromImage(img)
+		rl.SetTextureFilter(shared.st.falloff, .BILINEAR)
 		rl.UnloadImage(img)
 	}
-	if st.w != f.width || st.h != f.height {
+	if shared.st.w != f.width || shared.st.h != f.height {
 		unload_targets()
-		st.w, st.h = f.width, f.height
-		st.light = target(f.width / LIGHT_DIV, f.height / LIGHT_DIV)
-		st.emit = target(f.width / GLOW_DIV, f.height / GLOW_DIV)
-		st.blur_a = target(f.width / GLOW_DIV, f.height / GLOW_DIV)
-		st.blur_b = target(f.width / GLOW_DIV, f.height / GLOW_DIV)
+		shared.st.w, shared.st.h = f.width, f.height
+		shared.st.light = target(f.width / LIGHT_DIV, f.height / LIGHT_DIV)
+		shared.st.emit = target(f.width / GLOW_DIV, f.height / GLOW_DIV)
+		shared.st.blur_a = target(f.width / GLOW_DIV, f.height / GLOW_DIV)
+		shared.st.blur_b = target(f.width / GLOW_DIV, f.height / GLOW_DIV)
 	}
 }
 
@@ -302,34 +299,34 @@ target :: proc(w, h: i32) -> rl.RenderTexture2D {
 
 @(private = "file")
 unload_targets :: proc() {
-	for t in ([4]rl.RenderTexture2D{st.light, st.emit, st.blur_a, st.blur_b}) {
+	for t in ([4]rl.RenderTexture2D{shared.st.light, shared.st.emit, shared.st.blur_a, shared.st.blur_b}) {
 		if t.id != 0 {
 			rl.UnloadRenderTexture(t)
 		}
 	}
-	st.light, st.emit, st.blur_a, st.blur_b = {}, {}, {}, {}
+	shared.st.light, shared.st.emit, shared.st.blur_a, shared.st.blur_b = {}, {}, {}, {}
 }
 
 @(private = "file")
 destroy :: proc() {
-	if !st.ready {
+	if !shared.st.ready {
 		return
 	}
 	unload_targets()
-	rl.UnloadTexture(st.falloff)
-	rl.UnloadTexture(st.plain)
-	rl.UnloadTexture(st.flat)
-	rl.UnloadTexture(st.ground)
-	delete(st.ground_key)
-	delete(st.filtered)
-	rl.UnloadShader(st.blur)
-	rl.UnloadShader(st.composite)
-	for _, img in st.plates {
+	rl.UnloadTexture(shared.st.falloff)
+	rl.UnloadTexture(shared.st.plain)
+	rl.UnloadTexture(shared.st.flat)
+	rl.UnloadTexture(shared.st.ground)
+	delete(shared.st.ground_key)
+	delete(shared.st.filtered)
+	rl.UnloadShader(shared.st.blur)
+	rl.UnloadShader(shared.st.composite)
+	for _, img in shared.st.plates {
 		rl.UnloadImage(img)
 	}
-	delete(st.colours)
-	delete(st.plates)
-	st = {}
+	delete(shared.st.colours)
+	delete(shared.st.plates)
+	shared.st = {}
 }
 
 // The colour a frame shines in: its pixels' mean, weighted by alpha, with
@@ -339,10 +336,10 @@ destroy :: proc() {
 @(private = "file")
 shine_colour :: proc(r: ^render.Renderer, it: render.Item) -> rl.Color {
 	key := Colour_Key{i32(it.texture.id), i32(it.src.x), i32(it.src.y), i32(it.src.width), i32(it.src.height)}
-	if c, ok := st.colours[key]; ok {
+	if c, ok := shared.st.colours[key]; ok {
 		return c
 	}
-	img, have := st.plates[it.texture.id]
+	img, have := shared.st.plates[it.texture.id]
 	if !have {
 		// A texture pack's redrawn plate carries the original's size.
 		whole := it.texture
@@ -350,7 +347,7 @@ shine_colour :: proc(r: ^render.Renderer, it: render.Item) -> rl.Color {
 		whole.width, whole.height = size.x, size.y
 		img = rl.LoadImageFromTexture(whole)
 		rl.ImageFormat(&img, .UNCOMPRESSED_R8G8B8A8)
-		st.plates[it.texture.id] = img
+		shared.st.plates[it.texture.id] = img
 	}
 	sum: [3]f32
 	weight: f32
@@ -373,7 +370,7 @@ shine_colour :: proc(r: ^render.Renderer, it: render.Item) -> rl.Color {
 		mean = mean + (1 - mean) * 0.1
 		col = {u8(mean.r * 255), u8(mean.g * 255), u8(mean.b * 255), 255}
 	}
-	st.colours[key] = col
+	shared.st.colours[key] = col
 	return col
 }
 
@@ -484,9 +481,9 @@ prepare :: proc(r: ^render.Renderer, f: ^render.Post_Frame) {
 	lights: [MAX_LIGHTS]Light
 	n := gather(r, f, &lights)
 
-	if r.setting[LIGHT_STRENGTH] > 0 {
+	if r.setting[shared.light_strength] > 0 {
 		inv := 1 / f32(LIGHT_DIV)
-		rl.BeginTextureMode(st.light)
+		rl.BeginTextureMode(shared.st.light)
 		// Cleared clear, not black: the alpha is the reach into shadow.
 		rl.ClearBackground({})
 		// Added as they are, colour and reach both already scaled (the
@@ -497,7 +494,7 @@ prepare :: proc(r: ^render.Renderer, f: ^render.Post_Frame) {
 		src := rl.Rectangle{0, 0, FALLOFF_SIZE, FALLOFF_SIZE}
 		for l in lights[:n] {
 			rad := l.radius * inv
-			rl.DrawTexturePro(st.falloff, src, {l.at.x * inv - rad, l.at.y * inv - rad, rad * 2, rad * 2}, {}, 0, premultiplied(l.colour, l.gain, l.reach))
+			rl.DrawTexturePro(shared.st.falloff, src, {l.at.x * inv - rad, l.at.y * inv - rad, rad * 2, rad * 2}, {}, 0, premultiplied(l.colour, l.gain, l.reach))
 		}
 		rl.EndBlendMode()
 		// Then what shines takes its own shape back out, as much as it
@@ -510,9 +507,9 @@ prepare :: proc(r: ^render.Renderer, f: ^render.Post_Frame) {
 		rl.EndTextureMode()
 	}
 
-	if r.setting[GLOW_STRENGTH] > 0 {
+	if r.setting[shared.glow_strength] > 0 {
 		inv := 1 / f32(GLOW_DIV)
-		rl.BeginTextureMode(st.emit)
+		rl.BeginTextureMode(shared.st.emit)
 		rl.ClearBackground(rl.BLACK)
 		rl.BeginBlendMode(.ADDITIVE)
 		draw_shining(r, f, GLOW_DIV)
@@ -540,17 +537,17 @@ prepare :: proc(r: ^render.Renderer, f: ^render.Post_Frame) {
 			from, to: ^rl.RenderTexture2D,
 			dir:      [2]f32,
 		}{
-			{&st.emit, &st.blur_a, {1, 0}},
-			{&st.blur_a, &st.blur_b, {0, 1}},
-			{&st.blur_b, &st.blur_a, {2.5, 0}},
-			{&st.blur_a, &st.blur_b, {0, 2.5}},
+			{&shared.st.emit, &shared.st.blur_a, {1, 0}},
+			{&shared.st.blur_a, &shared.st.blur_b, {0, 1}},
+			{&shared.st.blur_b, &shared.st.blur_a, {2.5, 0}},
+			{&shared.st.blur_a, &shared.st.blur_b, {0, 2.5}},
 		}
-		w, h := f32(st.blur_a.texture.width), f32(st.blur_a.texture.height)
+		w, h := f32(shared.st.blur_a.texture.width), f32(shared.st.blur_a.texture.height)
 		for hop in hops {
 			rl.BeginTextureMode(hop.to^)
-			rl.BeginShaderMode(st.blur)
+			rl.BeginShaderMode(shared.st.blur)
 			step := [2]f32{hop.dir.x / w, hop.dir.y / h}
-			rl.SetShaderValue(st.blur, st.blur_dir, &step, .VEC2)
+			rl.SetShaderValue(shared.st.blur, shared.st.blur_dir, &step, .VEC2)
 			rl.DrawTexturePro(hop.from.texture, {0, 0, w, -h}, {0, 0, w, h}, {}, 0, rl.WHITE)
 			rl.EndShaderMode()
 			rl.EndTextureMode()
@@ -566,14 +563,14 @@ prepare :: proc(r: ^render.Renderer, f: ^render.Post_Frame) {
 @(private = "file")
 ground_texture :: proc(r: ^render.Renderer, layers: data.Level_Layers) -> (tex: rl.Texture2D, ok: bool) {
 	key := strings.concatenate({layers.specular, "|", layers.shadow_mask}, context.temp_allocator)
-	if key != st.ground_key {
-		rl.UnloadTexture(st.ground)
-		st.ground = {}
-		delete(st.ground_key)
-		st.ground_key = strings.clone(key)
-		st.ground = ground_make(r, layers)
+	if key != shared.st.ground_key {
+		rl.UnloadTexture(shared.st.ground)
+		shared.st.ground = {}
+		delete(shared.st.ground_key)
+		shared.st.ground_key = strings.clone(key)
+		shared.st.ground = ground_make(r, layers)
 	}
-	return st.ground, st.ground.id != 0
+	return shared.st.ground, shared.st.ground.id != 0
 }
 
 @(private = "file")
@@ -629,8 +626,8 @@ layer_texture :: proc(r: ^render.Renderer, id: string) -> (tex: rl.Texture2D, ok
 		return
 	}
 	tex, ok = render.im16_texture(&r.textures, &r.textures.images, id)
-	if ok && !st.filtered[tex.id] {
-		st.filtered[tex.id] = true
+	if ok && !shared.st.filtered[tex.id] {
+		shared.st.filtered[tex.id] = true
 		rl.SetTextureFilter(tex, .BILINEAR)
 		rl.SetTextureWrap(tex, .CLAMP)
 	}
@@ -640,10 +637,10 @@ layer_texture :: proc(r: ^render.Renderer, id: string) -> (tex: rl.Texture2D, ok
 @(private = "file")
 apply :: proc(r: ^render.Renderer, f: ^render.Post_Frame, src: rl.Texture2D) {
 	// Gains: the sliders, scaled so full is strong but not blinding.
-	light_gain := f32(r.setting[LIGHT_STRENGTH]) / 100 * 1.0
-	glow_gain := f32(r.setting[GLOW_STRENGTH]) / 100 * 1.8
+	light_gain := f32(r.setting[shared.light_strength]) / 100 * 1.0
+	glow_gain := f32(r.setting[shared.glow_strength]) / 100 * 1.8
 	// The ground's gloss: the level's specular mask, at the map's pixels.
-	spec, normals, map_rect := st.plain, st.flat, [4]f32{0, 0, 1, 1}
+	spec, normals, map_rect := shared.st.plain, shared.st.flat, [4]f32{0, 0, 1, 1}
 	has_shadow := f32(0)
 	if s := f.state; s != nil {
 		level := sim.level_def(s)
@@ -664,23 +661,23 @@ apply :: proc(r: ^render.Renderer, f: ^render.Post_Frame, src: rl.Texture2D) {
 			}
 		}
 	}
-	spec_gain := f32(r.setting[LIGHT_STRENGTH]) / 100 * SPECULAR_GAIN
+	spec_gain := f32(r.setting[shared.light_strength]) / 100 * SPECULAR_GAIN
 	canvas := [2]f32{f32(f.width), f32(f.height)}
 	field := [4]f32{render.VIEW_X * f.scale, 0, render.PLAY_W * f.scale, render.PLAY_H * f.scale}
-	rl.BeginShaderMode(st.composite)
-	rl.SetShaderValue(st.composite, st.spec_gain, &spec_gain, .FLOAT)
-	rl.SetShaderValue(st.composite, st.canvas_loc, &canvas, .VEC2)
-	rl.SetShaderValue(st.composite, st.field_loc, &field, .VEC4)
-	rl.SetShaderValue(st.composite, st.map_loc, &map_rect, .VEC4)
-	rl.SetShaderValue(st.composite, st.shadow_loc, &has_shadow, .FLOAT)
-	rl.SetShaderValueTexture(st.composite, st.spec_loc, spec)
-	rl.SetShaderValueTexture(st.composite, st.normal_loc, normals)
-	texel := [2]f32{1 / f32(st.light.texture.width), 1 / f32(st.light.texture.height)}
-	rl.SetShaderValue(st.composite, st.texel_loc, &texel, .VEC2)
-	rl.SetShaderValue(st.composite, st.light_k, &light_gain, .FLOAT)
-	rl.SetShaderValue(st.composite, st.glow_k, &glow_gain, .FLOAT)
-	rl.SetShaderValueTexture(st.composite, st.lights_loc, st.light.texture)
-	rl.SetShaderValueTexture(st.composite, st.glow_loc, st.blur_b.texture)
+	rl.BeginShaderMode(shared.st.composite)
+	rl.SetShaderValue(shared.st.composite, shared.st.spec_gain, &spec_gain, .FLOAT)
+	rl.SetShaderValue(shared.st.composite, shared.st.canvas_loc, &canvas, .VEC2)
+	rl.SetShaderValue(shared.st.composite, shared.st.field_loc, &field, .VEC4)
+	rl.SetShaderValue(shared.st.composite, shared.st.map_loc, &map_rect, .VEC4)
+	rl.SetShaderValue(shared.st.composite, shared.st.shadow_loc, &has_shadow, .FLOAT)
+	rl.SetShaderValueTexture(shared.st.composite, shared.st.spec_loc, spec)
+	rl.SetShaderValueTexture(shared.st.composite, shared.st.normal_loc, normals)
+	texel := [2]f32{1 / f32(shared.st.light.texture.width), 1 / f32(shared.st.light.texture.height)}
+	rl.SetShaderValue(shared.st.composite, shared.st.texel_loc, &texel, .VEC2)
+	rl.SetShaderValue(shared.st.composite, shared.st.light_k, &light_gain, .FLOAT)
+	rl.SetShaderValue(shared.st.composite, shared.st.glow_k, &glow_gain, .FLOAT)
+	rl.SetShaderValueTexture(shared.st.composite, shared.st.lights_loc, shared.st.light.texture)
+	rl.SetShaderValueTexture(shared.st.composite, shared.st.glow_loc, shared.st.blur_b.texture)
 	w, h := f32(src.width), f32(src.height)
 	rl.DrawTexturePro(src, {0, 0, w, -h}, {0, 0, w, h}, {}, 0, rl.WHITE)
 	rl.EndShaderMode()

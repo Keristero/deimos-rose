@@ -25,19 +25,16 @@ Effect_Queue :: struct {
 	count:  int,
 }
 
-@(private = "file")
-effect_kinds: Registry(typeid, MAX_EFFECT_KINDS)
-
 // Called from registration steps only (sim.register_step).
 effect_kind_register :: proc($T: typeid) -> Effect_Kind {
 	#assert(size_of(T) <= EFFECT_BYTES, "an effect event's value is at most EFFECT_BYTES")
-	return Effect_Kind(registry_add(&effect_kinds, T))
+	return Effect_Kind(registry_add(&shared.effect_kinds, T))
 }
 
 // Adds this step's event of `kind`. A full queue drops it: presentation
 // only, so the step goes on the same.
 effect_push :: proc "contextless" (s: ^State, kind: Effect_Kind, value: $T) {
-	assert_contextless(registry_items(&effect_kinds)[kind] == T, "sim: an effect event of another kind's type")
+	assert_contextless(registry_items(&shared.effect_kinds)[kind] == T, "sim: an effect event of another kind's type")
 	q := &s.effects
 	if q.count >= MAX_EFFECT_EVENTS {
 		return

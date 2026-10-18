@@ -84,10 +84,10 @@ REAR_GUN_CHARGE_PHASES := []ui.Shot_Phase{{66, {{.Fire_Air}, {}}}, {20, {}}}
 FULL_CHARGE_PHASES := []ui.Shot_Phase{{96, {{.Fire_Air}, {}}}, {30, {}}}
 
 register_shots :: proc() {
-	ui.shot_register({name = "rear_gun_side", plugin = passives.ID, level = 2, alone = true, setup = weapon_shot, phases = REAR_GUN_PHASES})
-	ui.shot_register({name = "rear_gun_charge", plugin = passives.ID, level = 2, alone = true, setup = weapon_shot, phases = REAR_GUN_CHARGE_PHASES})
-	ui.shot_register({name = "bacta_gun_charge", plugin = passives.ID, level = 2, alone = true, setup = weapon_shot, phases = FULL_CHARGE_PHASES})
-	ui.shot_register({name = "ion_cannon_charge", plugin = passives.ID, level = 2, alone = true, setup = weapon_shot, phases = FULL_CHARGE_PHASES})
+	ui.shot_register({name = "rear_gun_side", plugin = passives.id(), level = 2, alone = true, setup = weapon_shot, phases = REAR_GUN_PHASES})
+	ui.shot_register({name = "rear_gun_charge", plugin = passives.id(), level = 2, alone = true, setup = weapon_shot, phases = REAR_GUN_CHARGE_PHASES})
+	ui.shot_register({name = "bacta_gun_charge", plugin = passives.id(), level = 2, alone = true, setup = weapon_shot, phases = FULL_CHARGE_PHASES})
+	ui.shot_register({name = "ion_cannon_charge", plugin = passives.id(), level = 2, alone = true, setup = weapon_shot, phases = FULL_CHARGE_PHASES})
 }
 
 @(init)

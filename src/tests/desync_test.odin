@@ -2,7 +2,7 @@ package tests
 
 import "core:testing"
 
-import net "dr:net"
+import net "dr:plugins/netplay/net"
 
 @(test)
 checksum_packet_round_trips :: proc(t: ^testing.T) {

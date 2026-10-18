@@ -8,27 +8,18 @@ import "dr:sim"
 // percent of the plugin's own look (100 as it is, 0 off); the volumes are
 // percent of twice the default, so 50 is as it comes and 100 is double.
 
-STRENGTH: prefs.Setting_ID // how long a hit holds
-SHAKE: prefs.Setting_ID // how hard the kill cam shakes the screen
-ZOOM_AMOUNT: prefs.Setting_ID // how far the kill cam zooms in
-SLOWMO: prefs.Setting_ID // how deep the kill cam's slow-motion goes
-REVERB: prefs.Setting_ID // how much reverb the kill cam puts on the sound
-FLAMES: prefs.Setting_ID // how much fire the combo text and meter throw
-ANNOUNCER_VOLUME: prefs.Setting_ID
-BOOM_VOLUME: prefs.Setting_ID
-HORN_VOLUME: prefs.Setting_ID
-
 register_settings :: proc() {
-	id := hitstop.ID
-	STRENGTH = prefs.setting_register({plugin = id, key = "hitstop_strength", label = "HIT PAUSE", kind = .Percent, default = 100})
-	SHAKE = prefs.setting_register({plugin = id, key = "hitstop_shake", label = "KILL CAM SHAKE", kind = .Percent, default = 100})
-	ZOOM_AMOUNT = prefs.setting_register({plugin = id, key = "hitstop_zoom", label = "KILL CAM ZOOM", kind = .Percent, default = 100})
-	SLOWMO = prefs.setting_register({plugin = id, key = "hitstop_slowmo", label = "KILL CAM SLOW MOTION", kind = .Percent, default = 100})
-	REVERB = prefs.setting_register({plugin = id, key = "hitstop_reverb", label = "KILL CAM REVERB", kind = .Percent, default = 100})
-	FLAMES = prefs.setting_register({plugin = id, key = "hitstop_flames", label = "COMBO FLAMES", kind = .Percent, default = 100})
-	ANNOUNCER_VOLUME = prefs.setting_register({plugin = id, key = "hitstop_announcer_volume", label = "ANNOUNCER VOLUME", kind = .Percent, default = 50})
-	BOOM_VOLUME = prefs.setting_register({plugin = id, key = "hitstop_boom_volume", label = "BOOM VOLUME", kind = .Percent, default = 50})
-	HORN_VOLUME = prefs.setting_register({plugin = id, key = "hitstop_horn_volume", label = "HORN VOLUME", kind = .Percent, default = 50})
+	id := hitstop.id()
+	shared.strength = prefs.setting_register({plugin = id, key = "hitstop_strength", label = "HIT PAUSE", kind = .Percent, default = 100})
+	shared.shake = prefs.setting_register({plugin = id, key = "hitstop_shake", label = "KILL CAM SHAKE", kind = .Percent, default = 100})
+	shared.zoom_amount = prefs.setting_register({plugin = id, key = "hitstop_zoom", label = "KILL CAM ZOOM", kind = .Percent, default = 100})
+	shared.slowmo = prefs.setting_register({plugin = id, key = "hitstop_slowmo", label = "KILL CAM SLOW MOTION", kind = .Percent, default = 100})
+	shared.reverb = prefs.setting_register({plugin = id, key = "hitstop_reverb", label = "KILL CAM REVERB", kind = .Percent, default = 100})
+	shared.flames = prefs.setting_register({plugin = id, key = "hitstop_flames", label = "COMBO FLAMES", kind = .Percent, default = 100})
+	shared.announcer_volume = prefs.setting_register({plugin = id, key = "hitstop_announcer_volume", label = "ANNOUNCER VOLUME", kind = .Percent, default = 50})
+	shared.boom_volume = prefs.setting_register({plugin = id, key = "hitstop_boom_volume", label = "BOOM VOLUME", kind = .Percent, default = 50})
+	shared.horn_volume = prefs.setting_register({plugin = id, key = "hitstop_horn_volume", label = "HORN VOLUME", kind = .Percent, default = 50})
+	shared.flame_amount = 1 // until combo_apply reads the setting
 }
 
 // An intensity setting as a multiplier: 1 at 100.

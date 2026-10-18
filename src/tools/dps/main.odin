@@ -630,7 +630,7 @@ dps_run :: proc(d: ^sim.Defs, w: Weapon_Case, sc: Scenario, levels: passives.Pas
 	defer free(s)
 	defer sim.destroy(s)
 	// As a player with Passive Upgrades and the new weapons has them.
-	mods := sim.mods_session(sim.mods_switch_on({}, {int(passives.ID), int(new_weapons.ID), int(chaingun.ID)}))
+	mods := sim.mods_session(sim.mods_switch_on({}, {int(passives.id()), int(new_weapons.id()), int(chaingun.id())}))
 	sim.init(s, sim.Session{seed = SEED, level_id = d.levels[0].id, game_type = .Single, mods = mods}, d)
 	// The weapon is handed over below, not chosen on the loadout screen.
 	loadout.loadout_of(s).shown = sim.single(s, sim.Level_Info).played

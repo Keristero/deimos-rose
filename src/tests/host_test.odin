@@ -137,9 +137,11 @@ a_netplay_pause_holds_the_session :: proc(t: ^testing.T) {
 	testing.expect(t, !sim.session_frozen(s))
 	sim.session_step(s, {{.Pause}, {}})
 	testing.expect(t, sim.session_frozen(s), "a pause holds play")
+	testing.expect(t, sim.paused(s), "and is a pause, for the game's pause card (Hold.pause)")
 	sim.session_step(s, {})
 	sim.session_step(s, {{}, {.Pause}})
 	testing.expect(t, !sim.session_frozen(s), "the other player's press lets it go")
+	testing.expect(t, !sim.paused(s))
 }
 
 // A test's own kind of effect event, beside New Weapons' beams.

@@ -2134,3 +2134,190 @@ using raylib's own capabilities and without costing image quality.
   so the whole world is at twice the resolution. Switching the plugin rebuilds
   the buffer, so marks burned earlier in the level are lost. Classic mode
   ignores packs.
+
+### D81 — Feature branches, pull requests, and a generated website
+
+The project outgrew committing to one branch and pushing when asked.
+From Phase 10 on (AGENTS.md, "Branches and pull requests"):
+
+- **Every change is a pull request.** A feature branch per change,
+  stacked on the branch it builds on; nobody pushes to `main`, and the
+  owner merges. Merge commits, not squashes, so each commit's
+  `Changelog:` block still reaches the release notes.
+- **The website is built, not written.** `src/site/build.mjs` (Node 20,
+  no dependencies) generates it from `src/site/site.config.json`, the
+  plugin folders and the releases API, and `.github/workflows/site.yml`
+  deploys it to GitHub Pages. It runs on `workflow_run` after Build
+  finishes on main rather than on the push, because Build publishes the
+  release the download buttons link: a site built at push time would
+  link the one before.
+- **The newest release of main is found by tag.** Every release is a
+  prerelease, which the API's `/releases/latest` skips (404, checked
+  2026-10-08), so the generator takes the newest `v<major>.<minor>.<n>`
+  tag with no branch suffix.
+- **Every branch adds a site entry.** `site:check` compares the
+  branch's `changes` with the merge base's and fails when nothing was
+  added; the pull request workflow runs it against the pull request's
+  base. Plugin labels and descriptions are read from the plugins
+  themselves (their `plugin.json` or `plugin_register` call), and a
+  plugin folder missing from the config fails the build, so the site
+  says what the Mods page says.
+
+
+### D82 — The core asks; plugins answer
+
+Phase 10 stage 1 (`docs/phase-10-plugin-split.md`). `game/` named six
+plugins at 29 call sites, so the core could not build without them. Each
+question it asked a plugin by name is now a hook the plugin registers
+from its view, and `mise run purity` fails any core import of a plugin
+outside `game/plugins.odin`.
+
+- **Hooks are named for what they do.** A setup switch, a launch flag, a
+  frame rate, a settings preview, a menu shot: none is called after
+  Easy Mode or 30FPS Unlock, so the next plugin uses the same one.
+- **Plugins are found by role, not by name.** Netplay is the plugin with
+  `online`, a pause is a `Hold` with `pause`, a player's colour is a
+  `Hue` setting with `player`. The core never `plugin_find`s a plugin it
+  expects, except `LEGACY_MODS`, which reads preference files from before
+  mods were saved by name (still open).
+- **The renderer gets the effective settings.** `Renderer.setting`
+  holds each on plugin's settings, and nothing in classic mode or a
+  demo, so a plugin's render system reads its own setting ids
+  (`SELF_OUTLINE`) rather than the core carrying a field for it
+  (`Accent.outline` is gone). The field is the one D78 added for the
+  post passes, which held every saved setting; it now holds only those
+  of the plugins on, and is cleared each frame.
+- **A test turns a plugin on from the command line.** `-mod <name>` does
+  for any plugin what its own launch flag does, without saving it. The
+  netplay level-end check used to turn Easy Mode on in code; it passes
+  `-mod easy_mode` now.
+- **The Start packet's flags are retired, not removed.** Sent as 0 and
+  ignored: every build since 2026-09-27 sends mods in Start and checks a
+  build hash in Hello, so nothing reads them, and keeping the field keeps
+  the packet's layout.
+
+### D83 — One block of state per package
+
+Phase 10 stage 2 (`docs/phase-10-plugin-split.md`). A plugin built as a
+shared library compiles its own copy of every package it imports,
+globals included, so its registrations would land in a copy the game
+never reads.
+
+- **A package's mutable state is one struct, reached through one
+  pointer.** `Shared`, a zeroed `shared_block`, and `shared :=
+  &shared_block`, declared to `dr:blocks` from an `@(init)`. Binding
+  points a plugin's `shared` at the game's block; every read already
+  goes through it, so the package's code does not know which module it
+  runs in.
+- **Bind is all or nothing, and checked by type.** A block whose
+  `Shared` differs from the game's means the plugin was built from other
+  sources; nothing is bound, and the package is named. Stage 3's ABI
+  stamp refuses such a plugin earlier; this is the backstop.
+- **What a plugin made before binding is merged, by name.** Its
+  `@(init)`s run at load, before it can bind, so sim queues their steps
+  locally and its `merge` adds them to the game's, skipping steps the
+  game has.
+- **Tables are `@(rodata)`.** A literal table is the same in every
+  module, so a copy is harmless; marking it read-only says so, and lets
+  the check tell it from state.
+- **Ids set at registration are state.** They live in the plugin's
+  block, behind a `#force_inline` accessor (`new_weapons.beam()`).
+- **A block starts zeroed.** An initialiser moved sim's 135 KB block
+  into the executable's `.data`.
+- **The rule is enforced.** `mise run purity` runs `tools/globals
+  -check`, which fails any other mutable package variable, any
+  `@(static)` local but `component_slot`'s, and any block initialiser,
+  in every package a plugin can import.
+- **odecs is exempt.** Its package state is its encoded query terms,
+  which no code outside it may use (D47).
+
+### D84 — Every plugin is pictured, by the game, and the picture is committed
+
+Asked for on 2026-10-18: each mod must have a screenshot on the website.
+
+- **The game takes it.** A plugin's entry in `site.config.json` names a
+  menu-shot scenario and launch flags (`"shot"`), and `site/shots.mjs`
+  runs the game on it, so a picture is reproducible and shows what the
+  build draws, never a mock-up. `playing`, a plain level with only the
+  flags' plugins on, covers a plugin with no scenario of its own, a data
+  plugin's textures or levels among them; headless runs now honour `-mod`
+  (`launch_mods`), which they ignored.
+- **Committed, not rendered in CI.** The deploy job has no display, the
+  game's assets or HD Textures' generated textures; a picture changes
+  only when its plugin's look does; 17 come to 1.6 MB as 960x720 WebP.
+  Rendering them in the Build workflow and handing them to the site job
+  would remove the commit, at the cost of a display server and the
+  textures in CI.
+- **Missing is a failure.** `site/build.mjs` fails on a plugin without
+  its image, as on one missing from the list, so a new plugin cannot
+  reach the site unpictured.
+
+### D85 — A code plugin is a library built from the game's own sources
+
+Phase 10 stage 3, 2026-10-18. The game imports no plugin: it loads
+`plugins/<name>/<name>.so` (`.dll`) at startup (`game/plugin_libs.odin`).
+
+- **Same sources or refused.** The game and every library carry an ABI
+  stamp, a digest of every source a library can copy
+  (`tools/plugins/abi.sh`). A library from other sources is refused by
+  name before its runtime starts. Mixing releases is out of scope; a
+  plugin download is built in the same CI run as the game it goes with.
+- **Self-contained libraries.** Each library carries its own copy of
+  every package it imports, and binds its blocks to the game's (D83).
+  No library links another, so loading needs no order and no search
+  path beyond the game's folder.
+- **raylib shared**, beside the game, so there is one window and one GL
+  context whatever loads.
+- **The loader starts a library's runtime** where loading did not
+  (Odin dev-2026-09 on Linux, phase-10-plugin-split.md), and never
+  unloads one it started.
+- **`all_plugins` is the static build.** The tests, tools and
+  `build:static` import every plugin through it; `plugins:check`
+  requires the libraries to register exactly what it does, in CI on both
+  systems.
+
+### D86 — A plugin's screen, which may drive the session
+
+Phase 10 stage 4, 2026-10-18. A plugin adds a screen with
+`game.screen_register` (`game/screens.odin`). The main menu lists its
+item while its plugin is on, and the Flow shows it as `.Screen`. A
+screen may then drive the session it began (`game.flow_drive`). It
+steps it in place of this machine's input, polls each frame, and says
+what holds it still. The game keeps the shared pause, Escape and F5,
+the end of the session and the high scores.
+
+- **Why a screen and not a lobby hook.** Netplay needed the menu item,
+  a full-screen UI, its own session stepping and a say in leaving it.
+  Those are four places in `game/`. A screen covers all of them in one
+  registration, and names no network idea: a replay browser or a
+  spectator view would register the same way.
+- **`game` is shared state.** A plugin that imports `dr:game` carries a
+  copy of it, so `game` keeps its state in a block and its tables in
+  `@(rodata)`, as `sim` and the rest do (D83). `mise run purity`
+  checks it.
+- **Netplay's code is the plugin's.** `net/` lives in
+  `plugins/netplay/net/`, and the lobby and session code in its view.
+  The core builds, runs and passes its checks without them.
+
+### D87 — A release is the game, and a download per plugin
+
+Phase 10 stage 5, 2026-10-18. A release carries
+`deimos-<tag>-<os>-amd64.zip`, the game alone with Classic Levels;
+`-editor.zip`, the level editor with its model and material libraries;
+and `-plugin-<name>.zip` for each plugin (`tools/dist/zips.sh`). Each
+holds a `deimos/` folder, so all of them unzip over the same one.
+
+- **A plugin's zip bundles its dependencies.** A library registers its
+  dependencies whether or not their folders are there (D85), and a
+  plugin with no content plays without it, silently. So a zip takes the
+  folder of every plugin its plugin needs, as the game reports them,
+  rather than asking the player to fetch them in order.
+- **The game reports what it lacks.** `-list-plugins` marks a plugin
+  registered without its content, and exits 1. `dist:check` runs it on
+  each download over the game's.
+- **No zip of everything.** It was most of the release's size, and the
+  game a player needs to start is now under half of it. Every plugin is
+  still one unzip away.
+- **Same build, or none.** The zips are made from one release folder in
+  one CI run; a library from another refuses to load (D85). A player
+  updating the game updates the plugins with it.

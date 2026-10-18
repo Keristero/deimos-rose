@@ -12,9 +12,6 @@ import rl "vendor:raylib"
 BOOM_RATE :: 44100
 BOOM_SECONDS :: 1.8
 
-@(private = "file") boom: rl.Sound
-@(private = "file") boom_made: bool
-
 // The samples, in -1..1. Pure, so the tests can look at them.
 boom_samples :: proc(allocator := context.allocator) -> []f32 {
 	n := int(BOOM_RATE * BOOM_SECONDS)
@@ -43,23 +40,23 @@ boom_play :: proc(volume: f32) {
 	if !rl.IsAudioDeviceReady() {
 		return
 	}
-	if !boom_made {
-		boom_made = true
+	if !shared.boom_made {
+		shared.boom_made = true
 		samples := boom_samples(context.temp_allocator)
 		pcm := make([]i16, len(samples), context.temp_allocator)
 		for v, i in samples {
 			pcm[i] = i16(v * 32000)
 		}
 		wave := rl.Wave{frameCount = u32(len(pcm)), sampleRate = BOOM_RATE, sampleSize = 16, channels = 1, data = raw_data(pcm)}
-		boom = rl.LoadSoundFromWave(wave) // copies
+		shared.boom = rl.LoadSoundFromWave(wave) // copies
 	}
-	rl.SetSoundVolume(boom, clamp(volume * 0.5, 0, 1)) // under the announcer
-	rl.PlaySound(boom)
+	rl.SetSoundVolume(shared.boom, clamp(volume * 0.5, 0, 1)) // under the announcer
+	rl.PlaySound(shared.boom)
 }
 
 boom_destroy :: proc() {
-	if boom_made && rl.IsAudioDeviceReady() {
-		rl.UnloadSound(boom)
+	if shared.boom_made && rl.IsAudioDeviceReady() {
+		rl.UnloadSound(shared.boom)
 	}
-	boom_made = false
+	shared.boom_made = false
 }

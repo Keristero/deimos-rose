@@ -236,8 +236,6 @@ held :: proc "contextless" (s: ^sim.State) -> bool {
 	return reward_of(s).active
 }
 
-ID: sim.Plugin_ID
-
 @(private = "file", rodata)
 DEPS := []string{"passives"}
 // The screen runs ahead of the game step, after a pause has had its say;
@@ -250,24 +248,24 @@ SCREEN_BEFORE := []string{"step_events"}
 OPEN_BEFORE := []string{"level_transition"}
 
 register :: proc() {
-	ID = sim.plugin_register({
+	shared.id = sim.plugin_register({
 		name        = "easy_mode",
 		label       = "EASY MODE",
 		description = "A passive upgrade to choose after every level",
 		deps        = DEPS,
 		session     = true,
 	})
-	sim.kind_component(.Session, Reward{}, ID)
+	sim.kind_component(.Session, Reward{}, shared.id)
 	sim.system_register({
 		name   = "reward_screen",
 		after  = SCREEN_AFTER,
 		before = SCREEN_BEFORE,
-		plugin = ID,
+		plugin = shared.id,
 		kind   = .Session,
 		run    = screen_system,
 	})
-	sim.system_register({name = "reward_open", before = OPEN_BEFORE, plugin = ID, kind = .Session, run = open_system})
-	sim.hold_register({plugin = ID, held = held})
+	sim.system_register({name = "reward_open", before = OPEN_BEFORE, plugin = shared.id, kind = .Session, run = open_system})
+	sim.hold_register({plugin = shared.id, held = held})
 }
 
 @(init)

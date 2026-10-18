@@ -28,9 +28,6 @@ Def_Key :: struct {
 	kind: Def_Key_Kind,
 }
 
-@(private = "file")
-weapon_keys: Registry(Def_Key, MAX_WEAPON_KEYS)
-
 // Called from registration steps only (sim.register_step). `name` must outlive the call (a
 // string literal does).
 weapon_key_register :: proc(name: string) -> Weapon_Key {
@@ -47,11 +44,11 @@ weapon_key_register :: proc(name: string) -> Weapon_Key {
 	case:
 		panic("sim: a definition key's name ends in its type: _BOOL, _INT, _FLOAT or _ID")
 	}
-	return Weapon_Key(registry_add(&weapon_keys, Def_Key{name, kind}))
+	return Weapon_Key(registry_add(&shared.weapon_keys, Def_Key{name, kind}))
 }
 
 registered_weapon_keys :: proc "contextless" () -> []Def_Key {
-	return registry_items(&weapon_keys)
+	return registry_items(&shared.weapon_keys)
 }
 
 @(private = "file")

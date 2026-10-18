@@ -93,7 +93,7 @@ rd_fourcc :: proc(b: []byte, o: int) -> (f: FourCC) {
 // "Edit Key Controls" dialog (resource 102) lists controls in
 // U_Prefs_PlayerControlCodes order. It does not: the prefs order is Up,
 // Left, Right, Down.
-@(private = "file")
+@(private = "file", rodata)
 BIT_TO_BUTTON := [7]sim.Button {
 	0 = .Left,        // bit 0x01 -> field 3
 	1 = .Right,       // bit 0x02 -> field 1
