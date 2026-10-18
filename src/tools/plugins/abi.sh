@@ -8,7 +8,7 @@
 # Windows line endings stamps as a Unix one does.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-find blocks data game net plugin_entry plugins prefs render sim third_party ui \
+find blocks data game plugin_entry plugins prefs render sim third_party ui \
 	-name '*.odin' -not -path '*/tests/*' -print0 2>/dev/null |
 	LC_ALL=C sort -z |
 	xargs -0 cat |

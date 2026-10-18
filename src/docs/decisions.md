@@ -2275,3 +2275,26 @@ Phase 10 stage 3, 2026-10-18. The game imports no plugin: it loads
   `build:static` import every plugin through it; `plugins:check`
   requires the libraries to register exactly what it does, in CI on both
   systems.
+
+### D86 — A plugin's screen, which may drive the session
+
+Phase 10 stage 4, 2026-10-18. A plugin adds a screen with
+`game.screen_register` (`game/screens.odin`). The main menu lists its
+item while its plugin is on, and the Flow shows it as `.Screen`. A
+screen may then drive the session it began (`game.flow_drive`). It
+steps it in place of this machine's input, polls each frame, and says
+what holds it still. The game keeps the shared pause, Escape and F5,
+the end of the session and the high scores.
+
+- **Why a screen and not a lobby hook.** Netplay needed the menu item,
+  a full-screen UI, its own session stepping and a say in leaving it.
+  Those are four places in `game/`. A screen covers all of them in one
+  registration, and names no network idea: a replay browser or a
+  spectator view would register the same way.
+- **`game` is shared state.** A plugin that imports `dr:game` carries a
+  copy of it, so `game` keeps its state in a block and its tables in
+  `@(rodata)`, as `sim` and the rest do (D83). `mise run purity`
+  checks it.
+- **Netplay's code is the plugin's.** `net/` lives in
+  `plugins/netplay/net/`, and the lobby and session code in its view.
+  The core builds, runs and passes its checks without them.

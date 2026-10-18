@@ -1,8 +1,8 @@
 # Phase 10 — The plugin split
 
-**Status: in progress.** Stages 0–3 are on their branches: the workflow
-and website, the core naming no plugin, one copy of the state, and
-plugins loaded from libraries. Netplay out of the core and the separate
+**Status: in progress.** Stages 0–4 are on their branches: the workflow
+and website, the core naming no plugin, one copy of the state, plugins
+loaded from libraries, and netplay out of the core. The separate
 downloads are planned below.
 
 ## Why
@@ -499,6 +499,98 @@ starts, plays and opens Preferences.
   ~1 MB each; a library per plugin with shared dependencies would need
   libraries that link each other.
 - macOS (`.dylib`) is written but not built or run.
+
+## Stage 4 — netplay is a plugin
+
+The lobby, its sessions and the network code are the netplay plugin's.
+`net/` is `plugins/netplay/net/`, and `game/netplay.odin` (1,395 lines)
+is `plugins/netplay/view/netplay.odin`. The game reaches them through
+one new extension point, a **screen** (`game/screens.odin`, D86): an
+item on the main menu that opens a plugin's own screen, and that screen
+may then *drive* the session it starts, stepping it in place of this
+machine's input.
+
+```mermaid
+flowchart LR
+  subgraph before[Before]
+    F1[game Flow] -->|.Netplay_Lobby| L1[game/netplay.odin]
+    F1 -->|netplay_active| L1
+    L1 --> N1[net/ in the core]
+  end
+  subgraph after[After]
+    F2[game Flow] -->|.Screen| S[registered Screen]
+    F2 -->|driven: poll, step,<br/>banner, release| S
+    S -.registered by.-> V[plugins/netplay/view]
+    V --> N2[plugins/netplay/net]
+  end
+```
+
+What the game keeps, and asks the screen through `Screen`:
+
+| The game | The screen (netplay's) |
+|---|---|
+| the main menu item, shown while its plugin is on | `label`, `open`, `update`, `draw` |
+| startup | `launch`: `DR_NETPLAY=host` or `join:<address>` |
+| the pause menu over a shared pause, and its line | `pause_note` |
+| holding still while it is held: Escape leaves, F5 plays on alone | `banner`: the peer is lost |
+| each render frame, each step | `poll`, `step`, then `flow_after_step` for the effects and sounds |
+| the end of the session, its high scores under the lobby's names | `release`: close the socket, say goodbye if the player left |
+| the diagnostics overlay | `stats`: ping and rollbacks |
+| menu shots, and the shot a test saves | `shot` (a `menu_shot` procedure), `framed` |
+
+- **`game` has a block.** The view imports `dr:game` to use its Flow,
+  setup switches and campaign helpers, so `game` is now among the
+  packages whose state must live in a block (D83). Its tables are
+  `@(rodata)`, and its four pieces of state (the screens, the campaign
+  list, the Mods page's order, the last frame's axes) are in its
+  `Shared`. `mise run purity` checks `game/` too.
+- **The core has no netplay code.** `purity`'s core list no longer has
+  `net`, which is now a plugin package. `net/` is exempt from the sim's
+  purity rule, as a view is: sockets and wall-clock time are its job.
+- **menu-shots finds a screen's shots.** `tools/refs/menu_shots.sh` reads
+  the cases of a view's `menu_shot` procedure, as it reads
+  `run_menu_shot`'s.
+
+### Numbers (2026-10-18, Linux, Odin dev-2026-09)
+
+| | stage 3 | stage 4 |
+|---|---|---|
+| `game/` source | 6,258 lines | 4,939 lines (+136 for screens and its block) |
+| game binary | 1,939,336 B | 1,883,496 B |
+| `netplay.so` | 826,088 B | 1,634,512 B (it now carries a copy of `game`) |
+| registration hash | 6e230e9bb732befc | 6e230e9bb732befc |
+
+### Verified
+
+- `mise run ci` green, and `mise run purity` with `game/` in the
+  globals check.
+- `mise run plugins:check`: the same 17 plugins, ids and hash from the
+  libraries as compiled in; the game alone starts.
+- `mise run menu-shots:all` on stage 3 twice and on this branch: 52
+  scenarios each. The same 38 are byte-identical across all three,
+  among them all nine lobby shots, `diagnostics` and `main_netplay`
+  (the main menu with its NETPLAY item). The same 14 differ between two
+  runs of stage 3 (presentation particles).
+- `mise run netplay:level-end` passes: two games, one hosting and one
+  joining through `DR_NETPLAY`, play to the level's end through the
+  plugin's screen, hold play there, and run five seconds more.
+- Not run here: `netplay:loopback` and `netplay:reconnect`, which need
+  Xvfb, as in stage 3.
+
+### Still open
+
+- Two netplay names remain in the core.
+  - `prefs.Prefs.netplay_name` is saved in `prefs`, because settings
+    hold only numbers. A string setting would let the plugin own it.
+  - Preferences' controls page says player 1's controls are "also yours
+    in netplay", whether or not the plugin is there.
+- The netplay tests (`net_test`, `desync_test`, `rollback_session_test`,
+  the `Link` fixture and the tests that use it) are still in `tests/`.
+  AGENTS.md says a plugin owns its tests; they move with the `Link`
+  fixture to `plugins/netplay/tests/`.
+- `netplay.so` doubled in size by carrying `game`. Moving what the lobby
+  needs from `game` (the setup switches, the campaign list) into `ui`
+  would shrink it again.
 
 ## Decisions to record as they are made
 

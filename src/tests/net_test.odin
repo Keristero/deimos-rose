@@ -4,7 +4,7 @@ import core_net "core:net"
 import "core:testing"
 import "core:time"
 
-import net "dr:net"
+import net "dr:plugins/netplay/net"
 import "dr:sim"
 
 @(test)

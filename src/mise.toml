@@ -272,13 +272,13 @@ run = [
   "odin check all_plugins $DR_COLL -vet -strict-style -no-entry-point",
   "for p in sim/*/ sim/systems/*/; do [ -d $p ] && [ \"$(basename $p)\" != systems ] || continue; odin check $p $DR_COLL -vet -strict-style -no-entry-point || exit 1; done",
   "odin check data $DR_COLL -vet -strict-style -no-entry-point",
-  "odin check net  $DR_COLL -vet -strict-style -no-entry-point",
   "odin check prefs $DR_COLL -vet -strict-style -no-entry-point",
   "odin check render $DR_COLL -vet -strict-style -no-entry-point",
   "odin check ui $DR_COLL -vet -strict-style -no-entry-point",
   "odin check oracle $DR_COLL -vet -strict-style -no-entry-point",
-  # A data plugin's folder holds no code (D52).
-  "for p in plugins/*/ plugins/*/view/ plugins/*/tests/; do ls $p*.odin >/dev/null 2>&1 || continue; odin check $p $DR_COLL -vet -strict-style -no-entry-point || exit 1; done",
+  # A data plugin's folder holds no code (D52). A plugin's packages are
+  # its folder, view/, tests/ and any other (netplay's net/).
+  "for p in plugins/*/ plugins/*/*/; do ls $p*.odin >/dev/null 2>&1 || continue; odin check $p $DR_COLL -vet -strict-style -no-entry-point || exit 1; done",
   "odin check tools/extract $DR_COLL -vet -strict-style",
   "odin check tools/verify  $DR_COLL -vet -strict-style",
   "odin check tools/records $DR_COLL -vet -strict-style",
@@ -306,7 +306,7 @@ run = [
   # Every package again as the other OS CI builds on would see it: a
   # `when ODIN_OS` block or a Linux-only file can leave an import unused
   # only there, which failed the Windows build (CI run 36967083184).
-  "other=windows_amd64; [ \"$OS\" = Windows_NT ] && other=linux_amd64; for p in game blocks plugin_entry all_plugins sim sim/*/ sim/systems/*/ data net prefs render ui oracle terrain editor plugins/*/ plugins/*/view/ plugins/*/tests/ tools/*/ tests tests/support tests/data_plugins tests/terrain tests/editor; do ls $p/*.odin >/dev/null 2>&1 || continue; e=-no-entry-point; grep -qs '^main ::' $p/*.odin && e=; odin check $p $DR_COLL -vet -strict-style $e -target:$other || exit 1; done",
+  "other=windows_amd64; [ \"$OS\" = Windows_NT ] && other=linux_amd64; for p in game blocks plugin_entry all_plugins sim sim/*/ sim/systems/*/ data prefs render ui oracle terrain editor plugins/*/ plugins/*/*/ tools/*/ tests tests/support tests/data_plugins tests/terrain tests/editor; do ls $p/*.odin >/dev/null 2>&1 || continue; e=-no-entry-point; grep -qs '^main ::' $p/*.odin && e=; odin check $p $DR_COLL -vet -strict-style $e -target:$other || exit 1; done",
 ]
 
 [tasks.test]

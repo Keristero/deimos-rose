@@ -5,8 +5,8 @@
 #
 # The ECS library the sim is built on, and the sim half of every plugin,
 # run inside the simulation step, so they are held to the same rule. A
-# plugin's presentation lives in its view/ subfolder, and its tests in
-# tests/, which are exempt.
+# plugin's presentation lives in its view/ subfolder, its tests in
+# tests/, and netplay's sockets in its net/, which are exempt.
 set -euo pipefail
 SRC="${DR_SRC:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 [ -d "$SRC/sim" ] || { echo "purity: no sim/ directory yet"; exit 0; }
@@ -17,9 +17,9 @@ while IFS= read -r d; do DIRS+=("$d"); done < <(
 [ -d "$SRC/third_party/odecs" ] && DIRS+=("$SRC/third_party/odecs")
 if [ -d "$SRC/plugins" ]; then
     while IFS= read -r d; do DIRS+=("$d"); done < <(
-        find "$SRC/plugins" -name '*.odin' -not -path '*/view/*' -not -path '*/tests/*' -printf '%h\n' | sort -u)
+        find "$SRC/plugins" -name '*.odin' -not -path '*/view/*' -not -path '*/tests/*' -not -path '*/net/*' -printf '%h\n' | sort -u)
 fi
-BANNED='vendor:raylib|core:os|core:fmt|core:time|core:math/rand|core:thread|core:net|dr:game|dr:render|dr:ui|dr:prefs|dr:net'
+BANNED='vendor:raylib|core:os|core:fmt|core:time|core:math/rand|core:thread|core:net|dr:game|dr:render|dr:ui|dr:prefs|dr:plugins/netplay/net'
 for d in "${DIRS[@]}"; do
     # Only this folder's own files: a plugin's view/ and tests/ are
     # separate packages.
@@ -35,7 +35,7 @@ done
 # The core names no plugin (AGENTS.md, Phase 10). A plugin's content and
 # behaviour reach the core through its registrations, and its code
 # through its library (D85), so the core builds and runs without any.
-CORE=(game sim data render ui prefs net oracle blocks plugin_entry)
+CORE=(game sim data render ui prefs oracle blocks plugin_entry)
 for d in "${CORE[@]}"; do
     [ -d "$SRC/$d" ] || continue
     # Relative paths: on Windows $SRC is D:\a\..., which a grep would
@@ -59,12 +59,13 @@ fi
 # library carries its own copy of each package it imports, globals
 # included, and only a package's block is bound to the game's. So in any
 # package a plugin can import, a mutable global must live in the block or
-# be @(rodata). Plugin tests, game/, tools/ and odecs are not imported by
+# be @(rodata). game/ is among them: netplay's screen works its menus
+# and sessions (D86). Plugin tests, tools/ and odecs are not imported by
 # a plugin's library; odecs keeps nothing but its encoded query terms,
 # which the check above already keeps out of reach.
 SHARED=()
 while IFS= read -r d; do SHARED+=("$d"); done < <(
-    find "$SRC/sim" "$SRC/data" "$SRC/prefs" "$SRC/render" "$SRC/ui" "$SRC/plugins" \
+    find "$SRC/sim" "$SRC/data" "$SRC/prefs" "$SRC/render" "$SRC/ui" "$SRC/game" "$SRC/plugins" \
         -name '*.odin' -not -path '*/tests/*' -printf '%h\n' 2>/dev/null | sort -u)
 BUILD="${DR_BUILD:-$SRC/build}"
 mkdir -p "$BUILD"

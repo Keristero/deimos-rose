@@ -200,18 +200,12 @@ main :: proc() {
 	// resized window) show the whole game rather than its top-left corner.
 	renderer.canvas = rl.LoadRenderTexture(render.SCREEN_W * render.WINDOW_SCALE, render.SCREEN_H * render.WINDOW_SCALE)
 
-	// DR_NETPLAY=host or DR_NETPLAY=join:<address> jumps straight into the
-	// netplay lobby already hosting/joining -- see
-	// netplay_lobby_start_from_flag's comment for why (a scripted test
-	// driving two instances at once, tools/netplay/loopback_check.sh).
-	if netplay_flag := os.get_env("DR_NETPLAY", context.temp_allocator); netplay_flag != "" {
-		if end, ok := strconv.parse_int(os.get_env("DR_NETPLAY_END", context.temp_allocator)); ok && end > 0 {
-			netplay_test_end = i32(end)
+	// A plugin's screen may show itself at startup: netplay's, for
+	// DR_NETPLAY=host or join:<address> (tools/netplay/loopback_check.sh).
+	for sc in registered_screens() {
+		if sc.launch != nil {
+			sc.launch(&flow, &renderer)
 		}
-		netplay_shot_path = os.get_env("DR_NETPLAY_SHOT", context.allocator)
-		netplay_lobby_init(&flow.netplay, &renderer)
-		flow.mode = .Netplay_Lobby
-		netplay_lobby_start_from_flag(&flow.netplay, &ps.saved, netplay_flag)
 	}
 
 	// Escape means pause/resume/back everywhere in Flow, not an instant quit
@@ -301,7 +295,8 @@ main :: proc() {
 		// How far the render is between the last step and the next.
 		renderer.interp_prev = between ? interp_prev : nil
 		renderer.interp_alpha = between ? f32(clamp(accumulator / step_dt, 0, 1)) : 1
-		diagnostics_tick(&diagnostics, rl.GetFrameTime(), flow.netplay_active ? flow.netplay.rs.rollback_count : 0)
+		driven, ping_ms, rollbacks := flow_stats(&flow)
+		diagnostics_tick(&diagnostics, rl.GetFrameTime(), rollbacks)
 
 		rl.BeginTextureMode(renderer.canvas)
 		rl.ClearBackground(rl.Color{0, 0, 0, 255})
@@ -309,10 +304,12 @@ main :: proc() {
 		if show_debug && sim.level_def(state) != nil {
 			draw_debug(state, &report)
 		}
-		diagnostics_draw(&diagnostics, flow.netplay_active, flow.netplay.ping_ms)
+		diagnostics_draw(&diagnostics, driven, ping_ms)
 		rl.EndTextureMode()
-		if netplay_shot_due() {
-			canvas_save(renderer.canvas, netplay_shot_path)
+		for sc in registered_screens() {
+			if sc.framed != nil {
+				sc.framed(&renderer)
+			}
 		}
 
 		rl.BeginDrawing()
@@ -502,18 +499,6 @@ run_menu_shot :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, r
 		score_entry_start(&flow.score_entry, defs.levels, {99999, 0}, {true, false}, "Mariner Valley")
 		flow.mode = .Score_Entry
 		flow.score_entry.state = .Editing
-	case "netplay_lobby":
-		// New content, no original to compare against (see game/netplay.odin's
-		// file header) -- this is a visual smoke check of the lobby's own
-		// menu screens, not an oracle:menu-shot comparison. The cases below
-		// cover Netplay_Phase's visually distinct states, plus (Phase 8
-		// stage 2) the host's and guest's differing views of .Connected once
-		// level select is in the mix; none open a real socket
-		// (netplay_lobby_init's netplay_reset already zeroed nl.have_sock)
-		// -- the fields netplay_lobby_draw actually reads are set directly
-		// instead, since this only ever draws once and never polls.
-		flow.mode = .Netplay_Lobby
-		netplay_lobby_init(&flow.netplay, r)
 	case "extras":
 		// The Extras page as saved; plugins' menu shots (ui.Menu_Shot) set
 		// what it shows.
@@ -529,80 +514,12 @@ run_menu_shot :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, r
 		flow.mode = .Preferences
 		flow.preferences.page = .Mods
 		mods_page_scroll_end(&flow.preferences.mods)
-	case "netplay_lobby_name":
-		flow.mode = .Netplay_Lobby
-		netplay_lobby_init(&flow.netplay, r)
-		flow.netplay.phase = .Enter_Name
-		prefs.name_set(&flow.netplay.local_name, "Keristero")
-		flow.netplay.local_hue = 30
-	case "netplay_lobby_join":
-		flow.mode = .Netplay_Lobby
-		netplay_lobby_init(&flow.netplay, r)
-		flow.netplay.phase = .Enter_Address
-		flow.netplay.addr_len = copy(flow.netplay.addr_buf[:], "127.0.0.1")
-		flow.netplay.addr_default = true
-	case "netplay_lobby_connecting":
-		flow.mode = .Netplay_Lobby
-		netplay_lobby_init(&flow.netplay, r)
-		flow.netplay.role = .Host
-		flow.netplay.phase = .Connecting
-	case "netplay_lobby_connected":
-		flow.mode = .Netplay_Lobby
-		netplay_lobby_init(&flow.netplay, r)
-		flow.netplay.role = .Guest
-		flow.netplay.phase = .Connected
-		flow.netplay.ping_ms = 42 // sample value -- ping_ms is only ever set from a real Pong in netplay_tick_ping
-		flow.netplay.remote_ready = true // local not ready yet, so the Ready button still draws beside the peer's READY
-		prefs.name_set(&flow.netplay.local_name, "Keristero") // sample names, normally from each side's Hello
-		prefs.name_set(&flow.netplay.peer_name, "Supercobra")
-		flow.netplay.local_hue, flow.netplay.peer_hue = 30, 280
-	case "netplay_lobby_connected_host":
-		// Phase 8 stage 2: the host's own view -- level-select arrows above
-		// an enabled Ready (highest_reached forced high enough that
-		// level_index 0 reads as unlocked regardless of this machine's real
-		// save file).
-		flow.mode = .Netplay_Lobby
-		netplay_lobby_init(&flow.netplay, r)
-		flow.netplay.role = .Host
-		flow.netplay.phase = .Connected
-		flow.netplay.ping_ms = 17
-		flow.highest_reached = 12
-	case "netplay_lobby_connected_host_locked":
-		// Same, but level_index parked on a level past highest_reached --
-		// "NO ACCESS" in red, Ready greyed out, matching Level Select's own
-		// locked-slot language (game/menu_level_select.odin).
-		flow.mode = .Netplay_Lobby
-		netplay_lobby_init(&flow.netplay, r)
-		flow.netplay.role = .Host
-		flow.netplay.phase = .Connected
-		flow.netplay.ping_ms = 17
-		flow.highest_reached = 1
-		flow.netplay.level_index = 3
-	case "netplay_lobby_campaigns":
-		// The host's view with every campaign plugin on (D53), on the last
-		// one: the campaign row and its arrows over the level's.
-		ps.saved.classic, ps.launch.classic, r.classic = false, false, false
-		for i in 1 ..< len(sim.registered_plugins()) {
-			if len(sim.campaign_levels(defs, sim.Plugin_ID(i))) > 0 {
-				ps.saved.mods += {i}
-			}
-		}
-		offered := flow_campaigns(&flow)
-		flow_campaign_set(&flow, offered[len(offered) - 1])
-		flow.mode = .Netplay_Lobby
-		netplay_lobby_init(&flow.netplay, r)
-		flow.netplay.role = .Host
-		flow.netplay.phase = .Connected
-		flow.netplay.campaign = flow.campaign // netplay_lobby_update's mirror
-		flow.netplay.ping_ms = 17
-		flow.highest_reached = 12
-	case "diagnostics":
-		flow.mode = .Netplay_Lobby
-		netplay_lobby_init(&flow.netplay, r)
-		flow.netplay.role = .Guest
-		flow.netplay.phase = .Connected
-		flow.netplay.ping_ms = 42
 	case:
+		// A plugin screen's own (screens.odin): netplay's lobby, and the
+		// diagnostics overlay over it, the one screen with a ping to show.
+		if shot_screen(&flow, r, name) {
+			break
+		}
 		// A plugin's own scenario (ui/shots.odin).
 		sh, ok := ui.shot_find(name)
 		if !ok {
@@ -640,17 +557,16 @@ run_menu_shot :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, r
 		flow.mode = .Playing
 	}
 	// game/diagnostics.odin's overlay: this menu name doubles as its visual
-	// smoke check (there's no baseline to compare against, just a look --
-	// same idea as netplay_lobby_connected above). Piggybacks on the
-	// connected-lobby screen since that's the one case with a ping to show;
-	// run_menu_shot draws one static frame, so the numbers are hand-set, not
-	// measured by diagnostics_tick.
+	// smoke check (there's no baseline to compare against, just a look).
+	// A screen readies it -- netplay's connected lobby, the one with a ping
+	// to show -- as if it drove a session; run_menu_shot draws one static
+	// frame, so the numbers are hand-set, not measured by diagnostics_tick.
 	diag: Diagnostics
 	if name == "diagnostics" {
 		diag.enabled = true
 		diag.updates_per_sec = 30.0
 		diag.rollbacks_per_sec = 1.2
-		flow.netplay_active = true
+		flow.driven = true
 	}
 	// Drawn into a render texture rather than read back from the window,
 	// which is hidden (main) -- a hidden window's back buffer is not
@@ -661,7 +577,8 @@ run_menu_shot :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, r
 	rl.ClearBackground(rl.Color{0, 0, 0, 255})
 	r.textures.mods += prefs_mods(ps) // as the main loop sets them
 	flow_draw(&flow, r, &fx, render.WINDOW_SCALE)
-	diagnostics_draw(&diag, flow.netplay_active, flow.netplay.ping_ms)
+	driven, ping_ms, _ := flow_stats(&flow)
+	diagnostics_draw(&diag, driven, ping_ms)
 	if name == "restarted" {
 		fmt.eprintfln("new game drawn with: %d particles, %d ghosts", len(fx.particles.live), len(fx.blurs.live))
 	}

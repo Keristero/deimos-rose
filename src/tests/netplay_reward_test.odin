@@ -2,7 +2,7 @@ package tests
 
 import "core:testing"
 
-import net "dr:net"
+import net "dr:plugins/netplay/net"
 import "dr:plugins/easy_mode"
 import "dr:plugins/passives"
 import "dr:sim"
