@@ -51,6 +51,7 @@
       "title": "A plugin can stay off this site",
       "date": "2026-10-18",
       "kind": "engineering",
+      "pr": 10,
       "summary": "A plugin can be marked hidden in the site's config: it ships in the release like any other, but gets no card, screenshot or download link here."
     },
     {
