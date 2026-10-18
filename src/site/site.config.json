@@ -47,6 +47,13 @@
 
   "changes": [
     {
+      "id": "readme-website",
+      "title": "The README points here",
+      "date": "2026-10-18",
+      "kind": "engineering",
+      "summary": "The repository's README now links this website for downloads and the plugin list, and says how the separate downloads install."
+    },
+    {
       "id": "separate-downloads",
       "title": "The game, and a download per plugin",
       "date": "2026-10-18",

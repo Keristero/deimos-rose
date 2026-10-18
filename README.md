@@ -2,10 +2,11 @@
 
 This is a recreation of Deimos Rising based on the decompiled windows build of the game (1.0.2)
 
+**Website: [keristero.github.io/deimos-rose](https://keristero.github.io/deimos-rose/)**: downloads, every plugin with a screenshot, and what changed.
 
 The game is playable from start to finish, the gameplay feels almost 1:1, but the presentation is not perfect.
-[Downloads are here under assets](https://github.com/Keristero/deimos-rose/releases)
-There are builds for windows and linux.
+
+There are builds for windows and linux, [on the website](https://keristero.github.io/deimos-rose/) or [under each release's assets](https://github.com/Keristero/deimos-rose/releases). The game is one download, the original on its own. Each plugin is another: unzip it into the same folder, then turn it on from the Mods page in Preferences.
 
 ![The main menu](src/docs/images/main-menu.png)
 
@@ -14,6 +15,8 @@ There are builds for windows and linux.
 - High refresh rate mode, drawing smoothly between game updates (Preferences)
 
 There is also a Classic mode which disables all enhancements and attempts to present the graphics and colors as faithfully to the original as possible.
+
+Every enhancement is a plugin; [the website's plugin page](https://keristero.github.io/deimos-rose/plugins.html) lists them all.
 
 #### Upcoming enhancements:
 - HD upscaled textures, reflections, and new shader effects for water and more
