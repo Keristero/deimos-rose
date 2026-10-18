@@ -25,9 +25,9 @@ import "dr:ui"
 // plugin; anything else is not a plugin's.
 @(test)
 launch_flags_switch_plugins_on :: proc(t: ^testing.T) {
-	testing.expect_value(t, prefs.launch_mods({"-highrefreshrate"}), sim.Mods{int(fps_unlock.ID)})
-	testing.expect_value(t, prefs.launch_mods({"-mod", "easy_mode"}), sim.Mods{int(easy_mode.ID)})
-	testing.expect_value(t, prefs.launch_mods({"-mod", "easy_mode", "-highrefreshrate"}), sim.Mods{int(easy_mode.ID), int(fps_unlock.ID)})
+	testing.expect_value(t, prefs.launch_mods({"-highrefreshrate"}), sim.Mods{int(fps_unlock.id())})
+	testing.expect_value(t, prefs.launch_mods({"-mod", "easy_mode"}), sim.Mods{int(easy_mode.id())})
+	testing.expect_value(t, prefs.launch_mods({"-mod", "easy_mode", "-highrefreshrate"}), sim.Mods{int(easy_mode.id()), int(fps_unlock.id())})
 	testing.expect_value(t, prefs.launch_mods({"-mod", "no_such_plugin", "-windowed"}), sim.Mods{})
 	testing.expect_value(t, prefs.launch_mods({"-mod"}), sim.Mods{}) // its name missing
 }
@@ -48,13 +48,13 @@ setup_switches_on_each_screen :: proc(t: ^testing.T) {
 	level_select := on(.Level_Select)
 	testing.expect_value(t, len(level_select), 1)
 	if len(level_select) == 1 {
-		testing.expect_value(t, level_select[0], easy_mode.ID)
+		testing.expect_value(t, level_select[0], easy_mode.id())
 	}
 	lobby := on(.Lobby)
 	testing.expect_value(t, len(lobby), 2)
 	if len(lobby) == 2 {
-		testing.expect_value(t, lobby[0], easy_mode.ID)
-		testing.expect_value(t, lobby[1], new_weapons.ID)
+		testing.expect_value(t, lobby[0], easy_mode.id())
+		testing.expect_value(t, lobby[1], new_weapons.id())
 	}
 }
 
@@ -75,17 +75,17 @@ player_hues_are_found_by_player :: proc(t: ^testing.T) {
 	p2, ok2 := prefs.player_hue_setting(2)
 	_, ok3 := prefs.player_hue_setting(3)
 	testing.expect(t, ok1 && ok2 && !ok3)
-	testing.expect_value(t, p1, accent_view.HUE_P1)
-	testing.expect_value(t, p2, accent_view.HUE_P2)
-	testing.expect_value(t, prefs.registered_settings()[p1].plugin, accent.ID)
+	testing.expect_value(t, p1, accent_view.hue_p1())
+	testing.expect_value(t, p2, accent_view.hue_p2())
+	testing.expect_value(t, prefs.registered_settings()[p1].plugin, accent.id())
 }
 
 // Netplay is the one plugin on exactly when a session is online, and
 // Extra Preferences the one that offers the Extras page.
 @(test)
 online_plugins_and_the_settings_page :: proc(t: ^testing.T) {
-	testing.expect_value(t, sim.mods_online(), sim.Mods{int(netplay_plugin.ID)})
-	testing.expect_value(t, prefs.settings_page_plugin(), extra_prefs.ID)
+	testing.expect_value(t, sim.mods_online(), sim.Mods{int(netplay_plugin.id())})
+	testing.expect_value(t, prefs.settings_page_plugin(), extra_prefs.id())
 }
 
 // A plugin's screenshot resolves to the core screen it is taken on, with
@@ -95,20 +95,20 @@ menu_shots_name_their_plugin :: proc(t: ^testing.T) {
 	easy, ok := ui.menu_shot_find("level_select_easy")
 	testing.expect(t, ok)
 	if ok {
-		testing.expect_value(t, easy.plugin, easy_mode.ID)
+		testing.expect_value(t, easy.plugin, easy_mode.id())
 		testing.expect_value(t, easy.screen, "level_select")
 	}
 	extras, ok2 := ui.menu_shot_find("preferences_extras")
 	testing.expect(t, ok2)
 	if ok2 {
-		testing.expect_value(t, extras.plugin, accent.ID)
+		testing.expect_value(t, extras.plugin, accent.id())
 		testing.expect_value(t, extras.screen, "extras")
 		testing.expect(t, extras.setup != nil)
 	}
 	sliders, ok3 := ui.menu_shot_find("preferences_extras_sliders")
 	testing.expect(t, ok3)
 	if ok3 {
-		testing.expect_value(t, sliders.plugin, lighting.ID)
+		testing.expect_value(t, sliders.plugin, lighting.id())
 		testing.expect_value(t, sliders.screen, "extras")
 	}
 	_, core := ui.menu_shot_find("main")

@@ -15,14 +15,11 @@ Frame_Rate :: struct {
 	fps:    proc() -> i32, // asked once, when the plugin comes on
 }
 
-@(private = "file")
-frame_rates: sim.Registry(Frame_Rate, MAX_FRAME_RATES)
-
 // Called from registration steps only (sim.register_step), like render_system_register.
 frame_rate_register :: proc(f: Frame_Rate) {
-	sim.registry_add(&frame_rates, f)
+	sim.registry_add(&shared.frame_rates, f)
 }
 
 registered_frame_rates :: proc "contextless" () -> []Frame_Rate {
-	return sim.registry_items(&frame_rates)
+	return sim.registry_items(&shared.frame_rates)
 }

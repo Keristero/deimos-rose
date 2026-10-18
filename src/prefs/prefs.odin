@@ -290,7 +290,7 @@ step_volume :: proc(v: ^int, dir: int) {
 // "pause_key": a "pause" line is from when P was the default, and every save
 // wrote it out, so honouring it would keep everyone off the default. It is
 // ignored.
-@(private = "file")
+@(private = "file", rodata)
 BUTTON_KEYS := [Action]string {
 	.Up          = "up",
 	.Down        = "down",

@@ -42,6 +42,7 @@ High_Score_Entry :: struct {
 // easter eggs draw from (menu_credits.odin's CREDITS_PAGES, menu_high_score
 // _entry.odin's substitution table).
 @(private = "file")
+@(rodata)
 HIGH_SCORE_DEFAULT_NAMES := [HIGH_SCORE_SLOTS]string {
 	"Mars", "Supercobra", "Neurotik", "El B", "Dilvish", "Sam", "Vodi", "Fisj",
 	"Alex", "h'biki", "Goldenberry", "Leadfeather", "Troll", "Thomas", "Electrofryer",

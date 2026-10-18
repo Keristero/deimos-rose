@@ -35,16 +35,13 @@ Shot :: struct {
 	phases: []Shot_Phase,
 }
 
-@(private = "file")
-shots: sim.Registry(Shot, MAX_SHOTS)
-
 // Called from registration steps only (sim.register_step); `phases` must outlive the call.
 shot_register :: proc(sh: Shot) {
-	sim.registry_add(&shots, sh)
+	sim.registry_add(&shared.shots, sh)
 }
 
 shot_find :: proc(name: string) -> (^Shot, bool) {
-	for &sh in sim.registry_items(&shots) {
+	for &sh in sim.registry_items(&shared.shots) {
 		if sh.name == name {
 			return &sh, true
 		}
@@ -53,7 +50,7 @@ shot_find :: proc(name: string) -> (^Shot, bool) {
 }
 
 registered_shots :: proc() -> []Shot {
-	return sim.registry_items(&shots)
+	return sim.registry_items(&shared.shots)
 }
 
 // A plugin's screenshot of a menu screen rather than of play: one of the
@@ -67,16 +64,13 @@ Menu_Shot :: struct {
 	setup:  proc(p: ^prefs.Prefs),
 }
 
-@(private = "file")
-menu_shots: sim.Registry(Menu_Shot, MAX_MENU_SHOTS)
-
 // Called from registration steps only (sim.register_step).
 menu_shot_register :: proc(sh: Menu_Shot) {
-	sim.registry_add(&menu_shots, sh)
+	sim.registry_add(&shared.menu_shots, sh)
 }
 
 menu_shot_find :: proc(name: string) -> (^Menu_Shot, bool) {
-	for &sh in sim.registry_items(&menu_shots) {
+	for &sh in sim.registry_items(&shared.menu_shots) {
 		if sh.name == name {
 			return &sh, true
 		}

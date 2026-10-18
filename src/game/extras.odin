@@ -34,12 +34,6 @@ prefs_mod_on :: proc(ps: ^Prefs_State, id: sim.Plugin_ID) -> bool {
 	return int(id) in prefs_mods(ps)
 }
 
-// Whether the player has an online plugin on (Plugin.online): the main
-// menu then offers NETPLAY.
-prefs_online_on :: proc(ps: ^Prefs_State) -> bool {
-	return prefs_mods(ps) & sim.mods_online() != {}
-}
-
 // Turns a mod on with its dependencies, or off with its dependants, and
 // saves.
 prefs_mod_toggle :: proc(ps: ^Prefs_State, id: sim.Plugin_ID) {

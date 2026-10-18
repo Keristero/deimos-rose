@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 260" role="img" aria-label="Before: a plugin built as a shared library carries its own copy of sim's globals, so the systems it registers land in its copy and the game never sees them. After: each package keeps its state in one block reached through a pointer, and binding points the plugin's pointer at the game's block, so both read and write the same registries.">
+  <defs>
+    <marker id="d-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="d-head" d="M0 0 L10 5 L0 10 z"/>
+    </marker>
+  </defs>
+
+  <text class="d-label" x="16" y="22">Before: a copy each</text>
+  <text class="d-label" x="460" y="22">After: one block, bound</text>
+  <line class="d-lane" x1="436" y1="12" x2="436" y2="248"/>
+
+  <rect class="d-box" x="16" y="40" width="190" height="72" rx="8"/>
+  <text class="d-text" x="30" y="62">game</text>
+  <text class="d-sub" x="30" y="82">sim's globals</text>
+  <text class="d-sub" x="30" y="98">systems · hooks · plugins</text>
+
+  <rect class="d-box warm" x="226" y="40" width="190" height="72" rx="8"/>
+  <text class="d-text" x="240" y="62">plugin.so</text>
+  <text class="d-sub" x="240" y="82">its own copy of them</text>
+  <text class="d-sub" x="240" y="98">registers here</text>
+
+  <rect class="d-box" x="226" y="150" width="190" height="40" rx="6"/>
+  <text class="d-sub" x="240" y="174">@(init): system_register</text>
+  <path class="d-arrow" d="M321 150 V118"/>
+  <text class="d-sub" x="16" y="222">the game runs its own registries:</text>
+  <text class="d-sub" x="16" y="238">the plugin's systems never run</text>
+
+  <rect class="d-box" x="460" y="40" width="150" height="56" rx="8"/>
+  <text class="d-text" x="474" y="62">game</text>
+  <text class="d-sub" x="474" y="82">sim.shared</text>
+
+  <rect class="d-box" x="460" y="150" width="150" height="56" rx="8"/>
+  <text class="d-text" x="474" y="172">plugin.so</text>
+  <text class="d-sub" x="474" y="192">sim.shared</text>
+
+  <rect class="d-box hot" x="680" y="88" width="186" height="72" rx="8"/>
+  <text class="d-text" x="694" y="110">sim's block</text>
+  <text class="d-sub" x="694" y="130">systems · hooks · plugins</text>
+  <text class="d-sub" x="694" y="146">one per game, in .bss</text>
+
+  <path class="d-arrow" d="M610 68 Q650 68 650 108 H674"/>
+  <path class="d-arrow" d="M610 178 Q650 178 650 140 H674"/>
+  <text class="d-sub" x="616" y="202">bind</text>
+  <text class="d-sub" x="460" y="230">bind repoints the plugin's pointer,</text>
+  <text class="d-sub" x="460" y="246">and its queued steps join the game's</text>
+  <rect class="d-box ok" x="680" y="176" width="186" height="36" rx="6"/>
+  <text class="d-sub" x="694" y="198">purity: no state outside</text>
+</svg>

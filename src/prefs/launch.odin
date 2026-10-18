@@ -16,18 +16,15 @@ Launch_Switch :: struct {
 	plugin: sim.Plugin_ID,
 }
 
-@(private = "file")
-launch_switches: sim.Registry(Launch_Switch, MAX_LAUNCH_SWITCHES)
-
 // Called from registration steps only (sim.register_step), like setting_register.
 launch_switch_register :: proc(s: Launch_Switch) {
-	sim.registry_add(&launch_switches, s)
+	sim.registry_add(&shared.launch_switches, s)
 }
 
 // The plugins a run's arguments switch on.
 launch_mods :: proc(args: []string) -> (mods: sim.Mods) {
 	for a, i in args {
-		for s in sim.registry_items(&launch_switches) {
+		for s in sim.registry_items(&shared.launch_switches) {
 			if a == s.flag {
 				mods += {int(s.plugin)}
 			}

@@ -26,18 +26,15 @@ Setup_Switch :: struct {
 	screens: bit_set[Setup_Screen],
 }
 
-@(private = "file")
-setup_switches: sim.Registry(Setup_Switch, MAX_SETUP_SWITCHES)
-
 // Called from registration steps only (sim.register_step). Switches sit
 // left to right in registration order, which is the order of their views'
 // step names.
 setup_switch_register :: proc(s: Setup_Switch) {
-	sim.registry_add(&setup_switches, s)
+	sim.registry_add(&shared.setup_switches, s)
 }
 
 registered_setup_switches :: proc "contextless" () -> []Setup_Switch {
-	return sim.registry_items(&setup_switches)
+	return sim.registry_items(&shared.setup_switches)
 }
 
 // The centre of switch `i` of `n` in a row, spread about the middle of

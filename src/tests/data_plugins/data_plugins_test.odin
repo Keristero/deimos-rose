@@ -11,6 +11,7 @@ import "core:strings"
 import "core:testing"
 import vmem "core:mem/virtual"
 
+import _ "dr:all_plugins"
 import "dr:data"
 import "dr:game"
 import "dr:plugins/accent"
@@ -54,10 +55,10 @@ data_plugins_register_after_the_compiled :: proc(t: ^testing.T) {
 	testing.expect_value(t, p.version, "1")
 	needs, _ := find(t, "fixture_needs")
 	missing, _ := find(t, "fixture_missing")
-	testing.expect(t, missing > accent.ID)
+	testing.expect(t, missing > accent.id())
 	testing.expect(t, missing < needs && needs < units, "not in name order")
 
-	a := sim.registered_plugins()[accent.ID]
+	a := sim.registered_plugins()[accent.id()]
 	testing.expect(t, !a.data_only)
 	testing.expect_value(t, a.label, "Fixture Accent Label")
 	testing.expect_value(t, a.version, "2")
@@ -79,7 +80,7 @@ data_plugin_content_loads :: proc(t: ^testing.T) {
 	dir, found := data.plugin_content_dir(units)
 	testing.expect(t, found)
 	testing.expect_value(t, dir, FIXTURES + "/fixture_units")
-	_, found = data.plugin_content_dir(accent.ID)
+	_, found = data.plugin_content_dir(accent.id())
 	testing.expect(t, !found, "a plugin.json alone is content")
 
 	defs: sim.Defs
@@ -153,6 +154,13 @@ content_digest_follows_every_byte :: proc(t: ^testing.T) {
 		_ = os.write_entire_file(strings.concatenate({dst, "/", rel}, context.temp_allocator), blob)
 	}
 	same := data.content_digest(src)
+	testing.expect_value(t, data.content_digest(dst), same)
+
+	// A plugin's library is beside its content in a release (D85), .so on
+	// one peer and .dll on another: not content, so not in the digest.
+	for lib in ([]string{"fixture_units.so", "fixture_units.dll", "fixture_units.lib"}) {
+		_ = os.write_entire_file(strings.concatenate({dst, "/", lib}, context.temp_allocator), transmute([]u8)lib)
+	}
 	testing.expect_value(t, data.content_digest(dst), same)
 
 	path :: dst + "/data/unde/fxun.json"

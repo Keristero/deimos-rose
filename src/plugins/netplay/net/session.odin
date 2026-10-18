@@ -217,7 +217,7 @@ rollback_session_receive :: proc(rs: ^Rollback_Session, pkt: Input_Packet) {
 // last one it actually knows the peer's real input for -- GGPO's "frame
 // advantage", used to decide whether this side is running far enough ahead
 // that it should slow down and let the peer close the gap
-// (game/netplay.odin's netplay_should_stall). 0 (not negative) until
+// (plugins/netplay/view/netplay.odin's netplay_should_stall). 0 (not negative) until
 // anything at all has been heard from the peer, since "no data yet" should
 // not itself look like a huge lead worth stalling over.
 rollback_session_frame_advantage :: proc(rs: ^Rollback_Session) -> int {
@@ -236,7 +236,7 @@ rollback_session_frame_advantage :: proc(rs: ^Rollback_Session) -> int {
 // throttles rather than fully freezes local input. A simple linear scheme,
 // not GGPO's own more elaborate one -- the notes call an exact algorithm
 // "hard to measure who is behind" and leave it open; see docs/decisions.md
-// D26. Kept here rather than in game/netplay.odin so the actual throttle
+// D26. Kept here rather than in plugins/netplay/view/netplay.odin so the actual throttle
 // math is unit-testable without a live socket or render loop.
 rollback_session_should_stall :: proc(rs: ^Rollback_Session, threshold, min_every: int) -> bool {
 	advantage := rollback_session_frame_advantage(rs)

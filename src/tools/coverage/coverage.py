@@ -20,7 +20,7 @@ import re
 import shutil
 import sys
 
-COPY = ['sim', 'plugins', 'third_party', 'data', 'net', 'prefs', 'render', 'ui', 'game', 'oracle', 'tests']
+COPY = ['sim', 'plugins', 'all_plugins', 'blocks', 'third_party', 'data', 'prefs', 'render', 'ui', 'game', 'oracle', 'tests']
 PKG = 'drcov'
 
 TOK = re.compile(r'''(?P<lc>//[^\n]*)|(?P<bc>/\*.*?\*/)|(?P<str>"(?:\\.|[^"\\\n])*")|(?P<raw>`[^`]*`)|(?P<rune>'(?:\\.|[^'\\\n])+')|(?P<other>[^/"`']+|.)''', re.S)

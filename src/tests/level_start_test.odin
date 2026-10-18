@@ -44,7 +44,7 @@ level_start_weapons_replace_the_level_rule :: proc(t: ^testing.T) {
 	testing.expect_value(t, air, sim.res_id("wai5"))
 	testing.expect_value(t, ground, sim.res_id("wgn2"))
 
-	air, _ = start(defs, {int(loadout.ID)})
+	air, _ = start(defs, {int(loadout.id())})
 	testing.expect_value(t, air, sim.res_id("wair"))
 }
 

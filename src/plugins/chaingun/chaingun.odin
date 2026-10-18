@@ -14,21 +14,16 @@ import "dr:sim"
 // It needs New Weapons, which hands the new weapons over through the
 // loadout and gives the aim its targets (collision_system.air_shot_can_hit).
 
-ID: sim.Plugin_ID
-
-// The charge fires aimed volleys at the nearest enemy (sim/def_keys.odin).
-AIMED_RELEASE: sim.Weapon_Key
-
 @(private = "file")
 is_aimed :: proc "contextless" (w: ^sim.Weapon) -> bool {
-	return sim.weapon_bool(w, AIMED_RELEASE)
+	return sim.weapon_bool(w, shared.aimed_release)
 }
 
 @(private = "file", rodata)
 DEPS := []string{"new_weapons"}
 
 register :: proc() {
-	ID = sim.plugin_register({
+	shared.id = sim.plugin_register({
 		name        = "chaingun",
 		label       = "CHAINGUN",
 		description = "An air weapon from stage 7 whose charge fires aimed volleys",
@@ -37,8 +32,8 @@ register :: proc() {
 		default_on  = true,
 		content     = true,
 	})
-	AIMED_RELEASE = sim.weapon_key_register("x_AimedRelease_BOOL")
-	sim.weapon_fire_register({plugin = ID, fires = is_aimed, volley = aimed_release_spawn})
+	shared.aimed_release = sim.weapon_key_register("x_AimedRelease_BOOL")
+	sim.weapon_fire_register({plugin = shared.id, fires = is_aimed, volley = aimed_release_spawn})
 }
 
 @(init)

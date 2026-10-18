@@ -34,45 +34,45 @@ setup :: proc "contextless" () {
 // The plugin, as a member of a sim.Mods.
 @(private = "file")
 companion :: proc() -> int {
-	return int(new_weapon_passives.ID)
+	return int(new_weapon_passives.id())
 }
 
 // Easy Mode (which brings Passive Upgrades), New Weapons and the Chaingun,
 // as a player who turned those on has them: the companion with them.
 @(private = "file")
 session_mods :: proc() -> sim.Mods {
-	return sim.mods_session(sim.mods_switch_on({}, {int(easy_mode.ID), int(new_weapons.ID), int(chaingun.ID)}))
+	return sim.mods_session(sim.mods_switch_on({}, {int(easy_mode.id()), int(new_weapons.id()), int(chaingun.id())}))
 }
 
 @(test)
 comes_on_with_both_and_brings_neither :: proc(t: ^testing.T) {
 	testing.expect(t, companion() in session_mods())
 	// On its own, New Weapons leaves Passive Upgrades and the companion off.
-	mods := sim.mods_switch_on({}, {int(new_weapons.ID)})
-	testing.expect(t, int(passives.ID) not_in mods && companion() not_in mods)
+	mods := sim.mods_switch_on({}, {int(new_weapons.id())})
+	testing.expect(t, int(passives.id()) not_in mods && companion() not_in mods)
 	// Easy Mode brings Passive Upgrades, the last it needed.
-	mods = sim.mods_switch_on(mods, {int(easy_mode.ID)})
+	mods = sim.mods_switch_on(mods, {int(easy_mode.id())})
 	testing.expect(t, companion() in mods)
 	// Turned off alone, it stays off as other mods come on.
-	prefs.mod_toggle(&mods, new_weapon_passives.ID)
-	testing.expect(t, companion() not_in mods && int(passives.ID) in mods && int(new_weapons.ID) in mods)
-	prefs.mod_toggle(&mods, accent.ID)
+	prefs.mod_toggle(&mods, new_weapon_passives.id())
+	testing.expect(t, companion() not_in mods && int(passives.id()) in mods && int(new_weapons.id()) in mods)
+	prefs.mod_toggle(&mods, accent.id())
 	testing.expect(t, companion() not_in mods)
-	prefs.mod_toggle(&mods, new_weapon_passives.ID)
+	prefs.mod_toggle(&mods, new_weapon_passives.id())
 	testing.expect(t, companion() in mods)
 	// Either dependency turned off takes it.
-	prefs.mod_toggle(&mods, passives.ID)
-	testing.expect(t, companion() not_in mods && int(new_weapons.ID) in mods)
+	prefs.mod_toggle(&mods, passives.id())
+	testing.expect(t, companion() not_in mods && int(new_weapons.id()) in mods)
 	// A switch for a group does not turn Passive Upgrades on for it.
-	testing.expect(t, companion() not_in sim.mods_default_dependants(new_weapons.ID))
+	testing.expect(t, companion() not_in sim.mods_default_dependants(new_weapons.id()))
 }
 
 // A new player has New Weapons but not Passive Upgrades.
 @(test)
 new_players_start_without_it :: proc(t: ^testing.T) {
 	defaults := prefs.defaults().mods
-	testing.expect(t, int(new_weapons.ID) in defaults)
-	testing.expect(t, int(passives.ID) not_in defaults && companion() not_in defaults)
+	testing.expect(t, int(new_weapons.id()) in defaults)
+	testing.expect(t, int(passives.id()) not_in defaults && companion() not_in defaults)
 }
 
 // Saved as off where both are on, so a save from before the plugin brings
@@ -80,12 +80,12 @@ new_players_start_without_it :: proc(t: ^testing.T) {
 @(test)
 saved_as_off :: proc(t: ^testing.T) {
 	p := prefs.defaults()
-	p.mods = sim.mods_switch_on(p.mods, {int(easy_mode.ID)})
+	p.mods = sim.mods_switch_on(p.mods, {int(easy_mode.id())})
 	text := prefs.format(&p, context.temp_allocator)
 	testing.expect_value(t, prefs.parse(text).mods, p.mods)
 	testing.expect(t, strings.contains(text, "\nmods_off=\n"), text)
 
-	prefs.mod_toggle(&p.mods, new_weapon_passives.ID)
+	prefs.mod_toggle(&p.mods, new_weapon_passives.id())
 	text = prefs.format(&p, context.temp_allocator)
 	testing.expect(t, strings.contains(text, "\nmods_off=new_weapon_passives\n"), text)
 	testing.expect_value(t, prefs.parse(text).mods, p.mods)
@@ -124,20 +124,20 @@ offered_from_their_weapons_levels :: proc(t: ^testing.T) {
 		return
 	}
 	s := f.s
-	testing.expect(t, passives.passive_available(s, new_weapon_passives.WEAPON_5, 9))
-	testing.expect(t, !passives.passive_available(s, new_weapon_passives.WEAPON_6, 9))
-	testing.expect(t, passives.passive_available(s, new_weapon_passives.WEAPON_6, 10))
-	testing.expect(t, !passives.passive_available(s, new_weapon_passives.WEAPON_6_CHARGE, 9))
-	testing.expect(t, passives.passive_available(s, new_weapon_passives.WEAPON_6_CHARGE, 10))
+	testing.expect(t, passives.passive_available(s, new_weapon_passives.weapon_5(), 9))
+	testing.expect(t, !passives.passive_available(s, new_weapon_passives.weapon_6(), 9))
+	testing.expect(t, passives.passive_available(s, new_weapon_passives.weapon_6(), 10))
+	testing.expect(t, !passives.passive_available(s, new_weapon_passives.weapon_6_charge(), 9))
+	testing.expect(t, passives.passive_available(s, new_weapon_passives.weapon_6_charge(), 10))
 	s.session.mods -= {companion()}
-	testing.expect(t, !passives.passive_available(s, new_weapon_passives.WEAPON_5, 9))
-	testing.expect(t, !passives.passive_available(s, new_weapon_passives.WEAPON_6, 10))
-	testing.expect(t, !passives.passive_available(s, new_weapon_passives.WEAPON_6_CHARGE, 10))
+	testing.expect(t, !passives.passive_available(s, new_weapon_passives.weapon_5(), 9))
+	testing.expect(t, !passives.passive_available(s, new_weapon_passives.weapon_6(), 10))
+	testing.expect(t, !passives.passive_available(s, new_weapon_passives.weapon_6_charge(), 10))
 	// Nor the Chaingun's without the Chaingun's plugin.
 	s.session.mods += {companion()}
-	s.session.mods -= {int(chaingun.ID)}
-	testing.expect(t, !passives.passive_available(s, new_weapon_passives.WEAPON_5, 9))
-	testing.expect(t, passives.passive_available(s, new_weapon_passives.WEAPON_6, 10))
+	s.session.mods -= {int(chaingun.id())}
+	testing.expect(t, !passives.passive_available(s, new_weapon_passives.weapon_5(), 9))
+	testing.expect(t, passives.passive_available(s, new_weapon_passives.weapon_6(), 10))
 }
 
 // The Chaingun's rounds stray further with its passive; a unit that flies
@@ -155,7 +155,7 @@ chaingun_passive_widens_the_spread :: proc(t: ^testing.T) {
 	if cg < 0 || ion < 0 {
 		return
 	}
-	passives.levels_of(s, 0)[new_weapon_passives.WEAPON_5] = 3
+	passives.levels_of(s, 0)[new_weapon_passives.weapon_5()] = 3
 	by := stats.shot_shaper(s, 0, cg)
 	testing.expect(t, by != 0)
 	testing.expect_value(t, stats.heading_tolerance(s, 0, by, false, 8), 16)
@@ -190,8 +190,8 @@ discharge_beam_passive_hits_harder_and_wider :: proc(t: ^testing.T) {
 	if wall.obj == nil {
 		return
 	}
-	passives.levels_of(s, pl.number)[new_weapon_passives.WEAPON_6] = 3
-	def := passives.passive_def(new_weapon_passives.WEAPON_6)
+	passives.levels_of(s, pl.number)[new_weapon_passives.weapon_6()] = 3
+	def := passives.passive_def(new_weapon_passives.weapon_6())
 	dmg, wide := i32(def.mods[0].at[2]), i32(def.mods[1].at[2])
 	scale := proc(v: f32, pct: i32) -> f32 {return v * f32(100 + pct) / 100}
 
@@ -258,7 +258,7 @@ discharge_beam_charge_chains_its_release :: proc(t: ^testing.T) {
 		return
 	}
 	levels := passives.levels_of(s, 0)
-	levels[new_weapon_passives.WEAPON_6_CHARGE] = 1
+	levels[new_weapon_passives.weapon_6_charge()] = 1
 	top := wd.powerup_air_max_power_level
 	testing.expect_value(t, stats.powerup_max_level(s, h, h.air.weapon), top)
 
@@ -278,7 +278,7 @@ discharge_beam_charge_chains_its_release :: proc(t: ^testing.T) {
 		}
 	}
 
-	levels[new_weapon_passives.WEAPON_6_CHARGE] = 3
+	levels[new_weapon_passives.weapon_6_charge()] = 3
 	testing.expect(t, stats.powerup_max_level(s, h, h.air.weapon) > top, "level 3 charges higher")
 }
 
@@ -303,7 +303,7 @@ discharge_beam_charge_chain_spends_its_damage :: proc(t: ^testing.T) {
 	if first.obj == nil || beside.obj == nil || next.obj == nil {
 		return
 	}
-	passives.levels_of(s, 0)[new_weapon_passives.WEAPON_6_CHARGE] = 3
+	passives.levels_of(s, 0)[new_weapon_passives.weapon_6_charge()] = 3
 	width := new_weapons.beam_def(wd).width
 	time := sim.single(s, sim.Clock).time
 
@@ -376,16 +376,16 @@ chaingun_charge_ramps_its_release :: proc(t: ^testing.T) {
 	top := stats.powerup_max_level(s, h, cg)
 
 	levels := passives.levels_of(s, 0)
-	levels[new_weapon_passives.WEAPON_5_CHARGE] = 1
+	levels[new_weapon_passives.weapon_5_charge()] = 1
 	testing.expect_value(t, release_gaps(s, h, cg), [8]i32{3, 2, 2, 2, 2, 2, 2, 2})
 	testing.expect(t, stats.powerup_max_level(s, h, cg) > top)
-	levels[new_weapon_passives.WEAPON_5_CHARGE] = 3
+	levels[new_weapon_passives.weapon_5_charge()] = 3
 	testing.expect_value(t, release_gaps(s, h, cg), [8]i32{3, 2, 2, 2, 2, 2, 2, 2})
 	// Its shots are left alone, and a passive for another weapon's charge
 	// does not ramp this one.
 	testing.expect_value(t, stats.weapon_stat(s, 0, cg, .Release_Ramp).percent, 0)
-	levels[new_weapon_passives.WEAPON_5_CHARGE] = 0
-	levels[new_weapon_passives.WEAPON_6_CHARGE] = 3
+	levels[new_weapon_passives.weapon_5_charge()] = 0
+	levels[new_weapon_passives.weapon_6_charge()] = 3
 	testing.expect_value(t, release_gaps(s, h, cg), [8]i32{3, 3, 3, 3, 3, 3, 3, 3})
 }
 

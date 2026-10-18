@@ -62,28 +62,21 @@ Plugin :: struct {
 	digest:      u64,
 }
 
-// Slot 0, CORE's, is empty.
-@(private = "file")
-plugins := Registry(Plugin, MAX_PLUGINS + 1){count = 1}
-
-@(private = "file")
-declared: []Plugin
-
 // The plugins found as folders at startup, in name order: before
 // register_all, which registers each after the compiled plugins. One whose
 // name a compiled plugin has only gives that plugin its label, description
 // and version, where they are set. `list` must outlive the program.
 plugins_declare :: proc(list: []Plugin) {
 	assert(!registered(), "sim: plugins declared after register_all")
-	declared = list
+	shared.declared = list
 }
 
 // register_all's, once every compiled plugin has registered.
 @(private)
 plugins_register_declared :: proc() {
-	for p in declared {
+	for p in shared.declared {
 		if id, ok := plugin_find(p.name); ok {
-			c := &plugins.items[id]
+			c := &shared.plugins.items[id]
 			if p.label != "" {
 				c.label = p.label
 			}
@@ -101,13 +94,13 @@ plugins_register_declared :: proc() {
 
 // Records the digest of a plugin's content (data.plugins_digest).
 plugin_digest_set :: proc "contextless" (id: Plugin_ID, digest: u64) {
-	plugins.items[id].digest = digest
+	shared.plugins.items[id].digest = digest
 }
 
 // The first plugin `id` depends on that is not in the build, if any: why
 // it can never be on.
 plugin_missing_dep :: proc "contextless" (id: Plugin_ID) -> (dep: string, missing: bool) {
-	for d in plugins.items[id].deps {
+	for d in shared.plugins.items[id].deps {
 		if _, ok := plugin_find(d); !ok {
 			return d, true
 		}
@@ -118,16 +111,22 @@ plugin_missing_dep :: proc "contextless" (id: Plugin_ID) -> (dep: string, missin
 // Called from registration steps only (sim.register_step), like system_register; `deps` must
 // outlive the call. Returns the plugin's ID, for its systems and hooks.
 plugin_register :: proc(p: Plugin) -> Plugin_ID {
-	return Plugin_ID(registry_add(&plugins, p))
+	if shared.plugins.count == 0 {
+		registry_add(&shared.plugins, Plugin{}) // CORE's
+	}
+	return Plugin_ID(registry_add(&shared.plugins, p))
 }
 
-// Every registered plugin, indexed by ID; [CORE] is empty.
+// Every registered plugin, indexed by ID; [CORE] is empty, and there
+// before any plugin registers. (The block starts zeroed, so that it costs
+// the executable nothing: a count of 1 written into its initialiser put
+// all 135 KB of it in .data.)
 registered_plugins :: proc "contextless" () -> []Plugin {
-	return registry_items(&plugins)
+	return shared.plugins.items[:max(shared.plugins.count, 1)]
 }
 
 plugin_find :: proc "contextless" (name: string) -> (Plugin_ID, bool) {
-	for p, i in registry_items(&plugins)[1:] {
+	for p, i in registered_plugins()[1:] {
 		if p.name == name {
 			return Plugin_ID(i + 1), true
 		}
@@ -142,7 +141,7 @@ mods_resolve :: proc "contextless" (want: Mods) -> Mods {
 	mods := want - {int(CORE)}
 	for {
 		dropped := false
-		for id in 1 ..< plugins.count {
+		for id in 1 ..< shared.plugins.count {
 			if id in mods && !deps_in(id, mods) {
 				mods -= {id}
 				dropped = true
@@ -159,11 +158,11 @@ mods_with_deps :: proc "contextless" (want: Mods) -> Mods {
 	mods := want - {int(CORE)}
 	for {
 		added := false
-		for id in 1 ..< plugins.count {
+		for id in 1 ..< shared.plugins.count {
 			if id not_in mods {
 				continue
 			}
-			for dep in plugins.items[id].deps {
+			for dep in shared.plugins.items[id].deps {
 				if d, ok := plugin_find(dep); ok && int(d) not_in mods {
 					mods += {int(d)}
 					added = true
@@ -180,8 +179,8 @@ mods_with_deps :: proc "contextless" (want: Mods) -> Mods {
 // what needs them.
 mods_with_content :: proc "contextless" (mods: Mods, loaded: Mods) -> Mods {
 	missing: Mods
-	for id in 1 ..< plugins.count {
-		if plugins.items[id].content && id not_in loaded {
+	for id in 1 ..< shared.plugins.count {
+		if shared.plugins.items[id].content && id not_in loaded {
 			missing += {id}
 		}
 	}
@@ -196,8 +195,8 @@ mods_switch_on :: proc "contextless" (mods: Mods, on: Mods) -> Mods {
 	out := mods_with_deps(mods + on)
 	for {
 		added := false
-		for id in 1 ..< plugins.count {
-			if id not_in out && plugins.items[id].companion && deps_in(id, out) && !deps_in(id, mods) {
+		for id in 1 ..< shared.plugins.count {
+			if id not_in out && shared.plugins.items[id].companion && deps_in(id, out) && !deps_in(id, mods) {
 				out += {id}
 				added = true
 			}
@@ -210,8 +209,8 @@ mods_switch_on :: proc "contextless" (mods: Mods, on: Mods) -> Mods {
 
 // The companions that `mods` has every dependency of, on or not.
 mods_companions :: proc "contextless" (mods: Mods) -> (out: Mods) {
-	for id in 1 ..< plugins.count {
-		if plugins.items[id].companion && deps_in(id, mods) {
+	for id in 1 ..< shared.plugins.count {
+		if shared.plugins.items[id].companion && deps_in(id, mods) {
 			out += {id}
 		}
 	}
@@ -220,7 +219,7 @@ mods_companions :: proc "contextless" (mods: Mods) -> (out: Mods) {
 
 @(private = "file")
 deps_in :: proc "contextless" (id: int, mods: Mods) -> bool {
-	for dep in plugins.items[id].deps {
+	for dep in shared.plugins.items[id].deps {
 		if d, ok := plugin_find(dep); !ok || int(d) not_in mods {
 			return false
 		}
@@ -236,11 +235,11 @@ mods_default_dependants :: proc "contextless" (id: Plugin_ID) -> Mods {
 	under := Mods{int(id)}
 	for {
 		added := false
-		for p in 1 ..< plugins.count {
-			if p in under || !plugins.items[p].default_on {
+		for p in 1 ..< shared.plugins.count {
+			if p in under || !shared.plugins.items[p].default_on {
 				continue
 			}
-			for dep in plugins.items[p].deps {
+			for dep in shared.plugins.items[p].deps {
 				if d, ok := plugin_find(dep); ok && int(d) in under {
 					under += {p}
 					added = true
@@ -256,8 +255,8 @@ mods_default_dependants :: proc "contextless" (id: Plugin_ID) -> Mods {
 
 // The session plugins in `mods`: what a Session carries.
 mods_session :: proc "contextless" (mods: Mods) -> (out: Mods) {
-	for id in 1 ..< plugins.count {
-		if id in mods && plugins.items[id].session {
+	for id in 1 ..< shared.plugins.count {
+		if id in mods && shared.plugins.items[id].session {
 			out += {id}
 		}
 	}
@@ -266,8 +265,8 @@ mods_session :: proc "contextless" (mods: Mods) -> (out: Mods) {
 
 // The plugins that are on exactly when a session is online (Plugin.online).
 mods_online :: proc "contextless" () -> (out: Mods) {
-	for id in 1 ..< plugins.count {
-		if plugins.items[id].online {
+	for id in 1 ..< shared.plugins.count {
+		if shared.plugins.items[id].online {
 			out += {id}
 		}
 	}

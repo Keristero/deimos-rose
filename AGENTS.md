@@ -33,16 +33,20 @@ leaves behind is:
 - **Everything new is a plugin, installed separately.** A gameplay
   addition, a screen, a tool, a set of levels: a folder under
   `src/plugins/` that registers itself through the extension points, and
-  ships as its own download. The game runs, and its tests pass, with no
-  plugin installed.
+  ships as its own download, a zip with every plugin it needs, unzipped
+  over the game's folder (`mise run dist:zips`, D87). The game runs, and
+  its tests pass, with no plugin installed; `mise run dist:check`
+  installs each download as a player would.
 - **Before building a feature, say where it installs.** If the answer is
   "in the core", the feature needs a reason in its pull request, and the
   reason is usually a missing extension point (see "Count the places a
   feature touches").
-- **The core imports no plugin.** `src/game/plugins.odin`, the list of
-  what is in the build, is the one core file that names one; `mise run
-  purity` fails any other. A plugin reaches the core through the
-  extension points below, never the core through a plugin.
+- **The core imports no plugin.** The game loads each code plugin from
+  its library, `plugins/<name>/<name>.so` (`.dll`), at startup, and
+  `mise run purity` fails a core file that names one. A plugin reaches
+  the core through the extension points below, never the core through a
+  plugin. `src/all_plugins/` imports them all, for the tests, the tools
+  and the static build: a new plugin is added there too.
 
 ## The core habit: verify, then build
 
@@ -125,11 +129,21 @@ and fast tests all die without it, and it cannot be retrofitted cheaply.
 silently. `G_Film::GetRandomSeed` shows the original made the same choice.
 
 **Register through a named step.** An `@(init)` procedure only calls
-`sim.register_step`. `sim.register_all` runs the steps in a fixed order,
+`sim.register_step`, and `blocks.declare` for its package's block. `sim.register_all` runs the steps in a fixed order,
 and every `main` that touches the simulation calls it first. Odin orders
 `@(init)` procedures differently for different targets, and a registry's
 order gives the ids peers exchange. That once made a Linux host's Easy
 Mode a Windows guest's Loadout (decisions.md D50).
+
+**A package's state lives in its block.** A plugin is loaded from a
+library of its own, which carries its own copy of every package it
+imports; only a package's block is shared with the game's. So a mutable
+variable goes in the package's `Shared` struct, read through `shared.`,
+and a literal table is `@(rodata)`. A value set at registration, a
+plugin's id included, is state: other packages read it through an
+accessor (`new_weapons.beam()`). A `@(static)` local is state too. A
+block starts zeroed. `mise run purity` enforces all of it (decisions.md
+D83, `src/blocks/blocks.odin`).
 
 **Classic mode is the original, exactly.** With classic mode on, the game
 must look and behave as the 2003 build does: same sprites, colours, frames,
@@ -200,6 +214,12 @@ flowchart LR
   `src/site/site.config.json`, and the plugin list kept in step with
   `src/plugins/`. The pull request workflow runs `mise run site:check`
   and fails without it; `src/site/README.md` has the format.
+- **Every plugin has a screenshot.** Its entry names the scenario it is
+  pictured in (`"shot"`), and `mise run site:shots ONLY=<name>` renders
+  it into `src/site/shots/`, committed. The site fails to build without
+  it. A new plugin with a look of its own registers a scenario for it
+  (`ui.shot_register`); one without uses `playing -mod <name>`. Render
+  it again when its look changes.
 - **Open the pull request with `gh pr create`**, against the branch it
   stacks on, with the body written as below.
 
@@ -380,6 +400,7 @@ The extension points today:
 | effects that live between steps and draw between layers | `effect_system_register` | `render/render_systems.odin` |
 | a pass over the finished play field (lighting, glow, water) | `render.post_pass_register` | `render/post.odin` (D78) |
 | a screen over the play field | `ui.overlay_register` | `ui/overlays.odin` |
+| a screen of its own on the main menu, which may drive the session it starts (netplay's lobby) | `game.screen_register`, `game.flow_drive` | `game/screens.odin` (D86) |
 | a setting on the Extras page | `prefs.setting_register`; `player = n` for player n's colour (`prefs.player_hue_setting`) | `prefs/settings.odin` |
 | the Extras page itself | `prefs.settings_page_register` | `prefs/settings.odin` |
 | a preview drawn on the Extras page | `ui.settings_preview_register` | `ui/settings_previews.odin` |
@@ -387,9 +408,11 @@ The extension points today:
 | a switch on Level Select or the netplay lobby | `ui.setup_switch_register` | `ui/setup_switches.odin` |
 | presenting faster than the original's 30 frames a second | `render.frame_rate_register` | `render/frame_rate.odin` |
 | records, weapons, sprites, im16 images and sounds of a plugin's own | `plugins/<name>/{data,sprites,images/im16,audio}` beside its code, a recipe in `tools/recolour/`, `content = true` | `data/assets.odin` (D49, D51) |
+| a plugin with code: a library the game loads | `plugins/<name>/` and its `view/`, built by `build:plugins`; imported in `all_plugins/` | `game/plugin_libs.odin`, `plugin_entry/` (D85) |
 | a plugin with no code: content and a manifest | `plugins/<name>/plugin.json` beside its content, found at startup | `data/plugins.odin` (D52) |
 | a campaign: levels played in their own order | `levels` in its `plugin.json`, records in `data/levels/`, maps and previews in `images/im16/` | `data/assets.odin`, `sim/defs.odin` (D53) |
 | a screenshot scenario (`mise run menu-shot MENU=...`) | `ui.shot_register`; `ui.menu_shot_register` for a core menu with a plugin on | `ui/shots.odin` |
+| state a package keeps between calls | its `Shared` block, declared to `blocks.declare` | `blocks/blocks.odin` (D83) |
 
 ## Finishing a branch or a phase
 

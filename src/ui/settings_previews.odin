@@ -19,14 +19,11 @@ Settings_Preview :: struct {
 	draw:   proc(r: ^render.Renderer, values: ^[prefs.MAX_SETTINGS]int, live: bool),
 }
 
-@(private = "file")
-previews: sim.Registry(Settings_Preview, MAX_SETTINGS_PREVIEWS)
-
 // Called from registration steps only (sim.register_step).
 settings_preview_register :: proc(p: Settings_Preview) {
-	sim.registry_add(&previews, p)
+	sim.registry_add(&shared.previews, p)
 }
 
 registered_settings_previews :: proc "contextless" () -> []Settings_Preview {
-	return sim.registry_items(&previews)
+	return sim.registry_items(&shared.previews)
 }

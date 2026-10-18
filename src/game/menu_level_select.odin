@@ -36,6 +36,7 @@ LESE :: "lese"
 // widget layered over them; clicking the left/right preview rotates the
 // carousel, clicking the centre one accepts/rejects it.
 @(private = "file")
+@(rodata)
 LS_RECTS := [3]rl.Rectangle {
 	{55, 76, 145, 306}, // previous
 	{246, 76, 146, 306}, // current
@@ -49,6 +50,7 @@ LS_RECTS := [3]rl.Rectangle {
 // "NO ACCESS" (shown centred when locked), 12/13 are small left/right-facing
 // arrow glyphs (shown at the side slots unconditionally).
 @(private = "file")
+@(rodata)
 LS_ICON_POS := [3]rl.Vector2{{128, 228}, {320, 228}, {511, 228}}
 @(private = "file") LS_FRAME_PREV :: 12
 @(private = "file") LS_FRAME_START :: 10

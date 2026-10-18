@@ -39,7 +39,7 @@ loadout_defs :: proc() -> ^sim.Defs {
 		weapons[k].minimum_level_available = 2
 	}
 	weapons[4].extra = true
-	weapons[4].plugin = new_weapons.ID // its content, as data.extra_defs_load marks it
+	weapons[4].plugin = new_weapons.id() // its content, as data.extra_defs_load marks it
 	defs.weapons = weapons
 	return defs
 }
@@ -195,7 +195,7 @@ loadout_without_new_weapons_leaves_them_out :: proc(t: ^testing.T) {
 	defs := loadout_defs()
 	s := new(sim.State, context.temp_allocator)
 	defer sim.destroy(s)
-	mods := sim.mods_session(sim.mods_with_deps({int(loadout.ID)}))
+	mods := sim.mods_session(sim.mods_with_deps({int(loadout.id())}))
 	sim.init(s, sim.Session{seed = 3, level_id = defs.levels[0].id, game_type = .Single, mods = mods}, defs)
 	if !testing.expect(t, play_to_loadout(s), "the loadout screen must open on level 2") {
 		return
@@ -299,7 +299,7 @@ chaingun_loads_as_new_content :: proc(t: ^testing.T) {
 		return
 	}
 	w := &defs.weapons[cg]
-	testing.expect(t, sim.weapon_bool(w, chaingun.AIMED_RELEASE))
+	testing.expect(t, sim.weapon_bool(w, chaingun.aimed_release()))
 	testing.expect_value(t, w.type, sim.WEP_AIR)
 	testing.expect_value(t, w.minimum_level_available, 7)
 	testing.expect(t, sim.unit_index(&defs, w.powerup_air_release_spawn) >= 0, "the aimed shot's unit must load")

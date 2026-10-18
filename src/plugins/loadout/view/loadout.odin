@@ -42,7 +42,7 @@ import "dr:ui"
 @(private = "file") READY_H :: 18
 @(private = "file") BORDER :: 2
 
-@(private = "file")
+@(private = "file", rodata)
 ROW_LABELS := [loadout.Loadout_Row]string {
 	.Fresh = "NEW",
 	.Slots = "LOADOUT",
@@ -75,7 +75,7 @@ panel_height :: proc(b: ^loadout.Loadout_Board) -> f32 {
 }
 
 register_loadout_view :: proc() {
-	ui.overlay_register({name = "loadout", plugin = loadout.ID, draw = loadout_draw})
+	ui.overlay_register({name = "loadout", plugin = loadout.id(), draw = loadout_draw})
 }
 
 @(init)

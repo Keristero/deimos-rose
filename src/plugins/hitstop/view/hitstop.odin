@@ -20,7 +20,7 @@ import "dr:plugins/hitstop"
 import "dr:render"
 import "dr:sim"
 
-@(private = "file")
+@(private)
 Cam :: struct {
 	on:    bool,
 	start: f64,     // the clock, in seconds, when it began
@@ -33,26 +33,11 @@ Cam :: struct {
 	fixed: Maybe(f32), // stand at this point of the cam (the screenshots, shots.odin)
 }
 
-@(private = "file") cam: Cam
-// A living ground target is on screen (set each step): the kill cam does not
-// zoom then, so the fight stays readable.
-@(private = "file") ground_live: bool
-@(private = "file") driven: bool // the slowdown, sound and reverb are set by the cam
-
-// The longest streak each player has had the kill cam for this level: it
-// shows the first time a combo level is reached, not again on the way back up.
-@(private = "file") reached: [sim.MAX_PLAYERS]int
-
-// Each player's kill streak, the step of their last kill, and the step.
-streak: [sim.MAX_PLAYERS]int
-last_kill: [sim.MAX_PLAYERS]int
-steps: int
-
 register :: proc() {
-	render.effect_system_register({name = "hitstop", plugin = hitstop.ID, step = step, clear = clear})
+	render.effect_system_register({name = "hitstop", plugin = hitstop.id(), step = step, clear = clear})
 	render.post_pass_register({
 		name    = "hitstop kill cam",
-		plugin  = hitstop.ID,
+		plugin  = hitstop.id(),
 		after   = {"lighting"},
 		enabled = enabled,
 		apply   = apply,
@@ -60,7 +45,7 @@ register :: proc() {
 	})
 	render.post_pass_register({
 		name    = "hitstop combo",
-		plugin  = hitstop.ID,
+		plugin  = hitstop.id(),
 		after   = combo_after[:],
 		enabled = combo_enabled,
 		apply   = combo_apply,
@@ -83,29 +68,24 @@ destroy :: proc() {
 // Starts the kill cam for streak 1 on `at`, standing at `progress` of the
 // way through it, at full strength (the screenshots').
 cam_hold_at :: proc(at: sim.Vec, progress: f32, streak := 1) {
-	staged = Cam{true, 0, at, false, 1, 1, streak, 0, progress}
+	shared.staged = Cam{true, 0, at, false, 1, 1, streak, 0, progress}
 }
 
 // Player 1's combo as if `count` kills in, a quarter of its window gone (the
 // screenshots'; the cam, as ever, is a separate thing).
 combo_hold_at :: proc(count: int) {
-	staged_combo = count
+	shared.staged_combo = count
 }
 
 // Player 1's style gauge at `g` (the screenshots').
 style_hold_at :: proc(g: f32) {
-	staged_style = g
+	shared.staged_style = g
 }
-
-// Kept until the next step, as a level start forgets what is already up.
-@(private = "file") staged: Maybe(Cam)
-@(private = "file") staged_combo: Maybe(int)
-@(private = "file") staged_style: Maybe(f32)
 
 @(private = "file")
 clear :: proc() {
-	cam = {}
-	streak, last_kill, steps, style, reached = {}, {}, 0, {}, {}
+	shared.cam = {}
+	shared.streak, shared.last_kill, shared.steps, shared.style, shared.reached = {}, {}, 0, {}, {}
 }
 
 // Takes the step's collisions: each kill of an enemy goes on its killer's
@@ -114,40 +94,40 @@ clear :: proc() {
 // slow-motion.
 @(private = "file")
 step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles) {
-	steps += 1
-	if c, ok := staged.?; ok {
-		cam, staged = c, nil
+	shared.steps += 1
+	if c, ok := shared.staged.?; ok {
+		shared.cam, shared.staged = c, nil
 	}
-	if g, ok := staged_style.?; ok {
-		style[0].gauge, staged_style = g, nil
+	if g, ok := shared.staged_style.?; ok {
+		shared.style[0].gauge, shared.staged_style = g, nil
 	}
-	if n, ok := staged_combo.?; ok {
-		streak[0], last_kill[0], staged_combo = n, steps - STREAK_WINDOW / 4, nil
+	if n, ok := shared.staged_combo.?; ok {
+		shared.streak[0], shared.last_kill[0], shared.staged_combo = n, shared.steps - STREAK_WINDOW / 4, nil
 	}
-	for &st in style {
+	for &st in shared.style {
 		style_step(&st)
 	}
-	ground_live = ground_target_on_screen(s)
-	strength := r.setting[STRENGTH]
+	shared.ground_live = ground_target_on_screen(s)
+	strength := r.setting[shared.strength]
 	hold := 0
 	took: Maybe(sim.Hit_Event)
 	for ev in s.hits.events[:s.hits.count] {
 		if ev.player && ev.victim >= 0 && int(ev.victim) < sim.MAX_PLAYERS {
-			style_struck(&style[ev.victim])
-			last_kill[ev.victim] = streak_struck(streak[ev.victim], last_kill[ev.victim])
+			style_struck(&shared.style[ev.victim])
+			shared.last_kill[ev.victim] = streak_struck(shared.streak[ev.victim], shared.last_kill[ev.victim])
 		} else if ev.enemy && ev.by >= 0 && int(ev.by) < sim.MAX_PLAYERS && ev.source >= 0 {
-			style_hit(&style[ev.by], ev.source, ev.killed, rl.GetTime())
+			style_hit(&shared.style[ev.by], ev.source, ev.killed, rl.GetTime())
 		}
 		if is_takedown(ev) && strength > 0 {
 			who := clamp(int(ev.by), 0, sim.MAX_PLAYERS - 1)
-			streak[who] = streak_after(streak[who], last_kill[who], steps)
-			last_kill[who] = steps
-			if streak[who] <= reached[who] {
+			shared.streak[who] = streak_after(shared.streak[who], shared.last_kill[who], shared.steps)
+			shared.last_kill[who] = shared.steps
+			if shared.streak[who] <= shared.reached[who] {
 				hold = max(hold, hold_steps(ev.damage, strength)) // seen already: an ordinary hit
 				continue
 			}
-			reached[who] = streak[who]
-			cam = {true, rl.GetTime(), ev.loc, ev.scrolls_sideways, shake_power(ev.damage), slow_power(ev.damage), streak[who], who, nil}
+			shared.reached[who] = shared.streak[who]
+			shared.cam = {true, rl.GetTime(), ev.loc, ev.scrolls_sideways, shake_power(ev.damage), slow_power(ev.damage), shared.streak[who], who, nil}
 			took = ev
 			continue
 		}
@@ -156,10 +136,10 @@ step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles) {
 	if took != nil {
 		r.hold = 0
 		vol := r.textures.sfx_volume
-		boom_play(vol * volume_scale(r.setting, BOOM_VOLUME))
-		announce(cam.streak, vol * volume_scale(r.setting, ANNOUNCER_VOLUME), announcer_of(cam.who))
-		horn_play(cam.streak, vol * volume_scale(r.setting, HORN_VOLUME))
-	} else if !cam.on {
+		boom_play(vol * volume_scale(r.setting, shared.boom_volume))
+		announce(shared.cam.streak, vol * volume_scale(r.setting, shared.announcer_volume), announcer_of(shared.cam.who))
+		horn_play(shared.cam.streak, vol * volume_scale(r.setting, shared.horn_volume))
+	} else if !shared.cam.on {
 		r.hold = max(r.hold, hold)
 	}
 }
@@ -188,45 +168,45 @@ ground_target_on_screen :: proc(s: ^sim.State) -> bool {
 // lets go of them when it ends.
 @(private = "file")
 enabled :: proc(r: ^render.Renderer) -> bool {
-	if cam.on && cam.fixed == nil && rl.GetTime() - cam.start >= TAKEDOWN_SECONDS {
-		cam = {}
+	if shared.cam.on && shared.cam.fixed == nil && rl.GetTime() - shared.cam.start >= TAKEDOWN_SECONDS {
+		shared.cam = {}
 	}
-	if cam.on {
+	if shared.cam.on {
 		p := progress()
-		r.slowdown = (1 - speed_at(p, cam.slow)) * intensity(r.setting, SLOWMO)
-		r.textures.audio_slow = audio_slow_at(p, cam.slow) * intensity(r.setting, SLOWMO)
-		reverb_set(reverb_at(p, cam.slow) * intensity(r.setting, REVERB))
-		driven = true
-	} else if driven {
+		r.slowdown = (1 - speed_at(p, shared.cam.slow)) * intensity(r.setting, shared.slowmo)
+		r.textures.audio_slow = audio_slow_at(p, shared.cam.slow) * intensity(r.setting, shared.slowmo)
+		reverb_set(reverb_at(p, shared.cam.slow) * intensity(r.setting, shared.reverb))
+		shared.driven = true
+	} else if shared.driven {
 		r.slowdown, r.textures.audio_slow = 0, 0
 		reverb_set(0)
-		driven = false
+		shared.driven = false
 	}
-	return cam.on
+	return shared.cam.on
 }
 
 @(private = "file")
 progress :: proc() -> f32 {
-	if at, ok := cam.fixed.?; ok {
+	if at, ok := shared.cam.fixed.?; ok {
 		return at
 	}
-	return clamp(f32((rl.GetTime() - cam.start) / TAKEDOWN_SECONDS), 0, 1)
+	return clamp(f32((rl.GetTime() - shared.cam.start) / TAKEDOWN_SECONDS), 0, 1)
 }
 
 @(private = "file")
 apply :: proc(r: ^render.Renderer, f: ^render.Post_Frame, src: rl.Texture2D) {
 	p := progress()
 	field := [4]f32{render.VIEW_X * f.scale, 0, render.PLAY_W * f.scale, render.PLAY_H * f.scale}
-	x := cam.at.x - (cam.side ? f.side : 0)
-	at := [2]f32{(x + render.VIEW_X) * f.scale, (cam.at.y) * f.scale}
-	z := ground_live ? 1 : 1 + (zoom_at(p) - 1) * intensity(r.setting, ZOOM_AMOUNT)
+	x := shared.cam.at.x - (shared.cam.side ? f.side : 0)
+	at := [2]f32{(x + render.VIEW_X) * f.scale, (shared.cam.at.y) * f.scale}
+	z := shared.ground_live ? 1 : 1 + (zoom_at(p) - 1) * intensity(r.setting, shared.zoom_amount)
 	view := zoom_rect(field, at, z)
 	// The scene texture is bottom-up: the rows count from its foot.
 	h := f32(src.height)
 	rl.SetTextureFilter(src, .BILINEAR)
 	// Shaken hard: the picture is drawn a little larger than the field, moved
 	// and turned about its centre, and the play field's scissor trims the rest.
-	shake := ground_live ? 0 : shake_at(p, cam.power) * intensity(r.setting, SHAKE) // no shaking larger or turned while there is a fight
+	shake := shared.ground_live ? 0 : shake_at(p, shared.cam.power) * intensity(r.setting, shared.shake) // no shaking larger or turned while there is a fight
 	t := f32(rl.GetTime())
 	jx, jy := math.sin(t * 91) + math.sin(t * 57 + 1), math.cos(t * 83) + math.cos(t * 61 + 2)
 	roll := math.sin(t * 67) * 0.045 * shake
@@ -253,7 +233,7 @@ apply :: proc(r: ^render.Renderer, f: ^render.Post_Frame, src: rl.Texture2D) {
 // it lands; as large as `scale` asks unless that is wider than the field.
 @(private = "file")
 draw_takedown :: proc(r: ^render.Renderer, field: [4]f32, scale: f32, p: f32) {
-	text := streak_text(cam.streak)
+	text := streak_text(shared.cam.streak)
 	width: f32
 	for c in transmute([]u8)text {
 		if _, src, ok := render.frame_rect(&r.textures, render.FONT, render.glyph_of(c)); ok {
@@ -266,7 +246,7 @@ draw_takedown :: proc(r: ^render.Renderer, field: [4]f32, scale: f32, p: f32) {
 	x := field[0] + (field[2] - width) / 2 + math.sin(p * 400) * shake
 	y := field[1] + field[3] * 0.74 + math.cos(p * 530) * shake
 	alpha := u8(255 * (1 - clamp((p - 0.92) / 0.08, 0, 1)))
-	colour := tier_colour(streak_tier(cam.streak), alpha)
+	colour := tier_colour(streak_tier(shared.cam.streak), alpha)
 	for pass in 0 ..< 2 {
 		pen := x
 		offset := pass == 0 ? 0.12 * fit : f32(0)

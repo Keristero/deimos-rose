@@ -46,12 +46,33 @@ headline; the patch notes are the detail.
 ## Plugins
 
 `plugins` lists every folder in `src/plugins/`, with the `group` it is
-shown under and, optionally, `about`: a sentence more than the game's own
-description. The build fails when a folder is missing from the list or
+shown under, the `shot` it is pictured in and, optionally, `about`: a
+sentence more than the game's own description. The build fails when a folder is missing from the list or
 the list names a folder that is gone. The label, description,
 dependencies and flags come from the plugin itself: its `plugin.json`, or
 its `plugin_register({...})` call. The game shows the same words on its
 Mods page.
+
+## Screenshots
+
+Every plugin's card shows `shots/<name>.webp`, and the build fails when
+one is missing. `shot` names the scene: one of the game's menu-shot
+scenarios (`game/main.odin`'s `run_menu_shot`, and each plugin's
+`ui.shot_register`), then any launch flags:
+
+```json
+{ "name": "water", "group": "Presentation", "shot": "water_splash" },
+{ "name": "recovered_levels", "group": "Content", "shot": "playing -campaign recovered_levels -level Delos" }
+```
+
+`playing` is a level ten seconds in, firing, with nothing on but what
+`-mod`, `-campaign` and `-level` say: the scene for a plugin with no
+scenario of its own. `mise run site:shots` renders every one with the
+game (`ONLY='water wind'` for some) and writes 960x720 WebP, about 100 KB
+each, with ImageMagick. The images are committed, as `src/assets/` is:
+CI has no display, and a picture only changes when its plugin's look
+does. HD Textures' needs its textures generated first (`mise run
+hd:textures`).
 
 ## Diagrams
 

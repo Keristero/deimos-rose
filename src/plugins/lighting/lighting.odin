@@ -10,13 +10,11 @@ import "dr:sim"
 // classic mode never sees it. Drawn by plugins/lighting/view as a post pass
 // (render/post.odin).
 
-ID: sim.Plugin_ID
-
 @(private = "file", rodata)
 DEPS := []string{"extra_prefs"}
 
 register :: proc() {
-	ID = sim.plugin_register({
+	shared.id = sim.plugin_register({
 		name        = "lighting",
 		label       = "REALTIME LIGHTING",
 		description = "Shots and explosions light what is round them, and glow",

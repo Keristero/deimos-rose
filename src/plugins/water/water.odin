@@ -9,13 +9,11 @@ import "dr:sim"
 // Presentation only: it changes nothing in the simulation, and classic
 // mode never sees it. Drawn by plugins/water/view.
 
-ID: sim.Plugin_ID
-
 @(private = "file", rodata)
 DEPS := []string{"extra_prefs"}
 
 register :: proc() {
-	ID = sim.plugin_register({
+	shared.id = sim.plugin_register({
 		name        = "water",
 		label       = "MOVING WATER",
 		description = "Waves, a sky and its clouds, and the sun's glint on the water",

@@ -1,4 +1,4 @@
-package game
+package netplay_view
 
 // Phase 7 stage 6 / Phase 6 stage 5: the netplay lobby, and the glue that
 // wires a connected session into Flow's .Playing mode. There is no original
@@ -6,9 +6,10 @@ package game
 // deferred building this until Phase 7 established a menu visual language,
 // so it borrows that language (Text_Button, menu_draw_text, the shared
 // "back" background) without claiming to reproduce any specific original
-// screen. New content only, per D21/mise.toml's --classic flag: reached
-// from Main Menu's own Netplay item, shown only when !r.classic (see
-// menu_main.odin, D30).
+// screen. New content only: a plugin's screen (game/screens.odin, Phase 10
+// stage 4, D86), reached from the main menu's NETPLAY item while the
+// plugin is on, and so never in classic mode (D30). screen.odin registers
+// it; this file was game/netplay.odin until then.
 //
 // Handshake: net/reliable.odin's stop-and-wait channel already carries
 // Hello/Ready/Goodbye; this adds a fourth reliable message, Start (host ->
@@ -42,7 +43,8 @@ import core_net "core:net"
 import rl "vendor:raylib"
 
 import "dr:data"
-import "dr:net"
+import "dr:game"
+import net "dr:plugins/netplay/net"
 import "dr:prefs"
 import "dr:render"
 import "dr:sim"
@@ -176,10 +178,10 @@ Netplay :: struct {
 	campaign_prev: ui.Text_Button,
 	campaign_next: ui.Text_Button,
 	ready_btn:  ui.Text_Button,
-	switches:   Setup_Switches,
+	switches:   game.Setup_Switches,
 	buttons_at: f32, // cy the above were last built for; rebuilt if it ever needs to change
 
-	// Live session, once both sides are Playing (see Flow.netplay_active).
+	// Live session, once both sides are Playing (see active).
 	rs:            net.Rollback_Session,
 	desync:        net.Desync_Monitor,
 	warned_desync: bool,
@@ -225,8 +227,8 @@ Netplay :: struct {
 }
 
 // Closes the socket (if any) and zeroes every other field. Package-visible
-// (not file-private) since flow.odin's flow_finish_session calls this too,
-// to clean up a netplay match that ended normally rather than via Escape
+// (not file-private) since the screen's release calls this too, when the
+// game ends a match normally (flow_finish_session) rather than via Escape
 // (netplay_disconnect) or a peer Goodbye (netplay_poll).
 netplay_reset :: proc(nl: ^Netplay) {
 	if nl.have_sock {
@@ -252,7 +254,7 @@ netplay_build_buttons :: proc(nl: ^Netplay, r: ^render.Renderer) {
 	nl.level_prev = ui.text_button_at_x(r, "<", render.SCREEN_W / 2 - 110, 262)
 	nl.level_next = ui.text_button_at_x(r, ">", render.SCREEN_W / 2 + 110, 262)
 	nl.ready_btn = ui.text_button_at(r, "READY", 300)
-	setup_switches_layout(r, &nl.switches, .Lobby, {}, SWITCH_Y)
+	game.setup_switches_layout(r, &nl.switches, .Lobby, {}, SWITCH_Y)
 }
 
 // Below the accent slider, clear of everything else on the connected
@@ -265,7 +267,7 @@ netplay_build_buttons :: proc(nl: ^Netplay, r: ^render.Renderer) {
 
 @(private = "file")
 netplay_campaign_text :: proc(nl: ^Netplay) -> string {
-	campaign := flow_campaign_label(nl.campaign)
+	campaign := game.flow_campaign_label(nl.campaign)
 	return nl.role == .Host ? fmt.tprintf("CAMPAIGN: %s", campaign) : fmt.tprintf("HOST HAS CHOSEN: %s", campaign)
 }
 
@@ -277,8 +279,8 @@ netplay_campaign_layout :: proc(r: ^render.Renderer, nl: ^Netplay) {
 	ui.text_button_relabel(r, &nl.campaign_next, ">", render.SCREEN_W / 2 + dx, CAMPAIGN_Y)
 }
 
-// Called once per render frame from flow_handle_input's .Netplay_Lobby case.
-netplay_lobby_update :: proc(fl: ^Flow, r: ^render.Renderer, nl: ^Netplay) {
+// Once per render frame while the lobby is shown (Screen.update).
+netplay_lobby_update :: proc(fl: ^game.Flow, r: ^render.Renderer, nl: ^Netplay) {
 	if nl.have_sock {
 		netplay_poll(fl, r, nl)
 	}
@@ -319,7 +321,7 @@ netplay_lobby_update :: proc(fl: ^Flow, r: ^render.Renderer, nl: ^Netplay) {
 }
 
 @(private = "file")
-netplay_update_menu :: proc(fl: ^Flow, r: ^render.Renderer, nl: ^Netplay) {
+netplay_update_menu :: proc(fl: ^game.Flow, r: ^render.Renderer, nl: ^Netplay) {
 	mouse := ui.menu_mouse_pos()
 	dt := rl.GetFrameTime()
 	if ui.text_button_update(r, &nl.menu_host, mouse, dt) {
@@ -337,11 +339,11 @@ netplay_update_menu :: proc(fl: ^Flow, r: ^render.Renderer, nl: ^Netplay) {
 // scores can be recorded under their names when the game ends. The last
 // name used is offered again.
 @(private = "file")
-netplay_begin_name_entry :: proc(fl: ^Flow, nl: ^Netplay, role: Netplay_Role) {
+netplay_begin_name_entry :: proc(fl: ^game.Flow, nl: ^Netplay, role: Netplay_Role) {
 	nl.phase = .Enter_Name
 	nl.name_role = role
 	nl.local_name = fl.prefs.saved.netplay_name
-	nl.local_hue = player_hue(fl.prefs, 0)
+	nl.local_hue = game.player_hue(fl.prefs, 0)
 	nl.error = ""
 }
 
@@ -357,7 +359,7 @@ accent_slider_rect :: proc() -> rl.Rectangle {
 }
 
 @(private = "file")
-netplay_update_enter_name :: proc(fl: ^Flow, nl: ^Netplay) {
+netplay_update_enter_name :: proc(fl: ^game.Flow, nl: ^Netplay) {
 	n := &nl.local_name
 	for c := rl.GetCharPressed(); c != 0; c = rl.GetCharPressed() {
 		if c >= 0x20 && c <= 0x7e && n.len < prefs.NAME_MAX {
@@ -385,7 +387,7 @@ netplay_update_enter_name :: proc(fl: ^Flow, nl: ^Netplay) {
 	nl.error = ""
 	if fl.prefs.saved.netplay_name != n^ {
 		fl.prefs.saved.netplay_name = n^
-		prefs_state_save(fl.prefs)
+		game.prefs_state_save(fl.prefs)
 	}
 	switch nl.name_role {
 	case .Host:
@@ -411,28 +413,23 @@ netplay_start_hosting :: proc(nl: ^Netplay) {
 	// who is joining ahead of time.
 }
 
-// DR_NETPLAY_END: see netplay_lobby_start_from_flag. 0 outside a test.
-netplay_test_end: i32
-// DR_NETPLAY_SHOT=<path>: the frame a second after play is first held is
-// saved as <path>.png, to see what the peer showed (main.odin).
-netplay_shot_path: string
-@(private = "file")
-netplay_shot_in: int // frames until that shot; 0 when none is due, -1 once taken
-
+// Once a frame (Screen.framed): whether the DR_NETPLAY_SHOT frame is due.
+@(private)
 netplay_shot_due :: proc() -> bool {
-	if netplay_shot_in <= 0 {
+	if shared.shot_in <= 0 {
 		return false
 	}
-	netplay_shot_in -= 1
-	if netplay_shot_in == 0 {
-		netplay_shot_in = -1
+	shared.shot_in -= 1
+	if shared.shot_in == 0 {
+		shared.shot_in = -1
 		return true
 	}
 	return false
 }
 
 // Skips the Menu/Enter_Address phases and their mouse/keyboard-driven UI,
-// going straight to hosting or joining. Used by main.odin's DR_NETPLAY hook
+// going straight to hosting or joining. Used by the DR_NETPLAY hook
+// (screen.odin's launch)
 // (tools/netplay/loopback_check.sh) so a scripted two-instance test only
 // has to drive xdotool through the one truly interactive step left -- each
 // side's own Ready button -- instead of also guessing Main Menu/lobby
@@ -440,7 +437,7 @@ netplay_shot_due :: proc() -> bool {
 // The saved name and accent are used as they are, or "Player 1"/"Player 2"
 // without a name.
 //
-// DR_NETPLAY_END=<steps> as well (main.odin sets netplay_test_end) makes
+// DR_NETPLAY_END=<steps> as well (launch sets shared.test_end) makes
 // the run a test of a level's end without anyone at the keyboard: each
 // side readies as soon as it is connected, and both start the level that
 // many steps before its end (level_system.level_start_at_row). With Easy
@@ -456,7 +453,7 @@ netplay_lobby_start_from_flag :: proc(nl: ^Netplay, saved: ^prefs.Prefs, mode: s
 		nl.local_hue = saved.settings[id]
 	}
 	if nl.local_name.len == 0 {
-		prefs.name_set(&nl.local_name, high_scores_default_last_name(mode == "host" ? 0 : 1))
+		prefs.name_set(&nl.local_name, game.high_scores_default_last_name(mode == "host" ? 0 : 1))
 	}
 	if mode == "host" {
 		netplay_start_hosting(nl)
@@ -601,7 +598,7 @@ netplay_update_connecting :: proc(nl: ^Netplay, r: ^render.Renderer) {
 }
 
 @(private = "file")
-netplay_update_connected :: proc(fl: ^Flow, nl: ^Netplay, r: ^render.Renderer) {
+netplay_update_connected :: proc(fl: ^game.Flow, nl: ^Netplay, r: ^render.Renderer) {
 	if !net.reliable_tick(&nl.rc, &nl.sock) {
 		netplay_fail(nl, "connection timed out")
 		return
@@ -616,9 +613,9 @@ netplay_update_connected :: proc(fl: ^Flow, nl: ^Netplay, r: ^render.Renderer) {
 	// the client has made" (notes/netcode-enhancements.md) -- once
 	// local_ready is set, the nav buttons stop responding.
 	if nl.role == .Host {
-		nl.mods = flow_session_mods(fl)
-		if c := flow_campaign_step(fl, fl.campaign, 0); c != fl.campaign {
-			flow_campaign_set(fl, c) // one since turned off
+		nl.mods = game.flow_session_mods(fl)
+		if c := game.flow_campaign_step(fl, fl.campaign, 0); c != fl.campaign {
+			game.flow_campaign_set(fl, c) // one since turned off
 			nl.level_index = 0
 		}
 		nl.campaign = fl.campaign
@@ -632,8 +629,8 @@ netplay_update_connected :: proc(fl: ^Flow, nl: ^Netplay, r: ^render.Renderer) {
 		if ui.text_button_update(r, &nl.campaign_next, mouse, dt) {
 			step = 1
 		}
-		if step != 0 && len(flow_campaigns(fl)) > 1 {
-			flow_campaign_set(fl, flow_campaign_step(fl, fl.campaign, step))
+		if step != 0 && len(game.flow_campaigns(fl)) > 1 {
+			game.flow_campaign_set(fl, game.flow_campaign_step(fl, fl.campaign, step))
 			nl.campaign, nl.level_index = fl.campaign, 0
 		}
 		n := len(sim.campaign_levels(fl.defs, nl.campaign))
@@ -643,8 +640,8 @@ netplay_update_connected :: proc(fl: ^Flow, nl: ^Netplay, r: ^render.Renderer) {
 		if ui.text_button_update(r, &nl.level_next, mouse, dt) {
 			nl.level_index = (nl.level_index + 1) % n
 		}
-		setup_switches_layout(r, &nl.switches, .Lobby, nl.mods, SWITCH_Y)
-		setup_switches_update(fl, r, &nl.switches, mouse, dt)
+		game.setup_switches_layout(r, &nl.switches, .Lobby, nl.mods, SWITCH_Y)
+		game.setup_switches_update(fl, r, &nl.switches, mouse, dt)
 	}
 	if nl.role == .Host {
 		buf: [net.LEVEL_CHOICE_SIZE]byte
@@ -662,7 +659,7 @@ netplay_update_connected :: proc(fl: ^Flow, nl: ^Netplay, r: ^render.Renderer) {
 	if !nl.local_ready && ui.hue_slider_update(&nl.local_hue, accent_slider_rect(), true) {
 		nl.hue_dirty = true
 	}
-	if !nl.local_ready && !host_locked && (netplay_test_end > 0 || ui.text_button_update(r, &nl.ready_btn, mouse, dt)) {
+	if !nl.local_ready && !host_locked && (shared.test_end > 0 || ui.text_button_update(r, &nl.ready_btn, mouse, dt)) {
 		nl.local_ready = true
 		nl.ready_unsent = true
 	}
@@ -670,9 +667,9 @@ netplay_update_connected :: proc(fl: ^Flow, nl: ^Netplay, r: ^render.Renderer) {
 		if nl.hue_dirty {
 			nl.hue_dirty = false
 			net.send_hello(&nl.rc, &nl.sock, nl.role == .Host ? 0 : 1, u16(nl.local_hue), prefs.name_string(&nl.local_name), sim.registration_hash())
-			if player_hue(fl.prefs, 0) != nl.local_hue {
-				player_hue_set(fl.prefs, nl.local_hue)
-				prefs_state_save(fl.prefs)
+			if game.player_hue(fl.prefs, 0) != nl.local_hue {
+				game.player_hue_set(fl.prefs, nl.local_hue)
+				game.prefs_state_save(fl.prefs)
 			}
 		} else if nl.ready_unsent {
 			nl.ready_unsent = false
@@ -687,7 +684,7 @@ netplay_update_connected :: proc(fl: ^Flow, nl: ^Netplay, r: ^render.Renderer) {
 	}
 
 	if nl.role == .Host && nl.local_ready && !nl.ready_unsent && nl.remote_ready && !nl.rc.pending {
-		seed := flow_random_seed()
+		seed := game.flow_random_seed()
 		nl.start_seed, nl.start_level, nl.start_mods, nl.start_campaign = seed, u8(nl.level_index), nl.mods, nl.campaign
 		net.send_start(&nl.rc, &nl.sock, seed, nl.start_level, 0, nl.mods, nl.campaign)
 		nl.phase = .Starting
@@ -741,7 +738,7 @@ netplay_fail :: proc(nl: ^Netplay, msg: string) {
 // this side finally polls for it, which works, but only if polling itself
 // is unconditional).
 @(private = "file")
-netplay_poll :: proc(fl: ^Flow, r: ^render.Renderer, nl: ^Netplay) {
+netplay_poll :: proc(fl: ^game.Flow, r: ^render.Renderer, nl: ^Netplay) {
 	// Sized for the biggest packet on the wire, State_Chunk's 3-byte header
 	// plus a full STATE_CHUNK_SIZE payload (Phase 8 stage 4) -- everything
 	// else fits in a fraction of this.
@@ -848,7 +845,7 @@ netplay_poll :: proc(fl: ^Flow, r: ^render.Renderer, nl: ^Netplay) {
 			// immediately instead of after NETPLAY_LIVE_TIMEOUT. A Goodbye
 			// from the lobby (never reached .Playing) is unchanged: still a
 			// full reset back to the lobby menu.
-			if fl.netplay_active {
+			if active(fl) {
 				netplay_enter_waiting_reconnect(nl)
 				nl.error = "peer disconnected"
 				return
@@ -935,13 +932,13 @@ netplay_poll :: proc(fl: ^Flow, r: ^render.Renderer, nl: ^Netplay) {
 			nl.ping_ms = f32(time.duration_milliseconds(time.since(nl.ping_sent_at)))
 			nl.awaiting_pong = false
 		case .Input:
-			if fl.netplay_active {
+			if active(fl) {
 				if pkt, iok := net.decode_input(buf[:n]); iok {
 					net.rollback_session_receive(&nl.rs, pkt)
 				}
 			}
 		case .Checksum:
-			if fl.netplay_active {
+			if active(fl) {
 				if frame, sum, cok := net.decode_checksum(buf[:n]); cok {
 					net.desync_monitor_receive(&nl.desync, frame, sum)
 					if nl.desync.desynced && !nl.warned_desync {
@@ -955,7 +952,7 @@ netplay_poll :: proc(fl: ^Flow, r: ^render.Renderer, nl: ^Netplay) {
 }
 
 @(private = "file")
-netplay_begin_session :: proc(fl: ^Flow, nl: ^Netplay, seed: u32, level_index: int, mods: sim.Mods, campaign: sim.Plugin_ID) {
+netplay_begin_session :: proc(fl: ^game.Flow, nl: ^Netplay, seed: u32, level_index: int, mods: sim.Mods, campaign: sim.Plugin_ID) {
 	level_index := level_index
 	// Peers agree on plugin ids and content (the registration hash), so a
 	// campaign one has, the other has; CORE's is the fallback all the same.
@@ -968,14 +965,14 @@ netplay_begin_session :: proc(fl: ^Flow, nl: ^Netplay, seed: u32, level_index: i
 		level_index = 0
 	}
 	// Progress is kept for the campaign played, as for a local session.
-	flow_campaign_set(fl, campaign)
+	game.flow_campaign_set(fl, campaign)
 	level := levels[level_index].id
-	sim.init(fl.state, session_from_mods(seed, level, .Co_Op, mods, online = true, campaign = campaign), fl.defs)
-	if netplay_test_end > 0 {
-		level_system.level_start_at_row(fl.state, netplay_test_end)
-		fmt.eprintfln("netplay: test starts %d steps before the level's end, mods %v", netplay_test_end, mods)
+	sim.init(fl.state, game.session_from_mods(seed, level, .Co_Op, mods, online = true, campaign = campaign), fl.defs)
+	if shared.test_end > 0 {
+		level_system.level_start_at_row(fl.state, shared.test_end)
+		fmt.eprintfln("netplay: test starts %d steps before the level's end, mods %v", shared.test_end, mods)
 	}
-	flow_session_began(fl)
+	game.flow_session_began(fl)
 	local_player := nl.role == .Host ? 0 : 1
 	net.rollback_session_init(&nl.rs, fl.state, local_player)
 	netplay_name_session(fl, nl, local_player)
@@ -985,14 +982,13 @@ netplay_begin_session :: proc(fl: ^Flow, nl: ^Netplay, seed: u32, level_index: i
 	nl.link_state = .Live
 	nl.last_peer_seen = time.now()
 	fl.session_start_pos = level_index + 1
-	fl.netplay_active = true
-	fl.mode = .Playing
+	game.flow_drive(fl, shared.screen)
 	fmt.eprintfln("netplay: session started as player %d, seed %d, level %d", local_player, seed, level_index) // tools/netplay/loopback_check.sh greps for this
 }
 
 // Which name each player's score is recorded under at the end.
 @(private = "file")
-netplay_name_session :: proc(fl: ^Flow, nl: ^Netplay, local_player: int) {
+netplay_name_session :: proc(fl: ^game.Flow, nl: ^Netplay, local_player: int) {
 	fl.session_names[local_player] = nl.local_name
 	fl.session_names[1 - local_player] = nl.peer_name
 	fl.session_hues[local_player] = nl.local_hue
@@ -1032,7 +1028,7 @@ netplay_enter_waiting_reconnect :: proc(nl: ^Netplay) {
 // see netplay_finish_resync_receive) and starts streaming it over as
 // State_Chunk packets.
 @(private = "file")
-netplay_begin_resync_send :: proc(fl: ^Flow, nl: ^Netplay) {
+netplay_begin_resync_send :: proc(fl: ^game.Flow, nl: ^Netplay) {
 	nl.resync_peer = nl.peer
 	assigned := u8(1 - nl.rs.local_player)
 	buf := make([dynamic]byte)
@@ -1104,7 +1100,7 @@ netplay_finish_resync_send :: proc(nl: ^Netplay) {
 
 // Phase 8 stage 4, reconnecting side: a Resync_Start was accepted
 // (netplay_poll), consumed here from netplay_lobby_update the same way
-// pending_start is. fl.mode stays .Netplay_Lobby -- see netplay_lobby_draw's
+// pending_start is. fl.mode stays .Screen -- see netplay_lobby_draw's
 // Resync_Receiving status line -- until the transfer completes.
 @(private = "file")
 netplay_begin_resync_receive :: proc(nl: ^Netplay) {
@@ -1122,7 +1118,7 @@ netplay_begin_resync_receive :: proc(nl: ^Netplay) {
 // process's own definitions (never sent) and event log; state_read builds
 // the world the sender's plugins need.
 @(private = "file")
-netplay_finish_resync_receive :: proc(fl: ^Flow, nl: ^Netplay) -> bool {
+netplay_finish_resync_receive :: proc(fl: ^game.Flow, nl: ^Netplay) -> bool {
 	fl.state.defs = fl.defs
 	fl.state.events = nil
 	ok := sim.state_read(fl.state, nl.recv_buf)
@@ -1145,8 +1141,7 @@ netplay_finish_resync_receive :: proc(fl: ^Flow, nl: ^Netplay) -> bool {
 	netplay_name_session(fl, nl, int(nl.recv_assigned_player))
 	nl.desync = {}
 	nl.warned_desync = false
-	fl.netplay_active = true
-	fl.mode = .Playing
+	game.flow_drive(fl, shared.screen)
 	nl.link_state = .Live
 	nl.last_peer_seen = time.now()
 	fmt.eprintfln("netplay: reconnected as player %d at frame %d", nl.recv_assigned_player, sim.frame_of(fl.state)) // tools/netplay/loopback_check.sh-style marker for a future reconnect smoke check
@@ -1155,8 +1150,6 @@ netplay_finish_resync_receive :: proc(fl: ^Flow, nl: ^Netplay) -> bool {
 
 // Phase 8 stage 3: bottom-right/banner text for a frozen .Playing session --
 // title == "" means link_state == .Live and the caller should draw nothing.
-// Kept here rather than in flow.odin so flow.odin does not need to import
-// dr:net purely to read a progress percentage.
 netplay_disconnect_banner :: proc(nl: ^Netplay) -> (title, sub: cstring) {
 	switch nl.link_state {
 	case .Live, .Resync_Receiving: // Resync_Receiving never applies to a .Playing session -- see netplay_begin_resync_receive
@@ -1170,11 +1163,11 @@ netplay_disconnect_banner :: proc(nl: ^Netplay) -> (title, sub: cstring) {
 	return "", ""
 }
 
-// Called from flow_handle_input's .Playing case, every render frame,
-// whenever Flow.netplay_active -- network I/O runs at render rate exactly
+// The screen's poll: from flow_handle_input's .Playing case, every render
+// frame, while this screen drives the session -- network I/O runs at render rate exactly
 // like the lobby's own polling, independent of how many (0-4) fixed sim
 // steps flow_step runs this frame.
-netplay_playing_poll :: proc(fl: ^Flow, r: ^render.Renderer, nl: ^Netplay) {
+netplay_playing_poll :: proc(fl: ^game.Flow, r: ^render.Renderer, nl: ^Netplay) {
 	netplay_poll(fl, r, nl)
 	switch nl.link_state {
 	case .Live:
@@ -1216,9 +1209,9 @@ netplay_should_stall :: proc(nl: ^Netplay) -> bool {
 	return net.rollback_session_should_stall(&nl.rs, NETPLAY_SYNC_STALL_THRESHOLD, NETPLAY_SYNC_MIN_STALL_EVERY)
 }
 
-// Called from flow.odin's .Playing branch of flow_step, once per fixed sim
+// The screen's step: from flow_step's .Playing branch, once per fixed sim
 // tick, instead of the single-player gather_input()+sim.step path.
-netplay_playing_step :: proc(fl: ^Flow, r: ^render.Renderer, fx: ^render.Effects, nl: ^Netplay) {
+netplay_playing_step :: proc(fl: ^game.Flow, r: ^render.Renderer, fx: ^render.Effects, nl: ^Netplay) {
 	if netplay_should_stall(nl) {
 		return
 	}
@@ -1226,19 +1219,17 @@ netplay_playing_step :: proc(fl: ^Flow, r: ^render.Renderer, fx: ^render.Effects
 	// This machine's player, whichever slot it plays. Pause is one of its
 	// input bits (sim.session_step): it reaches the peer like any button,
 	// so both sides pause, and resume, on the same frame.
-	local := gather_input(fl.prefs, 0)
+	local := game.gather_input(fl.prefs, 0)
 	net.rollback_session_advance(&nl.rs, local)
 	if held := sim.session_frozen(fl.state); held != nl.was_held {
 		nl.was_held = held
-		if held && netplay_shot_path != "" && netplay_shot_in == 0 {
-			netplay_shot_in = 30
+		if held && shared.shot_path != "" && shared.shot_in == 0 {
+			shared.shot_in = 30
 		}
 		fmt.eprintfln("netplay: play %s at frame %d, level %d", held ? "held" : "resumed", sim.frame_of(fl.state), sim.single(fl.state, sim.Level_Info).number)
 	}
-	flow_effects_sync(fl, fx)
 	// While paused nothing moves; existing particles and ghosts freeze too.
-	flow_effects_step(fl, r, fx)
-	render.sounds_step(&r.textures, fl.state)
+	game.flow_after_step(fl, r, fx)
 	// Sounds a rollback found the first run of a frame missed: the peer's
 	// charge shots, among others.
 	render.sounds_play(&r.textures, net.rollback_session_late(&nl.rs))
@@ -1262,7 +1253,7 @@ netplay_playing_step :: proc(fl: ^Flow, r: ^render.Renderer, fx: ^render.Effects
 	}
 }
 
-// Escape during a live netplay session (flow_handle_input's .Playing case):
+// Leaving a live netplay session (the screen's release(goodbye = true)):
 // unlike single-player, there is no local-only pause -- freezing this
 // machine's rendering would not stop input still arriving from the peer,
 // so Escape disconnects outright rather than pretending to pause a session
@@ -1274,7 +1265,7 @@ netplay_disconnect :: proc(nl: ^Netplay) {
 	netplay_reset(nl)
 }
 
-netplay_lobby_draw :: proc(fl: ^Flow, r: ^render.Renderer, nl: ^Netplay) {
+netplay_lobby_draw :: proc(fl: ^game.Flow, r: ^render.Renderer, nl: ^Netplay) {
 	ui.menu_draw_background(r, "back") // no original screen to match; reused purely for visual consistency with the rest of this menu family
 	white := rl.Color{255, 255, 255, 255}
 	dim := rl.Color{190, 190, 190, 255}
@@ -1354,7 +1345,7 @@ netplay_lobby_draw :: proc(fl: ^Flow, r: ^render.Renderer, nl: ^Netplay) {
 			level_label = fmt.tprintf("HOST HAS CHOSEN: %s", level_name)
 		}
 		ui.menu_draw_text(r, level_label, render.SCREEN_W / 2, 262, host_locked ? bad : white, .Centre)
-		choosing := nl.role == .Host && !nl.local_ready && len(flow_campaigns(fl)) > 1
+		choosing := nl.role == .Host && !nl.local_ready && len(game.flow_campaigns(fl)) > 1
 		if choosing || nl.campaign != sim.CORE {
 			ui.menu_draw_text(r, netplay_campaign_text(nl), render.SCREEN_W / 2, CAMPAIGN_Y, white, .Centre)
 		}
@@ -1366,10 +1357,10 @@ netplay_lobby_draw :: proc(fl: ^Flow, r: ^render.Renderer, nl: ^Netplay) {
 		if nl.role == .Host && !nl.local_ready {
 			ui.text_button_draw(r, &nl.level_prev)
 			ui.text_button_draw(r, &nl.level_next)
-			setup_switches_draw(r, &nl.switches)
+			game.setup_switches_draw(r, &nl.switches)
 		} else {
-			setup_switches_layout(r, &nl.switches, .Lobby, nl.mods, SWITCH_Y)
-			chosen := setup_switches_text(&nl.switches, nl.mods)
+			game.setup_switches_layout(r, &nl.switches, .Lobby, nl.mods, SWITCH_Y)
+			chosen := game.setup_switches_text(&nl.switches, nl.mods)
 			if nl.role == .Guest {
 				chosen = fmt.tprintf("HOST HAS CHOSEN %s", chosen)
 			}

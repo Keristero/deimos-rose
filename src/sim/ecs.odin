@@ -49,22 +49,30 @@ Component_Type :: struct {
 	table:    proc(w: ^ecs.World, arch: ^ecs.Archetype) -> []byte,
 }
 
-@(private = "file")
-catalog: Registry(Component_Type, MAX_COMPONENTS)
-@(private = "file")
-run_pool: [8192]Byte_Run
-@(private = "file")
-run_used: int
-@(private = "file")
-run_bytes: int // data bytes laid out so far, to tell padded types from dense ones
-
 // Each component type's catalog id, one static per type. Reading it is a
 // load, where odecs's own lookup hashes the typeid: the sim reads
 // components tens of times per entity per step.
 @(private)
 component_slot :: #force_inline proc "contextless" ($T: typeid) -> ^i32 {
 	@(static) id: i32 = -1
+	if id < 0 {
+		// A plugin's copy of sim has statics of its own, all -1, for the
+		// components the game registered (D83): it finds them once in the
+		// catalog the copies share. In the game, registering sets it, and
+		// this is one compare after.
+		id = catalog_find(T)
+	}
 	return &id
+}
+
+@(private)
+catalog_find :: proc "contextless" (t: typeid) -> i32 {
+	for c, i in registry_items(&shared.catalog) {
+		if c.type == t {
+			return i32(i)
+		}
+	}
+	return -1
 }
 
 // Adds T to the catalog. Called from registration steps only
@@ -80,7 +88,7 @@ component_register :: proc($T: typeid) {
 		return
 	}
 	ti := type_info_of(T)
-	first := run_used
+	first := shared.run_used
 	if !layout_runs(ti, 0) {
 		panic("ecs: a component must be plain data (no pointers, slices, strings, maps or unions)")
 	}
@@ -88,11 +96,11 @@ component_register :: proc($T: typeid) {
 	if n, ok := ti.variant.(runtime.Type_Info_Named); ok {
 		name = n.name
 	}
-	slot^ = i32(registry_add(&catalog, Component_Type {
+	slot^ = i32(registry_add(&shared.catalog, Component_Type {
 		type = T,
 		name = name,
 		size = size_of(T),
-		runs = run_pool[first:run_used],
+		runs = shared.run_pool[first:shared.run_used],
 		register = proc(w: ^ecs.World) {
 			ecs.register_component(w, T)
 		},
@@ -106,7 +114,7 @@ component_register :: proc($T: typeid) {
 }
 
 component_types :: proc "contextless" () -> []Component_Type {
-	return registry_items(&catalog)
+	return registry_items(&shared.catalog)
 }
 
 component_id :: #force_inline proc "contextless" ($T: typeid) -> int {
@@ -117,7 +125,7 @@ component_id :: #force_inline proc "contextless" ($T: typeid) -> int {
 // builds can only exchange snapshots if theirs match.
 catalog_hash :: proc "contextless" () -> u64 {
 	h := hasher()
-	for c in registry_items(&catalog) {
+	for c in registry_items(&shared.catalog) {
 		hash_bytes(&h, raw_data(c.name), len(c.name))
 		hash_u64(&h, u64(c.size))
 		for r in c.runs {
@@ -132,17 +140,17 @@ emit_run :: proc(offset, size: int) {
 	if size == 0 {
 		return
 	}
-	run_bytes += size
-	if run_used > 0 {
-		last := &run_pool[run_used - 1]
+	shared.run_bytes += size
+	if shared.run_used > 0 {
+		last := &shared.run_pool[shared.run_used - 1]
 		if int(last.offset + last.size) == offset {
 			last.size += i32(size)
 			return
 		}
 	}
-	assert(run_used < len(run_pool), "ecs: component layouts too fragmented")
-	run_pool[run_used] = {i32(offset), i32(size)}
-	run_used += 1
+	assert(shared.run_used < len(shared.run_pool), "ecs: component layouts too fragmented")
+	shared.run_pool[shared.run_used] = {i32(offset), i32(size)}
+	shared.run_used += 1
 }
 
 // Appends the data-holding byte runs of a value of type ti at `base`.
@@ -189,13 +197,13 @@ layout_elems :: proc(elem: ^runtime.Type_Info, elem_size, count, base: int) -> b
 	if count == 0 {
 		return true
 	}
-	before := run_bytes
+	before := shared.run_bytes
 	if !layout_runs(elem, base) {
 		return false
 	}
 	// An element with no padding is all data, and so is the array: the
 	// other elements extend the run.
-	if run_bytes - before == elem_size {
+	if shared.run_bytes - before == elem_size {
 		emit_run(base + elem_size, elem_size * (count - 1))
 		return true
 	}
@@ -233,7 +241,7 @@ kind_count :: #force_inline proc "contextless" (k: Kind) -> int {
 	return 0
 }
 
-@(private = "file")
+@(private)
 Kind_Component :: struct {
 	kind:      Kind,
 	component: int,
@@ -241,29 +249,21 @@ Kind_Component :: struct {
 	value:     rawptr, // what each entity of the kind starts with
 }
 
-@(private = "file")
-kind_components: Registry(Kind_Component, MAX_COMPONENTS)
-// u128s, for the alignment of any component.
-@(private = "file")
-start_values: [1024]u128
-@(private = "file")
-start_used: int
-
 // Gives every entity of `kind` a T, starting as `value`, in a session with
 // `plugin` on. Called from registration steps only (sim.register_step), like
 // component_register, which it does for T.
 kind_component :: proc(kind: Kind, value: $T, plugin := CORE) {
 	component_register(T)
 	id := component_id(T)
-	for kc in registry_items(&kind_components) {
+	for kc in registry_items(&shared.kind_components) {
 		assert(kc.kind != kind || kc.component != id, "ecs: a kind is given the same component twice")
 	}
-	start_used = (start_used + align_of(T) - 1) &~ (align_of(T) - 1)
-	assert(start_used + size_of(T) <= size_of(start_values), "ecs: too many start values")
-	p := &([^]byte)(&start_values)[start_used]
-	start_used += size_of(T)
+	shared.start_used = (shared.start_used + align_of(T) - 1) &~ (align_of(T) - 1)
+	assert(shared.start_used + size_of(T) <= size_of(shared.start_values), "ecs: too many start values")
+	p := &([^]byte)(&shared.start_values)[shared.start_used]
+	shared.start_used += size_of(T)
 	(^T)(p)^ = value
-	registry_add(&kind_components, Kind_Component{kind, id, plugin, p})
+	registry_add(&shared.kind_components, Kind_Component{kind, id, plugin, p})
 }
 
 @(private = "file")
@@ -325,15 +325,15 @@ ecs_create :: proc(mods: Mods, allocator := context.allocator) -> ^Ecs {
 	e.mods = mods
 	e.world = ecs.create_world(allocator, allocator)
 	w := e.world
-	for c in registry_items(&catalog) {
+	for c in registry_items(&shared.catalog) {
 		c.register(w)
 	}
 	parts := make([dynamic]any, context.temp_allocator)
 	for kind in Kind {
 		clear(&parts)
-		for kc in registry_items(&kind_components) {
+		for kc in registry_items(&shared.kind_components) {
 			if kc.kind == kind && kind_component_on(kc, mods) {
-				append(&parts, any{kc.value, catalog.items[kc.component].type})
+				append(&parts, any{kc.value, shared.catalog.items[kc.component].type})
 			}
 		}
 		e.ids[kind] = make([]ecs.EntityID, kind_count(kind), allocator)
@@ -382,7 +382,7 @@ find_views :: proc(e: ^Ecs) {
 	}
 	e.pool_links = kind_table(e, .Pool, Link)
 	e.group_links = kind_table(e, .Group, Link)
-	for c, i in registry_items(&catalog) {
+	for c, i in registry_items(&shared.catalog) {
 		e.singletons[i] = c.get(w, e.ids[.Session][0])
 		for id, p in e.ids[.Player] {
 			e.player_part[p][i] = c.get(w, id)
@@ -394,7 +394,7 @@ find_views :: proc(e: ^Ecs) {
 		counted_arch[k] = ecs.get_entity_archetype(w, e.ids[kind][0])
 	}
 	h := hasher()
-	for c, i in registry_items(&catalog) {
+	for c, i in registry_items(&shared.catalog) {
 		if c.size == 0 {
 			continue // a tag has no table
 		}
@@ -411,7 +411,7 @@ find_views :: proc(e: ^Ecs) {
 					continue
 				}
 				t.counted = k
-				for kc in registry_items(&kind_components) {
+				for kc in registry_items(&shared.kind_components) {
 					if kc.kind == kind_of[k] && kc.component == i {
 						t.start = kc.value
 					}
@@ -464,12 +464,12 @@ ecs_destroy :: proc(e: ^Ecs) {
 ecs_reset :: proc(e: ^Ecs) {
 	for kind in Kind {
 		arch := ecs.get_entity_archetype(e.world, e.ids[kind][0])
-		for kc in registry_items(&kind_components) {
+		for kc in registry_items(&shared.kind_components) {
 			if kc.kind != kind || !kind_component_on(kc, e.mods) {
 				continue
 			}
-			c := &catalog.items[kc.component]
-			rows := catalog.items[kc.component].table(e.world, arch)
+			c := &shared.catalog.items[kc.component]
+			rows := shared.catalog.items[kc.component].table(e.world, arch)
 			for at := 0; at < len(rows); at += c.size {
 				runtime.mem_copy_non_overlapping(&rows[at], kc.value, c.size)
 			}
@@ -549,7 +549,7 @@ ecs_pack :: proc(e: ^Ecs, out: []byte) {
 	runtime.mem_copy_non_overlapping(raw_data(out), &header, HEADER)
 	at := HEADER
 	for t in e.tables {
-		c := &catalog.items[t.component]
+		c := &shared.catalog.items[t.component]
 		rows := c.table(e.world, t.arch)
 		if k, ok := t.counted.?; ok {
 			rows = rows[:int(used[k]) * c.size]
@@ -621,7 +621,7 @@ ecs_read :: proc(e: ^Ecs, data: []byte) -> (rest: []byte, ok: bool) {
 	used, touched := header.rows, rows_used(e) // before the Pool is read over
 	at := HEADER
 	for t in e.tables {
-		c := &catalog.items[t.component]
+		c := &shared.catalog.items[t.component]
 		rows := c.table(e.world, t.arch)
 		if k, counted := t.counted.?; counted {
 			for row := int(used[k]) * c.size; row < int(touched[k]) * c.size; row += c.size {

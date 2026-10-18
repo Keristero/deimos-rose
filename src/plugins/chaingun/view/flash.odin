@@ -43,7 +43,7 @@ import "dr:sim"
 @(private = "file") FLASH_OUTER :: rl.Color{255, 168, 64, 255}
 @(private = "file") FLASH_RINGS :: 4
 
-@(private = "file")
+@(private)
 Flash :: struct {
 	player: int,
 	age:    i32,
@@ -54,7 +54,7 @@ Flash :: struct {
 
 // A spark thrown out with a flash, kept from where the flash is so it
 // follows the ship.
-@(private = "file")
+@(private)
 Spark :: struct {
 	player: int,
 	at:     sim.Vec,
@@ -65,21 +65,17 @@ Spark :: struct {
 }
 
 // Where each player's ship was the step before and this step.
-@(private = "file")
+@(private)
 Ship :: struct {
 	prev, loc: sim.Vec,
 	live:      bool,
 }
 
-@(private = "file") flashes: [dynamic]Flash
-@(private = "file") sparks: [dynamic]Spark
-@(private = "file") ships: [sim.MAX_PLAYERS]Ship
-@(private = "file") seen: i32 // the highest entity number looked at
 
 register_flash :: proc() {
 	render.effect_system_register({
 		name   = "chaingun_flash",
-		plugin = chaingun.ID,
+		plugin = chaingun.id(),
 		step   = flash_step,
 		draw   = flash_draw_over,
 		layer  = render.layer_of(sim.res_id("play"), true), // over the ships
@@ -87,7 +83,7 @@ register_flash :: proc() {
 	})
 	render.effect_system_register({
 		name   = "chaingun_flash_under",
-		plugin = chaingun.ID,
+		plugin = chaingun.id(),
 		draw   = flash_draw_under,
 		layer  = render.layer_of(sim.res_id("plwe"), true), // over the rounds, under the ships
 	})
@@ -100,10 +96,10 @@ register_flash_step :: proc "contextless" () {
 
 @(private = "file")
 flash_clear :: proc() {
-	clear(&flashes)
-	clear(&sparks)
-	ships = {}
-	seen = 0
+	clear(&shared.flashes)
+	clear(&shared.sparks)
+	shared.ships = {}
+	shared.seen = 0
 }
 
 @(private = "file")
@@ -112,32 +108,32 @@ flash_step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles) {
 		return
 	}
 	n := 0
-	for f in flashes {
+	for f in shared.flashes {
 		f := f
 		f.age += 1
 		if f.age < FLASH_LIFE {
-			flashes[n] = f
+			shared.flashes[n] = f
 			n += 1
 		}
 	}
-	resize(&flashes, n)
+	resize(&shared.flashes, n)
 	n = 0
-	for k in sparks {
+	for k in shared.sparks {
 		k := k
 		k.age += 1
 		k.at += k.vel
 		if k.age < FLASH_LIFE {
-			sparks[n] = k
+			shared.sparks[n] = k
 			n += 1
 		}
 	}
-	resize(&sparks, n)
+	resize(&shared.sparks, n)
 	for pl, i in sim.players_of(s) {
 		if pl.obj == nil || pl.state != .Playing {
-			ships[i].live = false
+			shared.ships[i].live = false
 			continue
 		}
-		ships[i] = {prev = ships[i].live ? ships[i].loc : pl.loc, loc = pl.loc, live = true}
+		shared.ships[i] = {prev = shared.ships[i].live ? shared.ships[i].loc : pl.loc, loc = pl.loc, live = true}
 	}
 
 	round := sim.unit_index(s.defs, CHAINGUN_ROUND)
@@ -146,11 +142,11 @@ flash_step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles) {
 	walk := sim.walk_entities(s)
 	for e in sim.walk_next(&walk) {
 		top = max(top, e.number)
-		if e.number <= seen || e.deleted || (e.unit != i32(round) && e.unit != i32(aimed)) {
+		if e.number <= shared.seen || e.deleted || (e.unit != i32(round) && e.unit != i32(aimed)) {
 			continue
 		}
 		pi := int(e.owner_player)
-		if pi < 0 || pi >= sim.MAX_PLAYERS || !ships[pi].live {
+		if pi < 0 || pi >= sim.MAX_PLAYERS || !shared.ships[pi].live {
 			continue
 		}
 		charge := e.unit == i32(aimed)
@@ -161,7 +157,7 @@ flash_step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles) {
 		flash_add(pi, charge ? 1 : FLASH_BURST, dir, charge)
 	}
 	// A new level numbers its entities from the start again.
-	seen = top < seen ? top : max(seen, top)
+	shared.seen = top < shared.seen ? top : max(shared.seen, top)
 }
 
 // One flash of each kind a player a step, the strongest of the rounds fired
@@ -169,20 +165,20 @@ flash_step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles) {
 @(private = "file")
 flash_add :: proc(player: int, power: f32, dir: sim.Vec, under: bool) {
 	found := false
-	for &f in flashes {
+	for &f in shared.flashes {
 		if f.player == player && f.age == 0 && f.under == under {
 			f.power = max(f.power, power)
 			found = true
 		}
 	}
 	if !found {
-		append(&flashes, Flash{player = player, power = power, dir = dir, under = under})
+		append(&shared.flashes, Flash{player = player, power = power, dir = dir, under = under})
 	}
 	for _ in 0 ..< int(math.round(FLASH_SPARKS * power)) {
 		a := (rand.float32() - 0.5) * 1.2 // radians either side of the round
 		c, sn := math.cos(a), math.sin(a)
 		d := sim.Vec{dir.x * c - dir.y * sn, dir.x * sn + dir.y * c}
-		append(&sparks, Spark {
+		append(&shared.sparks, Spark {
 			player = player,
 			at     = under ? d * FLASH_UNDER_REACH : {},
 			vel    = d * FLASH_SPARK_SPEED * (0.6 + 0.8 * rand.float32()),
@@ -213,7 +209,7 @@ flash_origin :: proc(sh: Ship, t: f32, under: bool) -> sim.Vec {
 // charge's under them.
 @(private = "file")
 flash_draw :: proc(scale, side, t: f32, under: bool) {
-	if len(flashes) == 0 && len(sparks) == 0 {
+	if len(shared.flashes) == 0 && len(shared.sparks) == 0 {
 		return
 	}
 	screen :: proc(at: sim.Vec, scale, side: f32) -> rl.Vector2 {
@@ -225,9 +221,9 @@ flash_draw :: proc(scale, side, t: f32, under: bool) {
 		return c
 	}
 	rl.BeginBlendMode(.ADDITIVE)
-	for f in flashes {
+	for f in shared.flashes {
 		k := 1 - (f32(f.age) + t) / FLASH_LIFE // 1 as it fires .. 0 gone
-		sh := ships[f.player]
+		sh := shared.ships[f.player]
 		if f.under != under || k <= 0 || !sh.live {
 			continue
 		}
@@ -244,8 +240,8 @@ flash_draw :: proc(scale, side, t: f32, under: bool) {
 		rl.DrawLineEx(c, screen(gun + f.dir * (reach + 8 * f.power * k), scale, side), 2 * scale, with_alpha(FLASH_INNER, a))
 		rl.DrawCircleV(c, (1.5 + 2 * f.power) * scale, with_alpha({255, 255, 255, 255}, a))
 	}
-	for k in sparks {
-		sh := ships[k.player]
+	for k in shared.sparks {
+		sh := shared.ships[k.player]
 		if k.under != under || !sh.live {
 			continue
 		}

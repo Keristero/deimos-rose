@@ -36,7 +36,7 @@ import "dr:sim/systems/collision_system"
 
 // Steps from a press to its pulse.
 beam_windup :: proc "contextless" (wd: ^sim.Weapon) -> i32 {
-	return sim.weapon_int(wd, BEAM_WINDUP)
+	return sim.weapon_int(wd, shared.beam_windup)
 }
 
 // A pulse: once a press has wound up, with its muzzle flash.
@@ -102,18 +102,18 @@ Beam_Def :: struct {
 
 beam_def :: proc "contextless" (wd: ^sim.Weapon) -> Beam_Def {
 	return {
-		damage         = sim.weapon_float(wd, BEAM_DAMAGE),
-		width          = sim.weapon_float(wd, BEAM_WIDTH),
-		release_damage = sim.weapon_float(wd, BEAM_RELEASE_DAMAGE),
-		release_width  = sim.weapon_float(wd, BEAM_RELEASE_WIDTH),
-		flash          = sim.weapon_id(wd, BEAM_FLASH),
+		damage         = sim.weapon_float(wd, shared.beam_damage),
+		width          = sim.weapon_float(wd, shared.beam_width),
+		release_damage = sim.weapon_float(wd, shared.beam_release_damage),
+		release_width  = sim.weapon_float(wd, shared.beam_release_width),
+		flash          = sim.weapon_id(wd, shared.beam_flash),
 	}
 }
 
 // This step's beams, in the order they fired.
 beam_shots :: proc(s: ^sim.State, allocator := context.temp_allocator) -> []Beam_Event {
 	out := make([dynamic]Beam_Event, allocator)
-	walk := sim.effects_of(s, BEAM_SHOT, Beam_Event)
+	walk := sim.effects_of(s, shared.beam_shot, Beam_Event)
 	for ev in sim.effects_next(&walk) {
 		append(&out, ev)
 	}
@@ -204,7 +204,7 @@ beam_run :: proc "contextless" (s: ^sim.State, h: ^sim.Weapon_Handler, from, to:
 // Pushes one run of a beam for the view, and logs it.
 @(private = "file")
 beam_log :: proc(s: ^sim.State, ev: Beam_Event) {
-	sim.effect_push(s, BEAM_SHOT, ev)
+	sim.effect_push(s, shared.beam_shot, ev)
 	if log := beam_log_of(s); log != nil {
 		log.events[log.next] = ev
 		log.next = (log.next + 1) % MAX_RECENT_BEAMS

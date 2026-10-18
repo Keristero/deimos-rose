@@ -16,7 +16,7 @@ left room, and what is still provisional. The cross-cutting choice is D36 in
   - on Level Select, under the level name (`game/menu_level_select.odin`),
     only outside classic mode;
   - in the netplay lobby, where the host can change it until they ready up.
-    The guest sees what the host chose (`game/netplay.odin`).
+    The guest sees what the host chose (`plugins/netplay/view/netplay.odin`).
   - The Preferences Extras page lists it as well, since that page is built
     from the table.
 - **Where easy mode lives.** `sim.Session.easy` carries it, fixed for the

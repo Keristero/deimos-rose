@@ -159,7 +159,7 @@ spawn_burst :: proc(p: ^Particles, ev: ^sim.Particle_Event, pf: ^[sim.PERM_FLOAT
 
 // G_Particle_Draw's stamp: which of five blend weights each pixel takes, and
 // whether it is in the shade (the centre cross) or the fringe.
-@(private = "file")
+@(private = "file", rodata)
 STAMP := [7]string {
 	"aabbbaa",
 	"abcccba",

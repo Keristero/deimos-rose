@@ -8,7 +8,7 @@ import "dr:ui"
 // turning it on brings the Chaingun back with it.
 
 register_switch :: proc() {
-	ui.setup_switch_register({plugin = new_weapons.ID, screens = {.Lobby}})
+	ui.setup_switch_register({plugin = new_weapons.id(), screens = {.Lobby}})
 }
 
 @(init)

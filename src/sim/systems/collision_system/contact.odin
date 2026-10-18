@@ -74,13 +74,13 @@ circles_collide :: proc "contextless" (a: sim.Vec, ra: f32, b: sim.Vec, rb: f32)
 // is not a shot itself, on the ground if the shot is, and -- for a shot
 // that is not a player's -- only a player's shot it can hit.
 shot_hits :: proc "contextless" (s: ^sim.State, shot, target: i32) -> bool {
-	if !sim.prefab_is(s, target, shot_targets) {
+	if !sim.prefab_is(s, target, shared.shot_targets) {
 		return false
 	}
-	if sim.prefab_is(s, shot, ground_based) != sim.prefab_is(s, target, ground_based) {
+	if sim.prefab_is(s, shot, shared.ground_based) != sim.prefab_is(s, target, shared.ground_based) {
 		return false
 	}
-	return sim.prefab_is(s, shot, player_projectile) || sim.prefab_is(s, target, player_projectile)
+	return sim.prefab_is(s, shot, shared.player_projectile) || sim.prefab_is(s, target, shared.player_projectile)
 }
 
 // Whether a player's air shot can hit `e`: the candidates entity_collisions
@@ -91,7 +91,7 @@ air_shot_can_hit :: proc "contextless" (s: ^sim.State, e: sim.Entity) -> bool {
 	if e.deleted || !e.hittable || e.state < 0 || e.appear_delay >= 1 {
 		return false
 	}
-	return sim.prefab_is(s, sim.prefab_of(s, e), air_shot_targets)
+	return sim.prefab_is(s, sim.prefab_of(s, e), shared.air_shot_targets)
 }
 
 // FUN_0041b920: collisions between a "harmless to players" entity (player
@@ -100,7 +100,7 @@ air_shot_can_hit :: proc "contextless" (s: ^sim.State, e: sim.Entity) -> bool {
 // the ground targets it overlaps as well.
 entity_collisions :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) {
 	me := lifecycle.object_bounds(e.obj)
-	if sim.prefab_is(s, es.prefab, player_projectile) && me.bottom < 0 {
+	if sim.prefab_is(s, es.prefab, shared.player_projectile) && me.bottom < 0 {
 		return
 	}
 	walk := sim.cursor_walk(s, fixed = true)
@@ -109,11 +109,11 @@ entity_collisions :: proc(s: ^sim.State, e: sim.Entity, es: ^sim.Entity_Step) {
 			continue
 		}
 		op := sim.prefab_of(s, o)
-		if !shot_hits(s, es.prefab, op) && !(e.ground > 0 && sim.prefab_is(s, op, ground_shot_targets)) {
+		if !shot_hits(s, es.prefab, op) && !(e.ground > 0 && sim.prefab_is(s, op, shared.ground_shot_targets)) {
 			continue
 		}
 		ob := lifecycle.object_bounds(o.obj)
-		if sim.prefab_is(s, op, player_projectile) && ob.bottom < 0 {
+		if sim.prefab_is(s, op, shared.player_projectile) && ob.bottom < 0 {
 			continue
 		}
 		if !(ob.top <= me.bottom && me.top <= ob.bottom && ob.left <= me.right && me.left <= ob.right) {

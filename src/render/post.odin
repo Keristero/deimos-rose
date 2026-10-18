@@ -49,13 +49,10 @@ Post_Pass :: struct {
 	destroy: proc(),
 }
 
-@(private = "file")
-post_passes: sim.Registry(Post_Pass, MAX_POST_PASSES)
-
 // Called from registration steps only (sim.register_step); `after` and
 // `before` outlive the call, like a render system's.
 post_pass_register :: proc(p: Post_Pass) {
-	sim.registry_add(&post_passes, p)
+	sim.registry_add(&shared.post_passes, p)
 }
 
 Post_State :: struct {
@@ -78,7 +75,7 @@ post_destroy :: proc(r: ^Renderer) {
 	if r.post.pong.id != 0 {
 		rl.UnloadRenderTexture(r.post.pong)
 	}
-	for &p in sim.registry_items(&post_passes) {
+	for &p in sim.registry_items(&shared.post_passes) {
 		if p.destroy != nil {
 			p.destroy()
 		}
@@ -89,7 +86,7 @@ post_destroy :: proc(r: ^Renderer) {
 // Binds the scene texture when some pass is on, and says so. Passes run in
 // the order registered, or `after`/`before` where they say.
 post_begin :: proc(r: ^Renderer, w, h: i32) -> bool {
-	items := sim.registry_items(&post_passes)
+	items := sim.registry_items(&shared.post_passes)
 	if len(items) == 0 {
 		return false
 	}
@@ -126,7 +123,7 @@ post_begin :: proc(r: ^Renderer, w, h: i32) -> bool {
 // canvas.
 post_end :: proc(r: ^Renderer, f: ^Post_Frame) {
 	rl.EndTextureMode()
-	items := sim.registry_items(&post_passes)
+	items := sim.registry_items(&shared.post_passes)
 	for idx in r.post.running[:r.post.count] {
 		if items[idx].prepare != nil {
 			items[idx].prepare(r, f)

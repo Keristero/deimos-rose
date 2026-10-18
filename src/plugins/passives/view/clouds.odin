@@ -18,15 +18,11 @@ import "dr:plugins/passives"
 import "dr:render"
 import "dr:sim"
 
-@(private = "file")
+@(private)
 Cloud_Fx :: struct {
 	using cloud: passives.Cloud,
 	time:        i32, // the step it is drawn at
 }
-
-// The clouds on screen, as the beams keep theirs (plugins/new_weapons/view).
-@(private = "file")
-live: [dynamic]Cloud_Fx
 
 // The layer the air enemies are drawn in; the ships are above.
 @(private = "file")
@@ -41,7 +37,7 @@ AIR_LAYER :: 8
 register_clouds_view :: proc() {
 	render.effect_system_register({
 		name   = "clouds",
-		plugin = passives.ID,
+		plugin = passives.id(),
 		step   = clouds_step,
 		draw   = clouds_draw,
 		layer  = AIR_LAYER,
@@ -51,12 +47,12 @@ register_clouds_view :: proc() {
 
 @(private = "file")
 clouds_clear :: proc() {
-	clear(&live)
+	clear(&shared.live)
 }
 
 @(private = "file")
 clouds_step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles) {
-	clear(&live)
+	clear(&shared.live)
 	time := sim.single(s, sim.Clock).time
 	level := sim.single(s, sim.Level_Info).played
 	held := passives.clouds_of(s)
@@ -65,7 +61,7 @@ clouds_step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles) {
 	}
 	for &c in held.clouds {
 		if passives.cloud_live(&c, time, level) {
-			append(&live, Cloud_Fx{cloud = c, time = time})
+			append(&shared.live, Cloud_Fx{cloud = c, time = time})
 		}
 	}
 }
@@ -74,10 +70,10 @@ clouds_step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles) {
 // swells, turns and thins smoothly at high refresh rates.
 @(private = "file")
 clouds_draw :: proc(r: ^render.Renderer, scale, side, t: f32) {
-	if len(live) == 0 {
+	if len(shared.live) == 0 {
 		return
 	}
-	for &c in live {
+	for &c in shared.live {
 		now := f32(c.time) + t
 		k := min((now - f32(c.start)) / CLOUD_SWELL, (f32(c.until) - now) / CLOUD_THIN, 1)
 		if k <= 0 {

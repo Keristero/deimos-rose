@@ -24,7 +24,7 @@ register_test_prefab :: proc() {
 	sim.component_register(Test_Prefab_Tag)
 	sim.prefab_builder_register({
 		name = "test_prefab",
-		plugin = fps_unlock.ID,
+		plugin = fps_unlock.id(),
 		build = proc(p: sim.Prefab, u: ^sim.Unit, st: ^sim.Unit_State) {
 			sim.prefab_add(p, Test_Prefab_Tag{})
 		},
@@ -145,7 +145,7 @@ prefab_builders_follow_the_session_plugins :: proc(t: ^testing.T) {
 	testing.expect(t, !holds(&pf, 1, 0, Test_Prefab_Tag))
 
 	// A rebuild with the plugin on reuses pf and gives every state the tag.
-	sim.prefabs_build(&pf, &defs, {int(fps_unlock.ID)})
+	sim.prefabs_build(&pf, &defs, {int(fps_unlock.id())})
 	testing.expect(t, holds(&pf, 1, 0, Test_Prefab_Tag))
 	testing.expect(t, holds(&pf, 0, 2, Test_Prefab_Tag))
 	testing.expect(t, holds(&pf, 1, 0, entity_system.Follows_Owner_Look))

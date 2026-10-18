@@ -12,7 +12,7 @@
 # Not an oracle comparison -- there is nothing in the original to compare
 # against, same as loopback_check.sh. Run after any change to the
 # Waiting_Reconnect/Resync_Sending/Resync_Receiving paths in
-# game/netplay.odin or the Resync_Start/State_Chunk*/Hello handling in
+# plugins/netplay/view/netplay.odin or the Resync_Start/State_Chunk*/Hello handling in
 # net/packet.odin.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -88,7 +88,7 @@ kill -9 "$PID_B"
 wait "$PID_B" 2>/dev/null || true
 echo "guest killed"
 
-# NETPLAY_LIVE_TIMEOUT is 3s (game/netplay.odin); give it comfortable margin.
+# NETPLAY_LIVE_TIMEOUT is 3s (plugins/netplay/view/netplay.odin); give it comfortable margin.
 for i in $(seq 1 20); do
 	grep -q "netplay: peer lost, waiting for a reconnect" "$WORK/a.log" 2>/dev/null && break
 	sleep 0.5
