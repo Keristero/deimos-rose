@@ -21,8 +21,10 @@
 # in the release folder. A plugin folder with nothing but its manifest
 # (HD Textures, whose textures hd:textures makes locally) has no zip.
 #
-# OUT=dir (default zips/), VER= (default tools/version/version.sh), OS=
-# linux or windows (default this one's).
+# OUT=dir (default zips/), VER= (default tools/version/version.sh),
+# PLATFORM= linux or windows (default this one's). Not OS=: Windows sets
+# OS=Windows_NT for every process, and the first release's Windows zips
+# were named for it.
 set -euo pipefail
 for a in "$@"; do case "$a" in [A-Z]*=*) export "$a" ;; esac; done
 cd "$(dirname "$0")/../.."
@@ -30,15 +32,15 @@ SRC=$PWD
 DIST=$SRC/dist/deimos
 OUT=${OUT:-$SRC/zips}
 VER=${VER:-$(bash tools/version/version.sh)}
-if [ -z "${OS:-}" ]; then
-	case "$(uname -s)" in MINGW* | MSYS* | CYGWIN*) OS=windows ;; *) OS=linux ;; esac
+if [ -z "${PLATFORM:-}" ]; then
+	case "$(uname -s)" in MINGW* | MSYS* | CYGWIN*) PLATFORM=windows ;; *) PLATFORM=linux ;; esac
 fi
 EXE=
-[ "$OS" = windows ] && EXE=.exe
+[ "$PLATFORM" = windows ] && EXE=.exe
 [ -x "$DIST/deimos$EXE" ] || { echo "zips: no release folder at $DIST (mise run dist)" >&2; exit 1; }
 mkdir -p "$OUT"
 OUT=$(cd "$OUT" && pwd)
-base="deimos-$VER-$OS-amd64"
+base="deimos-$VER-$PLATFORM-amd64"
 
 # zip_paths <zip> <path under dist/deimos, one per argument...>: a zip of
 # those paths, each under deimos/. Info-ZIP keeps the exec bit. The Windows
