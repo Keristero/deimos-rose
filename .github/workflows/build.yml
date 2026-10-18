@@ -60,18 +60,18 @@ jobs:
 
       # Zipped here rather than by upload-artifact, which drops the exec bit.
       # The game loads assets/ and plugins/ relative to its working directory
-      # (D29, D51). The zip is named with the same version the binary and
-      # release tag carry.
-      - name: Zip the binary with its assets
-        run: |
-          ver=$(bash tools/version/version.sh)
-          mise run dist
-          cd dist && zip -9qr "../deimos-$ver-linux-amd64.zip" deimos
+      # (D29, D51). The game is one download and each plugin another, every
+      # one a deimos/ folder unzipped over the same (D87); dist:check
+      # installs each as a player would. The zips are named with the same
+      # version the binary and release tag carry.
+      - run: mise run dist
+      - run: mise run dist:zips
+      - run: mise run dist:check
 
       - uses: actions/upload-artifact@v4
         with:
           name: deimos-linux-amd64
-          path: src/deimos-*-linux-amd64.zip
+          path: src/zips/*.zip
           if-no-files-found: error
 
   build-windows:
@@ -125,17 +125,16 @@ jobs:
       - run: mise run rng:determinism
 
       # raylib links statically on Windows (vendor:raylib's default), so the
-      # exe plus assets/ and plugins/ is the whole program.
-      - name: Zip the binary with its assets
-        run: |
-          ver=$(bash tools/version/version.sh)
-          mise run dist
-          cd dist && 7z a -bso0 "../deimos-$ver-windows-amd64.zip" deimos
+      # exe plus assets/ and plugins/ is the whole program. The same
+      # downloads as Linux's (D87).
+      - run: mise run dist
+      - run: mise run dist:zips
+      - run: mise run dist:check
 
       - uses: actions/upload-artifact@v4
         with:
           name: deimos-windows-amd64
-          path: src/deimos-*-windows-amd64.zip
+          path: src/zips/*.zip
           if-no-files-found: error
 
   # One prerelease per push, carrying both platforms' zips, tagged with the
@@ -181,7 +180,7 @@ jobs:
             fi
           fi
           bash src/tools/version/release_notes.sh > notes.md
-          printf '\nUnzip and run deimos (Linux) or deimos.exe (Windows) from inside the unzipped folder; deimos-editor or deimos-editor.exe beside it is the level editor. Built from %s (run %s).\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" >> notes.md
+          printf '\n**Downloads.** `deimos-%s-<os>-amd64.zip` is the game: the original, alone. Unzip it and run deimos (Linux) or deimos.exe (Windows) from inside the deimos folder. Each `-plugin-<name>.zip` is a mod, with every mod it needs, and `-editor.zip` the level editor: unzip them into the same place, over the same deimos folder, and turn mods on under Extras.\n\nBuilt from %s (run %s).\n' "$tag" "$GITHUB_SHA" "$GITHUB_RUN_ID" >> notes.md
           cat notes.md
           title="Deimos Rose $tag"
           extra=()

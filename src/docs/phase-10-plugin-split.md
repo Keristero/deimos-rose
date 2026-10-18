@@ -1,9 +1,9 @@
 # Phase 10 — The plugin split
 
-**Status: in progress.** Stages 0–4 are on their branches: the workflow
-and website, the core naming no plugin, one copy of the state, plugins
-loaded from libraries, and netplay out of the core. The separate
-downloads are planned below.
+**Status: complete, pending review.** Stages 0–5 are on their stacked
+branches: the workflow and website, the core naming no plugin, one copy
+of the state, plugins loaded from libraries, netplay out of the core,
+and a release that is the game alone plus one download per plugin.
 
 ## Why
 
@@ -591,6 +591,102 @@ What the game keeps, and asks the screen through `Screen`:
 - `netplay.so` doubled in size by carrying `game`. Moving what the lobby
   needs from `game` (the setup switches, the campaign list) into `ui`
   would shrink it again.
+
+## Stage 5 — one download per plugin
+
+A release is now the game alone, the level editor, and one zip per
+plugin, instead of one zip of everything (`tools/dist/zips.sh`,
+`mise run dist:zips`; D87). Every zip holds a `deimos/` folder, so each
+unzips over the same game folder, in any order.
+
+```mermaid
+flowchart LR
+  D[dist/deimos<br/>mise run dist] --> Z{dist:zips}
+  Z --> G["deimos-…-amd64.zip<br/>the game, Classic Levels"]
+  Z --> E["…-editor.zip<br/>deimos-editor, models, materials"]
+  Z --> P["…-plugin-chaingun.zip<br/>chaingun + new_weapons,<br/>loadout, extra_prefs"]
+  Z --> R["…-plugin-recovered_levels.zip"]
+  Z --> M[… 12 more]
+  G & E & P & R & M --> C{dist:check}
+```
+
+- **A plugin's zip brings what it needs.** A library carries its
+  dependencies' code (D85), so `chaingun.so` alone registers New
+  Weapons, and plays the ordinary gun without the weapons in
+  `plugins/new_weapons/`. The zip follows the dependencies the game
+  itself reports (`-list-plugins`, run in the release folder) and takes
+  each one's folder. Zips overlap where plugins share one; the files
+  are the same build's, so unzipping both changes nothing.
+- **Missing content is reported.** `-list-plugins` marks a plugin whose
+  library registered it but whose folder is missing `content missing`,
+  and exits 1, so a half-installed plugin is found by a check rather
+  than by playing (it was found that way, before the zips bundled their
+  dependencies).
+- **The editor's assets are the editor's.** `assets/models`,
+  `materials` and `bases` are read only through `dr:terrain` and the
+  editor; the game imports neither. They go in the editor's zip, which
+  takes 13 MB off the game's.
+- **A manifest alone has no zip.** HD Textures' folder in a release is
+  its `plugin.json`; the textures are made locally (`hd:textures`).
+- **`dist:check` installs each one** as a player would, with no window,
+  on both systems in CI: the game's zip alone registers Classic Levels
+  and nothing else; each plugin's zip over it loads, finds its content,
+  and registers exactly the plugins it brings; and all the zips together
+  are the release folder, file for file.
+- **The build could return early.** `plugin_libs.sh` could exit with
+  its last library still being linked (`wait -n` returned for the
+  process substitution its list came from), so `plugins:check` failed
+  one run in three, and a release could have been zipped a library
+  short. It now reads the list whole first; four runs of four pass.
+- **The site links them.** The home page's buttons are the game's zip,
+  and each plugin's card links its own (`site/build.mjs` reads them
+  from the release; `SITE_RELEASES=<file>` reads a saved answer instead).
+
+### Numbers (2026-10-18, Linux, Odin dev-2026-09)
+
+Zipped with `zip -9`, without HD Textures' local textures, as CI has
+none.
+
+| Download | Size |
+|---|---|
+| everything, as one zip (stage 4's release) | 257.7 MB |
+| **the game** | **119.3 MB** |
+| Recovered Levels | 94.1 MB |
+| Hitstop | 26.2 MB |
+| the level editor | 13.6 MB |
+| New Weapon Passives (with New Weapons, Passives, Loadout, Extra Prefs) | 1.8 MB |
+| Chaingun (with New Weapons, Loadout, Extra Prefs) | 1.5 MB |
+| each of the other ten | 0.1–1.0 MB |
+
+The game a player needs to start is 46% of what it was.
+
+### Verified
+
+- `mise run dist:zips` then `mise run dist:check`: all three checks
+  pass with 16 plugin zips (HD Textures, a manifest here, has none).
+- From the game's zip alone, unzipped, `DR_MENU_SHOT=main` renders the
+  main menu without a NETPLAY item, and `DR_SHOT ... -level le03` plays
+  Lucena to step 120; both images looked at.
+- A chaingun-only install, before the zips bundled their dependencies:
+  `-list-plugins` printed `plugin 4 new_weapons ... content missing` and
+  exited 1.
+- The site, built against a release made from these zips
+  (`SITE_RELEASES`): the game's buttons, the editor's links, and a
+  download line on every plugin card but Classic Levels' ("comes with
+  the game").
+- Not run here: the Windows side, which uses 7-Zip; CI runs both
+  tasks there.
+- Not checked: the editor started from its zip over the game's. It
+  opens a window, and `dist:check` has none.
+
+### Still open
+
+- No zip holds everything. A player who wants every plugin unzips
+  sixteen; an "everything" zip would put back the 258 MB download
+  beside the others.
+- Hitstop's 26 MB is its sounds; a compressed format would shrink it.
+- The editor is checked only by `dist:check`'s file-for-file step, not
+  started.
 
 ## Decisions to record as they are made
 
