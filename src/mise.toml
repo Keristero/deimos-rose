@@ -410,6 +410,19 @@ if command -v xvfb-run >/dev/null; then XVFB=(env DISPLAY= xvfb-run -s "-screen 
 echo "$OUT.png"
 '''
 
+[tasks."menu-shots:all"]
+description = "Render every menu-shot scenario into OUT, one PNG each (OUT=dir [ROOT=another tree's src/, from `mise run ref`]); names that write no image are listed. Compare two folders with menu-shots:diff"
+depends = ["build"]
+run = "bash tools/refs/menu_shots.sh"
+
+[tasks."menu-shots:diff"]
+description = "Compare two menu-shots:all folders byte for byte (A=base B=new): identical, differing, and names only one has. Particles take random directions, so render the base twice before calling a difference real"
+run = "bash tools/refs/menu_shots_diff.sh"
+
+[tasks.ref]
+description = "Run another commit's own task in a worktree of it under build/refs/, to measure a change against its base (REF=branch-or-commit [TASK=build]; e.g. TASK=bench, TASK=dps:report). Prints the worktree's src/ last, the ROOT for menu-shots:all"
+run = "bash tools/refs/run.sh"
+
 [tasks."weapon-clips"]
 description = "Record a short GIF of each weapon in play on the stage it unlocks: taps, then a charge and its release (WEAPONS='aiic aibg airg aipb aicg aidb plbo' by default, OUT=../work/clips; KEEP_FRAMES=1 keeps the PNG frames in OUT/frames). Headless. See tools/clips"
 depends = ["setup"]

@@ -141,6 +141,12 @@ frame's draw list; `mise run menu-shot MENU=...` renders one screen. Look
 at one image once the numbers say it is the right one. When a question
 comes up twice, build the tool for it rather than a third ad-hoc script.
 
+**Measure against the base with its own code.** `mise run ref
+REF=<base> TASK=bench` runs the base's own task in a worktree of it
+(`TASK=dps:report`, `TASK=build`). `mise run menu-shots:all OUT=dir`
+renders every menu scenario (`ROOT=` the worktree's `src/` for the
+base's), and `mise run menu-shots:diff A=base B=new` compares them.
+
 **Tests must not require the original game data.** Use synthetic fixtures.
 Integration checks against `game/` are fine but must skip cleanly when absent,
 so CI runs for someone without a copy of the game. A test of the extracted
