@@ -51,7 +51,7 @@
       "title": "A screenshot of every plugin",
       "date": "2026-10-18",
       "kind": "feature",
-      "pr": null,
+      "pr": 4,
       "summary": "Every card on the Plugins page now shows its plugin in the game. The game takes each picture itself, from a scene its entry names, and the site will not build with one missing.",
       "highlights": [
         "17 plugins, 17 screenshots, 1.6 MB in all.",
@@ -64,7 +64,7 @@
       "title": "One copy of the game's state",
       "date": "2026-10-08",
       "kind": "engineering",
-      "pr": null,
+      "pr": 3,
       "summary": "A plugin loaded from its own library would carry a private copy of everything the game keeps, and its registrations would never reach the game. Every package now keeps its state in one block, which a loaded plugin is pointed at: the groundwork for installing plugins separately.",
       "highlights": [
         "142 package variables across 29 packages moved into 28 blocks, or became read-only tables.",
@@ -78,7 +78,7 @@
       "title": "The core names no plugin",
       "date": "2026-10-08",
       "kind": "engineering",
-      "pr": null,
+      "pr": 2,
       "summary": "The game used to call seven of its plugins by name, so it could not be built without them. Now each plugin registers what it adds, and the game only asks: the first step to installing plugins separately.",
       "highlights": [
         "Level Select and lobby switches, launch flags, frame pacing, the Extras previews and the netplay pause are all registered by their plugins.",
@@ -93,7 +93,7 @@
       "title": "A website, and feature branches with reviewed pull requests",
       "date": "2026-10-08",
       "kind": "engineering",
-      "pr": null,
+      "pr": 1,
       "summary": "This site. A dependency-free Node script builds it from this config before every deployment to GitHub Pages, so it is never edited by hand and cannot fall behind main.",
       "highlights": [
         "Work happens on feature branches, merged by pull request.",
