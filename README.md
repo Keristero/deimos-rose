@@ -1,121 +1,144 @@
 # Deimos Rose
 
-This is a recreation of Deimos Rising based on the decompiled windows build of the game (1.0.2)
+A rebuild of **Deimos Rising**, Ambrosia Software's 2003 vertical shooter,
+written from the ground up in Odin from a study of the original Windows
+build (1.0.2). It plays the original exactly, and adds everything new as
+plugins you can take or leave.
 
-**Website: [keristero.github.io/deimos-rose](https://keristero.github.io/deimos-rose/)**: downloads, every plugin with a screenshot, and what changed.
-
-The game is playable from start to finish, the gameplay feels almost 1:1, but the presentation is not perfect.
-
-There are builds for windows and linux, [on the website](https://keristero.github.io/deimos-rose/) or [under each release's assets](https://github.com/Keristero/deimos-rose/releases). The game is one download, the original on its own. Each plugin is another: unzip it into the same folder, then turn it on from the Mods page in Preferences.
+**Website: [keristero.github.io/deimos-rose](https://keristero.github.io/deimos-rose/)**: downloads, every plugin with a screenshot, and what changed in each release.
 
 ![The main menu](src/docs/images/main-menu.png)
 
-#### Enhancements:
-- Online netplay with rollback and reconnect functionality. (port 60902)
-- High refresh rate mode, drawing smoothly between game updates (Preferences)
+## Play
 
-There is also a Classic mode which disables all enhancements and attempts to present the graphics and colors as faithfully to the original as possible.
+Download the game for Windows or Linux from
+[the website](https://keristero.github.io/deimos-rose/) or
+[the releases](https://github.com/Keristero/deimos-rose/releases). Unzip it
+and run `deimos` (Linux) or `deimos.exe` (Windows) from inside the `deimos`
+folder.
 
-Every enhancement is a plugin; [the website's plugin page](https://keristero.github.io/deimos-rose/plugins.html) lists them all.
+The game zip is the original, on its own: all twelve sectors, played from
+the title screen to the end. Each plugin is a download of its own. Unzip it
+over the same `deimos` folder, then turn it on from the **Mods** page in
+Preferences. A plugin's zip carries any other plugins it needs.
 
-#### Upcoming enhancements:
-- HD upscaled textures, reflections, and new shader effects for water and more
-- Easy mode which gives the player a powerup after each stage they complete
-- Infinite procedural roguelike mode with new guns and biomes
+**Classic mode** switches every enhancement off, so the game looks and
+plays as the 2003 build did.
 
-#### Known issues
-- Some sounds use the wrong sound effects, eg weapons are swapped etc. (fixed I think)
-- Enemies can be visible offscreen in window mode, most notably just before they spawn in from the sides (fixed I think)
-- Menus dont match originals
-- Missing or strange looking visuals, eg:
-   - Missing scorch marks on ground after ground fire
+**Netplay** (the Netplay plugin) uses UDP port 60902.
 
-#### Known enhancement issues:
-- Sometimes when players reconnect they might see the wrong level background loaded
+## What's in it
 
-#### Other details:
-- The game has been reimplemented in odin with the raylib library.
-- Custom UDP networking + rollback implementation
+### The original, exactly
 
-## The `ecs-refactor` branch
+The core of the game is the original and nothing more. Its simulation is
+checked against the original binary: all four demo films that shipped with
+the game, and 19 films recorded by players across every level, replay
+random call for random call, 2.5 million calls in all
+([phase 4](src/docs/phase-4-sim.md)). Sprites, colours, frames, text and
+timing come from the original's own data files.
 
-This branch moves the simulation onto an entity component system
-(odecs), and moves the enhancements out of the core into plugins under
-`src/plugins/`. The design and its verification are in
-[src/docs/phase-9-ecs.md](src/docs/phase-9-ecs.md).
+### Plugins
 
-### Performance compared with `main`
+Everything Deimos Rose adds is a plugin.
+[The website's plugin page](https://keristero.github.io/deimos-rose/plugins.html)
+shows each one.
 
-Measured on 2026-09-27 with `mise run bench` (`tools/simbench`), ported
-to `main`'s API so both branches run the same workload. Best of 5 runs,
-built with `-o:speed`, three runs of each branch in turn, agreeing to
-within 1%.
+| | Plugin | What it does |
+|---|---|---|
+| **Content** | Classic Levels | The original twelve sectors. Comes with the game. |
+| | Recovered Levels | The same sectors on maps redrawn from their recovered 3D terrain |
+| **Presentation** | Extra Preferences | A page of settings for the other plugins |
+| | 30FPS Unlock | Smoother motion at your display's refresh rate |
+| | Accent Color | Each player's own colour on their ship and shots |
+| | Realtime Lighting | Shots and explosions light what is round them, and glow |
+| | Moving Water | Waves, a sky and its clouds, and the sun's glint on the water |
+| | Wind | The level's wind blows sparks and smoke |
+| | Hitstop | Hits stop the game for a moment; a huge one gets a kill cam |
+| | HD Textures | Sprites and menu pictures redrawn at twice their size (built from source only, for now) |
+| **Multiplayer** | Netplay | Two players over the network, with rollback, desync detection and reconnection |
+| **Gameplay** | Passive Upgrades | Upgrades to the ship and its weapons, a level at a time |
+| | Easy Mode | A passive upgrade to choose after every level |
+| | Loadout | Three air weapons at hand, chosen at the start of each stage |
+| | New Weapons | New air weapons to unlock, stage by stage |
+| | Chaingun | An air weapon from stage 7 whose charge fires aimed volleys |
+| | New Weapon Upgrades | Passive upgrades for the new weapons |
 
-| | main | ecs-refactor | |
-|---|---|---|---|
-| Demo replays (29,181 steps) | 3.5 µs/step | 11.0 µs/step | 3.1× slower |
-| Every level, co-op, random input (72,000 steps) | 6.6 µs/step | 15.3 µs/step | 2.3× slower |
-| Snapshot size | 690 KB (always) | 48 KB mid-level, 109 KB at the fullest | 6-14× smaller |
-| Snapshot save / restore (level 6, step 2000) | 8.1 / 8.1 µs | 3.3 / 3.0 µs | ~2.6× faster |
-| 10-frame rollback (level 6) | 107 µs | 46 µs | ~2.3× faster |
+### Level editor
 
-- **Stepping the simulation is 2-3× slower.** It was 3-4× before the
-  prefab table, the inlined pool walk and per-prefab stage masks.
-  Rollback is cheaper, because snapshots only hold what is in use.
-- **The checksum costs more (7.7 µs against 0.33 µs), but it also hashes
-  far more.** `main` hashes only the RNG, the level and the players, so
-  the two figures are not comparable.
-- **Where the time goes** (a profile taken before those speed-ups;
-  `mise run bench:profile` now measures it): 95% of step time is in the
-  entities system. The
-  `shot_collisions` stage is the largest part at 18%, and no other stage
-  passes 6%. About a third of the time is outside the stages that were
-  listed: the loop, stage matching, and many small stages.
-- **Not a problem in play yet.** 15 µs is a small share of a frame. It
-  does slow film replays and tests, and it limits how deep rollback can
-  go before stepping costs more than snapshots save.
+`deimos-editor`, a download of its own, edits levels as 3D terrain:
+sculpt, paint, light, place units and scenery, and add water and wind. A
+set of levels made in it exports as a plugin the game plays. Recovered
+Levels was made this way.
 
-### To do
+## Status
 
-Performance:
+The game is playable from start to finish. Work still open:
 
-- [x] Look up prefab components once per session. `prefab_component` and
-  `prefab_has` (`src/sim/prefabs.odin`) do an odecs hash-map lookup and
-  column search on every call, but prefabs never change during a session.
-  Build a flat table from each prefab to its components at `init`, and
-  make `prefab_has` a bit in the existing `matches` bitset. Prove it
-  neutral: `oracle:diff` exact, fingerprints unchanged. Done; each
-  entity also visits only the stages its prefab takes part in.
-- [ ] Make the collision inner loop cheaper without changing its order.
-  `entity_collisions` (`src/sim/systems/collision_system/contact.odin`)
-  copies a 64-byte `Entity` view per visit and follows pointers into
-  separate columns. Walk group order once per step into a compact array
-  of what the check reads, so the random draws keep their order.
-- [x] Build per-system and per-stage timing into `tools/simbench` behind
-  a `-define` flag (a no-op by default, so `sim/` stays pure). Done:
-  `mise run bench:profile`.
+- **Netplay** has been tested mostly on one machine, over loopback. A
+  playtest between two machines is still to do, and the constants that
+  pace a peer that runs ahead are provisional.
+- **The level editor** is at stage 9 of 10
+  ([level-editor.md](src/docs/level-editor.md)).
+- **HD Textures** is not in the downloads yet. Build it locally with
+  `mise run hd:textures`.
+- **Known issue:** after a reconnect in netplay, a player may see the wrong
+  level's background.
+- **Planned:** an endless roguelike mode, with procedural levels, new guns
+  and new biomes.
 
-Architecture (mostly from the phase doc's "Still open"):
+[src/docs/README.md](src/docs/README.md) has every phase's status.
 
-- [x] Let plugins register their own screenshot scenarios, so
-  `src/game/main.odin` stops naming the loadout, passives and Discharge
-  Beam plugins. Done (`ui.shot_register`); each plugin also owns its
-  content under `assets/extra/<plugin>`, and the Chaingun is a plugin of
-  its own (decisions.md D49).
-- [ ] Add a recolour hook in `draw_object`, so accent colours and their
-  shader move from `Renderer` into Accent Color's view.
-- [ ] Add a menu-item extension point, so the Easy Mode switch (Level
-  Select, lobby) and the netplay button stop asking for mods by ID.
-- [ ] Passives without Easy Mode can never earn a passive: add a
-  dependency on Easy Mode, or another way to earn them.
+## How it's built
 
-Before merging:
+- **Odin and raylib.** The game, the editor and the tools are all Odin.
+- **A pure, deterministic simulation.** `src/sim/` takes inputs and a seed
+  and produces the next state. It touches no files, clock, network or
+  global random number generator, and a check enforces this. That purity
+  is what lets demo films replay exactly, tests run fast, and netplay roll
+  back.
+- **An entity component system.** The simulation's state is an
+  [odecs](https://github.com/NateTheGreatt/odecs)
+  world. Behaviour comes from systems registered in a fixed order, so every
+  build and every peer steps the same way
+  ([phase 9](src/docs/phase-9-ecs.md)).
+- **Plugins are libraries.** The game loads each plugin's library at
+  startup. A plugin reaches the game only through extension points: a
+  system, a hook, a screen, a setting, a render pass. The core names no
+  plugin, and the game and its tests run with none installed
+  ([phase 10](src/docs/phase-10-plugin-split.md)).
+- **Rollback netplay** over its own UDP transport: snapshots of the whole
+  state, rollback and resimulation, and checksums to detect a desync
+  ([phase 6](src/docs/phase-6-netplay.md),
+  [phase 8](src/docs/phase-8-netcode-enhancements.md)).
 
-- [ ] Run the netplay checks between two builds on two machines. The new
-  Start message has only been tested in loopback on one machine.
-- [ ] Update the benchmark figures in `src/docs/phase-9-ecs.md` (they say
-  23/32 µs a step; today's measurement is 11/15 µs), and add `main`'s
-  3.5/6.6 µs next to them as the baseline.
+### The repository
+
+| Folder | What it holds |
+|---|---|
+| `src/` | The game: the core, `plugins/`, the editor, the tools, the tests, the website |
+| `src/docs/` | One write-up per phase, and [decisions.md](src/docs/decisions.md), the log of design choices |
+| `notes/`, `symbols/`, `tools/` | The study of the original build: 1,942 named functions, file formats, the plan |
+| `orig/`, `game/` | The original release and its unpacked game. Not committed: bring your own copy |
+
+[AGENTS.md](AGENTS.md) is how the project is worked on: verifying before
+building, branches and pull requests, and the rules the code keeps.
+
+### Building from source
+
+Install [mise](https://mise.jdx.dev) and Odin (`brew install odin`; CI
+uses Odin dev-2026-09). Then, from `src/`:
+
+```sh
+mise run run      # build and run the game
+mise run editor   # build and run the level editor
+mise run test     # the test suite
+mise run ci       # everything CI checks
+```
+
+The game's converted data is committed in `src/assets/`, so building needs
+no copy of the original. With the original installer in `orig/`,
+`mise run assets:all` regenerates it.
 
 ## Related work
 
