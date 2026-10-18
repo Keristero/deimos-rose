@@ -146,7 +146,9 @@ export function loadPlugins(config) {
 				label: m.label ?? titleCase(entry.name.replaceAll('_', ' ')),
 				description: m.description ?? '',
 				deps: m.deps ?? [],
-				session: true,
+				// As data/plugins.odin reads it (absent is false), except that a
+				// campaign's levels change the game whatever it says.
+				session: m.session === true || (m.levels?.length ?? 0) > 0,
 				defaultOn: m.default_on ?? false,
 				companion: false,
 				levels: m.levels?.length ?? 0,
