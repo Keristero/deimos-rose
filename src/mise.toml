@@ -822,6 +822,11 @@ run = 'node site/build.mjs --out "${OUT:-$DR_BUILD/site}" ${OFFLINE:+--offline}'
 description = "Fail unless this branch adds an entry to site/site.config.json's changes, compared with BASE (default origin/main): every feature branch merged to main does (AGENTS.md). The pull request workflow runs it against the pull request's base"
 run = 'node site/check.mjs ${BASE:-}'
 
+[tasks."site:shots"]
+description = "Render each plugin's screenshot for the website into site/shots/<plugin>.webp, from the scenario its entry in site.config.json names (ONLY='water wind' for some); commit the images. Needs the game's assets, a display and ImageMagick (site/shots.mjs)"
+depends = ["build"]
+run = 'node site/shots.mjs'
+
 [tasks."site:serve"]
 description = "Build the website and serve it on http://localhost:8000 (PORT=n to change it)"
 depends = ["site:build"]

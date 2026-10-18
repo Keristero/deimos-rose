@@ -2230,3 +2230,24 @@ never reads.
   in every package a plugin can import.
 - **odecs is exempt.** Its package state is its encoded query terms,
   which no code outside it may use (D47).
+
+### D84 — Every plugin is pictured, by the game, and the picture is committed
+
+Asked for on 2026-10-18: each mod must have a screenshot on the website.
+
+- **The game takes it.** A plugin's entry in `site.config.json` names a
+  menu-shot scenario and launch flags (`"shot"`), and `site/shots.mjs`
+  runs the game on it, so a picture is reproducible and shows what the
+  build draws, never a mock-up. `playing`, a plain level with only the
+  flags' plugins on, covers a plugin with no scenario of its own, a data
+  plugin's textures or levels among them; headless runs now honour `-mod`
+  (`launch_mods`), which they ignored.
+- **Committed, not rendered in CI.** The deploy job has no display, the
+  game's assets or HD Textures' generated textures; a picture changes
+  only when its plugin's look does; 17 come to 1.6 MB as 960x720 WebP.
+  Rendering them in the Build workflow and handing them to the site job
+  would remove the commit, at the cost of a display server and the
+  textures in CI.
+- **Missing is a failure.** `site/build.mjs` fails on a plugin without
+  its image, as on one missing from the list, so a new plugin cannot
+  reach the site unpictured.

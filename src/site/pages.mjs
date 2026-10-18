@@ -131,6 +131,7 @@ function pluginPage({ config, plugins }) {
 			? `<p class="deps">Needs ${p.deps.map((d) => `<a href="#${esc(d)}">${esc(byName[d]?.label ?? d)}</a>`).join(', ')}</p>`
 			: ''
 		return `<article class="plugin" id="${esc(p.name)}">
+      <img class="plugin-shot" src="shots/${esc(p.name)}.webp" alt="${esc(p.label)} in the game" width="960" height="720" loading="lazy">
       <h3>${esc(p.label)}</h3>
       <p>${esc(p.description)}.</p>
       ${p.about ? `<p class="muted">${inline(p.about)}</p>` : ''}

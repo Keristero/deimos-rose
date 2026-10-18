@@ -36,8 +36,9 @@ main :: proc() {
 	sim.register_all()
 	// Saved preferences, with this run's launch flags layered on top.
 	// Headless captures use the defaults instead, so a player's own
-	// settings can never change what a comparison shot shows.
-	ps := Prefs_State{saved = prefs.defaults(), launch = settings}
+	// settings can never change what a comparison shot shows; the flags
+	// still apply (-mod for the site's screenshots).
+	ps := Prefs_State{saved = prefs.defaults(), launch = settings, launch_mods = prefs.launch_mods(settings.args)}
 
 	// Everything comes out of the extracted assets tree. The original
 	// install is needed only to produce it, and by the oracle tooling.
@@ -443,6 +444,30 @@ run_menu_shot :: proc(r: ^render.Renderer, defs: ^sim.Defs, state: ^sim.State, r
 		if a, ok := strconv.parse_f32(os.get_env("DR_INTERP_ALPHA", context.temp_allocator)); ok {
 			r.interp_alpha = a
 		}
+	case "playing":
+		// A level a few seconds in, firing, outside classic mode with only
+		// what the launch flags turn on: -mod <name>, and -campaign and
+		// -level for where. The plain scene a plugin with no scenario of
+		// its own is pictured in, a data plugin's textures or levels (the
+		// site's screenshots, site:shots).
+		ps.saved.classic, ps.launch.classic, r.classic = false, false, false
+		ps.saved.mods = {}
+		campaign, index, ok := launch_level(defs, ps.launch)
+		if !ok {
+			os.exit(1)
+		}
+		flow_campaign_set(&flow, campaign)
+		flow_start_session(&flow, 0x1234_5678, .Single, index)
+		flow_effects_sync(&flow, &fx)
+		flow_set_accents(&flow, r)
+		// Fire tapped, as held it would only charge.
+		for i in 0 ..< 300 {
+			input := i % 6 < 3 ? sim.Frame_Input{{.Fire_Air, .Fire_Ground}, {}} : {}
+			_ = sim.session_step(state, input)
+			render.particles_step(&fx.particles, state)
+			render.effect_systems_step(r, state, &fx.particles)
+		}
+		flow.mode = .Playing
 	case "credits":
 		flow.mode = .Credits
 		credits_init(&flow.credits)

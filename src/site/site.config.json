@@ -26,26 +26,39 @@
   ],
 
   "plugins": [
-    { "name": "classic_levels", "group": "Content" },
-    { "name": "recovered_levels", "group": "Content", "about": "Each original map was lifted back into a height field, relit, and repainted in the level editor." },
-    { "name": "extra_prefs", "group": "Presentation" },
-    { "name": "fps_unlock", "group": "Presentation", "about": "The simulation still steps at the original 30 Hz; frames in between are drawn from both sides of a step." },
-    { "name": "accent", "group": "Presentation" },
-    { "name": "lighting", "group": "Presentation" },
-    { "name": "water", "group": "Presentation" },
-    { "name": "wind", "group": "Presentation" },
-    { "name": "hitstop", "group": "Presentation" },
-    { "name": "hd_textures", "group": "Presentation", "about": "Upscaled by the Nomos SPAN 2x model; classic mode always draws the originals." },
-    { "name": "netplay", "group": "Multiplayer" },
-    { "name": "passives", "group": "Gameplay" },
-    { "name": "easy_mode", "group": "Gameplay" },
-    { "name": "loadout", "group": "Gameplay" },
-    { "name": "new_weapons", "group": "Gameplay", "about": "The Discharge Beam: an instant laser that carries leftover damage through its kills and chains between targets when charged." },
-    { "name": "chaingun", "group": "Gameplay" },
-    { "name": "new_weapon_passives", "group": "Gameplay" }
+    { "name": "classic_levels", "group": "Content", "shot": "playing" },
+    { "name": "recovered_levels", "group": "Content", "shot": "playing -campaign recovered_levels -level Delos", "about": "Each original map was lifted back into a height field, relit, and repainted in the level editor." },
+    { "name": "extra_prefs", "group": "Presentation", "shot": "preferences_extras_sliders" },
+    { "name": "fps_unlock", "group": "Presentation", "shot": "playing -mod fps_unlock -level Vista", "about": "The simulation still steps at the original 30 Hz; frames in between are drawn from both sides of a step." },
+    { "name": "accent", "group": "Presentation", "shot": "preferences_extras" },
+    { "name": "lighting", "group": "Presentation", "shot": "lighting" },
+    { "name": "water", "group": "Presentation", "shot": "water_splash" },
+    { "name": "wind", "group": "Presentation", "shot": "playing -mod wind -level Thebes" },
+    { "name": "hitstop", "group": "Presentation", "shot": "hitstop" },
+    { "name": "hd_textures", "group": "Presentation", "shot": "playing -mod hd_textures -level Sparta", "about": "Upscaled by the Nomos SPAN 2x model; classic mode always draws the originals." },
+    { "name": "netplay", "group": "Multiplayer", "shot": "netplay_lobby_connected" },
+    { "name": "passives", "group": "Gameplay", "shot": "rear_gun_side" },
+    { "name": "easy_mode", "group": "Gameplay", "shot": "reward" },
+    { "name": "loadout", "group": "Gameplay", "shot": "loadout" },
+    { "name": "new_weapons", "group": "Gameplay", "shot": "discharge", "about": "The Discharge Beam: an instant laser that carries leftover damage through its kills and chains between targets when charged." },
+    { "name": "chaingun", "group": "Gameplay", "shot": "chaingun_release" },
+    { "name": "new_weapon_passives", "group": "Gameplay", "shot": "chaingun_upgrade" }
   ],
 
   "changes": [
+    {
+      "id": "plugin-screenshots",
+      "title": "A screenshot of every plugin",
+      "date": "2026-10-18",
+      "kind": "feature",
+      "pr": null,
+      "summary": "Every card on the Plugins page now shows its plugin in the game. The game takes each picture itself, from a scene its entry names, and the site will not build with one missing.",
+      "highlights": [
+        "17 plugins, 17 screenshots, 1.6 MB in all.",
+        "`mise run site:shots` renders them again; a new plugin needs one.",
+        "A new scene for the Chaingun's upgrade, and a plain level for plugins with no scene of their own."
+      ]
+    },
     {
       "id": "shared-state",
       "title": "One copy of the game's state",

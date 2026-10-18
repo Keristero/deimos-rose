@@ -8,6 +8,9 @@
 // What it reads, and why from there:
 // - site.config.json: everything said about the project, and one entry
 //   per merged feature branch (AGENTS.md, "Branches and pull requests").
+// - site/shots/: a screenshot of each plugin, rendered by the game itself
+//   from the scenario its entry names (site/shots.mjs, `mise run
+//   site:shots`), and committed. A plugin without one fails the build.
 // - src/plugins/: each plugin's label, description and dependencies, from
 //   its plugin.json or its plugin_register call. The game shows the same
 //   words on its Mods page, so the site cannot drift from it. A plugin
@@ -63,6 +66,7 @@ export function loadConfig(path = join(here, 'site.config.json')) {
 		need(text(p.name), `plugins[${i}].name`, 'a plugin folder name')
 		need(text(p.group), `plugins[${i}].group`, 'a group')
 		need(!names.has(p.name), `plugins[${i}]`, `${p.name} listed twice`)
+		need(text(p.shot), `plugins[${i}].shot`, 'the scenario its screenshot is taken in (site/shots.mjs)')
 		names.add(p.name)
 	}
 
@@ -138,6 +142,9 @@ export function loadPlugins(config) {
 	for (const entry of config.plugins) {
 		const dir = join(root, entry.name)
 		if (!existsSync(dir)) continue
+		if (!existsSync(join(here, 'shots', `${entry.name}.webp`))) {
+			problems.push(`plugins/${entry.name} has no screenshot, site/shots/${entry.name}.webp: mise run site:shots ONLY=${entry.name}`)
+		}
 		const manifest = join(dir, 'plugin.json')
 		let meta
 		if (existsSync(manifest)) {
@@ -209,6 +216,10 @@ async function main() {
 	mkdirSync(out, { recursive: true })
 	copyFileSync(join(here, 'style.css'), join(out, 'style.css'))
 	copyFileSync(join(here, 'icon.svg'), join(out, 'icon.svg'))
+	mkdirSync(join(out, 'shots'))
+	for (const p of plugins) {
+		copyFileSync(join(here, 'shots', `${p.name}.webp`), join(out, 'shots', `${p.name}.webp`))
+	}
 	if (config.site.screenshot) {
 		copyFileSync(resolve(here, config.site.screenshot), join(out, 'screenshot.png'))
 	}

@@ -210,6 +210,12 @@ flowchart LR
   `src/site/site.config.json`, and the plugin list kept in step with
   `src/plugins/`. The pull request workflow runs `mise run site:check`
   and fails without it; `src/site/README.md` has the format.
+- **Every plugin has a screenshot.** Its entry names the scenario it is
+  pictured in (`"shot"`), and `mise run site:shots ONLY=<name>` renders
+  it into `src/site/shots/`, committed. The site fails to build without
+  it. A new plugin with a look of its own registers a scenario for it
+  (`ui.shot_register`); one without uses `playing -mod <name>`. Render
+  it again when its look changes.
 - **Open the pull request with `gh pr create`**, against the branch it
   stacks on, with the body written as below.
 
