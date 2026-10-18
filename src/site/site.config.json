@@ -51,6 +51,7 @@
       "title": "The game, and a download per plugin",
       "date": "2026-10-18",
       "kind": "feature",
+      "pr": 7,
       "summary": "A release is now the original game on its own, 119 MB instead of 258 MB, plus the level editor and one small download for each plugin. Unzip any of them over the game's folder.",
       "highlights": [
         "Each plugin's download brings every plugin it needs: the Chaingun's brings New Weapons and the Loadout screen with it.",
