@@ -2321,3 +2321,30 @@ holds a `deimos/` folder, so all of them unzip over the same one.
 - **Same build, or none.** The zips are made from one release folder in
   one CI run; a library from another refuses to load (D85). A player
   updating the game updates the plugins with it.
+
+### D88 — The site joins downloads in the browser, from its own copy
+
+2026-10-18. The website's Download page lists the game, the editor and
+each shown plugin as tick boxes, and makes one zip of what is ticked, so
+a player unzips once rather than once per plugin.
+
+- **Joined, not rebuilt.** `site/zip.mjs` copies each entry's local
+  record, still compressed, and writes a new central directory; the first
+  entry of a name wins, as unzipping one zip over another would. No
+  inflate or deflate, no library, and Unix permissions survive. It
+  refuses Zip64, which no release zip uses (v0.1.308's largest: 1,280
+  entries, 119 MB).
+- **Ticks follow needs.** Ticking a plugin ticks its dependencies,
+  transitively; unticking one unticks what needs it, since that plugin's
+  zip would bring it back anyway (D87). Only the zips no other ticked
+  plugin brings are fetched.
+- **The site serves its own copy.** GitHub's release files carry no
+  `Access-Control-Allow-Origin` (github.com's redirect and
+  release-assets.githubusercontent.com both, checked 2026-10-18), so a
+  page cannot fetch them. The Pages deploy copies the newest release's
+  zips into `dl/` (`build.mjs --mirror`): 472 MB for v0.1.308, under
+  Pages' 1 GB limit. When the game and its plugins pass that, the
+  heaviest content plugin (Recovered Levels, 94 MB a platform) is the
+  first to leave the copy and be linked from the release instead.
+- **Still no zip of everything on the server** (D87): the join happens on
+  the player's computer, from the same files the release has.

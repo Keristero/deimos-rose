@@ -36,7 +36,8 @@ leaves behind is:
   ships as its own download, a zip with every plugin it needs, unzipped
   over the game's folder (`mise run dist:zips`, D87). The game runs, and
   its tests pass, with no plugin installed; `mise run dist:check`
-  installs each download as a player would.
+  installs each download as a player would. The website's Download
+  page joins the zips a player ticks into one, in the browser (D88).
 - **Before building a feature, say where it installs.** If the answer is
   "in the core", the feature needs a reason in its pull request, and the
   reason is usually a missing extension point (see "Count the places a

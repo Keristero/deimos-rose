@@ -47,6 +47,19 @@
 
   "changes": [
     {
+      "id": "download-picker",
+      "title": "Pick your plugins, get one zip",
+      "date": "2026-10-18",
+      "kind": "feature",
+      "pr": 11,
+      "summary": "The Download page lists the game, the level editor and every plugin with a tick box. Tick what you want and your browser joins them into a single zip, ready to unzip and play.",
+      "highlights": [
+        "Ticking a plugin ticks every plugin it needs, and what those need; unticking one unticks what needs it.",
+        "Untick the game to get just the plugins, for a copy you already have.",
+        "Nothing is uploaded or installed: the zip is put together on your computer from the release's own files."
+      ]
+    },
+    {
       "id": "meme-mod",
       "title": "A plugin can stay off this site",
       "date": "2026-10-18",

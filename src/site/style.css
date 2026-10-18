@@ -161,3 +161,25 @@ h3 { font-size: 1.05rem; margin: 0 0 6px; }
   .hero { grid-template-columns: 1fr; gap: 28px; padding-top: 24px; }
   .pitch, .changes { grid-template-columns: 1fr; }
 }
+
+/* --- Download ----------------------------------------------------------- */
+
+.picker { max-width: 860px; }
+.picker section { padding: 18px 0; }
+.os { display: flex; gap: 18px; border: 0; padding: 0; margin: 8px 0 0; }
+.os legend { float: left; margin-right: 6px; color: var(--muted); font: 600 0.8rem var(--mono); text-transform: uppercase; letter-spacing: 0.08em; padding-top: 3px; }
+.os label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+.picks { display: grid; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.pick { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: baseline; padding: 12px 18px; background: var(--surface); cursor: pointer; }
+.pick + .pick { border-top: 1px solid var(--line); }
+.pick:hover { background: var(--surface-2); }
+.pick input { accent-color: var(--rose); transform: translateY(2px); }
+.pick:has(input:disabled) { cursor: default; }
+.pick.unavailable .pick-text { opacity: 0.5; }
+.pick-needs, .pick-note { display: block; color: var(--muted); font-size: 0.85rem; }
+.pick-size { color: var(--muted); font: 500 0.8rem var(--mono); white-space: nowrap; }
+.picker-bar { position: sticky; bottom: 0; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 16px 0; background: var(--bg); border-top: 1px solid var(--line); }
+.picker-bar .fine { margin: 0; flex: 1 1 280px; }
+.picker-bar button:disabled { opacity: 0.5; cursor: default; filter: none; }
+.picker-bar progress { width: 100%; accent-color: var(--rose); }
+button.button { font: inherit; font-weight: 600; cursor: pointer; }
