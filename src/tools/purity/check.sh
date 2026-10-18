@@ -69,7 +69,8 @@ while IFS= read -r d; do SHARED+=("$d"); done < <(
         -name '*.odin' -not -path '*/tests/*' -printf '%h\n' 2>/dev/null | sort -u)
 BUILD="${DR_BUILD:-$SRC/build}"
 mkdir -p "$BUILD"
-odin build "$SRC/tools/globals" -out:"$BUILD/globals" -o:none
-"$BUILD/globals" -check "${SHARED[@]}"
+# Odin on Windows refuses an -out: without .exe (mise.toml's DR_EXT).
+odin build "$SRC/tools/globals" -out:"$BUILD/globals${DR_EXT:-}" -o:none
+"$BUILD/globals${DR_EXT:-}" -check "${SHARED[@]}"
 
 echo "purity: sim/ and its dependencies are clean, the core imports no plugin, and every package's state is in its block"
