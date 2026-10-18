@@ -125,18 +125,21 @@ plugin_lib_bind :: proc(path: string) -> (reason: string) {
 
 // -list-plugins: every registered plugin by id, and the registration
 // hash, then exits; 1 when a library would not load (main printed why), or
-// a plugin's content is not there (`content`, what loaded). The game turns
-// such a plugin off, and whatever needs it (sim.mods_with_content): a
-// library carries its dependencies' code (D85), so chaingun.so registers
-// New Weapons even where plugins/new_weapons is missing, and the Chaingun
-// would never be offered. dist:check runs this on each download.
+// a plugin its code registered has no content (`content`, what loaded).
+// The game turns such a plugin off, and whatever needs it
+// (sim.mods_with_content): a library carries its dependencies' code (D85),
+// so chaingun.so registers New Weapons even where plugins/new_weapons is
+// missing, and the Chaingun would never be offered. dist:check runs this
+// on each download. A data-only plugin is registered by its folder, so it
+// is never missing; one with only its manifest, as HD Textures is without
+// its locally made textures, is simply off.
 plugins_list :: proc(all_loaded: bool, content: sim.Mods) -> ! {
 	ok := all_loaded
 	for p, id in sim.registered_plugins() {
 		if id == 0 {
 			continue // the core
 		}
-		missing := p.content && id not_in content
+		missing := p.content && !p.data_only && id not_in content
 		fmt.printfln("plugin %d %s %q version %q deps %v session %v%s", id, p.name, p.label, p.version, p.deps, p.session,
 			missing ? " content missing" : "")
 		ok &&= !missing
