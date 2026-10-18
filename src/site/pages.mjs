@@ -17,6 +17,7 @@ const mb = (bytes) => (bytes < 1e6 ? `${Math.round(bytes / 1e3)} KB` : bytes < 1
 
 const NAV = [
 	['index.html', 'Home'],
+	['download.html', 'Download'],
 	['plugins.html', 'Plugins'],
 	['changes.html', 'Changes'],
 ]
@@ -68,7 +69,7 @@ function downloads(config, release) {
     ${button(release.windows, 'Windows', true)}
     ${button(release.linux, 'Linux', false)}
   </div>
-  <p class="fine">The original game, alone. Each <a href="plugins.html">plugin</a> is a download of its own${editor ? `, as is the level editor (${editor})` : ''}: unzip it over the same folder.</p>
+  <p class="fine">The original game, alone. Each <a href="plugins.html">plugin</a> is a download of its own${editor ? `, as is the level editor (${editor})` : ''}: unzip it over the same folder, or <a href="download.html">pick them and get one zip</a>.</p>
   <p class="fine"><a href="${esc(release.url)}">${esc(release.tag)}</a>, ${fmtDate(release.date)} · <a href="${all}">all releases</a></p>`
 }
 
@@ -183,6 +184,75 @@ ${groups
 	return layout({ config, page: 'plugins.html', title: 'Plugins', body })
 }
 
+// The game, the editor and the plugins as a list of ticks, joined into one
+// zip in the browser (download.js) from the site's copy of the release
+// (build.mjs --mirror). Ticking a plugin ticks what it needs (picker.mjs).
+// The list is written here, so it reads without scripts; the sizes and
+// the button need them.
+function downloadPage({ config, plugins, release, mirror }) {
+	const byName = Object.fromEntries(plugins.map((p) => [p.name, p]))
+	const groups = [...new Set(plugins.map((p) => p.group))]
+	const row = ({ value, label, about, needs = '', checked = false, disabled = false, note = '' }) =>
+		`<label class="pick">
+        <input type="checkbox" value="${esc(value)}"${checked ? ' checked' : ''}${disabled ? ' disabled' : ''}>
+        <span class="pick-text"><strong>${esc(label)}</strong> <span class="muted">${esc(about)}</span>${needs}${note ? ` <span class="pick-note">${esc(note)}</span>` : ''}</span>
+        <span class="pick-size" data-size="${esc(value)}"></span>
+      </label>`
+	const plugin = (p) => {
+		const needs = p.deps.length ? `<span class="pick-needs">Needs ${p.deps.map((d) => esc(byName[d]?.label ?? d)).join(', ')}</span>` : ''
+		if (p.name === 'classic_levels') return row({ value: p.name, label: p.label, about: p.description, checked: true, disabled: true, note: 'Comes with the game' })
+		return row({ value: p.name, label: p.label, about: p.description, needs })
+	}
+	const data = {
+		tag: mirror?.tag ?? null,
+		deps: Object.fromEntries(plugins.map((p) => [p.name, p.deps.filter((d) => byName[d])])),
+		labels: Object.fromEntries(plugins.map((p) => [p.name, p.label])),
+		mirror,
+	}
+	const releases = `https://github.com/${config.site.repo}/releases`
+	const body = `
+<section class="page-head">
+  <h1>Download</h1>
+  <p class="lede">Tick what you want. A plugin brings the plugins it needs. Your browser joins them into one zip: unzip it, run <code>deimos</code> (<code>deimos.exe</code> on Windows) from inside the <code>deimos</code> folder, and turn plugins on from the Mods page in Preferences.</p>
+</section>
+<form class="picker" id="picker">
+  <fieldset class="os">
+    <legend>For</legend>
+    <label><input type="radio" name="os" value="windows" checked> Windows</label>
+    <label><input type="radio" name="os" value="linux"> Linux</label>
+  </fieldset>
+  <section>
+    <h2>The game</h2>
+    <div class="picks">
+      ${row({ value: 'game', label: 'Deimos Rose', about: 'The original game. Untick it to add plugins to a copy you already have.', checked: true })}
+      ${row({ value: 'editor', label: 'Level editor', about: 'deimos-editor: sculpt, paint and light levels, and export them as a plugin' })}
+    </div>
+  </section>
+${groups
+	.map(
+		(g) => `  <section>
+    <h2>${esc(g)}</h2>
+    <div class="picks">
+      ${plugins.filter((p) => p.group === g).map(plugin).join('\n      ')}
+    </div>
+  </section>`,
+	)
+	.join('\n')}
+  <div class="picker-bar">
+    <button class="button primary" type="submit" disabled>Download<small id="picker-size"></small></button>
+    <p class="fine" id="picker-status" role="status" aria-live="polite">${
+			mirror
+				? `From <a href="${esc(release.url)}">${esc(mirror.tag)}</a>. Nothing is installed or uploaded: the zip is made on your computer.`
+				: `This copy of the site has no release to join; get the zips from <a href="${releases}">the releases</a>.`
+		}</p>
+    <progress id="picker-progress" max="1" value="0" hidden></progress>
+  </div>
+</form>
+<script type="application/json" id="picker-data">${JSON.stringify(data).replace(/</g, '\\u003c')}</script>
+<script type="module" src="download.js"></script>`
+	return layout({ config, page: 'download.html', title: 'Download', body })
+}
+
 function changesPage({ config, diagram }) {
 	const body = `
 <section class="page-head">
@@ -198,6 +268,7 @@ function changesPage({ config, diagram }) {
 export function pages(ctx) {
 	return {
 		'index.html': home(ctx),
+		'download.html': downloadPage(ctx),
 		'plugins.html': pluginPage(ctx),
 		'changes.html': changesPage(ctx),
 	}

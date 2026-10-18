@@ -27,3 +27,6 @@ jobs:
 
       - name: The site still builds
         run: node src/site/build.mjs --offline --out _site
+
+      - name: The Download page's zip join and ticks
+        run: node --test src/site/site.test.mjs

@@ -56,6 +56,25 @@ dependencies and flags come from the plugin itself: its `plugin.json`, or
 its `plugin_register({...})` call. The game shows the same words on its
 Mods page.
 
+## Download page
+
+`download.html` lists the game, the level editor and every shown plugin
+with a tick box. Ticking a plugin ticks what it needs, and what those
+need; unticking one unticks what needs it (`picker.mjs`). Download fetches
+the ticked zips and joins them into one in the browser (`zip.mjs`):
+entries are copied as they are, the first of each name kept, so it costs
+what copying does. Only the zips nothing else ticked already brings are
+fetched, since a plugin's zip carries what it needs.
+
+The zips come from the site itself, `dl/`: GitHub sends release files
+without CORS headers, so a page cannot fetch them from the release.
+`build.mjs --mirror` (`MIRROR=1 mise run site:build`) copies the newest
+release's, about 470 MB, and the deploy does it every time; without it
+the page lists everything and points at the releases instead.
+`SITE_ZIPS=zips MIRROR=1 mise run site:build` takes them from
+`mise run dist:zips`'s output. `mise run site:test` tests the join and
+the ticks.
+
 ## Screenshots
 
 Every plugin's card shows `shots/<name>.webp`, and the build fails when

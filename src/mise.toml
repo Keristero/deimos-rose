@@ -863,8 +863,12 @@ depends = ["setup"]
 run = "odin run tools/verify $DR_COLL $DR_LINK -out:$DR_BUILD/verify$DR_EXT -- $DR_ORIG $DR_ASSETS \"$DR_PLUGINS\""
 
 [tasks."site:build"]
-description = "Build the website from site/site.config.json into build/site (OUT=dir to change it; OFFLINE=1 skips the releases API). CI runs it before every Pages deployment (.github/workflows/site.yml); needs Node 20+"
-run = 'node site/build.mjs --out "${OUT:-$DR_BUILD/site}" ${OFFLINE:+--offline}'
+description = "Build the website from site/site.config.json into build/site (OUT=dir to change it; OFFLINE=1 skips the releases API; MIRROR=1 copies the newest release's zips for the Download page, about 470 MB, or SITE_ZIPS=dir copies them from a folder such as zips/). CI runs it with MIRROR before every Pages deployment (.github/workflows/site.yml); needs Node 20+"
+run = 'node site/build.mjs --out "${OUT:-$DR_BUILD/site}" ${OFFLINE:+--offline} ${MIRROR:+--mirror}'
+
+[tasks."site:test"]
+description = "Test the Download page's zip join (site/zip.mjs) on zips made by Info-ZIP, and what its ticks bring (site/picker.mjs). The pull request workflow runs it; needs zip and unzip"
+run = 'node --test site/site.test.mjs'
 
 [tasks."site:check"]
 description = "Fail unless this branch adds an entry to site/site.config.json's changes, compared with BASE (default origin/main): every feature branch merged to main does (AGENTS.md). The pull request workflow runs it against the pull request's base"
