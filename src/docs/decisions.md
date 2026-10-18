@@ -2251,3 +2251,27 @@ Asked for on 2026-10-18: each mod must have a screenshot on the website.
 - **Missing is a failure.** `site/build.mjs` fails on a plugin without
   its image, as on one missing from the list, so a new plugin cannot
   reach the site unpictured.
+
+### D85 — A code plugin is a library built from the game's own sources
+
+Phase 10 stage 3, 2026-10-18. The game imports no plugin: it loads
+`plugins/<name>/<name>.so` (`.dll`) at startup (`game/plugin_libs.odin`).
+
+- **Same sources or refused.** The game and every library carry an ABI
+  stamp, a digest of every source a library can copy
+  (`tools/plugins/abi.sh`). A library from other sources is refused by
+  name before its runtime starts. Mixing releases is out of scope; a
+  plugin download is built in the same CI run as the game it goes with.
+- **Self-contained libraries.** Each library carries its own copy of
+  every package it imports, and binds its blocks to the game's (D83).
+  No library links another, so loading needs no order and no search
+  path beyond the game's folder.
+- **raylib shared**, beside the game, so there is one window and one GL
+  context whatever loads.
+- **The loader starts a library's runtime** where loading did not
+  (Odin dev-2026-09 on Linux, phase-10-plugin-split.md), and never
+  unloads one it started.
+- **`all_plugins` is the static build.** The tests, tools and
+  `build:static` import every plugin through it; `plugins:check`
+  requires the libraries to register exactly what it does, in CI on both
+  systems.

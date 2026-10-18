@@ -1,7 +1,9 @@
 # Phase 10 — The plugin split
 
-**Status: in progress.** Stage 0 (workflow and website) and stage 1 (the
-core names no plugin) are on their branches; the rest is planned below.
+**Status: in progress.** Stages 0–3 are on their branches: the workflow
+and website, the core naming no plugin, one copy of the state, and
+plugins loaded from libraries. Netplay out of the core and the separate
+downloads are planned below.
 
 ## Why
 
@@ -57,7 +59,8 @@ flowchart TB
   present. Classic mode needs no plugin at all.
 - A code plugin is a shared library (`plugins/<name>/<name>.so` or
   `.dll`) beside its content. The game loads every one it finds at
-  startup, in dependency order, before `sim.register_all`.
+  startup, before `sim.register_all`. (Planned "in dependency order";
+  stage 3 found the order does not matter, below.)
 - A content plugin (levels, campaigns) is a folder with a `plugin.json`,
   as data plugins already are (D52).
 - The level editor is a download of its own.
@@ -390,6 +393,112 @@ this code existed. Stage 3 loads the first real plugin.
 - `net/` and `oracle/` are not checked: no plugin imports them yet.
   Stage 4 moves `net/` under the netplay plugin, and the check's list
   should grow with it.
+
+## Stage 3 — plugins load from libraries
+
+The game imports no plugin. `build:plugins` builds each code plugin, its
+package and its `view/`, as `plugins/<name>/<name>.so` (`.dll`), and the
+game loads every one it finds in a plugins folder before
+`sim.register_all`. `game/plugins.odin` is gone, and purity fails any
+core file that names a plugin, with no exemption.
+
+```mermaid
+sequenceDiagram
+  participant G as game
+  participant L as plugin library
+  G->>L: dlopen plugins/<name>/<name>.so
+  G->>L: deimos_plugin_abi()
+  alt not this game's sources
+    G->>G: unload untouched, say why, go on
+  else same sources
+    G->>L: deimos_plugin_started()?
+    opt not started (Linux, below)
+      G->>L: _odin_entry_point(): its @(init)s run
+    end
+    G->>L: deimos_plugin_bind(game's block table)
+    L->>G: its blocks point at the game's, its steps join the game's
+  end
+  G->>G: sim.register_all: every step, by stage and name
+```
+
+- **One raylib.** The game links raylib shared (`RAYLIB_SHARED`) and
+  finds it beside itself: RUNPATH `$ORIGIN` on Linux, the application's
+  folder on Windows. The game and every library draw through it: one
+  window, one GL context, one set of textures.
+- **The order does not matter.** Blocks bind by package name, and
+  registration steps run sorted by stage and name (D50), so a library
+  registers what it would have compiled in whatever order the folders
+  are read. The plan's "dependency order" was not needed.
+- **An ABI stamp.** `tools/plugins/abi.sh` digests every Odin source a
+  library can carry a copy of (the core's packages, the plugins', and
+  `third_party/`), with carriage returns dropped; the game and each
+  library are built with it (`DR_ABI`). The loader checks it before the
+  library's runtime starts and refuses a stale one by name. Netplay
+  needs nothing more: every library a game loads was built from its
+  sources, and peers already compare a build hash.
+- **A library is not content.** `content_digest` skips `.so`, `.dll`
+  and the linker's by-products, so a Linux and a Windows peer agree.
+- **`all_plugins`** imports every plugin, for the tests, the tools that
+  measure plugins' content (`clips`) and `build:static`, the game with
+  every plugin compiled in, the reference the libraries are checked
+  against and a single binary to debug.
+
+### What Odin turned out to do
+
+A library's `@(init)`s never ran on Linux. Odin dev-2026-09 passes the
+linker `-Wl,-init,'_odin_entry_point'` for a shared library, and runs
+clang without a shell, so the quotes reach `ld` and name no symbol; `ld`
+leaves the library without a `DT_INIT`. Seen two ways: `readelf -d` on a
+plugin lists no `INIT`, and a clang wrapper that logged its arguments
+shows the quotes. A Windows DLL's `DllMain` does start its runtime. So
+the loader asks (`deimos_plugin_started`: has sim declared its block?)
+and calls the exported `_odin_entry_point` itself when it has not. Once
+Odin is fixed the call is skipped by the same question.
+
+A first cut started a stale library's runtime and then unloaded it, and
+the game crashed. The ABI is now checked first, and a library whose
+runtime has started is never unloaded.
+
+### Numbers (2026-10-18, Linux, Odin dev-2026-09)
+
+| | compiled in (`build:static`) | libraries |
+|---|---|---|
+| game binary | 18.0 MB | 1.9 MB, and raylib 2.1 MB beside it |
+| plugin libraries | — | 14, 29 MB: hitstop 15.2 MB (its clips), the rest 0.5–1.4 MB |
+| build | one link | game ~14 s, the 14 libraries ~22 s in parallel |
+| start to `-list-plugins` | 445 ms | 444 ms (mean of 5) |
+| registration hash | 6e230e9bb732befc | 6e230e9bb732befc |
+
+The release folder with only Classic Levels in `plugins/` is 167 MB, and
+starts, plays and opens Preferences.
+
+### Verified
+
+- `mise run plugins:check`, in CI on Linux and Windows: the libraries
+  register the same 17 plugins, ids, versions and registration hash as
+  the static build (`diff` of `-list-plugins`); the game alone, with only
+  Classic Levels beside it, registers nothing else and starts; a library
+  built with another ABI, and a library that is not a plugin (raylib,
+  renamed), are each refused by name and reason, and the game goes on.
+- `mise run ci` green: every test suite, now through `all_plugins`.
+- `mise run menu-shots:all`, the base (static) twice against the
+  libraries: 38 scenarios byte-identical in all three, and the same 14
+  that differ between two runs of the base (presentation particles)
+  differ against the libraries.
+- `mise run netplay:level-end` passes with the libraries.
+- Not run here: `netplay:loopback` and `netplay:reconnect` need Xvfb,
+  which this machine lacks (they fail without a display on the base too).
+
+### Still open
+
+- Odin's `-init` quoting: report it upstream; the loader's start call
+  stays harmless once it is fixed.
+- A plugin's dependencies on another plugin are by registration, not by
+  library: `chaingun.so` carries its own copy of `new_weapons`' code and
+  binds to the game's block for it. Each library is self-contained, at
+  ~1 MB each; a library per plugin with shared dependencies would need
+  libraries that link each other.
+- macOS (`.dylib`) is written but not built or run.
 
 ## Decisions to record as they are made
 
