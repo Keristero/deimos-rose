@@ -621,7 +621,11 @@ flowchart LR
   library registered it but whose folder is missing `content missing`,
   and exits 1, so a half-installed plugin is found by a check rather
   than by playing (it was found that way, before the zips bundled their
-  dependencies).
+  dependencies). A data-only plugin is registered by its folder, so it
+  is never missing. The first version flagged any plugin without its
+  content, and CI failed on both systems: its checkout has HD Textures
+  as a manifest alone. Every local run had passed, on a machine with the
+  textures made. Checked since in a clean worktree (`mise run ref`).
 - **The editor's assets are the editor's.** `assets/models`,
   `materials` and `bases` are read only through `dr:terrain` and the
   editor; the game imports neither. They go in the editor's zip, which
@@ -662,8 +666,15 @@ The game a player needs to start is 46% of what it was.
 
 ### Verified
 
-- `mise run dist:zips` then `mise run dist:check`: all three checks
-  pass with 16 plugin zips (HD Textures, a manifest here, has none).
+- In a clean worktree of the branch, as CI checks it out (`mise run
+  ref`): `build:linux`, `build:static`, `plugins:check`, `dist`,
+  `dist:zips` and `dist:check` pass, with 15 plugin zips; HD Textures,
+  a manifest there, has none. On this machine, which has the textures
+  made, it is 16, HD Textures' own 400 MB zip among them.
+- `dist:check` once stopped without a word in a clean checkout: `diff`
+  exits 1 when the folders differ, as they do by a skipped manifest, and
+  `pipefail` made that the script's exit. Locally the folders were
+  identical, so it had passed.
 - From the game's zip alone, unzipped, `DR_MENU_SHOT=main` renders the
   main menu without a NETPLAY item, and `DR_SHOT ... -level le03` plays
   Lucena to step 120; both images looked at.
@@ -682,7 +693,7 @@ The game a player needs to start is 46% of what it was.
 ### Still open
 
 - No zip holds everything. A player who wants every plugin unzips
-  sixteen; an "everything" zip would put back the 258 MB download
+  fifteen; an "everything" zip would put back the 258 MB download
   beside the others.
 - Hitstop's 26 MB is its sounds; a compressed format would shrink it.
 - The editor is checked only by `dist:check`'s file-for-file step, not

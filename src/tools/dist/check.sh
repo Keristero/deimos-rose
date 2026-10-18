@@ -76,9 +76,11 @@ all=$WORK/all
 for zip in "$IN"/"$(basename "$base")"*.zip; do
 	unzip_to "$zip" "$all"
 done
-# A plugin with nothing but its manifest has no zip (zips.sh).
-only=$(diff -rq "$DIST" "$all/deimos" | grep -v '^Only in .*/plugins: ' || true)
-skipped=$(diff -rq "$DIST" "$all/deimos" | sed -nE "s|^Only in $DIST/plugins: (.*)|\1|p")
+# A plugin with nothing but its manifest has no zip (zips.sh). diff exits
+# 1 on any difference, which pipefail would make this script's exit.
+differ=$(diff -rq "$DIST" "$all/deimos" || true)
+only=$(grep -v '^Only in .*/plugins: ' <<<"$differ" || true)
+skipped=$(sed -nE "s|^Only in $DIST/plugins: (.*)|\1|p" <<<"$differ")
 for s in $skipped; do
 	[ -z "$(find "$DIST/plugins/$s" -type f ! -name plugin.json | head -1)" ] || only="$only
 $s has content but no zip"
