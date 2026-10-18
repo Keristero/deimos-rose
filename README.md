@@ -54,7 +54,6 @@ shows each one.
 | | Realtime Lighting | Shots and explosions light what is round them, and glow |
 | | Moving Water | Waves, a sky and its clouds, and the sun's glint on the water |
 | | Wind | The level's wind blows sparks and smoke |
-| | Hitstop | Hits stop the game for a moment; a huge one gets a kill cam |
 | | HD Textures | Sprites and menu pictures redrawn at twice their size (built from source only, for now) |
 | **Multiplayer** | Netplay | Two players over the network, with rollback, desync detection and reconnection |
 | **Gameplay** | Passive Upgrades | Upgrades to the ship and its weapons, a level at a time |
