@@ -25,35 +25,57 @@ Setting :: struct {
 	label:   string,
 	kind:    Setting_Kind,
 	default: int,
+	// A Hue that is a player's colour: 1 for player 1's (and yours in
+	// netplay, where the lobby shows and sends it), 2 for player 2's in a
+	// local game; 0 for any other setting. The game colours each player
+	// by these, whichever plugin registers them.
+	player:  int,
 }
 
 // A setting's index in the registry, and in Prefs.settings.
 Setting_ID :: distinct int
 
-@(private = "file")
-settings: [MAX_SETTINGS]Setting
-
-@(private = "file")
-setting_count: int
-
 // Called from registration steps only (sim.register_step), like sim.plugin_register.
 setting_register :: proc(s: Setting) -> Setting_ID {
-	assert(setting_count < MAX_SETTINGS, "prefs: too many settings")
-	for other in settings[:setting_count] {
+	assert(shared.setting_count < MAX_SETTINGS, "prefs: too many settings")
+	for other in shared.settings[:shared.setting_count] {
 		assert(other.key != s.key, "prefs: two settings share a key")
 	}
-	settings[setting_count] = s
-	setting_count += 1
-	return Setting_ID(setting_count - 1)
+	shared.settings[shared.setting_count] = s
+	shared.setting_count += 1
+	return Setting_ID(shared.setting_count - 1)
 }
 
 registered_settings :: proc "contextless" () -> []Setting {
-	return settings[:setting_count]
+	return shared.settings[:shared.setting_count]
+}
+
+// The setting that holds player `n`'s colour (Setting.player), if one is
+// registered.
+player_hue_setting :: proc "contextless" (n: int) -> (Setting_ID, bool) {
+	for s, i in shared.settings[:shared.setting_count] {
+		if s.kind == .Hue && s.player == n {
+			return Setting_ID(i), true
+		}
+	}
+	return {}, false
+}
+
+// The plugin that offers the Extras page, where every plugin's settings
+// are: the page opens only while it is on. With none registered, it never
+// does. Called from a registration step.
+settings_page_register :: proc(plugin: sim.Plugin_ID) {
+	shared.settings_page = plugin
+}
+
+// The plugin that offers the Extras page, or CORE when none does.
+settings_page_plugin :: proc "contextless" () -> sim.Plugin_ID {
+	return shared.settings_page
 }
 
 // Clamps or wraps a value to what its kind allows.
 setting_clean :: proc(id: Setting_ID, v: int) -> int {
-	switch settings[id].kind {
+	switch shared.settings[id].kind {
 	case .Toggle:
 		return v != 0 ? 1 : 0
 	case .Hue:
@@ -65,7 +87,7 @@ setting_clean :: proc(id: Setting_ID, v: int) -> int {
 }
 
 setting_by_key :: proc(key: string) -> (Setting_ID, bool) {
-	for s, i in settings[:setting_count] {
+	for s, i in shared.settings[:shared.setting_count] {
 		if s.key == key {
 			return Setting_ID(i), true
 		}

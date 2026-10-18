@@ -10,26 +10,20 @@ package game
 
 import rl "vendor:raylib"
 
-import "dr:plugins/accent"
-import accent_view "dr:plugins/accent/view"
-import "dr:plugins/extra_prefs"
-import "dr:plugins/fps_unlock"
 import "dr:prefs"
 import "dr:render"
 import "dr:sim"
 import "dr:ui"
 
 // The mods in effect: the saved ones whose dependencies are all on, and
-// none in classic mode. -highrefreshrate turns on 30FPS Unlock for the
-// run, and -campaign its campaign (launch.odin).
+// none in classic mode. A plugin's launch switch turns it on for the run,
+// and -campaign its campaign (launch.odin).
 prefs_mods :: proc(ps: ^Prefs_State) -> sim.Mods {
 	if prefs_classic(ps) {
 		return {}
 	}
 	mods := ps.saved.mods
-	if ps.launch.high_refresh_rate {
-		mods = sim.mods_switch_on(mods, {int(fps_unlock.ID)})
-	}
+	mods = sim.mods_switch_on(mods, ps.launch_mods)
 	if id, ok := launch_campaign(ps.launch); ok && id != sim.CORE {
 		mods = sim.mods_switch_on(mods, {int(id)})
 	}
@@ -43,10 +37,10 @@ prefs_mod_on :: proc(ps: ^Prefs_State, id: sim.Plugin_ID) -> bool {
 // Turns a mod on with its dependencies, or off with its dependants, and
 // saves.
 prefs_mod_toggle :: proc(ps: ^Prefs_State, id: sim.Plugin_ID) {
-	if ps.launch.high_refresh_rate {
+	if ps.launch_mods != {} {
 		// The menu now shows and controls what is live.
-		ps.saved.mods = sim.mods_switch_on(ps.saved.mods, {int(fps_unlock.ID)})
-		ps.launch.high_refresh_rate = false
+		ps.saved.mods = sim.mods_switch_on(ps.saved.mods, ps.launch_mods)
+		ps.launch_mods = {}
 	}
 	prefs.mod_toggle(&ps.saved.mods, id)
 	prefs_state_save(ps)
@@ -98,15 +92,6 @@ setting_set :: proc(ps: ^Prefs_State, id: prefs.Setting_ID, v: int) {
 @(private = "file") EXTRAS_BACK_Y :: 436
 @(private = "file") EXTRAS_NOTE_Y :: 404
 @(private = "file") EXTRAS_RESET_X :: 510
-
-// Accent Color's preview: both players' ships as a local game draws them
-// -- each in its own hue, with Self Outline on player 1's, the ship this
-// machine's player flies. Off to the right of the rows rather than beside
-// one, since several of them change it.
-@(private = "file") PREVIEW_SHIPS :: [2]sim.Res_ID{{'p', 'l', '1', 'b'}, {'p', 'l', '2', 'b'}}
-@(private = "file") PREVIEW_X :: 540 // centre of the pair
-@(private = "file") PREVIEW_Y :: 150
-@(private = "file") PREVIEW_GAP :: 70
 
 Extras_Page :: struct {
 	scroll:  ui.Scroll_Rows,
@@ -252,12 +237,10 @@ extras_page_draw :: proc(r: ^render.Renderer, x: ^Extras_Page, ps: ^Prefs_State)
 		}
 	}
 	ui.scroll_rows_draw(&x.scroll, len(listed), EXTRAS_ROWS_SHOWN, EXTRAS_SCROLL_X, EXTRAS_ROW0_Y, EXTRAS_ROWS_SHOWN * EXTRAS_ROW - 20)
-	if int(accent.ID) in sim.mods_resolve(ps.saved.mods) {
-		hues := [2]prefs.Setting_ID{accent_view.HUE_P1, accent_view.HUE_P2}
-		for id, i in PREVIEW_SHIPS {
-			px := PREVIEW_X + (f32(i) - 0.5) * PREVIEW_GAP
-			preview_ship(r, ps, id, hues[i], i == 0, px, PREVIEW_Y)
-			ui.menu_draw_text(r, i == 0 ? "P1" : "P2", i32(px), PREVIEW_Y + 26, dim, .Centre)
+	saved := sim.mods_resolve(ps.saved.mods)
+	for &pv in ui.registered_settings_previews() {
+		if int(pv.plugin) in saved {
+			pv.draw(r, &ps.saved.settings, prefs_mod_on(ps, pv.plugin))
 		}
 	}
 	note: string
@@ -276,35 +259,30 @@ extras_page_draw :: proc(r: ^render.Renderer, x: ^Extras_Page, ps: ^Prefs_State)
 	ui.text_button_draw(r, &x.back)
 }
 
-// Whether the Extras page can be opened: its mod is on.
+// Whether the Extras page can be opened: the plugin that offers it
+// (prefs.settings_page_register) is on.
 extras_available :: proc(ps: ^Prefs_State) -> bool {
-	return int(extra_prefs.ID) in sim.mods_resolve(ps.saved.mods)
+	page := prefs.settings_page_plugin()
+	return page != sim.CORE && int(page) in sim.mods_resolve(ps.saved.mods)
 }
 
-// The ship as it would be drawn in play, centred on (x, y) in menu
-// coordinates: through the same draw_item the game uses, so the preview
-// cannot drift from the real thing.
-@(private = "file")
-preview_ship :: proc(r: ^render.Renderer, ps: ^Prefs_State, id: sim.Res_ID, hue_id: prefs.Setting_ID, local: bool, x, y: f32) {
-	outline := local && setting_on(ps, accent_view.SELF_OUTLINE)
-	tex, src, ok := render.frame_rect(&r.textures, id, 0)
-	if !ok {
-		return
+// Player `n`'s colour (0 or 1), as saved (prefs.Setting.player); 0 when
+// no plugin registers one.
+player_hue :: proc(ps: ^Prefs_State, n: int) -> int {
+	id, ok := prefs.player_hue_setting(n + 1)
+	return ok ? ps.saved.settings[id] : 0
+}
+
+// Sets player 1's colour (yours in netplay), where a plugin registers one.
+player_hue_set :: proc(ps: ^Prefs_State, hue: int) {
+	if id, ok := prefs.player_hue_setting(1); ok {
+		ps.saved.settings[id] = hue
 	}
-	s := f32(render.WINDOW_SCALE)
-	dst := rl.Rectangle{(x - src.width / 2) * s, (y - src.height / 2) * s, src.width * s, src.height * s}
-	hue := f32(ps.saved.settings[hue_id])
-	white := rl.Color{255, 255, 255, 255}
-	if outline {
-		for d in ([8][2]f32{{-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1}}) {
-			o := dst
-			o.x += d.x * s
-			o.y += d.y * s
-			render.draw_item(r, {texture = tex, src = src, tint = white, effect = .Silhouette, hue = hue, sat = render.ACCENT_SATURATION}, o)
-		}
-	}
-	render.draw_item(r, {texture = tex, src = src, tint = white}, dst)
-	if trim, tok := render.ship_trim(&r.textures, id); prefs_mod_on(ps, accent.ID) && tok {
-		render.draw_item(r, {texture = trim, src = src, tint = white, effect = .Recolour, hue = hue, sat = render.TRIM_SATURATION, shine = render.TRIM_SHINE}, dst)
-	}
+}
+
+// Whether players are drawn in their colours: the plugin of the colour
+// settings is on.
+player_colours_on :: proc(ps: ^Prefs_State) -> bool {
+	id, ok := prefs.player_hue_setting(1)
+	return ok && prefs_mod_on(ps, prefs.registered_settings()[id].plugin)
 }

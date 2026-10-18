@@ -44,39 +44,23 @@ register_components :: proc() {
 	sim.component_register(Player_Projectile)
 	sim.component_register(Hittable_By_Player_Shots)
 
-	air_shot_targets = sim.prefab_query_register(
+	shared.air_shot_targets = sim.prefab_query_register(
 		{Collides, Hittable_By_Player_Shots},
 		{Ground_Based, Harmless_To_Players, Player_Projectile},
 	)
-	ground_shot_targets = sim.prefab_query_register(
+	shared.ground_shot_targets = sim.prefab_query_register(
 		{Collides, Hittable_By_Player_Shots, Ground_Based},
 		{Harmless_To_Players, Player_Projectile},
 	)
-	shot_targets = sim.prefab_query_register({Collides, Hittable_By_Player_Shots}, {Harmless_To_Players})
-	ground_based = sim.prefab_query_register({Ground_Based})
-	player_projectile = sim.prefab_query_register({Player_Projectile})
+	shared.shot_targets = sim.prefab_query_register({Collides, Hittable_By_Player_Shots}, {Harmless_To_Players})
+	shared.ground_based = sim.prefab_query_register({Ground_Based})
+	shared.player_projectile = sim.prefab_query_register({Player_Projectile})
 }
 
 @(init)
 register_components_step :: proc "contextless" () {
 	sim.register_step(.Core, "sim/systems/collision_system register_components", register_components)
 }
-
-// What a player's air shot can hit, bar where it is (FUN_0041b920's tests
-// for a player projectile in the air).
-air_shot_targets: sim.Prefab_Query
-
-// What a player's air shot that hits the ground (Shaped.ground) can hit
-// there besides: air_shot_targets' counterparts on the ground.
-@(private)
-ground_shot_targets: sim.Prefab_Query
-
-// What any shot can hit, before its own ground-ness and kind narrow it
-// (shot_hits).
-@(private)
-shot_targets: sim.Prefab_Query
-@(private)
-ground_based, player_projectile: sim.Prefab_Query
 
 collision_prefab :: proc(p: sim.Prefab, u: ^sim.Unit, st: ^sim.Unit_State) {
 	sim.prefab_tag(p, u.harmless_to_players, Harmless_To_Players)

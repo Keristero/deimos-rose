@@ -21,16 +21,13 @@ Overlay :: struct {
 	draw:   proc(r: ^render.Renderer, s: ^sim.State, names: ^Player_Names),
 }
 
-@(private = "file")
-overlays: sim.Registry(Overlay, MAX_OVERLAYS)
-
 // Called from registration steps only (sim.register_step).
 overlay_register :: proc(o: Overlay) {
-	sim.registry_add(&overlays, o)
+	sim.registry_add(&shared.overlays, o)
 }
 
 overlays_draw :: proc(r: ^render.Renderer, s: ^sim.State, names: ^Player_Names) {
-	for &o in sim.registry_items(&overlays) {
+	for &o in sim.registry_items(&shared.overlays) {
 		if sim.mod_on(s, o.plugin) {
 			o.draw(r, s, names)
 		}

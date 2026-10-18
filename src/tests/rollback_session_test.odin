@@ -2,7 +2,7 @@ package tests
 
 import "core:testing"
 
-import net "dr:net"
+import net "dr:plugins/netplay/net"
 import netplay_plugin "dr:plugins/netplay"
 import "dr:sim"
 import "dr:sim/systems/level_system"

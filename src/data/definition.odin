@@ -49,6 +49,7 @@ Rule_Condition :: enum u8 {
 }
 
 // Verbatim table order, so the index matches the executable's dispatch order.
+@(rodata)
 RULE_CONDITION_NAMES := [Rule_Condition]string {
 	.Unspecified                                      = "",
 	.Is_Tracking_Player                               = "Is Tracking Player",

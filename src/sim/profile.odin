@@ -8,7 +8,7 @@ import "base:intrinsics"
 // count the processor's cycles around each call.
 //
 // A cycle counter is wall-clock data, which sim/ otherwise keeps out, so
-// it is held apart: the counts go only into `profile`, which is not part of
+// it is held apart: the counts go only into `profile()`, which is not part of
 // the state, and nothing in the simulation reads them. With the define
 // off, profile_clock is a constant 0 and the counting compiles away.
 
@@ -25,7 +25,10 @@ Profile :: struct {
 	stages:        [MAX_STAGES]Profile_Count,
 }
 
-profile: Profile
+// The counts so far (in sim's block, shared.odin).
+profile :: proc "contextless" () -> ^Profile {
+	return &shared.profile
+}
 
 profile_clock :: #force_inline proc "contextless" () -> i64 {
 	when SIM_PROFILE {
@@ -44,5 +47,5 @@ profile_add :: #force_inline proc "contextless" (c: ^Profile_Count, since: i64) 
 }
 
 profile_reset :: proc "contextless" () {
-	profile = {}
+	shared.profile = {}
 }

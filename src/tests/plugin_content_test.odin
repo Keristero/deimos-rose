@@ -16,10 +16,10 @@ import "dr:sim"
 // the plugins root falls back to plugins/.
 @(test)
 plugin_content_is_in_the_plugins_folder :: proc(t: ^testing.T) {
-	dir, found := data.plugin_content_dir(chaingun.ID)
+	dir, found := data.plugin_content_dir(chaingun.id())
 	testing.expect(t, found)
 	testing.expect(t, strings.has_suffix(dir, "/chaingun"), dir)
-	_, found = data.plugin_content_dir(accent.ID)
+	_, found = data.plugin_content_dir(accent.id())
 	testing.expect(t, !found, "Accent has a content folder")
 }
 

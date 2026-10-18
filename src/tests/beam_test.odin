@@ -43,14 +43,14 @@ discharge_beam_loads_as_new_content :: proc(t: ^testing.T) {
 		return
 	}
 	w := &f.defs.weapons[f.db]
-	testing.expect(t, w.extra && sim.weapon_bool(w, new_weapons.BEAM))
+	testing.expect(t, w.extra && sim.weapon_bool(w, new_weapons.beam()))
 	// A weapon without the plugin's keys, as every original one is, reads
 	// each key's default.
 	orig := &f.defs.weapons[0]
-	testing.expect(t, !orig.extra && !sim.weapon_bool(orig, new_weapons.BEAM))
-	testing.expect_value(t, sim.weapon_id(orig, new_weapons.BEAM_FLASH), sim.NONE)
+	testing.expect(t, !orig.extra && !sim.weapon_bool(orig, new_weapons.beam()))
+	testing.expect_value(t, sim.weapon_id(orig, new_weapons.beam_flash()), sim.NONE)
 	testing.expect_value(t, new_weapons.beam_windup(orig), 0)
-	testing.expect_value(t, sim.weapon_float(orig, new_weapons.BEAM_DAMAGE), 0)
+	testing.expect_value(t, sim.weapon_float(orig, new_weapons.beam_damage()), 0)
 	_, fires := sim.weapon_fire(orig)
 	testing.expect(t, !fires, "the plugin fires only its own weapons")
 	testing.expect_value(t, w.type, sim.WEP_AIR)

@@ -57,6 +57,7 @@ Credits_Page :: struct {
 	ticks: int, // original's <page NNN> marker: a count of ~60Hz ticks (see below)
 }
 
+@(rodata)
 CREDITS_PAGES := []Credits_Page {
 	{"Swoop Software", {"Sheryn Wareing", "David Wareing", "", "www.swoopsoftware.com"}, 200},
 	{"Additional Unit Art", {"John Sledd,", "Sledd Studios", "", "www.sledd.com"}, 210},

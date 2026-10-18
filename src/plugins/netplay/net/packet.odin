@@ -1,8 +1,9 @@
-// Package name is `netplay`, not `net`: this package's own directory is
-// src/net/ (matching the plan's tree sketch) and is imported as "dr:net", but
+// Package name is `netplay`, not `net`: this package's directory is
+// plugins/netplay/net/, imported as "dr:plugins/netplay/net", but
 // `core:net` itself already declares `package net`, and two packages built
 // into the same program cannot share a declared name. Callers alias the
-// import instead: `import net "dr:net"`.
+// import instead: `import net "dr:plugins/netplay/net"`. Netplay's own
+// since Phase 10 stage 4; it was src/net/, in the core, before.
 package netplay
 
 // Phase 6 stage 2: the wire format. Encoding is explicit byte-by-byte (fixed
@@ -171,16 +172,17 @@ decode_ack :: proc(buf: []byte) -> (seq: u8, ok: bool) {
 // into the wire format). Sent once, over the reliable channel like Hello/
 // Ready/Goodbye, so the guest is guaranteed to receive it before the host
 // begins stepping (net/reliable.odin's stop-and-wait blocks the host's own
-// transition on the Ack -- see game/netplay.odin).
+// transition on the Ack -- see plugins/netplay/view/netplay.odin).
 //
 // The eighth byte is the session's flags (START_EASY: easy mode,
 // START_LOADOUT: new weapons), and the eight after it the session's mods
-// (sim.Session.mods), which supersede them: four before data plugins
-// widened Mods (D52). A build from before the mods sends eight bytes, and
-// one from before the flags seven, which decode as no flags: the game makes what mods it can of the flags (game/flow.odin
-// mods_from_flags). The flags are still sent for the builds that read
-// only them. The seventeenth byte is the campaign (sim.Session.campaign,
-// D53), which the level index counts in; without it, CORE's.
+// (sim.Session.mods), which superseded them: four before data plugins
+// widened Mods (D52). The game now sends the flags as 0 and reads only the
+// mods: every build that sends no mods (before 2026-09-26) also sends no
+// build hash in its Hello (added 2026-09-27), and is refused there before
+// any Start. The byte stays so the layout does not move. The seventeenth
+// byte is the campaign (sim.Session.campaign, D53), which the level index
+// counts in; without it, CORE's.
 START_EASY :: 0x01
 START_LOADOUT :: 0x02
 
@@ -271,9 +273,9 @@ decode_resync_start :: proc(buf: []byte) -> (seq: u8, assigned_player: u8, total
 
 // State_Chunk carries one piece of a raw byte-for-byte sim.State dump --
 // pointer fields and all; the receiver overwrites those from its own local
-// state after the transfer completes (game/netplay.odin), the same way
+// state after the transfer completes (plugins/netplay/view/netplay.odin), the same way
 // sim.init resolves a level id into a pointer rather than trusting one sent
-// over the wire. Its own stop-and-wait (game/netplay.odin), not
+// over the wire. Its own stop-and-wait (plugins/netplay/view/netplay.odin), not
 // net/reliable.odin's channel: STATE_CHUNK_SIZE payloads don't fit that
 // channel's small buf, sized for Hello/Ready/Goodbye/Start/Resync_Start and
 // nothing bigger by design.

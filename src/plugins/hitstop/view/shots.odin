@@ -37,7 +37,7 @@ hitstop_shot :: proc(s: ^sim.State, name: string) -> string {
 ONE_STEP := []ui.Shot_Phase{{1, {}}}
 
 register_shots :: proc() {
-	ui.shot_register({name = "hitstop", plugin = hitstop.ID, level = 6, alone = true, setup = hitstop_shot, phases = ONE_STEP})
+	ui.shot_register({name = "hitstop", plugin = hitstop.id(), level = 6, alone = true, setup = hitstop_shot, phases = ONE_STEP})
 }
 
 @(init)

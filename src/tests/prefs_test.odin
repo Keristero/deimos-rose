@@ -21,8 +21,8 @@ prefs_round_trip_through_the_save_format :: proc(t: ^testing.T) {
 	p := prefs.defaults()
 	p.sfx_volume, p.music_volume = 30, 0
 	p.fullscreen, p.classic = true, true
-	p.mods += {int(fps_unlock.ID)}
-	p.settings[accent_view.HUE_P1] = 42
+	p.mods += {int(fps_unlock.id())}
+	p.settings[accent_view.hue_p1()] = 42
 	prefs.bind(&p, 1, .Fire_Air, 1, prefs.KEY_SPACE) // moves Space off player 1
 	text := prefs.format(&p, context.temp_allocator)
 	got := prefs.parse(text)
@@ -156,12 +156,12 @@ netplay_name_round_trips_and_is_cleaned :: proc(t: ^testing.T) {
 // mods, so an older save still loads them.
 @(test)
 prefs_settings_keep_their_keys :: proc(t: ^testing.T) {
-	testing.expect_value(t, prefs.parse("accent_hue=-30").settings[accent_view.HUE_P1], 330)
-	testing.expect_value(t, prefs.parse("accent_hue=725").settings[accent_view.HUE_P1], 5)
-	testing.expect_value(t, prefs.parse("self_outline=7").settings[accent_view.SELF_OUTLINE], 1)
-	testing.expect_value(t, prefs.parse("").settings[accent_view.HUE_P1], prefs.registered_settings()[accent_view.HUE_P1].default)
+	testing.expect_value(t, prefs.parse("accent_hue=-30").settings[accent_view.hue_p1()], 330)
+	testing.expect_value(t, prefs.parse("accent_hue=725").settings[accent_view.hue_p1()], 5)
+	testing.expect_value(t, prefs.parse("self_outline=7").settings[accent_view.self_outline()], 1)
+	testing.expect_value(t, prefs.parse("").settings[accent_view.hue_p1()], prefs.registered_settings()[accent_view.hue_p1()].default)
 	// A save from before the P2 hue has player 2 in their original gold.
-	testing.expect_value(t, prefs.parse("accent_hue=30").settings[accent_view.HUE_P2], 63)
+	testing.expect_value(t, prefs.parse("accent_hue=30").settings[accent_view.hue_p2()], 63)
 }
 
 // Mods are saved by name, not by ID, and a name this build does not know
@@ -169,7 +169,7 @@ prefs_settings_keep_their_keys :: proc(t: ^testing.T) {
 @(test)
 prefs_mods_round_trip_by_name :: proc(t: ^testing.T) {
 	p := prefs.defaults()
-	p.mods = sim.mods_with_deps({int(easy_mode.ID)})
+	p.mods = sim.mods_with_deps({int(easy_mode.id())})
 	text := prefs.format(&p, context.temp_allocator)
 	line := text[strings.index(text, "mods="):]
 	line = line[:strings.index_byte(line, '\n')]
@@ -177,7 +177,7 @@ prefs_mods_round_trip_by_name :: proc(t: ^testing.T) {
 		testing.expectf(t, strings.contains(line, name), "%q is saved in %q", name, line)
 	}
 	testing.expect_value(t, prefs.parse(text).mods, p.mods)
-	testing.expect_value(t, prefs.parse("mods=easy_mode,no_such_mod").mods, sim.Mods{int(easy_mode.ID)})
+	testing.expect_value(t, prefs.parse("mods=easy_mode,no_such_mod").mods, sim.Mods{int(easy_mode.id())})
 	testing.expect_value(t, prefs.parse("mods=").mods, sim.Mods{})
 }
 
@@ -185,7 +185,7 @@ prefs_mods_round_trip_by_name :: proc(t: ^testing.T) {
 // Netplay on, and what those need.
 @(test)
 prefs_default_mods :: proc(t: ^testing.T) {
-	want := sim.mods_with_deps({int(accent.ID), int(new_weapons.ID), int(chaingun.ID), int(netplay_plugin.ID)})
+	want := sim.mods_with_deps({int(accent.id()), int(new_weapons.id()), int(chaingun.id()), int(netplay_plugin.id())})
 	testing.expect_value(t, prefs.defaults().mods, want)
 	testing.expect_value(t, prefs.parse("").mods, want)
 }
@@ -195,15 +195,15 @@ prefs_default_mods :: proc(t: ^testing.T) {
 @(test)
 prefs_legacy_extras_become_mods :: proc(t: ^testing.T) {
 	defaults := prefs.defaults().mods
-	testing.expect_value(t, prefs.parse("high_refresh_rate=1").mods, defaults + {int(fps_unlock.ID)})
-	testing.expect_value(t, prefs.parse("accent_colours=0").mods, defaults - {int(accent.ID)})
+	testing.expect_value(t, prefs.parse("high_refresh_rate=1").mods, defaults + {int(fps_unlock.id())})
+	testing.expect_value(t, prefs.parse("accent_colours=0").mods, defaults - {int(accent.id())})
 	// Easy Mode, with Passive Upgrades, brings the companion New Weapons
 	// was waiting for (D66).
-	testing.expect_value(t, prefs.parse("easy_mode=1").mods, sim.mods_switch_on(defaults, {int(easy_mode.ID)}))
+	testing.expect_value(t, prefs.parse("easy_mode=1").mods, sim.mods_switch_on(defaults, {int(easy_mode.id())}))
 	// Without New Weapons, the loadout it brought stays on: it is a mod of
 	// its own now. The Chaingun, which needs it, goes with it.
-	testing.expect_value(t, prefs.parse("new_weapons=0").mods, defaults - {int(new_weapons.ID), int(chaingun.ID)})
-	testing.expect_value(t, prefs.parse("mods=accent\neasy_mode=1").mods, sim.Mods{int(accent.ID)})
+	testing.expect_value(t, prefs.parse("new_weapons=0").mods, defaults - {int(new_weapons.id()), int(chaingun.id())})
+	testing.expect_value(t, prefs.parse("mods=accent\neasy_mode=1").mods, sim.Mods{int(accent.id())})
 }
 
 // Turning a mod on turns on what it needs; turning one off turns off what
@@ -211,13 +211,13 @@ prefs_legacy_extras_become_mods :: proc(t: ^testing.T) {
 @(test)
 prefs_mod_toggle_follows_dependencies :: proc(t: ^testing.T) {
 	mods: sim.Mods
-	prefs.mod_toggle(&mods, easy_mode.ID)
-	testing.expect_value(t, mods, sim.Mods{int(easy_mode.ID), int(passives.ID), int(extra_prefs.ID)})
-	prefs.mod_toggle(&mods, extra_prefs.ID)
+	prefs.mod_toggle(&mods, easy_mode.id())
+	testing.expect_value(t, mods, sim.Mods{int(easy_mode.id()), int(passives.id()), int(extra_prefs.id())})
+	prefs.mod_toggle(&mods, extra_prefs.id())
 	testing.expect_value(t, mods, sim.Mods{})
-	prefs.mod_toggle(&mods, new_weapons.ID)
-	prefs.mod_toggle(&mods, loadout.ID)
-	testing.expect_value(t, mods, sim.Mods{int(extra_prefs.ID)})
+	prefs.mod_toggle(&mods, new_weapons.id())
+	prefs.mod_toggle(&mods, loadout.id())
+	testing.expect_value(t, mods, sim.Mods{int(extra_prefs.id())})
 }
 
 @(test)

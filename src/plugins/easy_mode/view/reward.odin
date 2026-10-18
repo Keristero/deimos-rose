@@ -71,7 +71,7 @@ window_rect :: proc(r: rl.Rectangle) -> rl.Rectangle {
 }
 
 register_reward_view :: proc() {
-	ui.overlay_register({name = "reward", plugin = easy_mode.ID, draw = reward_draw})
+	ui.overlay_register({name = "reward", plugin = easy_mode.id(), draw = reward_draw})
 }
 
 @(init)

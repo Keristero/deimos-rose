@@ -16,7 +16,6 @@ package passives
 // gives a player a passive: easy mode's reward screen (plugins/easy_mode)
 // does.
 
-
 // Imported for its registration: a dependency is always in the build.
 import _ "dr:plugins/extra_prefs"
 import _ "dr:sim/core"
@@ -120,7 +119,7 @@ WEAPON_1_CHARGE :: Passive(Own.Weapon_1_Charge)
 
 MAX_PASSIVES :: 32
 
-@(private = "file")
+@(private = "file", rodata)
 OWN := [Own]Passive_Def {
 	.Improved_Manoeuvring = {
 		name   = "improved_manoeuvring",
@@ -345,28 +344,25 @@ OWN := [Own]Passive_Def {
 	},
 }
 
-@(private = "file")
-registered: sim.Registry(Passive_Def, MAX_PASSIVES - len(Own))
-
 // Adds another plugin's passive, from its registration step, and returns
 // its id. Its def.plugin is that plugin: the passive is offered only while
 // the plugin is on, and its modifiers count through this plugin's stat
 // provider, so they need this plugin on too.
 passive_register :: proc(def: Passive_Def, loc := #caller_location) -> Passive {
 	assert(def.plugin != sim.CORE, "passives: a registered passive names its plugin", loc)
-	return Passive(len(Own) + sim.registry_add(&registered, def, loc))
+	return Passive(len(Own) + sim.registry_add(&shared.registered, def, loc))
 }
 
 // How many passives there are: ids run from 0 to one short of this.
 passive_count :: #force_inline proc "contextless" () -> int {
-	return len(Own) + registered.count
+	return len(Own) + shared.registered.count
 }
 
 passive_def :: proc "contextless" (pa: Passive) -> ^Passive_Def {
 	if int(pa) < len(Own) {
 		return &OWN[Own(pa)]
 	}
-	return &registered.items[int(pa) - len(Own)]
+	return &shared.registered.items[int(pa) - len(Own)]
 }
 
 passive_by_name :: proc "contextless" (name: string) -> (Passive, bool) {
@@ -425,7 +421,6 @@ stat_total :: proc "contextless" (levels: ^Passive_Levels, stat: Stat, weapon: R
 	}
 	return
 }
-
 
 // Whether a passive's modifiers count for a stat of `weapon` in that scope.
 passive_applies :: #force_inline proc "contextless" (def: ^Passive_Def, weapon: Res_ID, charge: bool) -> bool {
@@ -589,13 +584,11 @@ shield_regen_stage :: proc(s: ^sim.State, p: sim.Player, ps: ^sim.Player_Step) -
 
 // For presentation: whether the ship's shields are refilling this step.
 player_regenerating :: proc "contextless" (s: ^sim.State, p: sim.Player) -> bool {
-	if !sim.mod_on(s, ID) || p.state != .Playing || p.shields >= 100 || !stats.player_stat(s, p.number, .Shield_Regenerates).enabled {
+	if !sim.mod_on(s, shared.id) || p.state != .Playing || p.shields >= 100 || !stats.player_stat(s, p.number, .Shield_Regenerates).enabled {
 		return false
 	}
 	return p.calm >= regen_wait(s, p)
 }
-
-ID: sim.Plugin_ID
 
 @(private = "file", rodata)
 DEPS := []string{"extra_prefs"}
@@ -607,7 +600,7 @@ CLOUDS_AFTER := []string{"entities"}
 CLOUDS_BEFORE := []string{"sweep"}
 
 register :: proc() {
-	ID = sim.plugin_register({
+	shared.id = sim.plugin_register({
 		name        = "passives",
 		label       = "PASSIVE UPGRADES",
 		description = "Upgrades to the ship and its weapons, a level at a time",
@@ -615,18 +608,18 @@ register :: proc() {
 		session     = true,
 	})
 	// None held, as the session starts.
-	sim.kind_component(.Player, Passive_State{}, ID)
+	sim.kind_component(.Player, Passive_State{}, shared.id)
 	// Where G_Player::Process would have them: after the weapons fire, and
 	// ahead of the core's count of the ship's calm, which they read.
-	sim.player_stage_register({name = "shield_regen", before = BEFORE_CALM, plugin = ID, run = shield_regen_stage})
-	sim.player_stage_register({name = "risky_reward", before = BEFORE_CALM, plugin = ID, run = risky_reward_stage})
-	sim.stat_provider_register({plugin = ID, total = provide, shapes = shapes})
+	sim.player_stage_register({name = "shield_regen", before = BEFORE_CALM, plugin = shared.id, run = shield_regen_stage})
+	sim.player_stage_register({name = "risky_reward", before = BEFORE_CALM, plugin = shared.id, run = risky_reward_stage})
+	sim.stat_provider_register({plugin = shared.id, total = provide, shapes = shapes})
 	// Corrosive clouds (clouds.odin): left by the shots' hits, they harm
 	// once the entities have moved and hit, ahead of the sweep of the
 	// destroyed.
-	sim.kind_component(.Session, Clouds{}, ID)
-	sim.shot_hit_register({plugin = ID, hit = cloud_hit})
-	sim.system_register({name = "clouds", after = CLOUDS_AFTER, before = CLOUDS_BEFORE, plugin = ID, run = cloud_system})
+	sim.kind_component(.Session, Clouds{}, shared.id)
+	sim.shot_hit_register({plugin = shared.id, hit = cloud_hit})
+	sim.system_register({name = "clouds", after = CLOUDS_AFTER, before = CLOUDS_BEFORE, plugin = shared.id, run = cloud_system})
 }
 
 @(init)

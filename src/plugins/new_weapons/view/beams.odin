@@ -14,7 +14,6 @@ package new_weapons_view
 //
 // Provisional: every size and colour here was picked by eye.
 
-
 import rl "vendor:raylib"
 import "vendor:raylib/rlgl"
 
@@ -27,11 +26,6 @@ Beam_Fx :: struct {
 	age:      i32, // steps since it fired
 }
 
-// The beams on screen. Presentation keeps one set, as the game has one
-// screen; cleared with the rest of the in-play effects.
-@(private = "file")
-live: [dynamic]Beam_Fx
-
 // The layer the air enemies are drawn in; the ships are above.
 @(private = "file")
 AIR_LAYER :: 8
@@ -39,7 +33,7 @@ AIR_LAYER :: 8
 register :: proc() {
 	render.effect_system_register({
 		name   = "beams",
-		plugin = new_weapons.ID,
+		plugin = new_weapons.id(),
 		step   = beams_step,
 		draw   = beams_draw,
 		layer  = AIR_LAYER,
@@ -54,7 +48,7 @@ register_step :: proc "contextless" () {
 
 @(private = "file")
 beams_clear :: proc() {
-	clear(&live)
+	clear(&shared.live)
 }
 
 @(private = "file") BEAM_LIFE :: 6 // steps a pulse takes to fade
@@ -72,7 +66,7 @@ beam_life :: #force_inline proc(b: ^Beam_Fx) -> i32 {
 // counted from the step they fired on, so one that a rollback replayed
 // shows as far through its fade as it would have.
 beams_step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles) {
-	clear(&live)
+	clear(&shared.live)
 	log := new_weapons.beam_log_of(s)
 	if log == nil {
 		return
@@ -86,7 +80,7 @@ beams_step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles) {
 		}
 		b := Beam_Fx{ev = ev, age = time - 1 - ev.time}
 		if b.age >= 0 && b.age < beam_life(&b) {
-			append(&live, b)
+			append(&shared.live, b)
 		}
 	}
 }
@@ -94,11 +88,11 @@ beams_step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles) {
 // `t` is how far the frame is from the last step to this one, so a beam
 // fades smoothly at high refresh rates.
 beams_draw :: proc(r: ^render.Renderer, scale, side, t: f32) {
-	if len(live) == 0 {
+	if len(shared.live) == 0 {
 		return
 	}
 	rl.BeginBlendMode(.ADDITIVE)
-	for &b in live {
+	for &b in shared.live {
 		life := f32(beam_life(&b))
 		k := 1 - max(f32(b.age) - (1 - t), 0) / life // 1 as it fires .. 0 gone
 		if k <= 0 {

@@ -25,7 +25,6 @@ import "core:slice"
 import rl "vendor:raylib"
 
 import "dr:data"
-import "dr:plugins/easy_mode"
 import "dr:render"
 import "dr:sim"
 import "dr:ui"
@@ -37,6 +36,7 @@ LESE :: "lese"
 // widget layered over them; clicking the left/right preview rotates the
 // carousel, clicking the centre one accepts/rejects it.
 @(private = "file")
+@(rodata)
 LS_RECTS := [3]rl.Rectangle {
 	{55, 76, 145, 306}, // previous
 	{246, 76, 146, 306}, // current
@@ -50,6 +50,7 @@ LS_RECTS := [3]rl.Rectangle {
 // "NO ACCESS" (shown centred when locked), 12/13 are small left/right-facing
 // arrow glyphs (shown at the side slots unconditionally).
 @(private = "file")
+@(rodata)
 LS_ICON_POS := [3]rl.Vector2{{128, 228}, {320, 228}, {511, 228}}
 @(private = "file") LS_FRAME_PREV :: 12
 @(private = "file") LS_FRAME_START :: 10
@@ -85,9 +86,9 @@ Level_Select :: struct {
 	pulse:   Level_Select_Pulse,
 	scale:   f32, // 1.0..MaxScale; only the centre preview is ever drawn scaled
 	growing: bool,
-	// Not the original's: the Easy_Mode extra's toggle, under the level
-	// name, and only outside classic mode.
-	easy:    ui.Text_Button,
+	// Not the original's: the plugins' switches (Easy Mode's), under the
+	// level name, and only outside classic mode.
+	switches: Setup_Switches,
 	// Not the original's either: which campaign's levels, above the level
 	// number, while more than one is offered (D53). The name steps to the
 	// next, and the arrows either side of it step either way.
@@ -96,14 +97,13 @@ Level_Select :: struct {
 	campaign_next: ui.Text_Button,
 }
 
-@(private = "file") LS_EASY_Y :: 440
+@(private = "file") LS_SWITCH_Y :: 440
 @(private = "file") LS_CAMPAIGN_Y :: 10
 @(private = "file") LS_CAMPAIGN_GAP :: 6 // between the name and each arrow
 
 @(private = "file")
-level_select_easy_layout :: proc(fl: ^Flow, r: ^render.Renderer, ls: ^Level_Select) {
-	label := prefs_mod_on(fl.prefs, easy_mode.ID) ? "EASY MODE: ON" : "EASY MODE: OFF"
-	ui.text_button_relabel(r, &ls.easy, label, render.SCREEN_W / 2, LS_EASY_Y)
+level_select_switches_layout :: proc(fl: ^Flow, r: ^render.Renderer, ls: ^Level_Select) {
+	setup_switches_layout(r, &ls.switches, .Level_Select, prefs_mods(fl.prefs), LS_SWITCH_Y)
 }
 
 @(private = "file")
@@ -152,10 +152,8 @@ level_select_update :: proc(fl: ^Flow, r: ^render.Renderer, ls: ^Level_Select) {
 
 	mouse := ui.menu_mouse_pos()
 	if !r.classic {
-		level_select_easy_layout(fl, r, ls)
-		if ui.text_button_update(r, &ls.easy, mouse, dt) {
-			prefs_mod_toggle(fl.prefs, easy_mode.ID)
-		}
+		level_select_switches_layout(fl, r, ls)
+		setup_switches_update(fl, r, &ls.switches, mouse, dt)
 	}
 	if offered := flow_campaigns(fl); len(offered) > 1 {
 		level_select_campaign_layout(fl, r, ls)
@@ -291,8 +289,8 @@ level_select_draw :: proc(r: ^render.Renderer, fl: ^Flow, ls: ^Level_Select) {
 	level_select_draw_icon(r, LS_ICON_POS[1], unlocked ? LS_FRAME_START : LS_FRAME_NOACCESS, ls.hover[1] > 0)
 	level_select_draw_icon(r, LS_ICON_POS[2], LS_FRAME_NEXT, ls.hover[2] > 0)
 	if !r.classic {
-		level_select_easy_layout(fl, r, ls)
-		ui.text_button_draw(r, &ls.easy)
+		level_select_switches_layout(fl, r, ls)
+		setup_switches_draw(r, &ls.switches)
 	}
 	if len(flow_campaigns(fl)) > 1 {
 		level_select_campaign_layout(fl, r, ls)

@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 260" role="img" aria-label="Before: game/ imported six plugins and called into them at 29 places. After: each plugin's view registers with hooks in the core (setup switches, launch flags, frame rates, settings previews, menu shots, pauses and online plugins), and game/ walks those registries without naming any plugin.">
+  <defs>
+    <marker id="d-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="d-head" d="M0 0 L10 5 L0 10 z"/>
+    </marker>
+  </defs>
+
+  <text class="d-label" x="16" y="22">Before</text>
+  <text class="d-label" x="460" y="22">After</text>
+  <line class="d-lane" x1="436" y1="12" x2="436" y2="248"/>
+
+  <rect class="d-box warm" x="16" y="104" width="150" height="62" rx="8"/>
+  <text class="d-text" x="30" y="128">game/</text>
+  <text class="d-sub" x="30" y="146">imports 6 plugins</text>
+  <text class="d-sub" x="30" y="160">29 call sites</text>
+
+  <rect class="d-box" x="236" y="34" width="170" height="26" rx="6"/>
+  <text class="d-sub" x="248" y="52">accent</text>
+  <rect class="d-box" x="236" y="68" width="170" height="26" rx="6"/>
+  <text class="d-sub" x="248" y="86">easy_mode</text>
+  <rect class="d-box" x="236" y="102" width="170" height="26" rx="6"/>
+  <text class="d-sub" x="248" y="120">extra_prefs</text>
+  <rect class="d-box" x="236" y="136" width="170" height="26" rx="6"/>
+  <text class="d-sub" x="248" y="154">fps_unlock</text>
+  <rect class="d-box" x="236" y="170" width="170" height="26" rx="6"/>
+  <text class="d-sub" x="248" y="188">netplay</text>
+  <rect class="d-box" x="236" y="204" width="170" height="26" rx="6"/>
+  <text class="d-sub" x="248" y="222">new_weapons</text>
+
+  <path class="d-arrow" d="M166 120 Q200 120 200 47 H230"/>
+  <path class="d-arrow" d="M166 126 Q206 126 206 81 H230"/>
+  <path class="d-arrow" d="M166 132 Q190 132 190 115 H230"/>
+  <path class="d-arrow" d="M166 140 Q190 140 190 149 H230"/>
+  <path class="d-arrow" d="M166 146 Q206 146 206 183 H230"/>
+  <path class="d-arrow" d="M166 152 Q200 152 200 217 H230"/>
+
+  <rect class="d-box" x="460" y="34" width="140" height="34" rx="6"/>
+  <text class="d-sub" x="472" y="56">easy_mode/view</text>
+  <rect class="d-box" x="460" y="76" width="140" height="34" rx="6"/>
+  <text class="d-sub" x="472" y="98">fps_unlock/view</text>
+  <rect class="d-box" x="460" y="118" width="140" height="34" rx="6"/>
+  <text class="d-sub" x="472" y="140">accent/view</text>
+  <rect class="d-box" x="460" y="160" width="140" height="34" rx="6"/>
+  <text class="d-sub" x="472" y="182">netplay · ...</text>
+
+  <path class="d-arrow" style="marker-end: none" d="M600 51 H612 M600 93 H612 M600 135 H612 M600 177 H612 M612 51 V177"/>
+  <path class="d-arrow" d="M612 99 H634"/>
+  <text class="d-sub" x="460" y="216">each view registers</text>
+
+  <rect class="d-box hot" x="640" y="34" width="226" height="130" rx="8"/>
+  <text class="d-text" x="654" y="56">Hooks in the core</text>
+  <text class="d-sub" x="654" y="76">setup_switch · launch_switch</text>
+  <text class="d-sub" x="654" y="92">frame_rate · settings_preview</text>
+  <text class="d-sub" x="654" y="108">settings_page · menu_shot</text>
+  <text class="d-sub" x="654" y="124">Hold.pause · Plugin.online</text>
+  <text class="d-sub" x="654" y="140">Setting.player</text>
+
+  <rect class="d-box ok" x="640" y="190" width="226" height="56" rx="8"/>
+  <text class="d-text" x="654" y="212">game/ walks them</text>
+  <text class="d-sub" x="654" y="230">names no plugin · purity check</text>
+  <path class="d-arrow" d="M753 190 V170"/>
+  <text class="d-sub" x="762" y="182">asks</text>
+</svg>

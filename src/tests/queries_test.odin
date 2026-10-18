@@ -29,7 +29,7 @@ register_query_tests :: proc() {
 	sim.component_register(Test_Mark)
 	sim.prefab_builder_register({
 		name = "test_queries",
-		plugin = fps_unlock.ID,
+		plugin = fps_unlock.id(),
 		build = proc(p: sim.Prefab, u: ^sim.Unit, st: ^sim.Unit_State) {
 			if u.id != MINE {
 				return
@@ -44,7 +44,7 @@ register_query_tests :: proc() {
 	})
 	sim.player_stage_register({
 		name = "test_player_stage",
-		plugin = fps_unlock.ID,
+		plugin = fps_unlock.id(),
 		run = proc(s: ^sim.State, p: sim.Player, ps: ^sim.Player_Step) -> bool {
 			player_stage_runs[p.number] += 1
 			return true
@@ -66,7 +66,7 @@ query_fixture :: proc(t: ^testing.T, f: ^Query_Fixture, builders: bool) -> bool 
 	alloc := vmem.arena_allocator(&f.arena)
 	f.s = new(sim.State, alloc)
 	context.allocator = alloc
-	mods := builders ? sim.Mods{int(fps_unlock.ID)} : {}
+	mods := builders ? sim.Mods{int(fps_unlock.id())} : {}
 	return play_start(t, f.s, sim.Session{seed = 1, level_id = f.defs.levels[0].id, game_type = .Single, mods = mods}, &f.defs)
 }
 

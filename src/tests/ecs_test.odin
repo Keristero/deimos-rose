@@ -46,7 +46,7 @@ Test_Tag :: struct {}
 register_test_components :: proc() {
 	// On every pool entity in a session with 30FPS Unlock, which no real
 	// session names: something padded to scribble on.
-	sim.kind_component(.Pool, Test_Padded{}, fps_unlock.ID)
+	sim.kind_component(.Pool, Test_Padded{}, fps_unlock.id())
 	sim.component_register(Test_Dense)
 	sim.component_register(Test_Padded_Array)
 	sim.component_register(Test_Matrix)
@@ -128,7 +128,7 @@ pool_padded :: proc(e: ^sim.Ecs, i: int) -> ^Test_Padded {
 entities_start_with_their_kinds_components :: proc(t: ^testing.T) {
 	plain := sim.ecs_create({})
 	defer sim.ecs_destroy(plain)
-	with := sim.ecs_create({int(loadout.ID)})
+	with := sim.ecs_create({int(loadout.id())})
 	defer sim.ecs_destroy(with)
 	a, b := world_state(plain), world_state(with)
 	testing.expect(t, sim.single(&a, sim.Clock) != nil)
@@ -161,7 +161,7 @@ views_are_each_entitys_own :: proc(t: ^testing.T) {
 // Resetting a world puts every entity back to its start values.
 @(test)
 a_reset_world_holds_its_start_values :: proc(t: ^testing.T) {
-	e := sim.ecs_create({int(loadout.ID)})
+	e := sim.ecs_create({int(loadout.id())})
 	defer sim.ecs_destroy(e)
 	fresh := digest(e)
 	s := world_state(e)
@@ -192,7 +192,7 @@ digest :: proc(e: ^sim.Ecs) -> u64 {
 // the bytes between them, write and hash alike.
 @(test)
 snapshots_depend_only_on_contents :: proc(t: ^testing.T) {
-	mods := sim.Mods{int(fps_unlock.ID)}
+	mods := sim.Mods{int(fps_unlock.id())}
 	a := sim.ecs_create(mods)
 	defer sim.ecs_destroy(a)
 	b := sim.ecs_create(mods)
@@ -214,7 +214,7 @@ snapshots_depend_only_on_contents :: proc(t: ^testing.T) {
 
 @(test)
 snapshots_restore_the_world :: proc(t: ^testing.T) {
-	e := sim.ecs_create({int(fps_unlock.ID)})
+	e := sim.ecs_create({int(fps_unlock.id())})
 	defer sim.ecs_destroy(e)
 	s := world_state(e)
 	use_slots(e, 8)
@@ -243,7 +243,7 @@ snapshots_restore_the_world :: proc(t: ^testing.T) {
 // their start values, as they were then.
 @(test)
 snapshots_hold_only_the_slots_used :: proc(t: ^testing.T) {
-	e := sim.ecs_create({int(fps_unlock.ID)})
+	e := sim.ecs_create({int(fps_unlock.id())})
 	defer sim.ecs_destroy(e)
 	s := world_state(e)
 	empty := len(snapshot(e))
@@ -274,7 +274,7 @@ snapshots_hold_only_the_slots_used :: proc(t: ^testing.T) {
 
 	// Every slot a world has not used holds its start value, as a fresh
 	// world's do.
-	fresh := sim.ecs_create({int(fps_unlock.ID)})
+	fresh := sim.ecs_create({int(fps_unlock.id())})
 	defer sim.ecs_destroy(fresh)
 	use_slots(fresh, 3)
 	fs := world_state(fresh)
@@ -359,7 +359,7 @@ registered_systems_name_only_registered_systems :: proc(t: ^testing.T) {
 snapshots_from_elsewhere_change_nothing :: proc(t: ^testing.T) {
 	e := sim.ecs_create({})
 	defer sim.ecs_destroy(e)
-	other := sim.ecs_create({int(loadout.ID)})
+	other := sim.ecs_create({int(loadout.id())})
 	defer sim.ecs_destroy(other)
 	s := world_state(e)
 	sim.entity_at(&s, 1).number = 1

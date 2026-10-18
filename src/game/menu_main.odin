@@ -16,14 +16,13 @@ package game
 // Register/Activate (frame 7, shown only when unregistered) and the exit-time
 // ad are excluded per D21. High Scores opens its own screen (stage 4,
 // game/menu_high_scores.odin), Preferences this port's own Preferences screen
-// (game/menu_preferences.odin). Netplay (game/netplay.odin), which once sat
-// behind Preferences, is a separate text item below the original six --
-// hidden without the Netplay mod, and so under classic mode, since the
-// original has no such entry (D30).
+// (game/menu_preferences.odin). A plugin's screen (screens.odin) --
+// Netplay's lobby, which once sat behind Preferences -- is a text item below
+// the original six, hidden while its plugin is off, and so under classic
+// mode, since the original has no such entry (D30).
 
 import rl "vendor:raylib"
 
-import netplay_plugin "dr:plugins/netplay"
 import "dr:render"
 import "dr:sim"
 import "dr:ui"
@@ -49,9 +48,11 @@ BTN_GAP :: 30 // Interface_Btn_VerticalGap -- the row-to-row spacing matches thi
 GAME_VERSION :: #config(DR_VERSION, "dev")
 
 BTN_FIRST_ROW_Y :: 186
-// Netplay takes the seventh row -- where the excluded Register button sat --
-// its 20px Text_Button centred on that row's measured label centre (378).
-NETPLAY_ROW_Y :: BTN_FIRST_ROW_Y + 6 * BTN_GAP + 2
+// A plugin's screen takes the seventh row -- where the excluded Register
+// button sat -- its 20px Text_Button centred on that row's measured label
+// centre (378); a second would take the row below, clear of the links.
+SCREEN_ROW_Y :: BTN_FIRST_ROW_Y + 6 * BTN_GAP + 2
+SCREEN_ROW_GAP :: 22
 // Measured the same way (column-brightness scan of a real screenshot vs.
 // ours): the globe's bright limb starts at y=47 in the original, y=40 at the
 // value this used to have -- moved down 7px accordingly.
@@ -65,6 +66,7 @@ LOGO_Y :: 47
 // guessed), with no confirmed menu entry point found. Not wired; revisit if a
 // use turns up.
 @(private = "file")
+@(rodata)
 MAIN_MENU_FRAMES := [6]i32{0, 1, 2, 4, 5, 6}
 
 @(private = "file")
@@ -81,8 +83,10 @@ Main_Menu :: struct {
 	buttons:      [6]ui.Menu_Button,
 	website:      ui.Text_Link,
 	copyright:    ui.Text_Link,
-	netplay:      ui.Text_Button, // new content: not drawn or clickable without the Netplay mod (off in classic mode)
-	netplay_on:   bool,
+	// New content: each plugin screen's item (screens.odin), neither drawn
+	// nor clickable while its plugin is off (as in classic mode).
+	screens:      [MAX_SCREENS]ui.Text_Button,
+	screens_on:   [MAX_SCREENS]bool,
 	// "Visit the Deimos Rising Website Now?" (stli/inte.json #20) -- the
 	// original gates U_App_LaunchURL behind a confirm dialog; reproduced as
 	// a minimal text prompt rather than a native dialog.
@@ -103,7 +107,11 @@ main_menu_update :: proc(fl: ^Flow, r: ^render.Renderer, m: ^Main_Menu) {
 	if m.website.rect.width == 0 {
 		m.website = ui.text_link_at(r, "WWW.DEIMOSRISING.COM", 426)
 		m.copyright = ui.text_link_at(r, "COPYRIGHT 2001-2002 SWOOP SOFTWARE & AMBROSIA SOFTWARE, INC.", 447)
-		m.netplay = ui.text_button_at(r, "NETPLAY", NETPLAY_ROW_Y)
+	}
+	for s, i in registered_screens() {
+		if m.screens[i].rect.width == 0 {
+			m.screens[i] = ui.text_button_at(r, s.label, SCREEN_ROW_Y + f32(i) * SCREEN_ROW_GAP)
+		}
 	}
 
 	dt := rl.GetFrameTime()
@@ -124,10 +132,11 @@ main_menu_update :: proc(fl: ^Flow, r: ^render.Renderer, m: ^Main_Menu) {
 			main_menu_activate(fl, r, slot)
 		}
 	}
-	m.netplay_on = prefs_mod_on(fl.prefs, netplay_plugin.ID)
-	if m.netplay_on && ui.text_button_update(r, &m.netplay, mouse, dt) {
-		fl.mode = .Netplay_Lobby
-		netplay_lobby_init(&fl.netplay, r)
+	for s, i in registered_screens() {
+		m.screens_on[i] = prefs_mod_on(fl.prefs, s.plugin)
+		if m.screens_on[i] && ui.text_button_update(r, &m.screens[i], mouse, dt) {
+			screen_show(fl, r, i)
+		}
 	}
 	if ui.text_link_update(&m.website, mouse, dt) {
 		m.confirm_website = true
@@ -168,7 +177,7 @@ main_menu_activate :: proc(fl: ^Flow, r: ^render.Renderer, slot: Main_Menu_Slot)
 }
 
 main_menu_draw :: proc(r: ^render.Renderer, m: ^Main_Menu) {
-	// Links and the Netplay item are built on the first update; a frame
+	// Links and the screens' items are built on the first update; a frame
 	// drawn before then (a menu capture) just omits them.
 	ui.menu_draw_background(r, "back")
 	if tex, src, ok := render.frame_rect(&r.textures, GALO, 0); ok {
@@ -183,8 +192,10 @@ main_menu_draw :: proc(r: ^render.Renderer, m: ^Main_Menu) {
 	}
 	ui.text_link_draw(r, &m.website)
 	ui.text_link_draw(r, &m.copyright)
-	if m.netplay_on && m.netplay.rect.width > 0 {
-		ui.text_button_draw(r, &m.netplay)
+	for on, i in m.screens_on {
+		if on && m.screens[i].rect.width > 0 {
+			ui.text_button_draw(r, &m.screens[i])
+		}
 	}
 	// New content, but shown in classic mode too: it is what a bug report
 	// needs, and sits in the corner clear of every original element.

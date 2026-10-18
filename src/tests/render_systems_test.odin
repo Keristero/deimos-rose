@@ -65,7 +65,7 @@ render_schedule_leaves_the_outline_to_its_plugin :: proc(t: ^testing.T) {
 	sched: render.Render_Schedule
 	render.render_schedule_build(&sched, {})
 	testing.expect(t, !has_outline(&sched, registered), "the outline is drawn with no plugins on")
-	render.render_schedule_build(&sched, {int(accent.ID)})
+	render.render_schedule_build(&sched, {int(accent.id())})
 	testing.expect(t, has_outline(&sched, registered), "the outline is not drawn with Accent Color on")
 }
 
@@ -75,17 +75,17 @@ render_schedule_leaves_the_outline_to_its_plugin :: proc(t: ^testing.T) {
 effect_systems_run_for_the_players_own_plugins :: proc(t: ^testing.T) {
 	r: render.Renderer
 	s: sim.State
-	testing.expect(t, !render.effect_on(&r, &s, wind.ID), "off with neither the session nor the player")
-	r.mods = {int(wind.ID)}
-	testing.expect(t, render.effect_on(&r, &s, wind.ID))
+	testing.expect(t, !render.effect_on(&r, &s, wind.id()), "off with neither the session nor the player")
+	r.mods = {int(wind.id())}
+	testing.expect(t, render.effect_on(&r, &s, wind.id()))
 }
 
 // The Percent settings of the post-pass plugins stay in 0..100.
 @(test)
 percent_settings_are_clamped :: proc(t: ^testing.T) {
-	testing.expect_value(t, prefs.setting_clean(lighting_view.LIGHT_STRENGTH, 250), 100)
-	testing.expect_value(t, prefs.setting_clean(lighting_view.GLOW_STRENGTH, -3), 0)
-	testing.expect_value(t, prefs.setting_clean(wind_view.STRENGTH, 40), 40)
+	testing.expect_value(t, prefs.setting_clean(lighting_view.light_strength(), 250), 100)
+	testing.expect_value(t, prefs.setting_clean(lighting_view.glow_strength(), -3), 0)
+	testing.expect_value(t, prefs.setting_clean(wind_view.strength(), 40), 40)
 }
 
 // A shot to the ground runs from the ship's height to the ground over its

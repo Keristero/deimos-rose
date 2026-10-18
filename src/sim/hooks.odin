@@ -26,6 +26,9 @@ Stat_Provider :: struct {
 Hold :: struct {
 	plugin: Plugin_ID,
 	held:   proc "contextless" (s: ^State) -> bool,
+	// A pause the players asked for, rather than a screen: the game shows
+	// its pause card over play and stops the music while it holds.
+	pause:  bool,
 }
 
 // A plugin's own choice of air weapons, in place of the original's: which
@@ -79,46 +82,33 @@ Shot_Hit :: struct {
 	hit:    proc(s: ^State, shot, target: Entity, dealt: f32, time: i32),
 }
 
-@(private = "file")
-stat_providers: Registry(Stat_Provider, MAX_HOOKS)
-@(private = "file")
-holds: Registry(Hold, MAX_HOOKS)
-@(private = "file")
-choosers: Registry(Weapon_Chooser, MAX_HOOKS)
-@(private = "file")
-filters: Registry(Weapon_Filter, MAX_HOOKS)
-@(private = "file")
-fires: Registry(Weapon_Fire, MAX_HOOKS)
-@(private = "file")
-shot_hits: Registry(Shot_Hit, MAX_HOOKS)
-
 stat_provider_register :: proc(p: Stat_Provider) {
-	registry_add(&stat_providers, p)
+	registry_add(&shared.stat_providers, p)
 }
 
 hold_register :: proc(h: Hold) {
-	registry_add(&holds, h)
+	registry_add(&shared.holds, h)
 }
 
 weapon_chooser_register :: proc(c: Weapon_Chooser) {
-	registry_add(&choosers, c)
+	registry_add(&shared.choosers, c)
 }
 
 weapon_filter_register :: proc(f: Weapon_Filter) {
-	registry_add(&filters, f)
+	registry_add(&shared.filters, f)
 }
 
 weapon_fire_register :: proc(f: Weapon_Fire) {
-	registry_add(&fires, f)
+	registry_add(&shared.fires, f)
 }
 
 shot_hit_register :: proc(h: Shot_Hit) {
-	registry_add(&shot_hits, h)
+	registry_add(&shared.shot_hits, h)
 }
 
 // A shaped shot's hit, for each plugin that is on.
 shot_hit_run :: proc(s: ^State, shot, target: Entity, dealt: f32, time: i32) {
-	for &h in registry_items(&shot_hits) {
+	for &h in registry_items(&shared.shot_hits) {
 		if mod_on(s, h.plugin) {
 			h.hit(s, shot, target, dealt, time)
 		}
@@ -127,7 +117,7 @@ shot_hit_run :: proc(s: ^State, shot, target: Entity, dealt: f32, time: i32) {
 
 // How `w` fires, when a plugin fires it: the first registered that does.
 weapon_fire :: proc "contextless" (w: ^Weapon) -> (^Weapon_Fire, bool) {
-	for &f in registry_items(&fires) {
+	for &f in registry_items(&shared.fires) {
 		if f.fires(w) {
 			return &f, true
 		}
@@ -138,7 +128,7 @@ weapon_fire :: proc "contextless" (w: ^Weapon) -> (^Weapon_Fire, bool) {
 // Every provider's contribution to `stat`, summed: percentages and extras
 // add, and a switch is on if any turns it on.
 stat_of :: proc "contextless" (s: ^State, player: i32, stat: Stat, weapon: Res_ID, charge := false) -> (t: Stat_Total) {
-	for &p in registry_items(&stat_providers) {
+	for &p in registry_items(&shared.stat_providers) {
 		if !mod_on(s, p.plugin) {
 			continue
 		}
@@ -153,7 +143,7 @@ stat_of :: proc "contextless" (s: ^State, player: i32, stat: Stat, weapon: Res_I
 // Whether any provider shapes `player`'s shots of `weapon`, or with
 // `charge` the shots of its charge.
 stat_shapes :: proc "contextless" (s: ^State, player: i32, weapon: Res_ID, charge := false) -> bool {
-	for &p in registry_items(&stat_providers) {
+	for &p in registry_items(&shared.stat_providers) {
 		if mod_on(s, p.plugin) && p.shapes(s, player, weapon, charge) {
 			return true
 		}
@@ -164,8 +154,20 @@ stat_shapes :: proc "contextless" (s: ^State, player: i32, weapon: Res_ID, charg
 // Whether play stands still this step for a pause or a between-play screen:
 // the presentation holds its own effects still to match.
 session_frozen :: proc "contextless" (s: ^State) -> bool {
-	for &h in registry_items(&holds) {
+	for &h in registry_items(&shared.holds) {
 		if mod_on(s, h.plugin) && h.held(s) {
+			return true
+		}
+	}
+	return false
+}
+
+// Whether play stands still for a pause the players asked for, inside the
+// simulation (a netplay pause, which either peer can lift). A local pause
+// lives outside the simulation, in the game's own mode.
+paused :: proc "contextless" (s: ^State) -> bool {
+	for &h in registry_items(&shared.holds) {
+		if h.pause && mod_on(s, h.plugin) && h.held(s) {
 			return true
 		}
 	}
@@ -175,7 +177,7 @@ session_frozen :: proc "contextless" (s: ^State) -> bool {
 // The weapon chooser in this session, if any: the first registered that is
 // on.
 weapon_chooser :: proc "contextless" (s: ^State) -> (^Weapon_Chooser, bool) {
-	for &c in registry_items(&choosers) {
+	for &c in registry_items(&shared.choosers) {
 		if mod_on(s, c.plugin) {
 			return &c, true
 		}
@@ -197,7 +199,7 @@ weapon_allowed :: proc "contextless" (s: ^State, w: ^Weapon) -> bool {
 	if !w.extra || (w.plugin != CORE && mod_on(s, w.plugin)) {
 		return true
 	}
-	for &f in registry_items(&filters) {
+	for &f in registry_items(&shared.filters) {
 		if mod_on(s, f.plugin) && f.allows(w) {
 			return true
 		}
@@ -240,7 +242,6 @@ Stat :: enum u8 {
 	Hits_Ground,              // an air shot also hits the ground targets it flies over
 	Ground_Damage,            // how much of its damage such a shot deals them
 }
-
 
 Stat_Total :: struct {
 	percent: i32, // increases minus decreases

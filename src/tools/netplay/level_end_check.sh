@@ -3,9 +3,9 @@
 # one at the keyboard: written for a guest that crashed when Easy Mode's
 # reward screen opened after the first level (and again on reconnecting).
 #
-# Both run with DR_NETPLAY_END (game/netplay.odin,
-# netplay_lobby_start_from_flag): each readies itself, the host turns Easy
-# Mode on, and the level starts END steps (default 150, five seconds)
+# Both run with DR_NETPLAY_END (plugins/netplay/view/netplay.odin,
+# netplay_lobby_start_from_flag): each readies itself, the host has Easy
+# Mode on (-mod easy_mode), and the level starts END steps (default 150, five seconds)
 # before its end. The check passes when both sides log that play was held
 # -- the reward screen is open -- and both are still running HOLD seconds
 # later with no desync reported.
@@ -56,12 +56,13 @@ fi
 # Inside the compositor.
 run() {
 	local side=$1 mode=$2 bin=$3
+	shift 3
 	mkdir -p "$WORK/$side"
 	( [ -n "${STACK_KB:-}" ] && ulimit -s "$STACK_KB"; exec env XDG_DATA_HOME="$WORK/$side" APPDATA="$WORK/$side" DR_NO_AUDIO=1 DR_NETPLAY="$mode" \
-		DR_NETPLAY_END="$END" DR_NETPLAY_SHOT="$WORK/$side" "$bin" ) >"$WORK/$side.log" 2>&1 &
+		DR_NETPLAY_END="$END" DR_NETPLAY_SHOT="$WORK/$side" "$bin" "$@" ) >"$WORK/$side.log" 2>&1 &
 	echo $!
 }
-HOST=$(run host host "$HOST_BIN")
+HOST=$(run host host "$HOST_BIN" -mod easy_mode)
 sleep 1
 GUEST=$(run guest join:127.0.0.1 "$GUEST_BIN")
 trap 'kill $HOST $GUEST 2>/dev/null || true' EXIT

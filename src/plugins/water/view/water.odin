@@ -29,12 +29,10 @@ import "dr:prefs"
 import "dr:render"
 import "dr:sim"
 
-STRENGTH: prefs.Setting_ID // how strong the water's reflection and glint are
-
 @(private = "file") CALM_DRIFT :: 8 // pixels a second with no wind
 @(private = "file") WIND_DRIFT :: 40 // more, for a wind of strength 1
 
-@(private = "file")
+@(private)
 State :: struct {
 	ready:     bool,
 	built:     bool,         // the mask is made for `keyed`, or the level has no water
@@ -51,14 +49,11 @@ State :: struct {
 	},
 }
 
-@(private = "file")
-st: State
-
 register :: proc() {
-	STRENGTH = prefs.setting_register({plugin = water.ID, key = "water_strength", label = "WATER STRENGTH", kind = .Percent, default = 60})
+	shared.strength = prefs.setting_register({plugin = water.id(), key = "water_strength", label = "WATER STRENGTH", kind = .Percent, default = 60})
 	render.effect_system_register({
 		name   = "water",
-		plugin = water.ID,
+		plugin = water.id(),
 		step   = step,
 		draw   = draw,
 		layer  = 6,
@@ -73,17 +68,17 @@ register_step :: proc "contextless" () {
 
 @(private = "file")
 clear :: proc() {
-	if st.mask.id != 0 {
-		rl.UnloadTexture(st.mask)
+	if shared.st.mask.id != 0 {
+		rl.UnloadTexture(shared.st.mask)
 	}
-	st.mask, st.keyed, st.built = {}, nil, false
+	shared.st.mask, shared.st.keyed, shared.st.built = {}, nil, false
 	ripples_clear()
 }
 
 @(private = "file")
 step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles) {
 	build(r, s)
-	if st.mask.id != 0 && r.setting[STRENGTH] > 0 {
+	if shared.st.mask.id != 0 && r.setting[shared.strength] > 0 {
 		ripples_step(s)
 	}
 }
@@ -93,11 +88,11 @@ step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles) {
 build :: proc(r: ^render.Renderer, s: ^sim.State) {
 	lv := sim.level_def(s)
 	key := raw_data(lv.media)
-	if st.built && key == st.keyed {
+	if shared.st.built && key == shared.st.keyed {
 		return
 	}
 	clear()
-	st.built, st.keyed = true, key
+	shared.st.built, shared.st.keyed = true, key
 	if len(lv.media) == 0 || lv.media_scale < 1 {
 		return
 	}
@@ -115,14 +110,14 @@ build :: proc(r: ^render.Renderer, s: ^sim.State) {
 		return
 	}
 	img := rl.Image{data = raw_data(px), width = lv.media_w, height = lv.media_h, mipmaps = 1, format = .UNCOMPRESSED_GRAYSCALE}
-	st.mask = rl.LoadTextureFromImage(img)
-	rl.SetTextureFilter(st.mask, .BILINEAR)
-	rl.SetTextureWrap(st.mask, .CLAMP)
-	st.size = {f32(lv.media_w * lv.media_scale), f32(lv.media_h * lv.media_scale)}
-	ripples_build(lv.media, int(lv.media_w), int(lv.media_scale), st.size)
+	shared.st.mask = rl.LoadTextureFromImage(img)
+	rl.SetTextureFilter(shared.st.mask, .BILINEAR)
+	rl.SetTextureWrap(shared.st.mask, .CLAMP)
+	shared.st.size = {f32(lv.media_w * lv.media_scale), f32(lv.media_h * lv.media_scale)}
+	ripples_build(lv.media, int(lv.media_w), int(lv.media_scale), shared.st.size)
 
-	st.wind, st.roughness, st.colour = {}, 0.15, {0.35, 0.5, 0.6}
-	st.sun = {0.4, 0.5, 0.77}
+	shared.st.wind, shared.st.roughness, shared.st.colour = {}, 0.15, {0.35, 0.5, 0.6}
+	shared.st.sun = {0.4, 0.5, 0.77}
 	if media := data.assets_level_media(&r.textures.assets, lv.campaign, lv.id); media != nil {
 		a := math.to_radians(media.wind.direction_degrees)
 		push := media.wind.strength
@@ -131,15 +126,15 @@ build :: proc(r: ^render.Renderer, s: ^sim.State) {
 		if push == 0 {
 			dir = {0.6, 0.8}
 		}
-		st.wind = dir * speed
-		st.roughness = clamp(0.15 + 0.85 * push, 0, 1)
+		shared.st.wind = dir * speed
+		shared.st.roughness = clamp(0.15 + 0.85 * push, 0, 1)
 		if media.water.visible || media.water.colour != {} {
-			st.colour = {f32(media.water.colour[0]), f32(media.water.colour[1]), f32(media.water.colour[2])} / 255
+			shared.st.colour = {f32(media.water.colour[0]), f32(media.water.colour[1]), f32(media.water.colour[2])} / 255
 		}
 		l := media.lighting
 		if l.sun_elevation_degrees != 0 {
 			az, el := math.to_radians(l.sun_azimuth_degrees), math.to_radians(l.sun_elevation_degrees)
-			st.sun = {math.sin(az) * math.cos(el), -math.cos(az) * math.cos(el), math.sin(el)}
+			shared.st.sun = {math.sin(az) * math.cos(el), -math.cos(az) * math.cos(el), math.sin(el)}
 		}
 	}
 }
@@ -224,42 +219,42 @@ void main() {
 
 @(private = "file")
 draw :: proc(r: ^render.Renderer, scale, side, t: f32) {
-	if st.mask.id == 0 || r.setting[STRENGTH] == 0 {
+	if shared.st.mask.id == 0 || r.setting[shared.strength] == 0 {
 		return
 	}
-	if !st.ready {
-		st.ready = true
-		st.shader = rl.LoadShaderFromMemory(nil, FRAGMENT)
-		st.loc.time = rl.GetShaderLocation(st.shader, "time")
-		st.loc.mask_size = rl.GetShaderLocation(st.shader, "maskSize")
-		st.loc.strength = rl.GetShaderLocation(st.shader, "strength")
-		st.loc.tint = rl.GetShaderLocation(st.shader, "tint")
-		st.loc.wind = rl.GetShaderLocation(st.shader, "wind")
-		st.loc.rough = rl.GetShaderLocation(st.shader, "rough")
-		st.loc.sun = rl.GetShaderLocation(st.shader, "sun")
-		st.loc.ripples = rl.GetShaderLocation(st.shader, "ripples")
-		st.loc.ripple_px = rl.GetShaderLocation(st.shader, "ripplePx")
+	if !shared.st.ready {
+		shared.st.ready = true
+		shared.st.shader = rl.LoadShaderFromMemory(nil, FRAGMENT)
+		shared.st.loc.time = rl.GetShaderLocation(shared.st.shader, "time")
+		shared.st.loc.mask_size = rl.GetShaderLocation(shared.st.shader, "maskSize")
+		shared.st.loc.strength = rl.GetShaderLocation(shared.st.shader, "strength")
+		shared.st.loc.tint = rl.GetShaderLocation(shared.st.shader, "tint")
+		shared.st.loc.wind = rl.GetShaderLocation(shared.st.shader, "wind")
+		shared.st.loc.rough = rl.GetShaderLocation(shared.st.shader, "rough")
+		shared.st.loc.sun = rl.GetShaderLocation(shared.st.shader, "sun")
+		shared.st.loc.ripples = rl.GetShaderLocation(shared.st.shader, "ripples")
+		shared.st.loc.ripple_px = rl.GetShaderLocation(shared.st.shader, "ripplePx")
 	}
 	// What draw_terrain shows, in the same place, taken from the mask.
 	w, h := f32(render.PLAY_W), f32(render.PLAY_H)
 	left := max(side + 32, 0)
-	k := st.size.x / f32(st.mask.width) // background pixels a mask pixel
+	k := shared.st.size.x / f32(shared.st.mask.width) // background pixels a mask pixel
 	src := rl.Rectangle{left / k, r.view_top / k, w / k, h / k}
 	dst := rl.Rectangle{render.VIEW_X * scale, 0, w * scale, h * scale}
 
 	time := f32(rl.GetTime())
-	strength := f32(r.setting[STRENGTH]) / 100
-	rl.BeginShaderMode(st.shader)
-	rl.SetShaderValue(st.shader, st.loc.time, &time, .FLOAT)
-	rl.SetShaderValue(st.shader, st.loc.mask_size, &st.size, .VEC2)
-	rl.SetShaderValue(st.shader, st.loc.strength, &strength, .FLOAT)
-	rl.SetShaderValue(st.shader, st.loc.tint, &st.colour, .VEC3)
-	rl.SetShaderValue(st.shader, st.loc.wind, &st.wind, .VEC2)
-	rl.SetShaderValue(st.shader, st.loc.rough, &st.roughness, .FLOAT)
-	rl.SetShaderValue(st.shader, st.loc.sun, &st.sun, .VEC3)
-	rl.SetShaderValueTexture(st.shader, st.loc.ripples, ripple_texture())
+	strength := f32(r.setting[shared.strength]) / 100
+	rl.BeginShaderMode(shared.st.shader)
+	rl.SetShaderValue(shared.st.shader, shared.st.loc.time, &time, .FLOAT)
+	rl.SetShaderValue(shared.st.shader, shared.st.loc.mask_size, &shared.st.size, .VEC2)
+	rl.SetShaderValue(shared.st.shader, shared.st.loc.strength, &strength, .FLOAT)
+	rl.SetShaderValue(shared.st.shader, shared.st.loc.tint, &shared.st.colour, .VEC3)
+	rl.SetShaderValue(shared.st.shader, shared.st.loc.wind, &shared.st.wind, .VEC2)
+	rl.SetShaderValue(shared.st.shader, shared.st.loc.rough, &shared.st.roughness, .FLOAT)
+	rl.SetShaderValue(shared.st.shader, shared.st.loc.sun, &shared.st.sun, .VEC3)
+	rl.SetShaderValueTexture(shared.st.shader, shared.st.loc.ripples, ripple_texture())
 	cell := ripple_cell()
-	rl.SetShaderValue(st.shader, st.loc.ripple_px, &cell, .VEC2)
-	rl.DrawTexturePro(st.mask, src, dst, {}, 0, rl.WHITE)
+	rl.SetShaderValue(shared.st.shader, shared.st.loc.ripple_px, &cell, .VEC2)
+	rl.DrawTexturePro(shared.st.mask, src, dst, {}, 0, rl.WHITE)
 	rl.EndShaderMode()
 }

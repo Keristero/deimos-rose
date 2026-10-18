@@ -16,6 +16,7 @@ import "core:testing"
 import vmem "core:mem/virtual"
 
 // Every plugin in the build, registered as the game registers them.
+import _ "dr:all_plugins"
 import _ "dr:game"
 import "dr:plugins/easy_mode"
 import "dr:plugins/passives"
@@ -38,7 +39,7 @@ play_start :: support.play_start
 // has it.
 @(private = "file")
 session_mods :: proc() -> sim.Mods {
-	return sim.mods_session(sim.mods_switch_on({}, {int(easy_mode.ID)}))
+	return sim.mods_session(sim.mods_switch_on({}, {int(easy_mode.id())}))
 }
 
 @(test)

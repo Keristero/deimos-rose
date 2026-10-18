@@ -16,11 +16,9 @@ import "dr:prefs"
 import "dr:render"
 import "dr:sim"
 
-STRENGTH: prefs.Setting_ID
-
 register :: proc() {
-	STRENGTH = prefs.setting_register({plugin = wind.ID, key = "wind_strength", label = "WIND STRENGTH", kind = .Percent, default = 100})
-	render.effect_system_register({name = "wind", plugin = wind.ID, step = step})
+	shared.strength = prefs.setting_register({plugin = wind.id(), key = "wind_strength", label = "WIND STRENGTH", kind = .Percent, default = 100})
+	render.effect_system_register({name = "wind", plugin = wind.id(), step = step})
 }
 
 @(init)
@@ -36,7 +34,7 @@ step :: proc(r: ^render.Renderer, s: ^sim.State, p: ^render.Particles) {
 		return
 	}
 	a := math.to_radians(media.wind.direction_degrees)
-	push := media.wind.strength * f32(r.setting[STRENGTH]) / 100
+	push := media.wind.strength * f32(r.setting[shared.strength]) / 100
 	d := sim.Vec{math.sin(a) * push, -math.cos(a) * push}
 	for &pt in p.live {
 		pt.loc += d
