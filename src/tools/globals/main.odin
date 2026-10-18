@@ -94,7 +94,9 @@ main :: proc() {
 held_apart :: proc(g: Global) -> bool {
 	if g.local {
 		for allowed in STATIC_ALLOWED {
-			if strings.has_suffix(fmt.tprintf("%s:%s", g.file, g.name), allowed) {
+			// The parser's paths have Windows' backslashes there.
+			file, _ := strings.replace_all(g.file, "\\", "/", context.temp_allocator)
+			if strings.has_suffix(fmt.tprintf("%s:%s", file, g.name), allowed) {
 				return false
 			}
 		}
