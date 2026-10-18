@@ -14,6 +14,7 @@ OUT="${OUT:?OUT=<directory> is required}"
 BIN="$ROOT/build/deimos${DR_EXT:-}"
 [ -x "$BIN" ] || { echo "menu-shots: no build at $BIN (mise run build there)" >&2; exit 1; }
 mkdir -p "$OUT"
+OUT="$(cd "$OUT" && pwd)" # the game runs in ROOT, so a relative OUT would land there
 names=$( {
   awk '/^run_menu_shot ::/ {on = 1} on && /^}/ {on = 0} on' "$ROOT/game/main.odin" |
     grep -E '^\s*case "' | grep -oE '"[^"]+"' | tr -d '"'
