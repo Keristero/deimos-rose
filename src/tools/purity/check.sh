@@ -32,16 +32,15 @@ for d in "${DIRS[@]}"; do
     fi
 done
 
-# The core names no plugin (AGENTS.md, Phase 10): only game/plugins.odin,
-# the list of what is in this build, imports one. A plugin's content and
-# behaviour reach the core through its registrations, so the core builds
-# and runs without any of them.
-CORE=(game sim data render ui prefs net oracle)
+# The core names no plugin (AGENTS.md, Phase 10). A plugin's content and
+# behaviour reach the core through its registrations, and its code
+# through its library (D85), so the core builds and runs without any.
+CORE=(game sim data render ui prefs net oracle blocks plugin_entry)
 for d in "${CORE[@]}"; do
     [ -d "$SRC/$d" ] || continue
-    # Relative paths: on Windows $SRC is D:\a\..., which a grep pattern
-    # would read as escapes, so the exemption never matched there.
-    if (cd "$SRC" && grep -rnE --include='*.odin' '"dr:plugins/' "$d") | grep -v '^game/plugins.odin:'; then
+    # Relative paths: on Windows $SRC is D:\a\..., which a grep would
+    # print and a pattern would read as escapes.
+    if (cd "$SRC" && grep -rnE --include='*.odin' '"dr:plugins/' "$d"); then
         echo "purity: the core imports a plugin; add an extension point instead (AGENTS.md, Continuous improvement)" >&2
         exit 1
     fi

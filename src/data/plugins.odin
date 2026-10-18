@@ -224,8 +224,10 @@ plugins_digest :: proc() {
 	}
 }
 
-// A digest of every file under `dir` but Odin source, by path relative to
-// it and contents, in path order.
+// A digest of every file under `dir` but code, Odin source and a plugin's
+// library (D85), by path relative to it and contents, in path order. A
+// library differs between platforms, .so against .dll, where the content
+// peers must agree on does not.
 content_digest :: proc(dir: string) -> u64 {
 	files := make([dynamic]string, 0, 32, context.temp_allocator)
 	content_files(dir, "", &files)
@@ -257,8 +259,20 @@ content_files :: proc(dir, rel: string, out: ^[dynamic]string) {
 		switch {
 		case e.type == .Directory:
 			content_files(dir, sub, out)
-		case !strings.has_suffix(e.name, ".odin"):
+		case !is_code(e.name):
 			append(out, sub)
 		}
 	}
+}
+
+// Odin source, or a plugin's library and what the Windows linker leaves
+// beside one.
+@(private = "file")
+is_code :: proc(name: string) -> bool {
+	for ext in ([?]string{".odin", ".so", ".dll", ".dylib", ".lib", ".exp", ".pdb"}) {
+		if strings.has_suffix(name, ext) {
+			return true
+		}
+	}
+	return false
 }

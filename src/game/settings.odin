@@ -36,6 +36,12 @@ Settings :: struct {
 	// -plugins <dir>: one more plugins root, searched before $DR_PLUGINS
 	// (D52). The level editor plays what it exports from one.
 	plugins:  string,
+	// -list-plugins: print the plugins this run registered, each with its
+	// id, and the registration hash netplay peers compare, then exit before
+	// any window opens; 1 when a library would not load. What
+	// plugins:check compares between a build that loads the plugins'
+	// libraries and one with them compiled in (D85).
+	list_plugins: bool,
 	// Every argument, for the switches plugins register
 	// (prefs.launch_switch_register), read once they have.
 	args:     []string,
@@ -65,6 +71,8 @@ settings_parse :: proc(args: []string) -> (s: Settings) {
 		case "-plugins":
 			s.plugins = value
 			i += 1
+		case "-list-plugins":
+			s.list_plugins = true
 		}
 	}
 	return

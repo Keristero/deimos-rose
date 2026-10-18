@@ -52,6 +52,10 @@ jobs:
       - run: odin version
       - run: mise run ci
       - run: mise run build:linux
+      # The plugins load from their libraries as they did compiled in, the
+      # game runs alone, and a stale library is refused (D85).
+      - run: mise run build:static
+      - run: mise run plugins:check
       - run: mise run rng:determinism
 
       # Zipped here rather than by upload-artifact, which drops the exec bit.
@@ -114,6 +118,10 @@ jobs:
       - run: odin version
       - run: mise run ci
       - run: mise run build:windows
+      # The plugins load from their libraries as they did compiled in, the
+      # game runs alone, and a stale library is refused (D85).
+      - run: mise run build:static
+      - run: mise run plugins:check
       - run: mise run rng:determinism
 
       # raylib links statically on Windows (vendor:raylib's default), so the

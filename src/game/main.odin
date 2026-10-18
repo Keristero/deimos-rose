@@ -25,8 +25,14 @@ main :: proc() {
 	if settings.plugins != "" {
 		data.plugins_root_add(settings.plugins)
 	}
-	// Plugin folders with a plugin.json and no code in this build (D52):
-	// registered after the compiled plugins, by name.
+	// The code plugins, each a library in its folder (D85); their
+	// registration steps join the game's before register_all.
+	_, lib_problems := plugin_libs_load(data.plugins_roots())
+	for p in lib_problems {
+		fmt.eprintfln("plugins: %s: %s", p.path, p.reason)
+	}
+	// Plugin folders with a plugin.json and no code (D52): registered
+	// after the code plugins, by name.
 	declared, problems := data.plugins_discover(data.plugins_roots())
 	for p in problems {
 		fmt.eprintfln("plugins: %s: %s", p.dir, p.reason)
@@ -52,6 +58,9 @@ main :: proc() {
 	data.extra_defs_load(&defs)
 	// Peers with different plugin content refuse each other (D52).
 	data.plugins_digest()
+	if settings.list_plugins {
+		plugins_list(len(lib_problems) == 0)
+	}
 	if len(defs.levels) == 0 {
 		fmt.eprintfln("no level definitions under %v -- run `mise run assets:all`", root)
 		os.exit(1)

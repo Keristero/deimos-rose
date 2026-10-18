@@ -39,10 +39,12 @@ leaves behind is:
   "in the core", the feature needs a reason in its pull request, and the
   reason is usually a missing extension point (see "Count the places a
   feature touches").
-- **The core imports no plugin.** `src/game/plugins.odin`, the list of
-  what is in the build, is the one core file that names one; `mise run
-  purity` fails any other. A plugin reaches the core through the
-  extension points below, never the core through a plugin.
+- **The core imports no plugin.** The game loads each code plugin from
+  its library, `plugins/<name>/<name>.so` (`.dll`), at startup, and
+  `mise run purity` fails a core file that names one. A plugin reaches
+  the core through the extension points below, never the core through a
+  plugin. `src/all_plugins/` imports them all, for the tests, the tools
+  and the static build: a new plugin is added there too.
 
 ## The core habit: verify, then build
 
@@ -403,6 +405,7 @@ The extension points today:
 | a switch on Level Select or the netplay lobby | `ui.setup_switch_register` | `ui/setup_switches.odin` |
 | presenting faster than the original's 30 frames a second | `render.frame_rate_register` | `render/frame_rate.odin` |
 | records, weapons, sprites, im16 images and sounds of a plugin's own | `plugins/<name>/{data,sprites,images/im16,audio}` beside its code, a recipe in `tools/recolour/`, `content = true` | `data/assets.odin` (D49, D51) |
+| a plugin with code: a library the game loads | `plugins/<name>/` and its `view/`, built by `build:plugins`; imported in `all_plugins/` | `game/plugin_libs.odin`, `plugin_entry/` (D85) |
 | a plugin with no code: content and a manifest | `plugins/<name>/plugin.json` beside its content, found at startup | `data/plugins.odin` (D52) |
 | a campaign: levels played in their own order | `levels` in its `plugin.json`, records in `data/levels/`, maps and previews in `images/im16/` | `data/assets.odin`, `sim/defs.odin` (D53) |
 | a screenshot scenario (`mise run menu-shot MENU=...`) | `ui.shot_register`; `ui.menu_shot_register` for a core menu with a plugin on | `ui/shots.odin` |

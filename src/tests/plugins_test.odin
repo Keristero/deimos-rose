@@ -128,8 +128,9 @@ plugins_take_their_places_in_the_step :: proc(t: ^testing.T) {
 	expect_names(t, core[len(core) - 2:], {"clock", "level_transition"})
 }
 
-// Every plugin folder with code is in the build: game/plugins.odin imports
-// it, or nothing registers it and its content is never offered.
+// Every plugin folder with code is in dr:all_plugins, which the tests, the
+// static build and plugins:check build from: a plugin left out is tested
+// by nobody.
 @(test)
 plugins_folders_are_all_in_the_build :: proc(t: ^testing.T) {
 	entries, err := os.read_all_directory_by_path("plugins", context.temp_allocator)
@@ -144,7 +145,7 @@ plugins_folders_are_all_in_the_build :: proc(t: ^testing.T) {
 		for f in files {
 			if strings.has_suffix(f.name, ".odin") {
 				_, ok := sim.plugin_find(e.name)
-				testing.expectf(t, ok, "plugins/%s is not registered: is it imported in game/plugins.odin?", e.name)
+				testing.expectf(t, ok, "plugins/%s is not registered: is it imported in all_plugins/all_plugins.odin?", e.name)
 				break
 			}
 		}
