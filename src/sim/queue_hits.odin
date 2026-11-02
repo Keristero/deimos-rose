@@ -2,7 +2,7 @@ package sim
 
 // Every collision that hurt something, for presentation: where, how hard it
 // was meant to hit and what the target had. A plugin's view reads them after
-// the step (hitstop's hold and kill cam). Like the other queues the events
+// the step (the Meme Mod's hold and kill cam). Like the other queues the events
 // are not state: every step clears them, and snapshots and checksums leave
 // them out.
 Hit_Event :: struct {

@@ -1,4 +1,4 @@
-package hitstop_view
+package meme_view
 
 // What a hit holds the game for, and how the kill cam moves: plain
 // functions of numbers, so the tests need no window.

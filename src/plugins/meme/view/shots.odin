@@ -1,6 +1,6 @@
-package hitstop_view
+package meme_view
 
-// Hitstop's screenshot scenario (ui/shots.odin), for `mise run menu-shot
+// The Meme Mod's screenshot scenario (ui/shots.odin), for `mise run menu-shot
 // MENU=hitstop`: stage 7 with the kill cam started on a point above the
 // player, held part-way through by DR_HITSTOP_AT=<0..1> (0.5 when unset: the
 // zoom close and the text up) and DR_HITSTOP_STREAK=<n> (the streak named, 1 when unset), or DR_HITSTOP_COMBO=<n> for the combo meter alone. New content: a visual check. The cam is
@@ -9,7 +9,7 @@ package hitstop_view
 import "core:os"
 import "core:strconv"
 
-import "dr:plugins/hitstop"
+import "dr:plugins/meme"
 import "dr:sim"
 import "dr:ui"
 
@@ -37,10 +37,10 @@ hitstop_shot :: proc(s: ^sim.State, name: string) -> string {
 ONE_STEP := []ui.Shot_Phase{{1, {}}}
 
 register_shots :: proc() {
-	ui.shot_register({name = "hitstop", plugin = hitstop.id(), level = 6, alone = true, setup = hitstop_shot, phases = ONE_STEP})
+	ui.shot_register({name = "hitstop", plugin = meme.id(), level = 6, alone = true, setup = hitstop_shot, phases = ONE_STEP})
 }
 
 @(init)
 register_shots_step :: proc "contextless" () {
-	sim.register_step(.View, "plugins/hitstop/view register_shots", register_shots)
+	sim.register_step(.View, "plugins/meme/view register_shots", register_shots)
 }

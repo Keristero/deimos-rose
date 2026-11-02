@@ -290,14 +290,14 @@ Renderer :: struct {
 	// classic mode and in a demo. flow_draw sets them; a plugin's view
 	// reads its own.
 	setting:         [prefs.MAX_SETTINGS]int,
-	// Steps the game is held for (a plugin's view sets it, hitstop's): a
+	// Steps the game is held for (a plugin's view sets it, the Meme Mod's): a
 	// session in play does not step while it is above zero, and each held
 	// step counts it down (game/flow.odin's flow_held). Never in netplay,
 	// whose peers step in lockstep. Presentation only.
 	hold:            int,
 	// How much slower than real time the game runs, 0 (normal) to just
 	// under 1: main.odin's accumulator takes (1 - slowdown) of each frame's
-	// time (flow_speed). Set by a plugin's view, hitstop's kill cam; the
+	// time (flow_speed). Set by a plugin's view, the Meme Mod's kill cam; the
 	// same rules as `hold`.
 	slowdown:        f32,
 }

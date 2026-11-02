@@ -1,4 +1,4 @@
-package hitstop_view
+package meme_view
 
 // The combo: each player's kill streak, shown while it lives as flaming
 // "N COMBO" text over a flaming meter that drains over STREAK_WINDOW steps

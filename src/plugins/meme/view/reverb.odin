@@ -1,4 +1,4 @@
-package hitstop_view
+package meme_view
 
 // The kill cam's reverb: a Schroeder reverb (four parallel combs through two
 // allpasses, a pair of each per channel) on the whole mix, sound and music

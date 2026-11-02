@@ -1,11 +1,11 @@
-package hitstop_tests
+package meme_tests
 
-// Hitstop (plugins/hitstop): how long a hit holds the game, what earns the
+// The Meme Mod's hitstop (plugins/meme): how long a hit holds the game, what earns the
 // kill cam, and where the zoom looks. Plain numbers: no window, no level.
 
 import "core:testing"
 
-import view "dr:plugins/hitstop/view"
+import view "dr:plugins/meme/view"
 import "dr:sim"
 
 @(test)

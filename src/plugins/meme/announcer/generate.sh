@@ -3,7 +3,7 @@
 # streak N) and the modifiers (modifiers.txt), spoken by Moonshine TTS and written to
 # view/clips/ as 22.05 kHz mono 16-bit WAVs with the silence trimmed, which the
 # plugin embeds (view/announcer.odin). Needs `moonshine` and `ffmpeg`; run
-# from anywhere: `mise run hitstop:announcer`. Never plays on a device.
+# from anywhere: `mise run meme:announcer`. Never plays on a device.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 OUT="$HERE/../view/clips"

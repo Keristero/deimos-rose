@@ -47,8 +47,9 @@ if (!existsSync(bin)) {
 }
 
 const config = loadConfig()
-const wanted = config.plugins.filter((p) => only.length === 0 || only.includes(p.name))
-const unknown = only.filter((n) => !config.plugins.some((p) => p.name === n))
+const shown = config.plugins.filter((p) => !p.hidden)
+const wanted = shown.filter((p) => only.length === 0 || only.includes(p.name))
+const unknown = only.filter((n) => !shown.some((p) => p.name === n))
 if (unknown.length) {
 	console.error(`site:shots: not in site.config.json's plugins: ${unknown.join(', ')}`)
 	process.exit(1)

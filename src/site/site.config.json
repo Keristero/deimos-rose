@@ -34,7 +34,7 @@
     { "name": "lighting", "group": "Presentation", "shot": "lighting" },
     { "name": "water", "group": "Presentation", "shot": "water_splash" },
     { "name": "wind", "group": "Presentation", "shot": "playing -mod wind -level Thebes" },
-    { "name": "hitstop", "group": "Presentation", "shot": "hitstop" },
+    { "name": "meme", "hidden": true },
     { "name": "hd_textures", "group": "Presentation", "shot": "playing -mod hd_textures -level Sparta", "about": "Upscaled by the Nomos SPAN 2x model; classic mode always draws the originals." },
     { "name": "netplay", "group": "Multiplayer", "shot": "netplay_lobby_connected" },
     { "name": "passives", "group": "Gameplay", "shot": "rear_gun_side" },
@@ -46,6 +46,14 @@
   ],
 
   "changes": [
+    {
+      "id": "meme-mod",
+      "title": "A plugin can stay off this site",
+      "date": "2026-10-18",
+      "kind": "engineering",
+      "pr": 10,
+      "summary": "A plugin can be marked hidden in the site's config: it ships in the release like any other, but gets no card, screenshot or download link here."
+    },
     {
       "id": "readme-website",
       "title": "A README that says what this is",

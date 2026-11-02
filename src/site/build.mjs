@@ -64,9 +64,14 @@ export function loadConfig(path = join(here, 'site.config.json')) {
 	const names = new Set()
 	for (const [i, p] of (config.plugins ?? []).entries()) {
 		need(text(p.name), `plugins[${i}].name`, 'a plugin folder name')
-		need(text(p.group), `plugins[${i}].group`, 'a group')
 		need(!names.has(p.name), `plugins[${i}]`, `${p.name} listed twice`)
-		need(text(p.shot), `plugins[${i}].shot`, 'the scenario its screenshot is taken in (site/shots.mjs)')
+		need(p.hidden === undefined || p.hidden === true, `plugins[${i}].hidden`, 'true, or left out')
+		// A hidden plugin is listed only so the list stays in step with
+		// src/plugins/: it has no card, so no group and no picture.
+		if (!p.hidden) {
+			need(text(p.group), `plugins[${i}].group`, 'a group')
+			need(text(p.shot), `plugins[${i}].shot`, 'the scenario its screenshot is taken in (site/shots.mjs)')
+		}
 		names.add(p.name)
 	}
 
@@ -141,7 +146,7 @@ export function loadPlugins(config) {
 	const plugins = []
 	for (const entry of config.plugins) {
 		const dir = join(root, entry.name)
-		if (!existsSync(dir)) continue
+		if (!existsSync(dir) || entry.hidden) continue
 		if (!existsSync(join(here, 'shots', `${entry.name}.webp`))) {
 			problems.push(`plugins/${entry.name} has no screenshot, site/shots/${entry.name}.webp: mise run site:shots ONLY=${entry.name}`)
 		}
@@ -168,6 +173,13 @@ export function loadPlugins(config) {
 			}
 		}
 		plugins.push({ ...meta, ...entry, kind: existsSync(manifest) ? 'data' : 'code' })
+	}
+	// A card names the plugins its plugin needs, so none of them may be hidden.
+	const hidden = new Set(config.plugins.filter((p) => p.hidden).map((p) => p.name))
+	for (const p of plugins) {
+		for (const d of p.deps.filter((d) => hidden.has(d))) {
+			problems.push(`plugins/${p.name} needs ${d}, which is hidden`)
+		}
 	}
 	if (problems.length) {
 		throw new Error(`plugins:\n  ${problems.join('\n  ')}`)

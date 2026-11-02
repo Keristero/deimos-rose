@@ -1,4 +1,4 @@
-package hitstop
+package meme
 
 import "dr:blocks"
 import "dr:sim"
@@ -16,7 +16,7 @@ shared := &shared_block
 
 @(init, private)
 declare_shared :: proc "contextless" () {
-	blocks.declare({name = "plugins/hitstop", ptr = (^rawptr)(&shared), type = Shared})
+	blocks.declare({name = "plugins/meme", ptr = (^rawptr)(&shared), type = Shared})
 }
 
 id :: #force_inline proc "contextless" () -> sim.Plugin_ID {

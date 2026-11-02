@@ -1,6 +1,6 @@
-package hitstop_view
+package meme_view
 
-import "dr:plugins/hitstop"
+import "dr:plugins/meme"
 import "dr:prefs"
 import "dr:sim"
 
@@ -9,7 +9,7 @@ import "dr:sim"
 // percent of twice the default, so 50 is as it comes and 100 is double.
 
 register_settings :: proc() {
-	id := hitstop.id()
+	id := meme.id()
 	shared.strength = prefs.setting_register({plugin = id, key = "hitstop_strength", label = "HIT PAUSE", kind = .Percent, default = 100})
 	shared.shake = prefs.setting_register({plugin = id, key = "hitstop_shake", label = "KILL CAM SHAKE", kind = .Percent, default = 100})
 	shared.zoom_amount = prefs.setting_register({plugin = id, key = "hitstop_zoom", label = "KILL CAM ZOOM", kind = .Percent, default = 100})
@@ -34,5 +34,5 @@ volume_scale :: proc "contextless" (setting: [prefs.MAX_SETTINGS]int, id: prefs.
 
 @(init)
 register_settings_step :: proc "contextless" () {
-	sim.register_step(.View, "plugins/hitstop/view register_settings", register_settings)
+	sim.register_step(.View, "plugins/meme/view register_settings", register_settings)
 }
