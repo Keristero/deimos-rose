@@ -41,10 +41,14 @@ jobs:
         with:
           node-version: 22
 
+      # --mirror copies the release's zips onto the site, about 470 MB,
+      # for the Download page to join in the browser: GitHub serves
+      # release files without CORS headers, so a page can only fetch its
+      # own site's (decisions.md D88). Pages allows a site of 1 GB.
       - name: Generate the site
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: node src/site/build.mjs --out _site
+        run: node src/site/build.mjs --out _site --mirror
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

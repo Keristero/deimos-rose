@@ -3,7 +3,7 @@
 // (.github/workflows/site.yml), never edited by hand. No dependencies
 // beyond Node 20, so nothing is installed to build it.
 //
-//   node site/build.mjs [--out build/site] [--offline]
+//   node site/build.mjs [--out build/site] [--offline] [--mirror]
 //
 // What it reads, and why from there:
 // - site.config.json: everything said about the project, and one entry
@@ -22,11 +22,19 @@
 //   is filtered here by tag: main's are v<major>.<minor>.<count> with no
 //   branch suffix (tools/version/version.sh). --offline, or no network,
 //   links the releases page instead.
+// - --mirror: that release's zips, copied into the site's dl/ for the
+//   Download page, which joins the ones a player ticks into one zip in the
+//   browser. GitHub serves release files without CORS headers (checked
+//   2026-10-18: github.com and release-assets.githubusercontent.com send
+//   no Access-Control-Allow-Origin), so a page can fetch only its own
+//   site's copy. SITE_ZIPS=<dir> copies them from a folder instead
+//   (mise run dist:zips's zips/), to try the page before a release.
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, copyFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, copyFileSync } from 'node:fs'
 import { dirname, join, resolve, relative } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { pages } from './pages.mjs'
+import { readZip } from './zip.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const src = resolve(here, '..')
@@ -235,6 +243,54 @@ async function latestRelease(repo) {
 }
 
 // ---------------------------------------------------------------------------
+// The release's zips, copied onto the site for the Download page
+// ---------------------------------------------------------------------------
+
+const OSES = ['windows', 'linux']
+
+// Copies the game's, the editor's and each shown plugin's zip into
+// out/dl/, and says what each adds over the game, for the page's size: a
+// plugin's own folder (its zip also carries the plugins it needs), and
+// what the editor's zip holds that the game's does not. Bytes are the
+// entries' records, as zip.mjs copies them. A hidden plugin is not copied.
+async function mirrorRelease(release, plugins) {
+	mkdirSync(join(out, 'dl'), { recursive: true })
+	const fetchZip = async (asset) => {
+		let bytes
+		if (process.env.SITE_ZIPS) {
+			bytes = readFileSync(join(process.env.SITE_ZIPS, asset.name))
+		} else {
+			const res = await fetch(asset.browser_download_url, { signal: AbortSignal.timeout(600000) })
+			if (!res.ok) throw new Error(`${asset.name}: HTTP ${res.status}`)
+			bytes = Buffer.from(await res.arrayBuffer())
+		}
+		writeFileSync(join(out, 'dl', asset.name), bytes)
+		return readZip(new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength))
+	}
+	const weigh = (entries, keep) => entries.filter((e) => keep(e.name)).reduce((n, e) => n + e.local.length + e.central.length, 0)
+	const mirror = { tag: release.tag }
+	for (const os of OSES) {
+		if (!release[os]) continue
+		const game = await fetchZip(release[os])
+		const inGame = new Set(game.map((e) => e.name))
+		const item = (asset, own) => ({ file: `dl/${asset.name}`, size: asset.size, own })
+		const m = { game: item(release[os], release[os].size), plugins: {} }
+		if (release.editor[os]) {
+			const editor = await fetchZip(release.editor[os])
+			m.editor = item(release.editor[os], weigh(editor, (n) => !inGame.has(n)))
+		}
+		for (const p of plugins) {
+			const asset = release.plugins[p.name]?.[os]
+			if (!asset) continue
+			const entries = await fetchZip(asset)
+			m.plugins[p.name] = item(asset, weigh(entries, (n) => n.startsWith(`deimos/plugins/${p.name}/`)))
+		}
+		mirror[os] = m
+	}
+	return mirror
+}
+
+// ---------------------------------------------------------------------------
 
 async function main() {
 	const config = loadConfig()
@@ -254,7 +310,12 @@ async function main() {
 		copyFileSync(resolve(here, config.site.screenshot), join(out, 'screenshot.png'))
 	}
 
-	const built = pages({ config, plugins, release, diagram })
+	copyFileSync(join(here, 'zip.mjs'), join(out, 'zip.mjs'))
+	copyFileSync(join(here, 'picker.mjs'), join(out, 'picker.mjs'))
+	copyFileSync(join(here, 'download.js'), join(out, 'download.js'))
+	const mirror = release && flag('--mirror') ? await mirrorRelease(release, plugins) : null
+
+	const built = pages({ config, plugins, release, mirror, diagram })
 	for (const [file, html] of Object.entries(built)) {
 		writeFileSync(join(out, file), html)
 	}
@@ -264,6 +325,11 @@ async function main() {
 	const where = relative(process.cwd(), out) || '.'
 	console.log(`site: ${Object.keys(built).length} pages, ${plugins.length} plugins, ${config.changes.length} changes -> ${where}`)
 	console.log(`site: downloads ${release ? `from ${release.tag}` : 'link the releases page'}`)
+	if (mirror) {
+		const files = readdirSync(join(out, 'dl'))
+		const bytes = files.reduce((n, f) => n + statSync(join(out, 'dl', f)).size, 0)
+		console.log(`site: ${files.length} zips copied for the Download page, ${Math.round(bytes / 1e6)} MB`)
+	}
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
